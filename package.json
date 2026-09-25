@@ -1,20 +1,45 @@
 {
   "name": "@iyowei/sweep-node-modules",
   "version": "0.3.0",
-  "description": "工作区级 node_modules 清理工具: 一次扫描多个根目录, 跨项目列出体积, 确认后批量删除。",
+  "description": "CLI tool to find and delete node_modules across projects: scan multiple workspace roots (monorepo friendly), bulk-remove them to free up disk space, preview first and delete after confirmation. 工作区级 node_modules 批量清理工具。",
   "keywords": [
     "cli",
-    "bun",
-    "nodejs",
+    "cli-tool",
+    "tool",
     "node-modules",
+    "node_modules",
+    "modules",
+    "delete",
+    "remove",
+    "remover",
+    "del",
+    "cleaner",
+    "cleanup",
+    "clean",
+    "prune",
+    "sweep",
+    "bulk",
+    "batch",
     "disk-usage",
-    "cleanup"
+    "disk-space",
+    "free-up-space",
+    "workspace",
+    "monorepo",
+    "npm",
+    "pnpm",
+    "yarn",
+    "bun",
+    "node"
   ],
   "author": "iYoWei",
   "license": "MIT",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/iyowei/sweep-node-modules.git"
+  },
+  "homepage": "https://github.com/iyowei/sweep-node-modules#readme",
+  "bugs": {
+    "url": "https://github.com/iyowei/sweep-node-modules/issues"
   },
   "type": "module",
   "bin": {
@@ -32,8 +57,9 @@
   },
   "scripts": {
     "prepare": "[ -z \"$CI\" ] && lefthook install || true",
-    "build": "bun build src/cli.ts --target=node --outfile=dist/cli.js",
-    "prepublishOnly": "npm run build",
+    "build": "bun build src/cli.ts --target=node --outfile=dist/cli.js && bun scripts/write-dist-manifest.ts",
+    "prepublishOnly": "npm run build && npm run verify:release",
+    "verify:release": "bun scripts/verify-release.ts",
     "typecheck": "tsc --noEmit",
     "lint": "oxlint",
     "lint:fix": "oxlint --fix",

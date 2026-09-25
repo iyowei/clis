@@ -30,9 +30,20 @@ bun run bench
 # 转写一致性验收 (金样本语料见 docs/protocol/)
 bun run conformance -- --target "bun src/cli.ts"
 
-# 打包单文件 dist/cli.js (npm 分发的编译产物; 发布时由 prepublishOnly 自动跑)
+# 打包单文件 dist/cli.js 并写产物自证清单 dist/manifest.json (发布时由 prepublishOnly 自动跑)
 bun run build
+
+# 发布前置闸门 (干净检出 + 产物就位 + 清单自洽 + 发行面白名单; 发布前自动跑, 也可手动复核)
+bun run verify:release
 ```
+
+## 发布
+
+发布只从干净检出发起: `prepublishOnly` = 构建 (`bun run build`, 产出 `dist/cli.js` 与自证清单 `dist/manifest.json`) + 发布前置闸门 (`bun run verify:release`)。闸门四项按序短路, 任一命中即退 1 拒发: 工作树不干净 / 产物缺失 / 清单与提交或产物的对账不过 / 发行面包内文件与白名单 `PACK_FILES_EXPECTED` 不符 (该检查跑一次只读的 `npm pack --dry-run --json --ignore-scripts`, 需要 npm)。发布走 `npm publish` 或 `bun publish` 都过闸门 (两者自行打包时都执行 `prepublishOnly`, 核验依据见 [ADR 0009](adrs/0009-npm-distribution-form.md) 补记第 4 条); 已知残留口: `npm pack` 与 `npm publish <tarball>` 不经闸门。
+
+**README / LICENSE 类备份别落仓库根**: npm 会把仓库根的 `README*` / `LICENSE*` 无条件收进发行包, 且没有任何配置可以排除 (官方 files 节与 npm-packlist 的 strict 规则, 见 ADR 0009 补记第 3 条), 落根目录的备份会被静默发出去; 备份一律落 `~/tmp`。
+
+装进包里的 `bin/sweep-nm.mjs` 在优先使用产物前核对清单摘要 (含形状版本), 清单缺失 / 损坏 / 版本不支持 / 摘要不符即拒收产物并给出指引 (处置按宿主分流: 仓库检出态给源码入口与重构建, 包态给重装本包); 无产物时回退源码的语义不变。启动器不判工作树脏净 (开发态常脏), 那是发布闸门的职责。清单字段、判定与两道防线的分工见 [ADR 0009](adrs/0009-npm-distribution-form.md) 补记与 `scripts/release-artifact.ts`。
 
 ## 运行时双跑
 
