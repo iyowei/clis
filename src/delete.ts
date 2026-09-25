@@ -10,9 +10,14 @@
  * 中间组件一律跟随符号链接; guard 的 realpath 只固定校验时刻的解析结果, 二者之间把某个
  * 中间组件换成指向 root 外的符号链接, rm 就会删到 root 外。故每条删除前自 root 向下逐级
  * lstat 复核 (末段除外: 链接本体由 fs.rm 自身安全处理), 检出替换即整批中止。
+ * 链头替换 (ANCHOR-REANCHOR: 根自身被换成符号链接 → 删除导向他树): 复核链从 realpath 后的根
+ * 开始, 链头看到的仍是「此刻解析出的真目录」, 而 target 与 root 的 realpath 在换位后一起漂移,
+ * 任何按 realpath 的比较都恒真 —— 拼写形态是唯一能识破的证据。故链头处另对信任根的配置拼写
+ * 补一次 lstat 类型判定 (是符号链接即整批中止), 与 guard 的第五道不变量互为纵深。
  * 残余风险 (复核只缩短窗口, 不构成零窗口保证): 复核与 rm 之间仍有竞态窗口, 路径级 API
  * 无法彻底消除 (需 fd 级 openat / O_NOFOLLOW, Node 未暴露); 同型真实目录的整目录换位
- * lstat 亦不可识别。调用方须传与 target 同源拼写的 roots (建议即 guard 判根用的 realpath 结果)。
+ * lstat 亦不可识别。调用方须传与 target 同源拼写的 real (建议即 guard 判根用的 realpath 结果),
+ * 并保留配置里的原始拼写供链头判定 (见 TrustRoot)。
  */
 import { lstat, rm } from 'node:fs/promises';
 import { isAbsolute, join, relative, sep } from 'node:path';
@@ -46,12 +51,22 @@ export interface RemovalResult {
   aborted?: AbortedBatch;
 }
 
+/**
+ * 信任根: 配置里的原始拼写与 realpath 归一形态成对出现 (配对由类型强制, 拆开即失去一层防线)。
+ * - `configured`: 链头判定的对象 —— 配置里的名字被换成符号链接时, 只有拼写形态能检出;
+ * - `real`: isUnder 与复核链的比较基准, 须与 targets 同源 (realpath 形态; 根不可解析时调用方保留原拼写)。
+ */
+export interface TrustRoot {
+  configured: string;
+  real: string;
+}
+
 export interface RemovalOptions {
   /**
-   * 可删目标所属的信任根 (与 guard 同源; 拼写须与 targets 一致, 建议同为 realpath 化结果)。
-   * 目标不在任何根之下时无可信复核, 整批中止。
+   * 可删目标所属的信任根 (与 guard 同源)。`real` 拼写须与 targets 一致 (建议同为 realpath 化结果);
+   * `configured` 供链头判定。目标不在任何根之下时无可信复核, 整批中止。
    */
-  roots: string[];
+  roots: TrustRoot[];
 }
 
 /** 常见错误码的人话映射, 未收录的码回落通用提示 */
@@ -134,6 +149,19 @@ type ReviewFinding =
   | { kind: 'vanished'; path: string }
   | { kind: 'unverified'; path: string; error: unknown };
 
+/**
+ * 链头判定: 配置拼写的信任根自身是否为符号链接 (lstat 不跟进末段)。
+ * 不可核验 (lstat 失败) 时返回 false 而不据此拒绝: 未检出即无替换证据, 避免把权限噪声
+ * 升级成整批中止; 该情形下 realpath 亦不可解析, 目标会在更早的判定里被拒。
+ */
+async function isSymlinkHead(path: string): Promise<boolean> {
+  try {
+    return (await lstat(path)).isSymbolicLink();
+  } catch {
+    return false;
+  }
+}
+
 /** 逐级复核链上组件: 全通过返回 null; 符号链接与非目录统一由 isDirectory 判定拦下 (lstat 不 follow 末段) */
 async function reviewComponents(
   chain: string[],
@@ -157,15 +185,15 @@ async function reviewComponents(
  *
  * 数据追踪示例:
  *   Input  targets = ['/w/zeta/node_modules', '/w/lock/node_modules', '/w/bare/node_modules'],
- *          options.roots = ['/w']  (三者父链均为真目录)
- *   步骤 0  逐条复核: 自 /w 向下 lstat 至目标父目录; 检出符号链接即整批中止,
- *           链上组件 ENOENT 归 failed (可能只是被 mv 走)
+ *          options.roots = [{ configured: '/w', real: '/w' }]  (三者父链均为真目录)
+ *   步骤 0  逐条复核: 先判链头 (配置拼写 /w 非符号链接), 再自 /w 向下 lstat 至目标父目录;
+ *           链头或组件检出符号链接即整批中止, 链上组件 ENOENT 归 failed (可能只是被 mv 走)
  *   步骤 1  首项 rm 成功 → removed
  *   步骤 2  次项 rm 抛 EACCES (父目录只读) → failed, 错误串 'EACCES: 权限不足, 拒绝删除
  *            (目标: ...; 注意: 目录内容可能已被部分或全部删除, 请复查)'
  *   步骤 3  末项复核通过, rm 抛 ENOENT (目标本体已消失) → missing, 不中断
  *   Output { removed: ['/w/zeta/node_modules'], missing: ['/w/bare/node_modules'], failed: [...] }
- *          (aborted 缺省; 若 /w/zeta 被换成符号链接, 则首条即中止, 输出只含 aborted)
+ *          (aborted 缺省; 若 /w 被换成指向他树的符号链接, 则首条即中止, 输出只含 aborted)
  */
 export async function removeTargets(
   targets: string[],
@@ -176,7 +204,7 @@ export async function removeTargets(
   const roots = options?.roots ?? [];
 
   for (const target of targets) {
-    const root = roots.find((candidate) => isUnder(candidate, target));
+    const root = roots.find((candidate) => isUnder(candidate.real, target));
     if (root === undefined) {
       result.aborted = {
         target,
@@ -185,8 +213,17 @@ export async function removeTargets(
       break;
     }
 
+    // 链头判定先于组件复核: 根被换位时链上其余组件全是「此刻的真目录」, 只有拼写形态能识破
+    if (await isSymlinkHead(root.configured)) {
+      result.aborted = {
+        target,
+        reason: `安全复核失败 (根被替换为符号链接): ${root.configured}`,
+      };
+      break;
+    }
+
     // 复核紧跟删除: 尽可能压缩两者之间的替换窗口
-    const finding = await reviewComponents(componentChain(root, target));
+    const finding = await reviewComponents(componentChain(root.real, target));
     if (finding !== null) {
       if (finding.kind === 'vanished') {
         // 组件消失 ≠ 目标消失 (可能只是被 mv 走): 归 missing 会伪报成功, 必须交回人工复查

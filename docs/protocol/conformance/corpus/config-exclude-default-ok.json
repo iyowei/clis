@@ -1,6 +1,6 @@
 {
   "id": "config-exclude-default-ok",
-  "specRefs": ["BC-20"],
+  "specRefs": ["BC-20", "BC-36"],
   "fixture": {
     "projects": [{ "dir": "zone/a" }]
   },

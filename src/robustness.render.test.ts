@@ -15,7 +15,13 @@ import {
   previewOptions,
   stripAnsi,
 } from './render.fixtures.ts';
-import { type RenderEntry, type RenderOptions, render } from './render.ts';
+import {
+  type RenderEntry,
+  type RenderOptions,
+  render,
+  sanitizeLine,
+  sanitizeOutputLine,
+} from './render.ts';
 
 describe('控制字符与换行净化', () => {
   const newlineEntry: RenderEntry = {
@@ -118,6 +124,30 @@ describe('控制字符与换行净化', () => {
     });
 
     expect(out).toContain('名字已净化显示  体积统计失败: 权限不足');
+  });
+});
+
+describe('输出面净化源 (sanitizeLine / sanitizeOutputLine)', () => {
+  test('剥控制类字符并把换行折成空格 (诊断出口与清单面同一源实现)', () => {
+    // 码点: ESC (清屏序列引导) / C1 NEL / RLO / ZWSP / BOM (均以转义书写, 避免源码里混入不可见字符)
+    const raw = 'evil\u001b[2J\nspoof\u202ename\u200b\u0085\ufeff';
+
+    expect(sanitizeLine(raw)).toBe('evil[2J spoofname');
+  });
+
+  test('输出行净化保留行首缩进 (诊断面的层级视觉), 行内空白仍折叠', () => {
+    expect(sanitizeOutputLine('  /w/evil\u001b[2J\n  name')).toBe(
+      '  /w/evil[2J name',
+    );
+  });
+
+  test('无控制字符时逐字节不变 (正常路径零误伤)', () => {
+    expect(sanitizeLine('/Users/iyowei/work/acme-web')).toBe(
+      '/Users/iyowei/work/acme-web',
+    );
+    expect(sanitizeOutputLine('  排除生效: alpha (1 处)')).toBe(
+      '  排除生效: alpha (1 处)',
+    );
   });
 });
 

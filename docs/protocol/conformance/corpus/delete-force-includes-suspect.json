@@ -1,0 +1,28 @@
+{
+  "id": "delete-force-includes-suspect",
+  "specRefs": ["BC-38", "BC-23", "OF-09", "OF-13"],
+  "fixture": {
+    "projects": [{ "dir": "zone/app" }, { "dir": "zone/pkg/lib" }]
+  },
+  "setup": [
+    {
+      "write": {
+        "path": "config.json",
+        "text": "{\n  \"roots\": [\"$FIXTURE/zone\"],\n  \"exclude\": []\n}\n"
+      }
+    }
+  ],
+  "run": {
+    "argv": ["--yes", "--force"],
+    "env": { "SWEEP_NM_CONFIG": "$FIXTURE/config.json" }
+  },
+  "expect": {
+    "exitCode": 0,
+    "stdoutExact": "▍ SWEEP-NM  执行 · 1 个根: $FIXTURE/zone\n  ✓ 8 KB  app    $FIXTURE/zone/app\n  ✓ 8 KB  lib    $FIXTURE/zone/pkg/lib/node_modules  疑似安装树: 父目录为 lib, 形如版本管理器的 node 安装树\n  █ 汇总 成功 2 处 · 释放 16 KB · 失败 0 处\n",
+    "stdoutMustNotContain": ["默认跳过"],
+    "fs": [
+      { "path": "zone/app/node_modules", "state": "gone" },
+      { "path": "zone/pkg/lib/node_modules", "state": "gone" }
+    ]
+  }
+}

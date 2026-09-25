@@ -9,11 +9,52 @@ import { posix, win32 } from 'node:path';
 export interface Config {
   /** 扫描根, 任意多个 */
   roots: string[];
-  /** 排除名单: 从根到命中点的任意一级目录名命中即跳过 */
+  /** 排除名单: 从根到命中点的任意一级目录名命中即跳过; 配置文件省略该字段时取 DEFAULT_EXCLUDE */
   exclude: string[];
   /** 包含名单 (白名单): 从根到 node_modules 的任意一级目录名命中才纳入; 空数组 = 不过滤 */
   include: string[];
 }
+
+/**
+ * 默认排除名单 (保守基线): 已知的包管理器 / 版本管理器安装树、编辑器扩展目录与系统 / 应用数据根。
+ * 这些目录下的 node_modules 是工具自身的安装树 (全局包树、npx 缓存、扩展依赖), 删除后无法由
+ * 项目级重装恢复 — 安全审计确证 ADR 0002 的「可恢复, 非数据损失」前提在此类目标上不成立
+ * (实测: `~/.bun/install/global` 4.25 GB / 1627 包, 且本工具自身即装于其中; 版本管理器的
+ * `lib/node_modules` 是用户全局包清单的唯一所在; 编辑器扩展目录逐个自带 node_modules)。
+ *
+ * 语义与用户写的名单完全一致 (任意一级目录名命中即跳过), 只是默认值不再为空; 生效与覆盖规则:
+ * - 配置文件省略 `exclude` 字段时取本名单; 显式写出该字段 (含写空数组) 即以用户名单为准;
+ * - `init` 向导的排除一问以本名单为默认回填, 用户所见即所得;
+ * - 名单项在本次扫描零命中时不告警 (静默规则见 cli.ts 的 collectNameNotes): 名单依平台与用户
+ *   环境而异, 逐项告警必然刷屏且无行动价值, 与用户手写名字拼错的情况不同。
+ *
+ * 保守取向: 宁可挡住个别同名的真实项目 (用户可从配置中删除该项), 也不漏放安装树。
+ */
+export const DEFAULT_EXCLUDE: readonly string[] = [
+  // 包管理器 / 版本管理器的安装树与缓存: 全局包树、npx 缓存与 store 删后无法由项目级重装恢复
+  '.bun',
+  '.npm',
+  '.pnpm-store',
+  '.yarn',
+  '.nvm',
+  'nvm',
+  '.fnm',
+  '.volta',
+  '.asdf',
+  '.n',
+  // 编辑器 / IDE 的扩展目录: 每个扩展自带 node_modules, 属应用自身而非用户项目
+  '.vscode',
+  '.vscode-insiders',
+  '.vscode-server',
+  '.cursor',
+  '.antigravity',
+  // 系统与应用数据根 / XDG 根: 其下散落工具私有安装树 (macOS 的 Library 含 fnm 与各应用插件)
+  'Library',
+  '.local',
+  '.config',
+  '.cache',
+  '.claude',
+];
 
 /** 配置路径来源 */
 export type ConfigSource = 'flag' | 'env' | 'platform-default';
@@ -129,7 +170,8 @@ function fieldError(
 
 /**
  * 配置形状校验 (最小口径, 只校验类型不校验语义): 顶层须为非数组对象;
- * roots 必填, exclude / include 均可缺省 (视为 []); 返回首个错误原因 (逐字段具体), 通过返回 null。
+ * roots 必填, exclude / include 均可缺省 (依序补 DEFAULT_EXCLUDE 与 []); 返回首个错误原因
+ * (逐字段具体), 通过返回 null。
  */
 function shapeError(value: unknown): string | null {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) {
@@ -156,7 +198,7 @@ function shapeError(value: unknown): string | null {
  *   text = '{"roots":["/a"],"exclude":["x"]}'
  *   *(ENOENT 时提前返回 { state: 'absent' }, 其余读取失败立即抛错)*
  *
- * 步骤 2：JSON 解析 + 形状校验 (roots 须为字符串数组, exclude / include 缺省视为 [])
+ * 步骤 2：JSON 解析 + 形状校验 (roots 须为字符串数组; 字段缺省时 exclude 补默认名单、include 补 [])
  *   data = { roots: ['/a'], exclude: ['x'] }
  *
  * Output（数据契约）
@@ -187,7 +229,9 @@ export async function loadConfig(path: string): Promise<LoadConfigResult> {
     throw new Error(`配置损坏 (${path}): ${error}`);
   }
 
-  // 形状已保证: roots 为字符串数组, exclude / include 缺省补空数组
+  // 形状已保证: roots 为字符串数组; exclude / include 缺省分别补默认名单与空数组。
+  // 判定「缺省」而非「空」: 显式写出的空数组是用户接管排除名单的表示, 不得被默认值回填
+  // (回填即让「我想排除什么就排除什么」失效), 故用 ?? 而非长度判断
   const raw = data as {
     roots: string[];
     exclude?: string[];
@@ -197,7 +241,7 @@ export async function loadConfig(path: string): Promise<LoadConfigResult> {
     state: 'ok',
     config: {
       roots: raw.roots,
-      exclude: raw.exclude ?? [],
+      exclude: raw.exclude ?? [...DEFAULT_EXCLUDE],
       include: raw.include ?? [],
     },
   };

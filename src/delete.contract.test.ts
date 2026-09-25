@@ -1,6 +1,7 @@
 /**
- * 删除执行器契约测试: 真删 fixture 目标, 钉死六条语义 (正常 / TOCTOU 缺失 / 权限失败且
- * 错误串附复查提示 / 桶内保输入序 / 空输入 / 组件级安全复核), 正常路径并断言邻居目录不被波及。
+ * 删除执行器契约测试: 真删 fixture 目标, 钉死七条语义 (正常 / TOCTOU 缺失 / 权限失败且
+ * 错误串附复查提示 / 桶内保输入序 / 空输入 / 组件级安全复核 / 链头替换),
+ * 正常路径并断言邻居目录不被波及。
  * 设计: docs/designs/deletion-guard.md「执行语义」。
  */
 import { afterEach, describe, expect, test } from 'bun:test';
@@ -15,7 +16,7 @@ import {
 } from 'node:fs/promises';
 import { join } from 'node:path';
 
-import { removeTargets } from './delete.ts';
+import { type TrustRoot, removeTargets } from './delete.ts';
 import {
   type Workspace,
   type WorkspaceSpec,
@@ -29,6 +30,12 @@ async function make(spec: WorkspaceSpec): Promise<Workspace> {
   workspaces.push(workspace);
   return workspace;
 }
+
+/** 信任根样本: fixtures 的 root 已 realpath 归一, 故测试里拼写与真实路径同值 */
+const trustRoot = (path: string): TrustRoot => ({
+  configured: path,
+  real: path,
+});
 
 /** 权限注入的还原登记: 不还原会把临时目录锁成清不掉的墓地 */
 const modeRestores: { path: string; mode: number }[] = [];
@@ -79,7 +86,9 @@ describe('removeTargets 契约', () => {
     const sibling = join(root, 'zone', 'gamma');
     await mkdir(sibling, { recursive: true });
 
-    const result = await removeTargets([alpha, beta, deep], { roots: [root] });
+    const result = await removeTargets([alpha, beta, deep], {
+      roots: [trustRoot(root)],
+    });
 
     expect(result).toEqual({
       removed: [alpha, beta, deep],
@@ -100,12 +109,14 @@ describe('removeTargets 契约', () => {
     await mkdir(join(root, 'bare'), { recursive: true });
     const neverHad = join(root, 'bare', 'node_modules');
 
-    const first = await removeTargets([target], { roots: [root] });
+    const first = await removeTargets([target], { roots: [trustRoot(root)] });
     expect(first.removed).toEqual([target]);
     expect(first.missing).toEqual([]);
 
     // 次轮: 目标已在上轮删除, 连同从未有过的目标一并归 missing (保输入序)
-    const second = await removeTargets([target, neverHad], { roots: [root] });
+    const second = await removeTargets([target, neverHad], {
+      roots: [trustRoot(root)],
+    });
     expect(second.removed).toEqual([]);
     expect(second.missing).toEqual([target, neverHad]);
     expect(second.failed).toEqual([]);
@@ -119,7 +130,9 @@ describe('removeTargets 契约', () => {
       const target = join(parent, 'node_modules');
       await lockDir(parent);
 
-      const result = await removeTargets([target], { roots: [root] });
+      const result = await removeTargets([target], {
+        roots: [trustRoot(root)],
+      });
 
       expect(result.removed).toEqual([]);
       expect(result.missing).toEqual([]);
@@ -150,7 +163,7 @@ describe('removeTargets 契约', () => {
 
     // 输入序刻意与字典序相反 (字典序应为 alpha < zeta、bare-a < bare-b)
     const result = await removeTargets([zeta, bareB, alpha, bareA], {
-      roots: [root],
+      roots: [trustRoot(root)],
     });
 
     expect(result.removed).toEqual([zeta, alpha]);
@@ -172,7 +185,9 @@ describe('removeTargets 契约', () => {
       await lockDir(join(root, 'lock-b'));
       await lockDir(join(root, 'lock-a'));
 
-      const result = await removeTargets([lockB, ok, lockA], { roots: [root] });
+      const result = await removeTargets([lockB, ok, lockA], {
+        roots: [trustRoot(root)],
+      });
 
       expect(result.removed).toEqual([ok]);
       expect(result.failed.map((entry) => entry.target)).toEqual([
@@ -193,7 +208,7 @@ describe('removeTargets 契约', () => {
     // 目标位置被换成指向真实目录的符号链接 (末段替换: 由 fs.rm 的 lstat 语义安全处理)
     await symlink(join(root, 'precious', 'node_modules'), target);
 
-    const result = await removeTargets([target], { roots: [root] });
+    const result = await removeTargets([target], { roots: [trustRoot(root)] });
 
     expect(result.removed).toEqual([target]);
     expect(await exists(target)).toBe(false);
@@ -229,7 +244,7 @@ describe('组件级安全复核 (中间路径组件替换 → root 外删除)', 
     expect(await exists(victimFile)).toBe(true);
 
     const result = await removeTargets([ok, swapped, later], {
-      roots: [trust],
+      roots: [trustRoot(trust)],
     });
 
     expect(result.removed).toEqual([ok]); // 已成功条目如实报告
@@ -252,7 +267,7 @@ describe('组件级安全复核 (中间路径组件替换 → root 外删除)', 
     const newHome = join(trust, 'moved.bak');
     await rename(join(trust, 'moved'), newHome);
 
-    const result = await removeTargets([target], { roots: [trust] });
+    const result = await removeTargets([target], { roots: [trustRoot(trust)] });
 
     // 报 missing 会让调用方收到 ✓ 与退出码 0 (cli 以 failed 非空定 1), 而目标还在占盘
     expect(result.removed).toEqual([]);
@@ -277,7 +292,7 @@ describe('组件级安全复核 (中间路径组件替换 → root 外删除)', 
     const inside = join(root, 'zone', 'app', 'node_modules');
 
     const result = await removeTargets([stray, inside], {
-      roots: [join(root, 'zone')],
+      roots: [trustRoot(join(root, 'zone'))],
     });
 
     expect(result.aborted?.target).toBe(stray);
@@ -297,7 +312,9 @@ describe('组件级安全复核 (中间路径组件替换 → root 外删除)', 
       const blocked = join(opaque, 'inner', 'node_modules');
       const ok = join(root, 'ok', 'node_modules');
 
-      const result = await removeTargets([blocked, ok], { roots: [root] });
+      const result = await removeTargets([blocked, ok], {
+        roots: [trustRoot(root)],
+      });
 
       expect(result.failed.map((entry) => entry.target)).toEqual([blocked]);
       expect(result.failed[0]?.error).toContain('安全复核未完成');
@@ -306,4 +323,40 @@ describe('组件级安全复核 (中间路径组件替换 → root 外删除)', 
       expect(await exists(ok)).toBe(false); // 无替换证据, 不牵连后续条目
     },
   );
+});
+
+describe('链头替换 (信任根被换成符号链接 → 删除导向他树)', () => {
+  test('配置拼写的根是符号链接: 整批中止, 链接指向的树完好', async () => {
+    const { root } = await make({
+      projects: [
+        { dir: 'target-tree/zone/app' },
+        { dir: 'target-tree/zone/ok' },
+      ],
+    });
+    // 攻击形态: 配置里的根被改名搬走、原地换成指向他树的符号链接 (一次性布置, 无需竞态)
+    await symlink(join(root, 'target-tree'), join(root, 'link-root'));
+
+    // guard 侧 realpath 归一后拿到的正是链接的解析结果: 两侧一起漂移, 按 real 的比较恒真,
+    // 唯一能识破的证据是配置拼写的形态
+    const target = join(root, 'target-tree', 'zone', 'app', 'node_modules');
+    const later = join(root, 'target-tree', 'zone', 'ok', 'node_modules');
+    const result = await removeTargets([target, later], {
+      roots: [
+        {
+          configured: join(root, 'link-root'),
+          real: join(root, 'target-tree'),
+        },
+      ],
+    });
+
+    expect(result.removed).toEqual([]);
+    expect(result.missing).toEqual([]);
+    expect(result.failed).toEqual([]);
+    expect(result.aborted?.target).toBe(target);
+    expect(result.aborted?.reason).toContain('根被替换为符号链接');
+    expect(result.aborted?.reason).toContain(join(root, 'link-root'));
+    // 链接指向的树必须原样活着: 放任下去, 删除就会导向它
+    expect(await exists(target)).toBe(true);
+    expect(await exists(later)).toBe(true);
+  });
 });

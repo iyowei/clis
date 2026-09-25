@@ -366,6 +366,8 @@ function definePreviewCases(runner: string, available: boolean): void {
         );
         expect(result.stdout).toContain('--exclude 按目录名精确匹配');
         expect(result.stdout).toContain('--include 同款匹配口径');
+        // 新旗标必须上帮助页; 其口径文案的逐字节面由语料 cli-help 钉住 (此处只留旗标一行)
+        expect(result.stdout).toContain('sweep-nm --force');
       },
     );
   });

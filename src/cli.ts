@@ -8,16 +8,23 @@ import { lstat, mkdir, realpath } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { basename, dirname } from 'node:path';
 
+import { classifyTarget } from './classify.ts';
 import {
   type Config,
   type ConfigSource,
+  DEFAULT_EXCLUDE,
   type ResolvedConfigPath,
   loadResolvedConfig,
   mergeNames,
   resolveConfigPath,
 } from './config.ts';
-import { type RemovalResult, removeTargets } from './delete.ts';
-import { validateTargets } from './guard.ts';
+import { type RemovalResult, type TrustRoot, removeTargets } from './delete.ts';
+import {
+  firstSymlinkOnRoot,
+  firstSymlinkOnTarget,
+  validateTargets,
+} from './guard.ts';
+import { helpText } from './help.ts';
 import { type InitResult, createReadlineIO, runInit } from './init.ts';
 import {
   type RenderEntry,
@@ -25,20 +32,21 @@ import {
   neutralLine,
   paint,
   render,
+  sanitizeLine,
+  sanitizeOutputLine,
 } from './render.ts';
 import { runtimeLabel, writeTextFile } from './runtime.ts';
 import { createScanner } from './scan.ts';
 import { createSizer } from './size.ts';
 import type { ScanHit, ScanResult, SizeResult } from './types.ts';
 
-/** 帮助页命令列宽度 (元变量取 ASCII, 免去全角宽度换算) */
-const COMMAND_COLUMN = 25;
-
 interface CliOptions {
   /** 子命令: 缺省为清理流程, init 只跑向导, config 只报告配置 */
   command: 'sweep' | 'init' | 'config';
   /** 执行删除 (缺省为预览) */
   yes: boolean;
+  /** 连同疑似安装树一并纳入删除批 (缺省跳过; 只影响批次构造, 不放宽安全闸的不变量) */
+  force: boolean;
   /** `--exclude` 可重复, 与配置名单合并 */
   exclude: string[];
   /** `--include` 可重复, 与配置名单合并 */
@@ -52,8 +60,8 @@ type ParseOutcome =
   { ok: true; options: CliOptions } | { ok: false; message: string };
 
 /**
- * 解析参数: `--yes` / `--exclude <name>` / `--include <name>` / `--config <path>` / `--help`
- * 与 `init` / `config` 子命令; 未知参数、旗标缺值、多余位置参数一律判错 (调用方落退出码 1)。
+ * 解析参数: `--yes` / `--force` / `--exclude <name>` / `--include <name>` / `--config <path>` /
+ * `--help` 与 `init` / `config` 子命令; 未知参数、旗标缺值、多余位置参数一律判错 (调用方落退出码 1)。
  *
  * ### 数据追踪示例
  * ```text
@@ -64,13 +72,14 @@ type ParseOutcome =
  *   --exclude 收值 'my-kits'; --include 收值 'self'; --yes 置位; 无位置参数
  *
  * Output（数据契约）
- *   return { ok: true, options: { command: 'sweep', yes: true, exclude: ['my-kits'], include: ['self'], help: false } }
+ *   return { ok: true, options: { command: 'sweep', yes: true, force: false, exclude: ['my-kits'], include: ['self'], help: false } }
  * ```
  */
 function parseArgs(argv: string[]): ParseOutcome {
   const options: CliOptions = {
     command: 'sweep',
     yes: false,
+    force: false,
     exclude: [],
     include: [],
     help: false,
@@ -83,6 +92,10 @@ function parseArgs(argv: string[]): ParseOutcome {
     if (arg === undefined) continue;
     if (arg === '--yes') {
       options.yes = true;
+      continue;
+    }
+    if (arg === '--force') {
+      options.force = true;
       continue;
     }
     if (arg === '--help' || arg === '-h') {
@@ -130,50 +143,27 @@ function print(line: string): void {
   process.stdout.write(`${line}\n`);
 }
 
-/** 诊断信息 (错误 / 告警) 走 stderr, 不污染清单输出; TTY 下带红色 ✗ 前缀, 非 TTY 零 ANSI 纯文本 */
+/**
+ * 诊断信息 (错误 / 告警) 走 stderr, 不污染清单输出; TTY 下带红色 ✗ 前缀, 非 TTY 零 ANSI 纯文本。
+ * 文本一律经 sanitizeOutputLine 净化 (与清单面同一源实现): 本面承载的恰是最脏的数据 ——
+ * 磁盘路径 / `du` 的 stderr 原文 / 配置文件与 argv 里的名单拼写 / 参数错误消息, 全是低信任输入;
+ * 净化挡两件事: 控制字节直达终端 (改标题 / 清屏 / 光标回写覆盖已打印内容), 以及换行把一条告警
+ * 劈成两行、伪造出一行可信输出 (非 TTY 下 stderr 常被 tee 与 CI 原样落盘, 回放时同样生效)。
+ * --yes 流程下 stdout 为空, 本面是删除前唯一可见信息, 故与清单面同等设防。
+ */
 function warn(line: string, color: boolean): void {
+  const text = sanitizeOutputLine(line);
   process.stderr.write(
-    color ? `${paint('✗', '31', color)} ${line}\n` : `${line}\n`,
+    color ? `${paint('✗', '31', color)} ${text}\n` : `${text}\n`,
   );
 }
 
-/** 非诊断性提示 (回退说明 / 拒绝详情) 走 stderr 但不加标记, 与告警区分层级 */
+/**
+ * 非诊断性提示 (回退说明 / 拒绝详情) 走 stderr 但不加标记, 与告警区分层级;
+ * 净化口径与 warn 同源 (行首缩进保留 —— 它是层级视觉而非外部数据)。
+ */
 function notice(line: string): void {
-  process.stderr.write(`${line}\n`);
-}
-
-/** 平台默认配置路径 (帮助里的「默认配置位置」; 屏蔽环境变量, 只答平台默认) */
-function defaultConfigPath(): string {
-  return resolveConfigPath({ env: {} }).path;
-}
-
-/** 帮助: 命令面速查 + 关键口径 (简洁; 顶栏着色, 降级纯文本) */
-function helpText(color: boolean): string {
-  const row = (command: string, desc: string): string =>
-    `  ${command.padEnd(COMMAND_COLUMN)}  ${desc}`;
-  return [
-    bannerLine('工作区 node_modules 清理', color),
-    '',
-    row('sweep-nm', '预览: 清单 + 体积 + 合计, 零副作用'),
-    row('sweep-nm --yes', '执行删除'),
-    row('sweep-nm --exclude <name>', '临时追加排除 (可重复, 与配置合并)'),
-    row(
-      'sweep-nm --include <name>',
-      '只清理命中名单的目录 (可重复, 与配置合并)',
-    ),
-    row('sweep-nm --config <path>', '指定配置文件 (优先于 SWEEP_NM_CONFIG)'),
-    row('sweep-nm config', '查看实际生效的配置: 来源 + 路径 + 文件状态'),
-    row('sweep-nm init', '初始化向导: 交互生成配置文件'),
-    row('sweep-nm --help', '帮助'),
-    '',
-    '说明:',
-    '  --exclude 按目录名精确匹配 (区分大小写), 从根到命中点的任意一级命中即跳过',
-    '  --include 同款匹配口径, 命中才纳入; 同时命中 exclude 的照旧跳过',
-    `  默认配置位置 (平台自适应; 用了 --config 或 SWEEP_NM_CONFIG 时实际读的不是它): ${defaultConfigPath()}`,
-    '  查实际生效的路径: sweep-nm config',
-    '',
-    '退出码: 0 成功 (含预览与空结果); 1 删除失败 / 配置损坏 / 参数错误',
-  ].join('\n');
+  process.stderr.write(`${sanitizeOutputLine(line)}\n`);
 }
 
 /** 文件存在判定 (lstat 语义): 向导的落盘前判重与 config 子命令的「文件状态」共用同一口径 */
@@ -189,11 +179,16 @@ async function fileExists(path: string): Promise<boolean> {
 /**
  * 跑初始化向导 (交互全在 init 模块, 本层只注入 readline 与落盘通道)。
  * 落盘前先建目标目录: 平台默认配置路径首跑时父目录尚不存在 (如 ~/.config/sweep-node-modules)。
+ * 锚点形态的两个判定入口 (根 / 落盘目标) 都直接取自 guard (删除侧同一实现): 向导不该另有一套口径,
+ * 否则「向导通过、--yes 全拒」的错位又会从实现分家里长回来, 写入侧的锚点各自实现也会分家成
+ * 「向导照写、删除侧照拒」的同一类错位。
  */
 function runWizard(configPath: string, color: boolean): Promise<InitResult> {
   return runInit({
     configPath,
     fileExists,
+    firstSymlinkOnRoot,
+    firstSymlinkOnTarget,
     async writeFile(path, text) {
       await mkdir(dirname(path), { recursive: true });
       await writeTextFile(path, text);
@@ -212,7 +207,7 @@ const SOURCE_LABELS: Record<ConfigSource, string> = {
 /**
  * config 子命令: 如实报告本次实际生效的配置位置与状态, 退出码恒 0 —— 这是查询不是校验,
  * 文件不存在属报告内容而非错误 (与 `git config --list` / `npm config get` 的惯例一致)。
- * 与 `--help` 的分工: 帮助里的「默认配置位置」刻意屏蔽环境变量、只答平台默认 (见 defaultConfigPath),
+ * 与 `--help` 的分工: 帮助里的「默认配置位置」刻意屏蔽环境变量、只答平台默认 (见 help.ts 的 defaultConfigPath),
  * 本命令答的是三级覆盖后真正生效的那一个。
  * 只 lstat 探存在性、不装载内容: 配置损坏与否不在报告面内 (那是清理流程的硬错)。
  *
@@ -237,8 +232,9 @@ async function reportConfig(
 ): Promise<number> {
   const exists = await fileExists(resolved.path);
   // 来源是最核心信息, 由顶栏承载; 路径与状态作顶栏下方的中性提示行 (与清单同一视觉语言)
+  // 路径来自旗标 / 环境变量原样透传, 属外部数据, 经同一净化 (来源标签是固定枚举, 无需净化)
   print(bannerLine(`配置 · 来源: ${SOURCE_LABELS[resolved.source]}`, color));
-  print(neutralLine(`配置路径: ${resolved.path}`, color));
+  print(neutralLine(`配置路径: ${sanitizeLine(resolved.path)}`, color));
   print(neutralLine(`文件状态: ${exists ? '存在' : '不存在'}`, color));
   return 0;
 }
@@ -267,8 +263,8 @@ interface ResolvedConfig {
  * 步骤 1：装载 (显式来源不存在即抛错 `配置不存在`, 平台默认来源保留软行为)
  *   loadResolvedConfig → { state: 'absent' }
  *
- * 步骤 2：非交互 → 以当前目录为根并标记回退态
- *   return { config: { roots: ['/Users/iyowei/workspace/development'], exclude: [], include: [] }, fallback: true }
+ * 步骤 2：非交互 → 以当前目录为根并标记回退态 (排除名单补默认名单, 与配置装载的缺省口径一致)
+ *   return { config: { roots: ['/Users/iyowei/workspace/development'], exclude: [...DEFAULT_EXCLUDE], include: [] }, fallback: true }
  *
  * Output（数据契约）
  *   return ResolvedConfig (向导取消 / 拒绝覆盖时 return null, 本次不启动清理)
@@ -283,7 +279,11 @@ async function resolveConfig(
 
   if (!interactive())
     return {
-      config: { roots: [process.cwd()], exclude: [], include: [] },
+      config: {
+        roots: [process.cwd()],
+        exclude: [...DEFAULT_EXCLUDE],
+        include: [],
+      },
       source: 'fallback',
     };
 
@@ -307,35 +307,46 @@ interface RemovalOutcome {
 /** 整批中止时给未被删除条目的统一说明 (与普通删除失败区分: 这些目标根本没被动过) */
 const ABORTED_HINT = '整批中止, 未执行删除';
 
+/** 疑似安装树被跳过时的行尾说明 (与普通删除失败区分: 这一条从未进入删除批次, 放行通道是 --force) */
+const SKIPPED_HINT = '已跳过 (加 --force 一并清理)';
+
 /**
- * 删除复核用的信任根: 须与 target 同源拼写 (target 已由 guard realpath 化; 见 delete.ts 头的
- * 调用方约定)。realpath 失败的根保留原拼写 —— 该根下不可能有已通过 guard 的目标, 不会误伤。
+ * 删除复核用的信任根: 配置原始拼写与 realpath 归一形态配对 (见 delete.ts 的 TrustRoot)。
+ * real 须与 target 同源拼写 (target 已由 guard realpath 化); configured 供删除层的链头判定
+ * (根被换成符号链接时只有拼写形态能识破), 故原样透传配置里的拼写, 不做任何归一。
+ * realpath 失败的根其 real 保留原拼写 —— 该根下不可能有已通过 guard 的目标, 不会误伤。
  */
-async function realRoots(roots: string[]): Promise<string[]> {
+async function trustRoots(roots: string[]): Promise<TrustRoot[]> {
   return Promise.all(
-    roots.map(async (root) => (await realpath(root).catch(() => null)) ?? root),
+    roots.map(async (root) => ({
+      configured: root,
+      real: (await realpath(root).catch(() => null)) ?? root,
+    })),
   );
 }
 
 /**
  * 把删除结果挂回清单条目, 供执行报告逐行呈现。
  * batch (实际删除批次) 与 accepted (guard 已 realpath 化) 逐位对应: guard 保输入顺序, 且整批拒绝时
- * 不会走到这里, 故不存在剔除错位; 未入批的条目 (体积未测到, 不执行删除) 一律按失败呈现并计入失败。
+ * 不会走到这里, 故不存在剔除错位; 未入批的条目一律按失败呈现并计入失败 (退出码 1), 其行尾说明
+ * 按原因三分: 整批中止 / 疑似安装树跳过 (skipped) / 体积未测到 (无说明, 原因已在行尾 note 上)。
  *
  * ### 数据追踪示例
  * ```text
  * Input（真实 Payload）
  *   entries = [{ project: 'alpha', target: '/var/w/alpha/node_modules', bytes: 4939212390 },
+ *              { project: 'lib', target: '/var/w/alpha/lib/node_modules', bytes: 81920, suspect: true },
  *              { project: 'locked', target: '/var/w/locked/node_modules', note: '体积统计失败: 权限不足, 无法读取' }]
- *   batch = ['/var/w/alpha/node_modules']              // 只有测到体积的进删除批次
+ *   batch = ['/var/w/alpha/node_modules']              // 测到体积且非疑似安装树的才进删除批次
  *   accepted = ['/private/var/w/alpha/node_modules']   // realpath 归一 (macOS /var 符号链接陷阱)
  *   removal = { removed: ['/private/var/w/alpha/node_modules'], missing: [], failed: [] }
+ *   skipped = Set { '/var/w/alpha/lib/node_modules' }
  *
  * 步骤 1：三桶并成结果表 (键为 realpath 目标)
  *   outcomes = { '/private/var/w/alpha/node_modules' → { ok: true } }
  *
- * 步骤 2：逐位回挂 (accepted[0] 对应 batch[0]), 未入批条目落回默认
- *   report = [alpha { ok: true }, locked { ok: false }]
+ * 步骤 2：逐位回挂 (accepted[0] 对应 batch[0]), 未入批条目按原因落回对应说明
+ *   report = [alpha { ok: true }, lib { ok: false, error: '已跳过 (加 --force 一并清理)' }, locked { ok: false }]
  *
  * Output（数据契约）
  *   return 执行报告条目 (保清单顺序)
@@ -346,6 +357,7 @@ function withOutcomes(
   batch: string[],
   accepted: string[],
   removal: RemovalResult,
+  skipped: ReadonlySet<string>,
 ): RenderEntry[] {
   const outcomes = new Map<string, RemovalOutcome>();
   for (const target of removal.removed) outcomes.set(target, { ok: true });
@@ -361,19 +373,23 @@ function withOutcomes(
     if (outcome !== undefined) byTarget.set(target, outcome);
   }
 
-  // 未入批 (体积未测到) 与整批中止的条目一律按失败呈现; 中止时附统一说明, 供与普通删除失败区分
-  const fallback: RemovalOutcome =
-    removal.aborted === undefined
-      ? { ok: false }
-      : { ok: false, error: ABORTED_HINT };
+  const fallbackOf = (entry: RenderEntry): RemovalOutcome => {
+    if (removal.aborted !== undefined)
+      return { ok: false, error: ABORTED_HINT };
+    if (skipped.has(entry.target)) return { ok: false, error: SKIPPED_HINT };
+    return { ok: false };
+  };
   return entries.map((entry) => ({
     ...entry,
-    ...(byTarget.get(entry.target) ?? fallback),
+    ...(byTarget.get(entry.target) ?? fallbackOf(entry)),
   }));
 }
 
 /** 名单命中统计 (字段可选, 胜出门面提供; 排除与包含同形) */
 type NameMatches = NonNullable<ScanResult['excludeMatches']>;
+
+/** 内置默认排除名单的名字集合 (零命中静默的判据; 名单本体见 config.ts 的 DEFAULT_EXCLUDE) */
+const BUILTIN_EXCLUDE_NAMES = new Set(DEFAULT_EXCLUDE);
 
 /**
  * 名单反馈 (名单写错不得静默, 见 types.ts「excludeMatches」与「includeMatches」):
@@ -386,6 +402,8 @@ type NameMatches = NonNullable<ScanResult['excludeMatches']>;
  * 不说「生效」: 同一名字同时出现在两份名单时 exclude 优先把该子树整棵截走, 计数照旧成立
  * (见 scan-parallel.ts 的计数点注释: 截走不等于没匹配上), 但该名字并未真的纳入任何候选,
  * 此时说「生效」即是不实承诺。
+ *
+ * 唯一的告警例外是内置默认名单项零命中 (见下方判定): 它们依平台与用户环境而异, 不是可修正的输入。
  */
 function collectNameNotes(
   excludeMatches: NameMatches | undefined,
@@ -399,12 +417,15 @@ function collectNameNotes(
   // 措辞不断言「名字不存在」: 名字位于被 exclude 的祖先目录之下时, 该子树按排除优先整棵跳过、
   // 不参与逐名计数, 此时报的是「未命中已扫描的目录」而非「写错了」(见 behavior-contract.md BC-33 例外)
   for (const item of excludeMatches ?? []) {
-    if (item.hits === 0)
+    if (item.hits === 0) {
+      // 默认名单项 (如 Linux 上没有 Library) 零命中是环境事实而非拼写错误: 逐项告警必然刷屏,
+      // 用户也无从「修正」; 用户显式写同名项时同样静默 —— 该项已由默认名单覆盖, 写与不写等效
+      if (BUILTIN_EXCLUDE_NAMES.has(item.name)) continue;
       warn(
         `排除名未命中任何已扫描的目录: ${item.name} (按目录名精确匹配; 若其上层目录已被排除则属预期)`,
         color,
       );
-    else if (tty) notes.push(`排除生效: ${item.name} (${item.hits} 处)`);
+    } else if (tty) notes.push(`排除生效: ${item.name} (${item.hits} 处)`);
   }
 
   const includes = includeMatches ?? [];
@@ -429,8 +450,33 @@ function collectNameNotes(
 /**
  * 清单条目: 已测到体积的 (bytes) + 存在但测不到的 (note 占位, bytes 留空, 不参与删除)。
  * 「不存在」类 (既未测到也不在 unmeasured, size 已告警) 不入清单; project 取目录名 (scan 给的是目录路径)。
+ * 疑似安装树 (classify.ts 判定, 家目录由调用方注入供隐藏目录形态判定) 逐条打标: suspect 供渲染层
+ * 保留路径后缀、供删除批次构造跳过, note 给出判定理由; 同时体积统计失败时两条注记并置
+ * (两空格分隔, 与 render.ts 的行尾并置同款)。
+ *
+ * ### 数据追踪示例
+ * ```text
+ * Input（真实 Payload）
+ *   hits = [{ project: '/w/pkg/lib', target: '/w/pkg/lib/node_modules' },
+ *           { project: '/w/app', target: '/w/app/node_modules' }]
+ *   sizeResult.entries = [{ target: '/w/app/node_modules', bytes: 90177536 }]
+ *
+ * 步骤 1：建体积与原因索引
+ *   bytesOf = { '/w/app/node_modules' → 90177536 }, reasonOf = {}
+ *
+ * 步骤 2：逐条判类别并成条目 (lib 条目父目录为 lib → 疑似安装树)
+ *   entries = [{ project: 'lib', target: '/w/pkg/lib/node_modules', suspect: true, note: '疑似安装树: 父目录为 lib, …' },
+ *              { project: 'app', target: '/w/app/node_modules', bytes: 90177536, suspect: false }]
+ *
+ * Output（数据契约）
+ *   return entries (保 hits 顺序; bytes 与 note 二选一按测量结果定)
+ * ```
  */
-function toEntries(hits: ScanHit[], sizeResult: SizeResult): RenderEntry[] {
+function toEntries(
+  hits: ScanHit[],
+  sizeResult: SizeResult,
+  home: string,
+): RenderEntry[] {
   const bytesOf = new Map<string, number>(
     sizeResult.entries.map((entry): [string, number] => [
       entry.target,
@@ -447,9 +493,13 @@ function toEntries(hits: ScanHit[], sizeResult: SizeResult): RenderEntry[] {
   const entries: RenderEntry[] = [];
   for (const hit of hits) {
     const project = basename(hit.project);
+    const classification = classifyTarget(hit.target, { home });
+    const suspect = classification.kind === 'suspect-install-tree';
+    const note = suspect ? `疑似安装树: ${classification.reason}` : undefined;
+
     const bytes = bytesOf.get(hit.target);
     if (bytes !== undefined) {
-      entries.push({ project, target: hit.target, bytes });
+      entries.push({ project, target: hit.target, bytes, suspect, note });
       continue;
     }
     const reason = reasonOf.get(hit.target);
@@ -457,7 +507,11 @@ function toEntries(hits: ScanHit[], sizeResult: SizeResult): RenderEntry[] {
       entries.push({
         project,
         target: hit.target,
-        note: `体积统计失败: ${reason}`,
+        suspect,
+        note:
+          note === undefined
+            ? `体积统计失败: ${reason}`
+            : `${note}  体积统计失败: ${reason}`,
       });
     }
   }
@@ -473,23 +527,25 @@ function toEntries(hits: ScanHit[], sizeResult: SizeResult): RenderEntry[] {
  * ```text
  * Input（真实 Payload）
  *   config = { roots: ['/w'], exclude: [], include: [] }
- *   options = { command: 'sweep', yes: true, exclude: [], include: [], help: false }
- *   磁盘树 = /w/alpha/node_modules (4.6 GB, 可读), /w/locked/node_modules (权限不足, 测不到体积)
+ *   options = { command: 'sweep', yes: true, force: false, exclude: [], include: [], help: false }
+ *   磁盘树 = /w/alpha/node_modules (4.6 GB, 可读), /w/pkg/lib/node_modules (80 KB, 可读),
+ *            /w/locked/node_modules (权限不足, 测不到体积)
  *
  * 步骤 1：扫描 → 收集名单回执 (collectNameNotes: 未命中名就地告警走 stderr, 命中回执交 notes 随清单输出)
- *   hits = [alpha, locked], nameNotes = []  // 名单为空即无回执
+ *   hits = [alpha, lib, locked], nameNotes = []  // 名单为空即无回执
  *
- * 步骤 2：实测体积 (测不到的以占位行上清单, 不再静默移出)
- *   entries = [alpha 4.6 GB, locked '?' + note 体积统计失败]
+ * 步骤 2：实测体积 (测不到的以占位行上清单, 不再静默移出) + 逐条判类别
+ *   entries = [alpha 4.6 GB, lib '?'→80 KB + 疑似安装树注记, locked '?' + note 体积统计失败]
+ *   skipped = [lib]  // 疑似安装树, 未加 --force
  *
- * 步骤 3：删除批次只含测到体积的条目 → 安全闸校验
- *   accepted = ['/w/alpha/node_modules'], rejected = []
+ * 步骤 3：删除批次只含测到体积且非疑似的条目 → 安全闸校验
+ *   batch = ['/w/alpha/node_modules'], accepted = ['/w/alpha/node_modules'], rejected = []
  *
- * 步骤 4：删除并回挂结果 (未入批的 locked 落 ok: false)
- *   report = [alpha ✓, locked ✗], releasedBytes = 4939212390
+ * 步骤 4：删除并回挂结果 (未入批的落 ok: false, 跳过的另附放行说明)
+ *   report = [alpha ✓, lib ✗ 已跳过 (加 --force 一并清理), locked ✗], releasedBytes = 4939212390
  *
  * Output（数据契约）
- *   print 执行报告 (render mode: 'execute'); return 1 (locked 计入失败)
+ *   print 执行报告 (render mode: 'execute', trailer 含『疑似安装树 1 处默认跳过』); return 1
  * ```
  */
 async function sweep(
@@ -517,8 +573,19 @@ async function sweep(
   );
   for (const warning of sizeResult.warnings) warn(warning, color);
 
-  const entries = toEntries(scanResult.hits, sizeResult);
+  // home 同时服务两处: 清单路径的 ~ 缩写与疑似安装树的隐藏目录判定 (同一份语义, 不各读一次环境)
   const home = homedir();
+  const entries = toEntries(scanResult.hits, sizeResult, home);
+  // 语义闸: 疑似安装树默认不进删除批 (删后无法由项目级重装恢复, 见 classify.ts 与
+  // deletion-guard.md「语义闸」); --force 显式放行。计数按清单上的标记行数, 与是否测得体积无关
+  const skipped = options.force
+    ? []
+    : entries.filter((entry) => entry.suspect === true);
+  const trailer =
+    skipped.length > 0
+      ? [`疑似安装树 ${skipped.length} 处默认跳过 (加 --force 一并清理)`]
+      : [];
+
   if (!options.yes) {
     print(
       render({
@@ -529,15 +596,28 @@ async function sweep(
         home,
         notes: nameNotes,
         runtime,
+        trailer,
       }),
     );
     return 0;
   }
 
-  // 删除批次 = 测到体积的条目: 体积测不到的只上清单占位行, 一律不执行删除
+  // 删除批次 = 测到体积且非疑似安装树的条目 (--force 时后者保留):
+  // 体积测不到的只上清单占位行, 一律不执行删除
   const batch = entries
-    .filter((entry) => entry.bytes !== undefined)
+    .filter(
+      (entry) =>
+        entry.bytes !== undefined && (options.force || entry.suspect !== true),
+    )
     .map((entry) => entry.target);
+
+  // 被跳过的目标须与「体积未测到」区分: 后者本就未入批, 其行尾已有体积失败注记,
+  // 不该再被说成「已跳过」(两条原因各有各的说明, 不混同)
+  const skippedTargets = new Set(
+    skipped
+      .filter((entry) => entry.bytes !== undefined)
+      .map((entry) => entry.target),
+  );
 
   // 安全闸: 任一目标被拒即整批拒绝, 不做任何删除 (保守优先; 设计: deletion-guard.md)
   const { accepted, rejected } = await validateTargets(batch, { roots });
@@ -550,11 +630,18 @@ async function sweep(
     return 1;
   }
 
-  // 删除复核的信任根须与 target 同源拼写, 否则 delete 的逐级 lstat 复核会判「不在任何 roots 之下」而整批中止
+  // 删除复核的信任根: real 须与 target 同源拼写 (否则逐级 lstat 复核会判「不在任何 roots 之下」
+  // 而整批中止), configured 保留配置原始拼写供链头判定
   const removal = await removeTargets(accepted, {
-    roots: await realRoots(roots),
+    roots: await trustRoots(roots),
   });
-  const report = withOutcomes(entries, batch, accepted, removal);
+  const report = withOutcomes(
+    entries,
+    batch,
+    accepted,
+    removal,
+    skippedTargets,
+  );
   // 释放量按成功侧条目累计 (与汇总的「成功」计数同口径); 恒提供数值, 让 0 B 与「未提供」可区分
   const releasedBytes = report.reduce(
     (total, entry) => (entry.ok === false ? total : total + (entry.bytes ?? 0)),
@@ -570,6 +657,7 @@ async function sweep(
       releasedBytes,
       notes: nameNotes,
       runtime,
+      trailer,
     }),
   );
 

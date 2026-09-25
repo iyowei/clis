@@ -62,6 +62,12 @@ export interface RenderEntry {
   error?: string;
   /** 行尾补充说明 (如体积统计失败原因); 与失败原因同位并置, note 在前 */
   note?: string;
+  /**
+   * 疑似安装树 (工具 / 应用自身的安装树, 默认不进删除批; 判定见 classify.ts)。
+   * 该行的路径不剥 node_modules 后缀: 剥掉后剩下的目录 (如 ~/.bun/install/global) 会被
+   * 读成项目目录, 反而抹去唯一的类别提示; 保后缀与行尾标记互为印证。
+   */
+  suspect?: boolean;
 }
 
 export interface RenderOptions {
@@ -82,6 +88,12 @@ export interface RenderOptions {
   runtime?: string;
   /** 顶栏下方的中性提示行 (如名单回执); 缺省无。走 stdout 而非 stderr: 它们是本次运行的说明, 与清单同属一次输出 */
   notes?: string[];
+  /**
+   * 清单末尾的中性说明行 (如疑似安装树跳过计数), 压在合计 / 汇总行之后; 缺省无。
+   * 与 notes 的分工: notes 交代本次运行的前置与过程, trailer 则是对整份清单的事后交代
+   * (读者须先看完清单与合计, 才知道「N 处被跳过」指的是什么)。
+   */
+  trailer?: string[];
 }
 
 /**
@@ -108,8 +120,9 @@ export function formatBytes(bytes: number): string {
  * 2. 提供 notes 时先出顶栏下方的中性提示行 (如名单回执; 空结果分支同样呈现);
  * 3. 无条目则只出中性提示行并提前返回;
  * 4. 条目按体积降序 (体积测不到的排末尾), 由当前数据的最长体积与最长项目名定列宽 (二者右 / 左对齐);
- * 5. 逐行成清单 (预览出档位块, 执行出结果标记; 体积测不到的显示 ? 与中性块), 末行出合计或汇总;
- *    合计只累加已测到的条目, 行数照常计入。
+ * 5. 逐行成清单 (预览出档位块, 执行出结果标记; 体积测不到的显示 ? 与中性块; 疑似安装树保留路径
+ *    的 node_modules 后缀), 末行出合计或汇总; 合计只累加已测到的条目, 行数照常计入;
+ * 6. 提供 trailer 时在末行之后再出中性说明行 (对整份清单的事后交代)。
  *
  * ### 数据追踪示例
  * ```text
@@ -144,16 +157,20 @@ export function render(options: RenderOptions): string {
   const style = pathStyle ?? PLATFORM_STYLE;
   const scope =
     roots.length > 0 && roots.length <= ROOT_LIST_LIMIT
-      ? `${roots.length} 个根: ${roots.map((root) => oneLine(shortenPath(root, style, home))).join(' · ')}`
+      ? `${roots.length} 个根: ${roots.map((root) => sanitizeLine(shortenPath(root, style, home))).join(' · ')}`
       : `${roots.length} 个根`;
-  const runtime = options.runtime ? ` · ${oneLine(options.runtime)}` : '';
+  const runtime = options.runtime ? ` · ${sanitizeLine(options.runtime)}` : '';
   const head = bannerLine(
     `${mode === 'execute' ? '执行' : '预览'} · ${scope}${runtime}`,
     color,
   );
   // 顶栏下方的中性提示: 与清单同一视觉语言, 不打断顶栏与清单的紧邻关系
   const notes = (options.notes ?? []).map((note) =>
-    neutralLine(oneLine(note), color),
+    neutralLine(sanitizeLine(note), color),
+  );
+  // 末尾的中性说明行: 压在合计 / 汇总之后, 与 notes 同款构件 (同属 stdout 的一次输出)
+  const trailer = (options.trailer ?? []).map((line) =>
+    neutralLine(sanitizeLine(line), color),
   );
 
   if (entries.length === 0) {
@@ -162,6 +179,7 @@ export function render(options: RenderOptions): string {
       ...notes,
       // 空结果行保留内联形态: make-mutants.ts 以此字面量为 mutant 注入锚点, 换成 neutralLine 即失配
       `  ${paint(`${NEUTRAL_BLOCK} 未发现 node_modules`, '2', color)}`,
+      ...trailer,
     ].join('\n');
   }
 
@@ -170,7 +188,7 @@ export function render(options: RenderOptions): string {
     ...rows.map((row) => displayWidth(volumeOf(row))),
   );
   const nameWidth = Math.max(
-    ...rows.map((row) => displayWidth(oneLine(row.project))),
+    ...rows.map((row) => displayWidth(sanitizeLine(row.project))),
   );
 
   const body = rows.map((row) => {
@@ -181,9 +199,9 @@ export function render(options: RenderOptions): string {
         ? paint(fail ? '✗' : '✓', fail ? '31' : '32', color)
         : paint(tier.block, tier.sgr, color);
     const volume = padStart(volumeOf(row), volumeWidth);
-    const name = oneLine(row.project);
-    const rawPath = displayPath(row.target, style, home);
-    const path = oneLine(rawPath);
+    const name = sanitizeLine(row.project);
+    const rawPath = displayPath(row.target, style, home, row.suspect === true);
+    const path = sanitizeLine(rawPath);
     // 净化改写了显示名即与磁盘名不一致: 补提示, 防用户照显示名复制路径
     const rewritten = name !== row.project || path !== rawPath;
     const tail = tailsOf(row, fail, rewritten);
@@ -202,7 +220,7 @@ export function render(options: RenderOptions): string {
       ? footExecute(rows, color, releasedBytes)
       : `  ${paint(TOTAL_BLOCK, '7', color)} ${paint(`合计 ${rows.length} 处 · ${formatBytes(sum(rows))}`, '1', color)}   ${hint}`;
 
-  return [head, ...notes, ...body, foot].join('\n');
+  return [head, ...notes, ...body, foot, ...trailer].join('\n');
 }
 
 /** 执行模式末行: 成功 / 失败计数汇总 (取代预览的合计); 提供 releasedBytes 时补释放体积 */
@@ -232,8 +250,8 @@ const SANITIZED_NOTE = '名字已净化显示';
 function tailsOf(row: RenderEntry, fail: boolean, rewritten: boolean): string {
   const parts: string[] = [];
   if (rewritten) parts.push(SANITIZED_NOTE);
-  if (row.note) parts.push(oneLine(row.note));
-  if (fail && row.error) parts.push(oneLine(row.error));
+  if (row.note) parts.push(sanitizeLine(row.note));
+  if (fail && row.error) parts.push(sanitizeLine(row.error));
   return parts.join('  ');
 }
 
@@ -281,23 +299,34 @@ export function shortenHome(path: string, home?: string): string {
 /**
  * 展示路径: 先剥掉尾部 node_modules (每行恒定的后缀, 与左侧项目名重复, 属噪声;
  * 示意里展示的是项目目录), 再做家目录缩写。后缀与前缀均按风味分隔符拼装。
+ * keepSuffix 为真 (疑似安装树) 时保留后缀: 这类行剥掉后缀后剩下的目录 (如 ~/.bun/install/global)
+ * 会被读成项目目录, 而它恰恰不是项目 —— 后缀在这里是唯一的类别线索, 与行尾标记互为印证。
  */
-function displayPath(target: string, style: PathStyle, home?: string): string {
+function displayPath(
+  target: string,
+  style: PathStyle,
+  home?: string,
+  keepSuffix = false,
+): string {
   const suffix = `${style.ops.sep}node_modules`;
-  const dir = fold(target, style).endsWith(fold(suffix, style))
-    ? target.slice(0, -suffix.length)
-    : target;
+  const dir =
+    keepSuffix || !fold(target, style).endsWith(fold(suffix, style))
+      ? target
+      : target.slice(0, -suffix.length);
   return shortenPath(dir, style, home);
 }
 
 /**
- * 净化行内文本 (项目名 / 路径 / note / 错误原因一律经此):
+ * 净化行内文本, 全输出面共用的唯一实现 (清单 / 诊断 stderr / config 报告 / 向导 / 帮助的默认配置位置行):
  * 先剥控制类字符 (C0 含 ESC / DEL、C1、bidi 控制含可视觉反转路径的 RLO、零宽与 BOM) ——
- * 既守住非 TTY 零 ANSI 强契约, 也防终端控制序列注入与显示名伪造; 制表与换行留给下一步。
- * 再把剩余空白 (含换行) 折成单空格, 使任意输入都压成一行, 不撑破清单行结构。
+ * 既守住非 TTY 零 ANSI 强契约, 也防终端控制序列注入 (改标题 / 清屏 / 光标回写覆盖已打印内容)
+ * 与显示名伪造; 制表与换行留给下一步。
+ * 再把剩余空白 (含换行) 折成单空格, 使任意输入都压成一行: 既撑不破清单行结构, 也不让一条告警
+ * 被换行劈成两行、伪造出一行可信输出 (非 TTY 下 stderr 常被 tee / CI 原样落盘, 日后回放同样生效)。
  * 列宽计算与渲染必须用同一份净化结果, 否则补位错位。
+ * 消费方一律经此函数, 严禁各自另写一份 (两份实现必然漂移, 且漂移方向通常是漏剥控制字符)。
  */
-const oneLine = (text: string): string =>
+export const sanitizeLine = (text: string): string =>
   text
     .replace(
       // \u6709\u610f\u5339\u914d\u63a7\u5236\u5b57\u7b26 (C0 / DEL / C1 / bidi / \u96f6\u5bbd\u4e0e BOM): \u5265\u9664\u5373\u672c\u51fd\u6570\u7684\u804c\u8d23, \u975e\u8bef\u7528
@@ -307,6 +336,16 @@ const oneLine = (text: string): string =>
     )
     .replace(/\s+/g, ' ')
     .trim();
+
+/**
+ * 输出行净化 (保留行首缩进): sanitizeLine 的薄包装, 供逐行写出的诊断与提示面调用。
+ * 行首缩进是本工具自带的分级手段 (告警详情行 / 中性提示行压在同组首行之下), 属排版而非外部数据,
+ * 不该被净化吞掉; 行内其余位置的空白仍折成单空格, 换行同样折叠。
+ */
+export const sanitizeOutputLine = (text: string): string => {
+  const indent = /^[ \t]*/.exec(text)?.[0] ?? '';
+  return `${indent}${sanitizeLine(text)}`;
+};
 
 /** 按显示宽度左对齐 (补齐尾部空格) */
 const padEnd = (text: string, width: number): string =>

@@ -8,19 +8,21 @@
 
 ## 修订记录
 
-| 日期       | 修订                                                                                                                                            |
-| ---------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
-| 2026-09-23 | 初稿: 立项设计, 含命令面、配置规格、扫描与安全闸、代码结构、测试策略、明确不做清单                                                              |
-| 2026-09-23 | 补记: 配置初始化模型 (`sweep-nm init` 子命令 + 首次自动向导), 见 [ADR 0004](../adrs/0004-config-initialization-wizard.md)                       |
-| 2026-09-23 | 补记: 工程闸门 (oxlint / prettier / lefthook), 见 [ADR 0005](../adrs/0005-engineering-gates-and-hooks.md)                                       |
-| 2026-09-23 | 补记: 双运行时 (Bun 优先 / Node 回退) 与性能要点, 见 [ADR 0006](../adrs/0006-dual-runtime-bun-first.md)                                         |
-| 2026-09-23 | 拆分: 单篇设计拆为总纲 + 四份分册; 分册后续修订各自在文件内补「修订记录」                                                                       |
-| 2026-09-23 | 分册索引收为指针行; 设计索引权威归 [designs/README.md](README.md) (含推荐阅读顺序)                                                              |
-| 2026-09-23 | 补记: 三平台 (Windows / macOS / Linux) 可移植性与配置定位, 见 [ADR 0007](../adrs/0007-platform-portability.md); CLI 输出规格升级为色块视觉规范  |
-| 2026-09-23 | 实现落地回写: 模块表补 delete / 门面 / bench / scripts; 测试策略补实现覆盖指针; 关联 [ADR 0008](../adrs/0008-transcription-kit.md) 转写契约套件 |
-| 2026-09-23 | 分发形态: 编译产物 + 单文件打包发布到 npm (`@iyowei/sweep-node-modules`); 「明确不做」清单移除 npm 发布项                                       |
-| 2026-09-23 | 代码树补 npm 分发入口 `bin/sweep-nm.mjs`; 实测规模改为指代验收命令的实时输出 (不写死条数)                                                       |
-| 2026-09-23 | 分发形态回写: 代码树补 `dist/cli.js` 与三入口差异 (见 [ADR 0009](../adrs/0009-npm-distribution-form.md)); 导出面补 `runtimeLabel`               |
+| 日期       | 修订                                                                                                                                                                                                      |
+| ---------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 2026-09-23 | 初稿: 立项设计, 含命令面、配置规格、扫描与安全闸、代码结构、测试策略、明确不做清单                                                                                                                        |
+| 2026-09-23 | 补记: 配置初始化模型 (`sweep-nm init` 子命令 + 首次自动向导), 见 [ADR 0004](../adrs/0004-config-initialization-wizard.md)                                                                                 |
+| 2026-09-23 | 补记: 工程闸门 (oxlint / prettier / lefthook), 见 [ADR 0005](../adrs/0005-engineering-gates-and-hooks.md)                                                                                                 |
+| 2026-09-23 | 补记: 双运行时 (Bun 优先 / Node 回退) 与性能要点, 见 [ADR 0006](../adrs/0006-dual-runtime-bun-first.md)                                                                                                   |
+| 2026-09-23 | 拆分: 单篇设计拆为总纲 + 四份分册; 分册后续修订各自在文件内补「修订记录」                                                                                                                                 |
+| 2026-09-23 | 分册索引收为指针行; 设计索引权威归 [designs/README.md](README.md) (含推荐阅读顺序)                                                                                                                        |
+| 2026-09-23 | 补记: 三平台 (Windows / macOS / Linux) 可移植性与配置定位, 见 [ADR 0007](../adrs/0007-platform-portability.md); CLI 输出规格升级为色块视觉规范                                                            |
+| 2026-09-23 | 实现落地回写: 模块表补 delete / 门面 / bench / scripts; 测试策略补实现覆盖指针; 关联 [ADR 0008](../adrs/0008-transcription-kit.md) 转写契约套件                                                           |
+| 2026-09-23 | 分发形态: 编译产物 + 单文件打包发布到 npm (`@iyowei/sweep-node-modules`); 「明确不做」清单移除 npm 发布项                                                                                                 |
+| 2026-09-23 | 代码树补 npm 分发入口 `bin/sweep-nm.mjs`; 实测规模改为指代验收命令的实时输出 (不写死条数)                                                                                                                 |
+| 2026-09-23 | 分发形态回写: 代码树补 `dist/cli.js` 与三入口差异 (见 [ADR 0009](../adrs/0009-npm-distribution-form.md)); 导出面补 `runtimeLabel`                                                                         |
+| 2026-09-26 | 发行面补产物自证: 构建产出 `dist/manifest.json` 清单, 新增 `scripts/verify-release.ts` 发布前置闸门, npm 启动器使用产物前对账清单 (见 [ADR 0009](../adrs/0009-npm-distribution-form.md) 补记); 代码树同步 |
+| 2026-09-26 | 发行面白名单: 发布闸门加发行面包内文件对账 (防仓库根 README 类备份被静默收进包); 启动器补 schemaVersion 校验与拒收指引宿主分流; 代码树同步                                                                |
 
 ## 分册索引
 
@@ -42,15 +44,17 @@
 
 ```text
 src/
-├── cli.ts      # 入口编排: 参数 / 配置分流 / 扫描 / 体积 / 渲染 / 安全闸 / 删除 (分册: 命令面与输出)
+├── cli.ts      # 入口编排: 参数 / 配置分流 / 扫描 / 体积 / 渲染 / 安全闸 / 删除; 帮助面外提至 help.ts (分册: 命令面与输出)
 ├── runtime.ts  # 运行时适配: Bun 优先 / Node 回退 (spawn 与文件读写)
 ├── config.ts   # 配置读取与合并 (分册: 配置与初始化)
 ├── init.ts     # 初始化向导: 交互 IO 与配置生成纯逻辑分离 (分册: 配置与初始化)
 ├── scan.ts     # 扫描门面: 对外只暴露胜出候选 (候选: scan-parallel / scan-prune / scan-native)
 ├── size.ts     # 体积门面: 策略 A 双轨选择 (du 快路径 / 纯实现基线)
 ├── guard.ts    # 安全闸: 校验不变量 (分册: 删除安全闸)
+├── classify.ts # 目标类别判定: 安装树与项目依赖的语义闸, 纯路径判定 (分册: 删除安全闸)
 ├── delete.ts   # 删除执行: 组件级复核 / 三桶结果 / 整批中止 (分册: 删除安全闸)
 ├── render.ts   # 清单渲染: 色块视觉规范与降级 (分册: 命令面与输出)
+├── help.ts     # 帮助页文案: 命令面速查 + 关键口径, 静态文本拼装 (分册: 命令面与输出)
 ├── types.ts / fixtures.ts / golden.ts / render.fixtures.ts  # 基建: 候选共享接口 / 合成工作区 / 金样板断言 / 渲染共享样例
 ├── init.smoke.ts / runtime.node-smoke.ts  # 双载体冒烟入口: 向导真实管道 / Node 直跑 (由对应 *.test.ts spawn 驱动)
 └── *.test.ts   # 与模块同名并置或按维度命名的单测 (contract / robustness / stress / e2e / smoke)
@@ -58,8 +62,11 @@ src/
 bench/                  # 基准仪器 (扫描 / 体积 / 真实工作区 / 压测四组)
 bin/sweep-nm            # sh 启动器: 挑选运行时 (Bun 优先, Node 回退) 后 exec src/cli.ts
 bin/sweep-nm.cmd        # cmd 启动器 (Windows): 与 sh 启动器同逻辑
-bin/sweep-nm.mjs        # npm 分发的 bin 入口: 优先跑 dist/cli.js, 无产物回退 src/cli.ts; 三者职责同逻辑, 差异在宿主与入口选择
+bin/sweep-nm.mjs        # npm 分发的 bin 入口: 优先跑 dist/cli.js (须通过清单自证: 形状版本受支持且摘要相符, 否则拒收并按宿主给指引), 无产物回退 src/cli.ts; 三者职责同逻辑, 差异在宿主与入口选择
 dist/cli.js             # 构建产物 (派生件, 由 bun run build 生成, 不入库): 仅 npm 分发态需要
+dist/manifest.json      # 产物自证清单 (同上, 随构建生成): 记录源提交 / 脏净 / 产物摘要, 供启动器与发布闸门对账
+scripts/release-artifact.ts / write-dist-manifest.ts / verify-release.ts  # 发行面自证三件: 清单形状与判定 (含发行面白名单 PACK_FILES_EXPECTED) / 写清单 / 发布闸门 (见 ADR 0009 补记)
+scripts/release.fixtures.ts / verify-release.test.ts / write-dist-manifest.test.ts  # 自证三件的共享夹具与单测 (临时 git 检出; 判定走注入事实, 白名单与真实 npm 的对齐在此实跑)
 scripts/transcription/  # 转写契约套件的验收器与变异生成器 (见 docs/protocol/)
 ```
 

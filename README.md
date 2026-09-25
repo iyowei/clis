@@ -84,6 +84,9 @@ sweep-nm
 # 复核无误后执行删除
 sweep-nm --yes
 
+# 连同「疑似安装树」一并删除 (包管理器 / 版本管理器 / 编辑器扩展等安装树, 默认跳过)
+sweep-nm --yes --force
+
 # 临时追加排除(可重复)
 sweep-nm --exclude my-kits --exclude url-tool
 
@@ -101,7 +104,7 @@ sweep-nm init
 
 ## 配置
 
-配置文件位置 (平台自适应): Windows 为 `%APPDATA%\sweep-node-modules\config.json`, 其余为 `~/.config/sweep-node-modules/config.json`; 可用 `--config` 或环境变量 `SWEEP_NM_CONFIG` 覆盖, 本次实际生效的路径与文件状态用 `sweep-nm config` 查看。
+配置文件位置 (平台自适应): Windows 为 `%APPDATA%\sweep-node-modules\config.json`, 其余为 `~/.config/sweep-node-modules/config.json`; 可用 `--config` 或环境变量 `SWEEP_NM_CONFIG` 覆盖, 本次实际生效的路径与文件状态用 `sweep-nm config` 查看。**写入侧须为真实路径形态**: 配置路径及其祖先链有符号链接介入 (系统链接 `/tmp`、`/var` 也在内) 时, `sweep-nm init` 落盘前会拒写并给出链接定位, 按提示改写成真实路径形态 (如 `/private/tmp/x`) 即放行。
 
 ```json
 {
@@ -114,8 +117,9 @@ sweep-nm init
 }
 ```
 
-- `roots`: 扫描根目录, 任意多个; 重复或嵌套的根按真实路径去重。
-- `exclude`: 排除名单; 从根到 `node_modules` 的任意一级目录名命中即跳过 (多排除 = 少删, 安全方向)。
+- `roots`: 扫描根目录, 任意多个; 重复或嵌套的根按真实路径去重。**删除侧须为真实路径形态**: 根及其祖先链不得有符号链接介入 (系统链接 `/tmp`、`/var` 也在内), 命中则 `--yes` 整批拒绝并按提示改写成真实路径 (如 `/private/tmp/x`) 即放行; 扫描侧不受此限 (根为符号链接照常扫描)。
+- `exclude`: 排除名单; 从根到 `node_modules` 的任意一级目录名命中即跳过 (多排除 = 少删, 安全方向)。**不写该字段时取内置默认名单** (包管理器 / 版本管理器的安装树、编辑器扩展目录、系统与应用数据根, 词表与理由见[设计文档](docs/designs/config-and-initialization.md)「默认排除名单」; 这批名字零命中不告警, 它们依平台而异); 显式写出该字段 (含写空数组) 即以你自己的名单为准。
+- **疑似安装树默认不进删除批**: 安装树形态的目标 (如 `~/.bun/install/global/node_modules`、`<版本目录>/lib/node_modules`、编辑器扩展目录) 在清单里带 `疑似安装树: <理由>` 标记且保留 `node_modules` 后缀, `--yes` 不删它们 (计失败并给跳过说明); 要清理须显式加 `--force` —— 它只放行这一批目标, 不放宽删除安全闸。
 - `include`: 包含名单 (白名单); 命中才纳入, 口径与 `exclude` 同款; 缺省或空数组 = 不过滤 (多包含 = 多删); 与 `exclude` 同时命中时 `exclude` 优先。写错名字会让结果直接为空, 故未命中的名字会在 stderr 警示。
 - 两份名单里的 `node_modules` 与 `.git` 一律被剔除: 前者是本工具的目标 (列入排除等于排掉唯一目标, 列入包含则永久零命中), 后者是扫描恒定跳过的目录; 剔除后 `include` 为空数组 = 不过滤 (不是「只扫 node_modules」)。
 - 首次运行且无配置: 交互终端下自动进入初始化向导 (扫描根默认家目录); 非交互环境 (脚本等) 以当前工作目录为根并提示, 不询问; 随时可用 `sweep-nm init` 重进向导。

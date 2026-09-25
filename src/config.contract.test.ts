@@ -9,6 +9,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import {
+  DEFAULT_EXCLUDE,
   loadConfig,
   loadResolvedConfig,
   mergeNames,
@@ -271,7 +272,7 @@ describe('config 契约: 装载 (loadConfig)', () => {
     );
   });
 
-  test('ok: 缺 exclude / include 字段默认空数组 (自然极简配置)', async () => {
+  test('ok: 缺 exclude 取默认排除名单, 缺 include 取空数组 (自然极简配置)', async () => {
     const path = await writeConfig(
       'config.json',
       JSON.stringify({ roots: ['/a'] }),
@@ -279,7 +280,27 @@ describe('config 契约: 装载 (loadConfig)', () => {
 
     expect(await loadConfig(path)).toEqual({
       state: 'ok',
+      config: { roots: ['/a'], exclude: [...DEFAULT_EXCLUDE], include: [] },
+    });
+  });
+
+  test('ok: 显式写出 exclude (含空数组) 即以用户名单为准, 默认名单不参与', async () => {
+    const empty = await writeConfig(
+      'config-empty.json',
+      JSON.stringify({ roots: ['/a'], exclude: [] }),
+    );
+    const custom = await writeConfig(
+      'config-custom.json',
+      JSON.stringify({ roots: ['/a'], exclude: ['my-kits'] }),
+    );
+
+    expect(await loadConfig(empty)).toEqual({
+      state: 'ok',
       config: { roots: ['/a'], exclude: [], include: [] },
+    });
+    expect(await loadConfig(custom)).toEqual({
+      state: 'ok',
+      config: { roots: ['/a'], exclude: ['my-kits'], include: [] },
     });
   });
 });
@@ -324,7 +345,7 @@ describe('config 契约: 显式来源缺失报错 (loadResolvedConfig)', () => {
       await loadResolvedConfig(resolveConfigPath({ ...base, flag: path })),
     ).toEqual({
       state: 'ok',
-      config: { roots: ['/a'], exclude: [], include: [] },
+      config: { roots: ['/a'], exclude: [...DEFAULT_EXCLUDE], include: [] },
     });
   });
 });

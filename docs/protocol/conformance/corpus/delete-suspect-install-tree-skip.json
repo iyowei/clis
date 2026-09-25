@@ -1,0 +1,32 @@
+{
+  "id": "delete-suspect-install-tree-skip",
+  "specRefs": ["BC-37", "BC-38", "BC-26", "OF-13"],
+  "fixture": {
+    "projects": [
+      { "dir": "home/app" },
+      { "dir": "home/pkg/lib" },
+      { "dir": "home/.hidden-app" }
+    ]
+  },
+  "setup": [
+    {
+      "write": {
+        "path": "config.json",
+        "text": "{\n  \"roots\": [\"$FIXTURE/home\"],\n  \"exclude\": []\n}\n"
+      }
+    }
+  ],
+  "run": {
+    "argv": ["--yes"],
+    "env": { "SWEEP_NM_CONFIG": "$FIXTURE/config.json" }
+  },
+  "expect": {
+    "exitCode": 1,
+    "stdoutExact": "▍ SWEEP-NM  执行 · 1 个根: ~\n  ✗ 8 KB  .hidden-app    ~/.hidden-app/node_modules  疑似安装树: 位于 .hidden-app (家目录下的隐藏目录)  已跳过 (加 --force 一并清理)\n  ✓ 8 KB  app            ~/app\n  ✗ 8 KB  lib            ~/pkg/lib/node_modules  疑似安装树: 父目录为 lib, 形如版本管理器的 node 安装树  已跳过 (加 --force 一并清理)\n  █ 汇总 成功 1 处 · 释放 8 KB · 失败 2 处\n  ░ 疑似安装树 2 处默认跳过 (加 --force 一并清理)\n",
+    "fs": [
+      { "path": "home/app/node_modules", "state": "gone" },
+      { "path": "home/pkg/lib/node_modules", "state": "exists" },
+      { "path": "home/.hidden-app/node_modules", "state": "exists" }
+    ]
+  }
+}

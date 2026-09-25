@@ -27,7 +27,7 @@ import {
   rowOf,
   stripAnsi,
 } from './render.fixtures.ts';
-import { formatBytes, render } from './render.ts';
+import { type RenderEntry, formatBytes, render } from './render.ts';
 
 /** 从清单行反查样例项目名 (排序断言用) */
 const projectOf = (line: string): string | undefined =>
@@ -403,6 +403,52 @@ describe('释放体积 (releasedBytes)', () => {
     ).at(-1) as string;
 
     expect(last).toContain('释放 0 B');
+  });
+});
+
+describe('疑似安装树与尾注', () => {
+  /** 疑似安装树样例 (不进共享 SAMPLES: 金样板以 SAMPLES 为入参, 改了会连带全部快照) */
+  const SUSPECT: RenderEntry = {
+    project: 'global',
+    bytes: Math.round(4.25 * GIB),
+    target: `${HOME}/.bun/install/global/node_modules`,
+    suspect: true,
+    note: '疑似安装树: 位于 .bun 安装树目录',
+  };
+
+  test('疑似行的路径保留 node_modules 后缀, 普通行照旧剥离', () => {
+    const out = render({
+      ...previewOptions,
+      entries: [...SAMPLES, SUSPECT],
+    });
+
+    // 剥离会把安装树显示成项目 (~/.bun/install/global), 恰是唯一的类别线索被抹掉
+    expect(rowOf(out, 'global')).toContain(
+      '~/.bun/install/global/node_modules',
+    );
+    expect(rowOf(out, 'acme-web')).not.toContain('node_modules');
+  });
+
+  test('尾注压在末行之后 (与中性行同款构件)', () => {
+    const lines = linesOf(
+      render({
+        ...previewOptions,
+        trailer: ['疑似安装树 1 处默认跳过 (加 --force 一并清理)'],
+      }),
+    );
+
+    expect(lines.at(-1)).toBe(
+      '  ░ 疑似安装树 1 处默认跳过 (加 --force 一并清理)',
+    );
+    expect(lines.at(-2)).toContain('加 --yes 执行删除');
+  });
+
+  test('空结果分支同样渲染尾注', () => {
+    const lines = linesOf(
+      render({ ...previewOptions, entries: [], trailer: ['补充说明'] }),
+    );
+
+    expect(lines.at(-1)).toBe('  ░ 补充说明');
   });
 });
 

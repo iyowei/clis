@@ -1,12 +1,12 @@
 /**
- * 删除安全闸契约测试: 四不变量 × 平台矩阵。
+ * 删除安全闸契约测试: 五不变量 × 平台矩阵。
  * 字符串级判定走 posix / win32 纯样本 (不依赖真实文件系统); 真实语义 (符号链接、
- * 目录包含性) 由 fixtures 真实目录样本覆盖。
+ * 目录包含性、根锚点链) 由 fixtures 真实目录样本覆盖。
  * 设计: docs/designs/deletion-guard.md; 可移植性: docs/adrs/0007-platform-portability.md。
  */
 import { afterEach, describe, expect, test } from 'bun:test';
 
-import { mkdir, realpath, symlink } from 'node:fs/promises';
+import { mkdir, realpath, symlink, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
 import {
@@ -17,7 +17,11 @@ import {
 import {
   POSIX_STYLE,
   WIN32_STYLE,
+  anchorChainPaths,
   dedupeKey,
+  firstSymlinkOnAnchor,
+  firstSymlinkOnRoot,
+  firstSymlinkOnTarget,
   hasNodeModulesLeaf,
   insideAnyRoot,
   isFilesystemRootBody,
@@ -169,6 +173,171 @@ describe('不变量 ④ realpath 去重键 (纯判定)', () => {
     expect(dedupeKey('C:\\Repo\\App\\NODE_MODULES', WIN32_STYLE)).toBe(
       dedupeKey('c:\\repo\\app\\node_modules', WIN32_STYLE),
     );
+  });
+});
+
+describe('不变量 ⑤ 根锚点链无符号链接 (纯判定)', () => {
+  test('posix: 逐级前缀自根的一级子目录排到根自身 (文件系统根本身不入链)', () => {
+    expect(anchorChainPaths('/Users/x/ws/app', POSIX_STYLE)).toEqual([
+      '/Users',
+      '/Users/x',
+      '/Users/x/ws',
+      '/Users/x/ws/app',
+    ]);
+  });
+
+  test('posix: 根为 / 时链为空 (解析起点没有可查的上级)', () => {
+    expect(anchorChainPaths('/', POSIX_STYLE)).toEqual([]);
+  });
+
+  test('posix: 尾分隔符与空段归一为同一链', () => {
+    expect(anchorChainPaths('/w//a/', POSIX_STYLE)).toEqual(['/w', '/w/a']);
+  });
+
+  test('win32: 盘符前缀整体不拆, 逐级以反斜杠拼接', () => {
+    expect(anchorChainPaths('C:\\Repo\\App', WIN32_STYLE)).toEqual([
+      'C:\\Repo',
+      'C:\\Repo\\App',
+    ]);
+  });
+
+  test('检出首个符号链接; 全链真目录返回 null; 空链返回 null', () => {
+    expect(
+      firstSymlinkOnAnchor([
+        { path: '/w', symlink: false },
+        { path: '/w/a', symlink: false },
+      ]),
+    ).toBeNull();
+    expect(
+      firstSymlinkOnAnchor([
+        { path: '/var', symlink: true },
+        { path: '/var/w', symlink: false },
+      ]),
+    ).toBe('/var');
+    expect(firstSymlinkOnAnchor([])).toBeNull();
+  });
+
+  test('符号链接即拒, 不看指向何处或是否悬空 (悬空链接同样命中)', () => {
+    expect(firstSymlinkOnAnchor([{ path: '/w', symlink: true }])).toBe('/w');
+  });
+});
+
+describe('validateTargets · 不变量 ⑤ (根锚点链, 真实目录)', () => {
+  test('根自身是符号链接: 拒绝并给出根锚点理由', async () => {
+    const { root } = await make({ projects: [{ dir: 'real-root/app' }] });
+    await symlink(join(root, 'real-root'), join(root, 'link-root'));
+
+    const target = join(root, 'link-root', 'app', 'node_modules');
+    const result = await validateTargets([target], {
+      roots: [join(root, 'link-root')],
+    });
+
+    expect(result.accepted).toEqual([]);
+    expect(result.rejected.map((entry) => entry.target)).toEqual([target]);
+    expect(result.rejected[0]?.reason).toContain('根锚点');
+    expect(result.rejected[0]?.reason).toContain(join(root, 'link-root'));
+  });
+
+  test('根的祖先链被换成符号链接: 同样拒绝 (根自身经解析仍是真目录)', async () => {
+    const { root } = await make({ projects: [{ dir: 'elsewhere/work' }] });
+    await symlink(join(root, 'elsewhere'), join(root, 'link-parent'));
+
+    const target = join(root, 'link-parent', 'work', 'node_modules');
+    const result = await validateTargets([target], {
+      roots: [join(root, 'link-parent', 'work')],
+    });
+
+    expect(result.accepted).toEqual([]);
+    expect(result.rejected[0]?.reason).toContain('根锚点');
+    expect(result.rejected[0]?.reason).toContain(join(root, 'link-parent'));
+  });
+
+  test('多根: 只拒换位根下的目标, 正常根下的目标照常通过', async () => {
+    const { root } = await make({
+      projects: [{ dir: 'good/app' }, { dir: 'real-root/app' }],
+    });
+    await symlink(join(root, 'real-root'), join(root, 'link-root'));
+
+    const attacked = join(root, 'link-root', 'app', 'node_modules');
+    const safe = join(root, 'good', 'app', 'node_modules');
+    const result = await validateTargets([attacked, safe], {
+      roots: [join(root, 'link-root'), join(root, 'good')],
+    });
+
+    expect(result.accepted).toEqual([await realpath(safe)]);
+    expect(result.rejected.map((entry) => entry.target)).toEqual([attacked]);
+    expect(result.rejected[0]?.reason).toContain('根锚点');
+  });
+
+  test('悬空符号链接作根: 其下目标被拒 (realpath 不可解析), 校验不崩溃', async () => {
+    const { root } = await make({ projects: [{ dir: 'zone/app' }] });
+    await symlink(join(root, 'nowhere'), join(root, 'dangling'));
+
+    const under = join(root, 'dangling', 'app', 'node_modules');
+    const result = await validateTargets([under], {
+      roots: [join(root, 'dangling')],
+    });
+
+    expect(result.accepted).toEqual([]);
+    expect(result.rejected.map((entry) => entry.target)).toEqual([under]);
+  });
+});
+
+describe('写入侧目标锚点 firstSymlinkOnTarget (真实目录)', () => {
+  test('目标自身是符号链接: 报出该路径 (写入会跟随它改写其目标)', async () => {
+    const { root } = await make({ projects: [] });
+    await writeFile(join(root, 'victim.json'), '{}\n');
+    await symlink(join(root, 'victim.json'), join(root, 'config.json'));
+
+    expect(await firstSymlinkOnTarget(join(root, 'config.json'))).toBe(
+      join(root, 'config.json'),
+    );
+  });
+
+  test('祖先链某级是符号链接: 报出该级 (末端点本身是真身也不放行)', async () => {
+    const { root } = await make({ projects: [] });
+    await mkdir(join(root, 'real'), { recursive: true });
+    await writeFile(join(root, 'real', 'config.json'), '{}\n');
+    await symlink(join(root, 'real'), join(root, 'link-dir'));
+
+    expect(
+      await firstSymlinkOnTarget(join(root, 'link-dir', 'config.json')),
+    ).toBe(join(root, 'link-dir'));
+  });
+
+  test('悬空符号链接作目标: 同样命中 (lstat 不跟进末段, 链接自身即结果)', async () => {
+    const { root } = await make({ projects: [] });
+    await symlink(join(root, 'nowhere.json'), join(root, 'config.json'));
+
+    expect(await firstSymlinkOnTarget(join(root, 'config.json'))).toBe(
+      join(root, 'config.json'),
+    );
+  });
+
+  test('全链真身: 末段已存在与尚未创建 (首跑) 均返回 null', async () => {
+    const { root } = await make({ projects: [] });
+    await writeFile(join(root, 'config.json'), '{}\n');
+
+    expect(await firstSymlinkOnTarget(join(root, 'config.json'))).toBeNull();
+    expect(
+      await firstSymlinkOnTarget(join(root, 'not-created-yet.json')),
+    ).toBeNull();
+  });
+
+  test('与向导入口 firstSymlinkOnRoot 同源: 同一路径给同一结论', async () => {
+    const { root } = await make({ projects: [] });
+    await mkdir(join(root, 'real'), { recursive: true });
+    await symlink(join(root, 'real'), join(root, 'link-dir'));
+
+    const through = join(root, 'link-dir');
+    const plain = join(root, 'real');
+    expect(await firstSymlinkOnTarget(through)).toBe(
+      await firstSymlinkOnRoot(through),
+    );
+    expect(await firstSymlinkOnTarget(plain)).toBe(
+      await firstSymlinkOnRoot(plain),
+    );
+    expect(await firstSymlinkOnTarget(through)).toBe(through);
   });
 });
 

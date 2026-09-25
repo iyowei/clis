@@ -1,0 +1,26 @@
+{
+  "id": "delete-root-ancestor-symlink-rejected",
+  "specRefs": ["BC-39", "BC-26"],
+  "fixture": {
+    "projects": [{ "dir": "elsewhere/work/app" }],
+    "symlinks": [{ "at": "link-parent", "to": "elsewhere" }]
+  },
+  "setup": [
+    {
+      "write": {
+        "path": "config.json",
+        "text": "{\n  \"roots\": [\"$FIXTURE/link-parent/work\"],\n  \"exclude\": []\n}\n"
+      }
+    }
+  ],
+  "run": {
+    "argv": ["--yes"],
+    "env": { "SWEEP_NM_CONFIG": "$FIXTURE/config.json" }
+  },
+  "expect": {
+    "exitCode": 1,
+    "stdoutExact": "",
+    "stderrContains": ["整批拒绝", "根锚点", "$FIXTURE/link-parent"],
+    "fs": [{ "path": "elsewhere/work/app/node_modules", "state": "exists" }]
+  }
+}

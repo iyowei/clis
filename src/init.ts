@@ -1,5 +1,5 @@
 /**
- * 初始化向导: 三问 (扫描根 / 排除名单 / 包含名单) + 覆盖保护, 交互 IO 依赖注入。
+ * 初始化向导: 三问 (扫描根 / 排除名单 / 包含名单) + 覆盖保护 + 落盘前锚点检查, 交互 IO 依赖注入。
  * 权威: sweep-node-modules 设计文档「配置初始化模型」与 ADR 0004 (配置初始化向导)。
  * 纯逻辑 (答案解析 / 状态流转 / 落盘文本) 与 readline 交互分离, 前者由 init.test.ts 钉死。
  * 视觉: 与清单同一套色块语言 (顶栏 / 中性行 / 标记原语见 render.ts), 着色开关经 IO 层注入。
@@ -8,8 +8,14 @@ import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { type Interface, createInterface } from 'node:readline/promises';
 
-import { type Config } from './config.ts';
-import { bannerLine, neutralLine, paint, shortenHome } from './render.ts';
+import { type Config, DEFAULT_EXCLUDE } from './config.ts';
+import {
+  bannerLine,
+  neutralLine,
+  paint,
+  sanitizeLine,
+  shortenHome,
+} from './render.ts';
 
 /** 交互 IO: ask 返回 null 表示取消 (Ctrl+C / EOF) */
 export interface InitIO {
@@ -28,6 +34,10 @@ export interface InitDeps {
   /** 配置文件目标路径 */
   configPath: string;
   fileExists(path: string): Promise<boolean>;
+  /** 根锚点链上首个符号链接的路径 (null 即全链为真目录); 判定口径由删除侧同一实现供给 (guard.ts), 本模块不自判 */
+  firstSymlinkOnRoot(root: string): Promise<string | null>;
+  /** 配置路径 (落盘目标) 锚点链上首个符号链接的路径; 与根的判定同一实现, 判的是「写入会不会跟随链接改写其目标」 */
+  firstSymlinkOnTarget(target: string): Promise<string | null>;
   writeFile(path: string, text: string): Promise<void>;
   io: InitIO;
 }
@@ -124,13 +134,25 @@ export function parseList(answer: string | null, fallback: string[]): string[] {
  * 执行步骤：
  * 1. 顶栏先出 (与清单同一视觉语言), 配置已存在则再确认覆盖 (默认否), 拒绝即返回 declined-overwrite;
  * 2. 开场提示后问扫描根 (默认值为家目录而非 cwd: 工作区级清理与唤起目录无关, 提示里的默认值经
- *    家目录缩写): 逐根校验存在性, 不存在的红色 ✗ 提示后重问该问;
- * 3. 依次问排除名单与包含名单 (均可留空), 回显解析结果 (人话计数) 并确认 (默认写入);
+ *    家目录缩写): 逐根校验存在性与根锚点形态 (口径见 deps.firstSymlinkOnRoot), 不存在或落在符号链接
+ *    路径上的根以红色 ✗ 提示后重问该问 (后者提前暴露删除侧整批拒绝, 见 guard.ts 不变量 ⑤);
+ * 3. 依次问排除名单与包含名单 (均可留空; 排除名单的空答取内置默认名单, 不让「一路回车」把默认保护丢掉),
+ *    回显解析结果 (人话计数) 并确认 (默认写入);
  * 4. 中途取消与回显拒绝统一返回 cancelled 且不落盘 (取消文案保持原样, 不带视觉标记);
- * 5. 落盘后回显 (写入路径带家目录缩写与绿色 ✓; 落盘全文内容与文件一致、整体缩进 2), 返回 written。
+ * 5. 确认写入后、任何写动作 (含建目标目录) 之前做落盘前锚点检查 (口径见 deps.firstSymlinkOnTarget,
+ *    与删除侧根锚点同一实现): 配置路径及其祖先链任一级为符号链接 (含悬空链接) 即以红色 ✗ 提示并
+ *    重问该问, 路径修好前不写一个字节 (写入会跟随链接改写其目标, 而回执报的仍是配置里的拼写);
+ * 6. 落盘后回显 (写入路径带家目录缩写与绿色 ✓; 落盘全文内容与文件一致、整体缩进 2), 返回 written。
  */
 export async function runInit(deps: InitDeps): Promise<InitResult> {
-  const { configPath, fileExists, writeFile, io } = deps;
+  const {
+    configPath,
+    fileExists,
+    firstSymlinkOnRoot,
+    firstSymlinkOnTarget,
+    writeFile,
+    io,
+  } = deps;
   const { color } = io;
 
   /** 统一取消出口: 中途取消与回显拒绝共用同一措辞 */
@@ -143,7 +165,7 @@ export async function runInit(deps: InitDeps): Promise<InitResult> {
 
   if (await fileExists(configPath)) {
     const overwrite = await io.confirm(
-      `配置已存在 (${configPath}), 是否覆盖?`,
+      `配置已存在 (${sanitizeLine(configPath)}), 是否覆盖?`,
       false,
     );
     if (!overwrite) return { state: 'declined-overwrite' };
@@ -156,27 +178,47 @@ export async function runInit(deps: InitDeps): Promise<InitResult> {
   const home = homedir();
   let roots: string[] = [];
 
-  // 存在性校验挡在落盘前: 坏根提示后重问, 不让无效路径进配置
+  // 存在性与根锚点形态校验挡在落盘前: 坏根提示后重问, 不让无效路径进配置
   for (;;) {
     const rootsAnswer = await io.ask(
       '扫描根 (逗号或空白分隔多个)',
-      `默认: ${shortenHome(home, home)}`,
+      // 缩写在前、净化在后 (与落盘回执同款): home 源自环境属外部数据, 此坐标与其余回显面一致
+      // (home 缩写自身恒为 ~, 当前无可达的控制字节面, 该调用是坐标一致而非可观测改写)
+      `默认: ${sanitizeLine(shortenHome(home, home))}`,
     );
     if (rootsAnswer === null) return cancelled();
     roots = parseList(rootsAnswer, [home]);
 
     const missing: string[] = [];
+    const symlinked: { root: string; link: string }[] = [];
     for (const root of roots) {
-      if (!(await fileExists(root))) missing.push(root);
+      if (!(await fileExists(root))) {
+        missing.push(root);
+        // 不存在的根已足以下判: 不再叠报形态问题 (同一根只给一条提示)
+        continue;
+      }
+      // 判在解析后的拼写上 (即写进配置的形态), 与删除侧的判据同一坐标
+      const link = await firstSymlinkOnRoot(root);
+      if (link !== null) symlinked.push({ root, link });
     }
-    if (missing.length === 0) break;
+    if (missing.length === 0 && symlinked.length === 0) break;
+    // 路径与根都是用户答案原样透传 (外部数据): 经同一净化, 防控制序列改写回显行
     for (const path of missing)
-      io.print(`  ${paint('✗', '31', color)} 根不存在: ${path}`);
+      io.print(`  ${paint('✗', '31', color)} 根不存在: ${sanitizeLine(path)}`);
+    for (const item of symlinked)
+      io.print(
+        `  ${paint('✗', '31', color)} 根锚点链上有符号链接: ${sanitizeLine(item.link)} (根: ${sanitizeLine(item.root)}); 删除侧要求真实路径, 改写为不含符号链接的形态 (macOS 上如 /tmp/x 写成 /private/tmp/x)`,
+      );
   }
 
-  const excludeAnswer = await io.ask('排除名单 (目录名, 可留空)', '回车跳过');
+  // 空答取内置默认名单 (而非空数组): 显式写出的 exclude 会完全接管默认值 (见 config.ts 的
+  // DEFAULT_EXCLUDE), 若回填空数组, 「一路回车」反而把默认保护写没了 —— 与默认值本身相悖
+  const excludeAnswer = await io.ask(
+    '排除名单 (目录名)',
+    `回车采用默认名单 (${DEFAULT_EXCLUDE.length} 条)`,
+  );
   if (excludeAnswer === null) return cancelled();
-  const exclude = parseList(excludeAnswer, []);
+  const exclude = parseList(excludeAnswer, [...DEFAULT_EXCLUDE]);
 
   const includeAnswer = await io.ask('包含名单 (目录名, 可留空)', '回车跳过');
   if (includeAnswer === null) return cancelled();
@@ -188,14 +230,32 @@ export async function runInit(deps: InitDeps): Promise<InitResult> {
       color,
     ),
   );
-  if (!(await io.confirm('确认写入?', true))) return cancelled();
+  // 落盘前锚点检查 (写入侧): 配置路径及其祖先链任一级是符号链接即拒 —— 写入跟随链接, 被改写的
+  // 是链接目标 (任意可写文件), 而回执报的仍是用户给的拼写, 事后看不出实际写到哪。
+  // 与逐根校验同形 (红 ✗ 提示后重问该问): 配置路径不是本向导的提问项, 故重问的是「确认写入?」
+  // 这一问; 写入被拒即该确认无法兑现, 出路有三: ① 重问期间把路径改好后答 y, 同一轮照常落盘
+  // (已收集的答案不丢, 见 init.test.ts「拒绝后重问: 路径锚点转好后同一轮照常落盘」); ② 答
+  // 「否」即取消; ③ 退出向导, 改好路径后重跑 init
+  for (;;) {
+    if (!(await io.confirm('确认写入?', true))) return cancelled();
+    const link = await firstSymlinkOnTarget(configPath);
+    if (link === null) break;
+    // 路径与链接位置都是外部数据 (配置拼写来自旗标 / 环境变量 / 平台默认, 链接位置来自磁盘): 同源净化
+    io.print(
+      `  ${paint('✗', '31', color)} 配置路径锚点链上有符号链接: ${sanitizeLine(link)} (配置: ${sanitizeLine(configPath)}); 写入会跟随符号链接改写其目标, 改写为不含符号链接的形态 (macOS 上如 /tmp/x 写成 /private/tmp/x)`,
+    );
+  }
 
   const config = { roots, exclude, include };
   const text = `${JSON.stringify(config, null, 2)}\n`;
   await writeFile(configPath, text);
-  // 路径行缩写家目录便于辨认; 正文回显落盘原文 (与文件逐字一致, 便于对照与复制)
+  // 路径行是本工具的自述行: 缩写家目录便于辨认, 且缩写在前、净化在后 (展示的是缩写后的名字,
+  // 净化改写它即该防的注入面)。
+  // 正文回显落盘原文 (与文件逐字一致, 便于对照与复制), 刻意不净化 (OF-14 的排除项): 内容源是本轮
+  // 用户答案而非磁盘 / 他方数据, 净化会破坏「逐字一致供对照复制」的承诺; JSON 转义只覆盖 C0 类,
+  // 其余控制类字符 (DEL / C1 / bidi / 零宽 / BOM) 在该面以原形保留, 属已知缺口 (接受)。
   io.print(
-    `  配置已写入: ${shortenHome(configPath, homedir())}  ${paint('✓', '32', color)}`,
+    `  配置已写入: ${sanitizeLine(shortenHome(configPath, homedir()))}  ${paint('✓', '32', color)}`,
   );
   io.print('');
   // 回显逐行缩进 2, 与叙述行/交互行同一左缘 (内容与落盘文件逐字一致, 仅整体加固定两空格缩进)
@@ -271,10 +331,22 @@ export function createReadlineIO(color: boolean): InitIO {
     return created;
   }
 
-  /** 取一行: 先回显提示, 缓冲命中立即取, 否则挂起等待; 会话结束返回 null */
+  /**
+   * 取一行: 先回显提示, 缓冲命中立即取, 否则挂起等待; 会话已结束且缓冲已空时返回 null。
+   * 缓冲里已到达的行优先于「会话已结束」交付: 提问之间的真实等待 (如向导逐级 lstat 的形态校验)
+   * 会让出 macrotask, 管道投喂的 EOF 可能先被处理并把 ended 置起, 此时若因 ended 丢弃缓冲, 重问
+   * 一次就把后续答案整批丢掉 (实测形态: 全流程静默折算取消)。该分支下提示改由 stdout 直写:
+   * 已关闭的 interface 再 prompt 会被官方实现拒绝 (ERR_USE_AFTER_CLOSE, 实测坐实)。
+   */
   function readLine(prompt: string): Promise<string | null> {
-    // 会话已结束: 重建 interface 也等不到已发生过的 EOF, 直接折算取消
-    if (ended) return Promise.resolve(null);
+    // 会话已结束: 缓冲里还有行就照常交付 (提示直写 stdout, 保持输出的行结构), 否则折算取消
+    // (重建 interface 也等不到已发生过的 EOF)
+    if (ended) {
+      const bufferedLine = buffered.shift();
+      if (bufferedLine === undefined) return Promise.resolve(null);
+      process.stdout.write(prompt);
+      return Promise.resolve(bufferedLine);
+    }
 
     const created = ensure();
     created.setPrompt(prompt);

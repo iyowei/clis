@@ -14,7 +14,7 @@ import { fileURLToPath } from 'node:url';
 const SMOKE = fileURLToPath(new URL('./init.smoke.ts', import.meta.url));
 const CWD = fileURLToPath(new URL('..', import.meta.url));
 
-/** 挂死守卫: 正常全跑 (三场景) 远低于此值, 超时即判失败 */
+/** 挂死守卫: 全场景跑完 (场景表见 init.smoke.ts) 远低于此值, 超时即判失败 */
 const TIMEOUT_MS = 10_000;
 
 for (const runner of ['bun', 'node']) {
@@ -23,7 +23,7 @@ for (const runner of ['bun', 'node']) {
 
   describe(`init smoke [${runner}]`, () => {
     test.skipIf(!available)(
-      '向导三态全通: 多行投喂 / EOF 取消 / 覆盖保护拒绝 (exit 0, 含超时守卫)',
+      '向导各态全通: 落盘 / 默认排除 / 符号链接根 / 符号链接配置 / EOF 取消 / 覆盖拒绝 (exit 0, 含超时守卫)',
       () => {
         const dir = mkdtempSync(join(tmpdir(), 'sweep-lab-init-smoke-'));
         try {
