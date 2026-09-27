@@ -1,67 +1,69 @@
 # sweep-node-modules
 
-工作区级 `node_modules` 清理工具: 一次扫描多个根目录, 跨项目列出各处 `node_modules` 与体积, 确认后批量删除, 回收磁盘空间。
+**English** | [中文](README.zh-CN.md)
 
-> 分层说明: 单项目清理工具管「进入某个项目, 清它自己的产物」; 本工具管「站在工作区层面, 一次清理很多个项目」。两者分层共存, 见 [ADR 0001](docs/adrs/0001-workspace-level-cleaner.md)。
+A workspace-level cleaner for `node_modules`: scan several root directories in one pass, list every `node_modules` directory across your projects along with its size, and bulk-delete them after you confirm, reclaiming disk space.
 
-## 要求
+> Where this sits: single-project cleaners handle "go into one project and clean its own artifacts"; this tool handles "stand at the workspace level and clean many projects in one pass". The two layers coexist; see [ADR 0001](docs/adrs/0001-workspace-level-cleaner.md).
 
-- 业务逻辑**双运行时**: 有 bun 走 bun, 否则 node (功能一致, bun 启动更快)。
-- 取最新一代运行时 API: bun 任意近期版本; node 需原生支持 TypeScript 直跑的版本 (源码方式与包方式取同一版本下限; 版本快照与实测记录见 [ADR 0006](docs/adrs/0006-dual-runtime-bun-first.md))。
-- 零第三方运行时依赖 (只用运行时内置能力)。
-- 平台: Windows / macOS / Linux 三平台均可运行 (见 [ADR 0007](docs/adrs/0007-platform-portability.md))。
+## Requirements
 
-## 安装
+- **Dual runtime** for the actual work: bun when available, node otherwise (identical behavior; bun starts faster).
+- Modern runtime APIs only: any recent bun; for node, a version that runs TypeScript natively (the same version floor applies to the source install and the package install; version snapshot and test records in [ADR 0006](docs/adrs/0006-dual-runtime-bun-first.md)).
+- Zero third-party runtime dependencies (built-in runtime capabilities only).
+- Runs on Windows, macOS, and Linux (see [ADR 0007](docs/adrs/0007-platform-portability.md)).
 
-三种方式, 按你机器上已有的运行时挑。**每条下的「需要」是硬门槛**:
+## Installation
 
-> **机器上只有 bun、没装 node?** 直接走 ① 或 ③; ② 的全局安装 (npm 与 bun 皆然) 都需要 node。
+Three options; pick by the runtime your machine already has. **The `Requires` line under each option is a hard requirement:**
 
-① ② 都经包注册表取包: 本机若配置了镜像源、且该镜像尚未同步到想装的版本, 可在命令后临时加 `--registry=https://registry.npmjs.org` 直连官方源。
+> **Only bun on the machine, no node?** Use option 1 or 3. Global installs (option 2) require node, whether you go through npm or bun.
 
-### ① 免安装 (试用或偶尔用)
+Options 1 and 2 both pull the package from a registry. If your machine is configured with a mirror that has not synced the version you want yet, append `--registry=https://registry.npmjs.org` to the command to hit the official registry directly.
+
+### 1. No install (for a quick trial)
 
 ```shell
-# 机器上有 bun
+# with bun
 bunx @iyowei/sweep-node-modules
 
-# 机器上有 node (npx 随 npm 一同安装, 本身就需要 node)
+# with node (npx ships with npm, which itself requires node)
 npx @iyowei/sweep-node-modules
 ```
 
-- **需要**: bun 或 node, 与所选命令对应
-- 特点: 零安装; 每次运行会解析一次包
-- 注意: `bunx` 与 `npx` 各自依附一个运行时, 不是可互换的通用选项: 只有 bun 的机器没有 `npx`, 只有 node 的机器没有 `bunx`
+- **Requires**: bun or node, matching the command you pick
+- Zero install; the package is resolved once per run
+- Note: `bunx` and `npx` are not interchangeable; each is tied to one runtime: a bun-only machine has no `npx`, and a node-only machine has no `bunx`
 
-### ② 包管理器全局安装 (常用推荐)
+### 2. Global install via a package manager (recommended for regular use)
 
 ```shell
 npm install -g @iyowei/sweep-node-modules
 bun install -g @iyowei/sweep-node-modules
 ```
 
-- **需要**: **node** (两条命令都要)。npm 本身跑在 node 上; `bun install -g` 生成的是指向入口文件的符号链接, 执行时由系统内核读该文件的 shebang (node) 来决定解释器, 应用层插不上手
-- 特点: 装一次后直接敲 `sweep-nm`; 有 bun 时业务逻辑仍优先走 bun
+- **Requires**: **node**, for both commands. npm itself runs on node, and `bun install -g` only creates a symlink to the entry file; at execution time the OS kernel reads that file's shebang (node) to pick the interpreter, and the application layer never gets a say
+- Install once, then run `sweep-nm` directly; when bun is present, the actual work still prefers bun
 
-### ③ 从源码 (开发, 或无 node 环境)
+### 3. From source (for development, or machines without node)
 
 **macOS / Linux**:
 
 ```shell
-# 克隆后进入仓库根 (路径按你的实际位置调整)
-cd "<克隆位置>/sweep-node-modules"
+# clone, then cd into the repo root (adjust the path to your clone location)
+cd "<your clone>/sweep-node-modules"
 
 chmod +x bin/sweep-nm
 
-# 软链进 ~/.local/bin (通常已在 PATH 中), 启动器会挑选运行时
+# symlink it into ~/.local/bin (usually already on PATH); the launcher picks the runtime
 ln -sf "$PWD/bin/sweep-nm" ~/.local/bin/sweep-nm
 ```
 
 **Windows** (PowerShell):
 
 ```powershell
-# 把仓库的 bin 目录加入用户 PATH, 只需一次, 重开终端后生效
-# 路径按你的实际克隆位置调整 (启动器靠自身位置定位 src, 故不能把脚本单独复制走)
+# add the repo's bin directory to your user PATH; one-time, effective after reopening the terminal
+# adjust the path to your actual clone location (the launcher locates src relative to itself, so the script cannot be copied out on its own)
 $bin = "$env:USERPROFILE\tools\sweep-node-modules\bin"
 [Environment]::SetEnvironmentVariable(
   'Path',
@@ -70,41 +72,41 @@ $bin = "$env:USERPROFILE\tools\sweep-node-modules\bin"
 )
 ```
 
-> 也可以不经命令行: 在「系统属性 → 环境变量」里把该 `bin` 目录加到用户变量 `Path` 中。
+> Or skip the command line: add the `bin` directory to your user `Path` under System Properties → Environment Variables.
 
-- **需要**: bun 或 node 任一 (启动器是 shell / cmd 脚本, 由系统执行, 不依赖 node)
-- 特点: 入口最直接; 之后直接敲 `sweep-nm` (Windows 经 `bin\sweep-nm.cmd`)
+- **Requires**: bun or node, either works (the launcher is a shell / cmd script run by the OS; it does not depend on node)
+- The most direct entry point; afterwards just run `sweep-nm` (on Windows via `bin\sweep-nm.cmd`)
 
-## 使用
+## Usage
 
 ```shell
-# 预览: 列出配置中各根目录下所有 node_modules 与体积, 不动手
+# preview: list every node_modules under the configured roots with its size; nothing is touched
 sweep-nm
 
-# 复核无误后执行删除
+# once the list checks out, delete for real
 sweep-nm --yes
 
-# 连同「疑似安装树」一并删除 (包管理器 / 版本管理器 / 编辑器扩展等安装树, 默认跳过)
+# also delete "suspected install trees" (package manager / version manager / editor extension trees; skipped by default)
 sweep-nm --yes --force
 
-# 临时追加排除(可重复)
+# add exclusions on the fly (repeatable)
 sweep-nm --exclude my-kits --exclude url-tool
 
-# 只清理名单命中的目录(可重复, 与配置合并)
+# clean only directories matched by the include list (repeatable, merged with config)
 sweep-nm --include my-kits
 
-# 查看实际生效的配置文件位置与状态 (来源 / 路径 / 是否存在)
+# show the config file actually in effect (source / path / existence)
 sweep-nm config
 
-# 初始化向导: 交互式生成配置文件
+# init wizard: generate a config file interactively
 sweep-nm init
 ```
 
-清单顶栏尾部会标注本次实际使用的运行时 (如 `bun 1.4.2`), 仅交互终端显示 (非 TTY 不增噪音)。
+The end of the header line reports the runtime actually in use for this run (e.g. `bun 1.4.2`); it appears on interactive terminals only, keeping non-TTY output noise-free.
 
-## 配置
+## Configuration
 
-配置文件位置 (平台自适应): Windows 为 `%APPDATA%\sweep-node-modules\config.json`, 其余为 `~/.config/sweep-node-modules/config.json`; 可用 `--config` 或环境变量 `SWEEP_NM_CONFIG` 覆盖, 本次实际生效的路径与文件状态用 `sweep-nm config` 查看。**写入侧须为真实路径形态**: 配置路径及其祖先链有符号链接介入 (系统链接 `/tmp`、`/var` 也在内) 时, `sweep-nm init` 落盘前会拒写并给出链接定位, 按提示改写成真实路径形态 (如 `/private/tmp/x`) 即放行。
+The config file lives at a platform-appropriate path: `%APPDATA%\sweep-node-modules\config.json` on Windows, `~/.config/sweep-node-modules/config.json` everywhere else. Override it with `--config` or the `SWEEP_NM_CONFIG` environment variable; `sweep-nm config` reports the path and file status actually in effect for the current run. **The write side requires real paths**: if the config path or any of its ancestors involves a symlink (system links such as `/tmp` and `/var` included), `sweep-nm init` refuses to write before touching disk and points at the link; follow the prompt to rewrite the path in real form (e.g. `/private/tmp/x`) and it goes through.
 
 ```json
 {
@@ -117,20 +119,38 @@ sweep-nm init
 }
 ```
 
-- `roots`: 扫描根目录, 任意多个; 重复或嵌套的根按真实路径去重。**删除侧须为真实路径形态**: 根及其祖先链不得有符号链接介入 (系统链接 `/tmp`、`/var` 也在内), 命中则 `--yes` 整批拒绝并按提示改写成真实路径 (如 `/private/tmp/x`) 即放行; 扫描侧不受此限 (根为符号链接照常扫描)。
-- `exclude`: 排除名单; 从根到 `node_modules` 的任意一级目录名命中即跳过 (多排除 = 少删, 安全方向)。**不写该字段时取内置默认名单** (包管理器 / 版本管理器的安装树、编辑器扩展目录、系统与应用数据根, 词表与理由见[设计文档](docs/designs/config-and-initialization.md)「默认排除名单」; 这批名字零命中不告警, 它们依平台而异); 显式写出该字段 (含写空数组) 即以你自己的名单为准。
-- **疑似安装树默认不进删除批**: 安装树形态的目标 (如 `~/.bun/install/global/node_modules`、`<版本目录>/lib/node_modules`、编辑器扩展目录) 在清单里带 `疑似安装树: <理由>` 标记且保留 `node_modules` 后缀, `--yes` 不删它们 (计失败并给跳过说明); 要清理须显式加 `--force` —— 它只放行这一批目标, 不放宽删除安全闸。
-- **跨设备目标默认不进删除批**: 目标与所属根不在同一文件系统时 (根之下挂了云盘 / 网络盘 / 容器卷, 条目落在那一卷上) 同样不删, 清单行尾标注 `跨设备: 根与目标之间有挂载点` 或 `跨设备: 目标本体即挂载点`; 前者把该挂载点加进 `roots` 即可照常清理, 后者 (目标本体就是挂载点) 只能先卸载该卷 —— `--force` 不放行这一类。
-- `include`: 包含名单 (白名单); 命中才纳入, 口径与 `exclude` 同款; 缺省或空数组 = 不过滤 (多包含 = 多删); 与 `exclude` 同时命中时 `exclude` 优先。写错名字会让结果直接为空, 故未命中的名字会在 stderr 警示。
-- 两份名单里的 `node_modules` 与 `.git` 一律被剔除: 前者是本工具的目标 (列入排除等于排掉唯一目标, 列入包含则永久零命中), 后者是扫描恒定跳过的目录; 剔除后 `include` 为空数组 = 不过滤 (不是「只扫 node_modules」)。
-- 首次运行且无配置: 交互终端下自动进入初始化向导 (扫描根默认家目录); 非交互环境 (脚本等) 以当前工作目录为根并提示, 不询问; 随时可用 `sweep-nm init` 重进向导。
+- `roots`: the scan roots, any number of them; duplicate or nested roots are deduplicated by real path. **The delete side requires real paths**: no symlink may sit on a root or any of its ancestors (system links such as `/tmp` and `/var` included); if one is hit, `--yes` rejects the whole batch and tells you to rewrite the path in real form (e.g. `/private/tmp/x`), which clears it. Scanning is not subject to this: a root that is itself a symlink still gets scanned.
+- `exclude`: the exclusion list; a name match at any directory level between a root and a `node_modules` skips it (more exclusions, less deletion: the safe direction). **Omit this field and a built-in default list applies** (package manager / version manager install trees, editor extension directories, system and application data roots; the list and its rationale are in the [design doc](docs/designs/config-and-initialization.md), section "Default exclusions"). These names never warn when they match nothing, since they vary by platform. Write the field explicitly (an empty array counts) and your own list takes over completely.
+- **Suspected install trees stay out of the delete batch by default**: targets that look like install trees (e.g. `~/.bun/install/global/node_modules`, `<version dir>/lib/node_modules`, editor extension directories) are flagged in the list as `疑似安装树: <reason>` (suspected install tree, plus the reason) and keep their `node_modules` suffix; `--yes` does not delete them (reported as a failure, with an explanation of the skip). Cleaning them takes an explicit `--force`, which releases only this batch of targets and relaxes no deletion guard.
+- **Cross-device targets stay out of the delete batch by default**: when a target and its owning root are not on the same filesystem (a cloud drive, network share, or container volume is mounted under the root and the entry lands on that volume), it is likewise not deleted; the list line notes the form at its end, `跨设备: 根与目标之间有挂载点` (a mount point lies between root and target) or `跨设备: 目标本体即挂载点` (the target itself is the mount point). For the first form, add that mount point as its own root and it cleans as usual; for the second, unmount the volume first; `--force` does not release this category.
+- `include`: the inclusion list (a whitelist); only matches are included, matched the same way as `exclude`. Omitted or empty means no filtering (more inclusions, more deletion); when a name matches both lists, `exclude` wins. A misspelled name would leave the result empty, so unmatched names warn on stderr.
+- `node_modules` and `.git` are always stripped from either list: the former is the tool's very target (under `exclude` it would rule out the only thing this tool does, under `include` it can never match), the latter is a directory the scan always skips. If stripping leaves `include` empty, that means no filtering, not "scan only `node_modules`".
+- First run with no config: on an interactive terminal the init wizard starts automatically (the scan root defaults to your home directory); in non-interactive environments (scripts and the like) it falls back to the current working directory as the root and says so, without asking. Re-enter the wizard any time with `sweep-nm init`.
 
-> 字段定义以[设计文档](docs/designs/config-and-initialization.md)为准。
+> Field definitions are authoritative in the [design doc](docs/designs/config-and-initialization.md).
 
-## 开发
+## Safety guardrails
 
-环境准备、常用命令、双运行时验证与提交钩子, 见 [开发指南](docs/development.md)。
+Deletion is the only irreversible action this tool performs, and a whole discipline of guards has grown around it. Below are the heavyweight ones; the full set, including an honest account of the known residual risks, lives in [the safety guardrails document](docs/safety-guardrails.md) (in Chinese).
 
-## 文档
+> The tool's character in one line: when anything is uncertain, the default is not to delete.
 
-- [工程技术文档总索引](docs/README.md)
+**Nothing happens by default.** Preview is the default mode, and deletion requires an explicit `--yes`. With no config file, `--yes` is hard-rejected and nothing is deleted. On the run right after the wizard writes a config, preview is forced even if `--yes` was passed. `--force` releases only suspected install trees; it relaxes no deletion guard.
+
+**What gets deleted is decided by both name and location.** Only directories named exactly `node_modules` are eligible, and only under the roots you declared; whether a target sits under a root is judged by path hierarchy rather than string prefixes, so `..` traversal and lookalike paths are rejected outright. Targets whose size cannot be measured are never deleted: keep rather than guess. Two categories are held back by default: suspected install trees (reinstalling them is painful or impossible; released only by an explicit `--force`) and cross-device targets that live on a different filesystem (`--force` does not release these either). A built-in default exclusion list (install-tree and system-data-root names from package managers, version managers, and editors) keeps the scan away from those trees.
+
+**One failure stops the whole batch, and every path is re-checked first.** If a single target fails a check, the entire batch is abandoned with zero deletions, rather than letting the rest through; right before removal, the path from the root down to the target's parent is re-verified component by component, and a swap mid-way stops the batch. If a configured root, or any of its ancestors, has been swapped for a symlink, the delete batch is rejected with rewrite instructions; system links such as `/tmp` and `/var` count too, and rewriting to the real path clears it.
+
+**Symlinks: the threshold follows reversibility.** For the same config, the read-only scan follows a symlinked root and still lists results, the irreversible delete rejects the batch, and `init` refuses to write a single byte through a link. The split is deliberate: a link's origin cannot be judged, so the irreversible step does not get the benefit of the doubt.
+
+**Nothing in the output can be forged.** Every piece of external data (directory names from disk, command errors, list spellings) is sanitized before it reaches the output: control bytes stripped, newlines folded, so nothing can inject terminal control sequences or split a line into a fake trusted row; names that were rewritten get a note on the line. Skipped targets stay in the list with their markers, and the list ends with a skip count. A name that never matches warns on stderr, and a whitelist with zero matches states outright that the result must be empty. Errors carry an error code, plain language, the target, and a partial-deletion re-check hint; "nothing was deleted" and "deletion failed" are shown separately.
+
+**The distribution chain proves itself.** Zero third-party runtime dependencies and no network calls on the run path. The artifact an npm installer gets verifies itself against a bundled manifest before use and is refused on mismatch; the release side passes a four-part gate: a clean checkout, an artifact built from this commit, manifest consistency, and a whitelist of files allowed into the published package, so stray files (say, a backup of the README) cannot slip in.
+
+## Development
+
+Environment setup, common commands, dual-runtime verification, and commit hooks: see the [development guide](docs/development.md).
+
+## Documentation
+
+- [Engineering documentation index](docs/README.md)

@@ -42,6 +42,7 @@ export const MANIFEST_SCHEMA_VERSION = 1;
 export const PACK_FILES_EXPECTED: readonly string[] = [
   'LICENSE',
   'README.md',
+  'README.zh-CN.md',
   'bin/sweep-nm.mjs',
   'dist/cli.js',
   'dist/manifest.json',

@@ -27,6 +27,7 @@
 | 2026-09-27 | rm 阶段 ENOENT 分桶 (安全审计 C8): 删除层增目标本体复核, 代码树补 delete.node-smoke.ts                                                                                                                                                                                                                                |
 | 2026-09-27 | 运行时解析防劫持 (安全审计 C10): 三入口挑运行时排除当前工作目录 (win32 的裸名搜索序含 cwd), npm 入口在 win32 下先按 PATH 解析绝对路径再执行, cmd 入口改用 for 的 PATH 展开修饰符, du 探针补 win32 平台守卫; 新立契约 EC-08 (见 [ADR 0007](../adrs/0007-platform-portability.md) 决策第 4 条补记)                      |
 | 2026-09-27 | 工程闸门形态收窄: 装钩子改经守卫脚本 `scripts/install-git-hooks.mjs` (只在本包自身仓库), lefthook 不列依赖; 钩子执行链经 `lefthook.yml` 的 `lefthook:` (bunx 取 pin 版) 与 `assert_lefthook_installed` 兜底 (无全局 lefthook 照跑, 失败响亮) (见 [ADR 0005](../adrs/0005-engineering-gates-and-hooks.md) 决策第 1 条) |
+| 2026-09-27 | 发行面白名单随双语 README 同步: 仓库根新增 `README.zh-CN.md` (英文主版的中文对照, 经 npm 强制收录通道进包), 包清单 6 项变 7 项, `PACK_FILES_EXPECTED` 随同步 (见 [ADR 0009](../adrs/0009-npm-distribution-form.md) 补记第 5 条)                                                                                       |
 
 ## 分册索引
 

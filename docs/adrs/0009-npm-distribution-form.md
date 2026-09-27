@@ -71,6 +71,8 @@
 
 4. **闸门触发面与残留口** (2026-09-26 补): 闸门挂在 `prepublishOnly`, 只在 `npm publish` 且发布目标是仓库目录时触发; `npm pack` 与 `npm publish <tarball>` (对打好的包再发布) 不经闸门。**不补 `prepack` 兜底**: `npm pack --dry-run` 是常用的只读查看动作, 挂上闸门会让它在脏树 / 未构建时硬失败, 代价大于收益; 该残留口的补偿是白名单断言已在 `verify:release` 内覆盖同一风险面, 发布流程以 `npm publish` 为准。**bun 发布路径已联网核验 (2026-09-26, 非凭印象)**: `bun publish` 自行打包时会执行 `prepublishOnly`, 故在闸门内; 依据为 bun 官方测试对执行顺序的断言 (`prepublishOnly` → `prepack` → `prepare` → `postpack` → `publish` → `postpublish`, `test/cli/install/bun-publish.test.ts` 的 lifecycle scripts 块) 与源码 `src/runtime/cli/pack_command.rs` 的 `FOR_PUBLISH` 分支 (锚定 main 分支 2026-09-25 快照); bun 官方文档 (`docs/pm/cli/publish`) 只有否定式条件句 "does not run lifecycle scripts ... if you provide a tarball path", 无正面支持矩阵, 正面直证来自源码与官方测试。给定 tarball 形式 (`bun publish <tarball>`) 与 npm 侧的 `npm publish <tarball>` 同属上述残留口。
 
+5. **双语 README 进包** (2026-09-27 补): 仓库根新增 `README.zh-CN.md` (根 README 的中文对照) 后, 包清单由 6 项变 7 项。该文件落在与补记第 3 条同一条强制收录通道内 (带后缀的 README 照样被收, 无需写进 `files` 字段; 2026-09-27 实测: `npm pack --dry-run --json --ignore-scripts` 清单 7 项, 即原 6 项加 `README.zh-CN.md`)。处置: 按补记第 3 条的改动义务同步 `PACK_FILES_EXPECTED`, 白名单断言与单测里的真实 npm 对齐用例照常钉住。
+
 第 2、3 条决策所述「构建」与「入口选择」由本补记扩展, 完整规格见 [开发指南](../development.md)「发布」与 [设计总纲](../designs/sweep-node-modules-design.md) 代码树, 本文不复述。
 
 ## 验证方式与关联引用 (Validation & References)
@@ -79,7 +81,7 @@
 
 1. `bun run build` 产出 `dist/cli.js`, `node dist/cli.js --help` 与 `bun dist/cli.js --help` 均可运行 (已实测);
 2. `bin/sweep-nm.mjs` 在无产物的仓库态回退 `src/cli.ts`、在有产物的形态下走 `dist/cli.js`, 两种形态输出一致 (已实测);
-3. `npm pack --dry-run --json --ignore-scripts` 的包清单实测 6 项: `LICENSE` / `README.md` / `bin/sweep-nm.mjs` / `dist/cli.js` / `dist/manifest.json` / `package.json` (2026-09-26 实测; 早期实测只核对「含入口与产物」这一面, 当时两份挂仓库根的 README 备份被一并收进包而未被察觉, 已治并加白名单断言, 见下方补记第 3 条)。
+3. `npm pack --dry-run --json --ignore-scripts` 的包清单实测 6 项: `LICENSE` / `README.md` / `bin/sweep-nm.mjs` / `dist/cli.js` / `dist/manifest.json` / `package.json` (2026-09-26 实测; 早期实测只核对「含入口与产物」这一面, 当时两份挂仓库根的 README 备份被一并收进包而未被察觉, 已治并加白名单断言, 见下方补记第 3 条)。**(双语 README 落盘后清单增至 7 项, 见补记第 5 条)**
 
 **关联引用**
 
