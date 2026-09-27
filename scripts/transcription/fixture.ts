@@ -30,8 +30,9 @@ const BAIT_FILE_BYTES = 64;
  * - PATH / TMPDIR 族: 运行基础 (被测 spawn 子进程、取临时目录时用);
  * - HOME / USERPROFILE: 家目录, 由本运行器改写指向 fixture 内的 home (见 buildEnv);
  * - SystemRoot / PATHEXT / ComSpec: Windows 下子进程运行基础;
- * - QUOTING_STYLE: GNU coreutils 在非 TTY 下默认对文件名做 shell 转义, 会破坏 du 输出解析,
- *   强制 literal (BSD du 无此变量, 设了无害)。
+ * - QUOTING_STYLE: 放行宿主设定 (不剔除)。du 仅在其 stdout 为终端时按该变量引用文件名, 本运行器
+ *   以管道捕获输出、恒非终端, 故它不进入断言面; 保留放行只为不改写宿主语义 (BSD du 无此变量,
+ *   设了无害)。形态依据 (2026-09-27 核实) 见 src/size-du.ts 文件头「输出形态」。
  */
 const BASE_ENV_KEYS = [
   'PATH',

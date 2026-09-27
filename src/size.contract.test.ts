@@ -6,6 +6,7 @@
  */
 import { afterEach, describe, expect, test } from 'bun:test';
 
+import { existsSync } from 'node:fs';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
@@ -30,6 +31,17 @@ interface Candidate {
 const duAvailable = findDu() !== null;
 const runningAsRoot =
   typeof process.getuid === 'function' && process.getuid() === 0;
+/**
+ * 包管理器安装的 GNU du 候选 (macOS 开发机复现 GNU 侧输出形态用; Linux 上 /usr/bin/du 即 GNU,
+ * 由上方探针路径直接覆盖)。存在即注入给 createDuSizer 跑同一组怪名用例。
+ */
+const GNU_DU_CANDIDATES = [
+  '/opt/homebrew/bin/gdu',
+  '/opt/homebrew/opt/coreutils/libexec/gnubin/du',
+  '/usr/local/bin/gdu',
+  '/usr/local/opt/coreutils/libexec/gnubin/du',
+];
+const gnuDuPath = GNU_DU_CANDIDATES.find((path) => existsSync(path)) ?? null;
 
 const candidates: Candidate[] = [
   {
@@ -269,8 +281,8 @@ for (const candidate of candidates) {
         ).toBe(false);
       });
 
-      // [证据缺口] GNU du 非 TTY 下对文件名做 shell 转义 (Linux 侧待验), 触发本分支的形态更多;
-      // 本用例只覆盖 BSD du 实测形态 (换行原样输出破坏行结构)。
+      // 形态已核实 (2026-09-27): du 仅在 stdout 为终端时按 shell-escape 引用文件名 (见 size-du.ts
+      // 文件头「输出形态」), 非终端下换行同样原样输出、劈裂行结构, 故本用例跨 du 实现成立。
       it('目录名含换行: 前置拒绝为控制字符', async () => {
         const { root } = await make({
           projects: [{ dir: 'line\nbreak', files: 2, bytesPerFile: 256 }],
@@ -295,6 +307,53 @@ for (const candidate of candidates) {
           result.warnings.some((warning) => warning.includes('不存在')),
         ).toBe(true);
       });
+
+      // 形态依据见 size-du.ts 文件头「输出形态」: du 仅在 stdout 为终端时引用文件名, 本候选恒非终端,
+      // 故 TAB / ESC / BEL / 引号 / 反斜杠一律原样成行, 不得被「输出不可解析」误伤
+      it('怪名 target (TAB / ESC / BEL / 引号 / 反斜杠): 逐字保真, 零降级', async () => {
+        const oddDirs = [
+          'tab\there',
+          'esc\x1besc',
+          'bel\x07bel',
+          "sq'uote",
+          'back\\slash',
+        ];
+        const { root } = await make({
+          projects: oddDirs.map((dir) => ({ dir })),
+        });
+        const targets = oddDirs
+          .map((dir) => join(root, dir, 'node_modules'))
+          .sort();
+
+        const result = await candidate.sizer.measure(targets);
+
+        expect(result.entries.map((entry) => entry.target)).toEqual(targets);
+        expect(result.unmeasured).toEqual([]);
+        candidate.assertBytes(at(result.entries, 0).bytes, 2 * 256);
+      });
+
+      // macOS 开发机上经包管理器安装的 GNU du (gdu) 注入复现 GNU 侧形态 (Linux 的 /usr/bin/du 即 GNU,
+      // 由上方探针路径与同组用例直接覆盖); 无 gdu 的宿主整条跳过
+      test.skipIf(gnuDuPath === null)(
+        'GNU du 实测 (注入 gdu): 非终端下怪名 target 逐字保真, 零告警零降级',
+        async () => {
+          const bin = gnuDuPath;
+          if (bin === null) return; // 类型收窄 (skipIf 已挡, 不会走到)
+          const oddDirs = ['tab\there', 'esc\x1besc', "sq'uote", 'back\\slash'];
+          const { root } = await make({
+            projects: oddDirs.map((dir) => ({ dir })),
+          });
+          const targets = oddDirs
+            .map((dir) => join(root, dir, 'node_modules'))
+            .sort();
+
+          const result = await createDuSizer(bin).measure(targets);
+
+          expect(result.entries.map((entry) => entry.target)).toEqual(targets);
+          expect(result.unmeasured).toEqual([]);
+          expect(result.warnings).toEqual([]);
+        },
+      );
 
       // 审计样本形态: 伪造目录真实存在, 目录名含换行, 使 du 输出被劈出 `数字\t<victim>` 伪行
       it('伪造覆盖: 排序靠后的伪行不得覆盖受害 target 的体积', async () => {

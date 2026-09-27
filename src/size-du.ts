@@ -4,6 +4,10 @@
  * 口径: 磁盘占用 (按块取整, 恒 ≥ 逻辑字节), 与 js 候选的差异由基准环节记录裁定。
  * du 的英文 stderr 一律转成自家中文告警, 不得原样透传; 输入 target 存在但不可测时结构化记入 unmeasured。
  * 防注入: `--` 终止选项解析; 含控制字符 (换行 / 回车) 的 target 前置拒绝; stdout 路径集合与输入不符即整体降级。
+ * 输出形态 (已核实, 2026-09-27): du 仅在 stdout 为终端时按 shell-escape 引用文件名 (GNU 手册 du 节点
+ * 「When standard output is a terminal, file names are quoted using the shell-escape style」; 源码侧
+ * isatty 门控, 9.12 之前的版本无引用逻辑), 本候选以管道捕获 stdout, 恒非终端, 故路径恒按输入原样成行
+ * (TAB / ESC / 引号等原样保留, 实测 GNU du 9.12); 含换行 / 回车者会劈裂行结构, 由前置拒绝接住。
  * 不走 runtime 适配层 spawnCapture: 需捕获 stderr 转中文告警, 其 stderr inherit (直通) 语义接不住本需求。
  */
 import { spawn } from 'node:child_process';
@@ -78,6 +82,54 @@ function parseDuSizes(stdout: string): {
   return { sizes, duplicated };
 }
 
+/** stdout 与输入集合的一致性判定结果 (解析与判定合一, 供单测注入样本验证) */
+export interface DuOutputAssessment {
+  /** 解析出的 路径 → 字节; 仅当 intact 为真时可信 */
+  sizes: Map<string, number>;
+  /** stdout 与本次输入相符 (无重复、无输入之外的路径): 每条可按下标归因 */
+  intact: boolean;
+  /** 同一路径出现多行 (行结构可疑) */
+  duplicated: boolean;
+  /** 出现输入集合之外的路径 (形态被改写或注入) */
+  unexpected: boolean;
+}
+
+/**
+ * 解析 du 的 stdout 并判定与输入集合的一致性。
+ * 判据是「解析出的路径须全部来自本次输入且无重复」: 任一不符即整批不可信 (fail-safe, 不逐条采信),
+ * 因为不符只可能来自输出行结构被破坏 (注入 / 形态改写), 逐条采信会给伪行留下覆盖真实体积的入口。
+ */
+export function assessDuOutput(
+  stdout: string,
+  safeTargets: readonly string[],
+): DuOutputAssessment {
+  const safeSet = new Set(safeTargets);
+  const parsed = parseDuSizes(stdout);
+  let unexpected = false;
+  for (const path of parsed.sizes.keys()) {
+    if (!safeSet.has(path)) unexpected = true;
+  }
+  const intact =
+    !parsed.duplicated &&
+    parsed.sizes.size <= safeTargets.length &&
+    !unexpected;
+  return {
+    sizes: parsed.sizes,
+    intact,
+    duplicated: parsed.duplicated,
+    unexpected,
+  };
+}
+
+/** 一致性判定失败的形态归类 (人话短语; 只述形态, 不含路径, 低信任内容不外溢) */
+function describeAnomaly(assessment: DuOutputAssessment): string {
+  const shapes: string[] = [];
+  if (assessment.duplicated) shapes.push('同一路径多行');
+  if (assessment.unexpected) shapes.push('含输入之外的路径');
+  if (shapes.length === 0) shapes.push('行数与输入不符');
+  return shapes.join(' / ');
+}
+
 /** du 单路径失败的归因 */
 interface DuFailure {
   /** 中文人话原因 (人话短语, 不含路径) */
@@ -113,8 +165,12 @@ function parseDuErrorLine(
   return { path, detail };
 }
 
-export function createDuSizer(): Sizer {
-  const bin = findDu();
+/**
+ * 构造 du 候选。
+ * bin 缺省走 findDu() 探针; 显式传入供测试注入 (如用包管理器装的 GNU du 复现 Linux 侧形态),
+ * 生产调用不传。
+ */
+export function createDuSizer(bin: string | null = findDu()): Sizer {
   return {
     name: 'du',
     async measure(targets: string[]): Promise<SizeResult> {
@@ -146,15 +202,18 @@ export function createDuSizer(): Sizer {
       let intact = true;
       if (safeTargets.length > 0) {
         const { stdout, stderr } = await runDu(bin, safeTargets);
-        const parsed = parseDuSizes(stdout);
 
         // 集合一致性校验: 解析出的路径必须全部来自本次输入且无重复; 不符即视为输出行结构
-        // 被破坏 (注入 / 转义), 由下方循环 fail-safe 整体降级, 不逐条赋值
-        intact =
-          !parsed.duplicated &&
-          parsed.sizes.size <= safeTargets.length &&
-          [...parsed.sizes.keys()].every((path) => safeSet.has(path));
-        for (const [path, bytes] of parsed.sizes) sizes.set(path, bytes);
+        // 被破坏 (注入 / 形态改写), 由下方循环 fail-safe 整体降级, 不逐条赋值
+        const assessment = assessDuOutput(stdout, safeTargets);
+        intact = assessment.intact;
+        if (!intact) {
+          // 整批降级不得静默: 交代后果与形态归类, 让「什么都没删」可被归因 (路径本身不进文案)
+          warnings.push(
+            `du 输出与输入集合不符 (${describeAnomaly(assessment)}): 本批 ${safeTargets.length} 个目标的体积均未采信`,
+          );
+        }
+        for (const [path, bytes] of assessment.sizes) sizes.set(path, bytes);
 
         // stderr 逐行转中文告警, 英文原文不外泄; 键为路径, 供下面按 target 归因
         for (const line of stderr.split('\n')) {
@@ -193,10 +252,9 @@ export function createDuSizer(): Sizer {
         }
         const failure = failures.get(target);
         if (failure === undefined) {
-          // 解析不出且无 stderr 归因 (如目录名含换行破坏 `size\t路径` 行结构): 结构化为 unmeasured,
-          // 不得静默丢弃 (types.ts: 存在但无法测量的目标必须上报);
-          // [证据缺口] GNU du 非 TTY 下对文件名做 shell 转义会扩大本分支触发面 (Linux 侧待验,
-          // 见 scripts/transcription/fixture.ts 的 QUOTING_STYLE 注释), 修复后该分支语义已覆盖此形态。
+          // 解析不出且无 stderr 归因: 结构化为 unmeasured, 不得静默丢弃 (types.ts: 存在但无法测量的
+          // 目标必须上报)。现实触发面是含换行 / 回车的目标 (劈裂 `size\t路径` 行结构), 该形态已被上方
+          // 前置拒绝接住, 故本分支接住的是探针或 du 侧未知形态; 引用形态不在此列 (见文件头「输出形态」)。
           unmeasured.push({ target, reason: '输出不可解析' });
           continue;
         }
