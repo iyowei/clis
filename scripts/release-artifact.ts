@@ -16,6 +16,8 @@ import { existsSync, readFileSync, statSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { cleanGitEnv } from './git-env.ts';
+
 /** 仓库根 (本文件所在 scripts/ 上溯一级): git 检查目录与 dist/ 落点的默认坐标 */
 export const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -233,6 +235,8 @@ export const readDistState = (distDir: string): DistState => {
  * 跑一条只读 git 命令并收 stdout 原文; 失败返回 null (不抛)。
  * 失败与「输出为空」必须可区分: 非 git 检出是「不知道」, 空输出是「没有改动」。
  * 缓冲区取宽: 脏树可能列出成千上万条, 挤爆默认 1 MB 会把「工作树不干净」误报成「读不到状态」。
+ * env 经 cleanGitEnv (见 git-env.ts): 调用点给的 root 是唯一坐标, 宿主的 GIT_DIR 等不得
+ * 把只读探测改道到别的仓库 (在钩子环境里跑测试时, 宿主坐标曾让本模块读错仓库)。
  */
 export const readGitText = (root: string, args: string[]): string | null => {
   try {
@@ -241,6 +245,7 @@ export const readGitText = (root: string, args: string[]): string | null => {
       encoding: 'utf8',
       stdio: ['ignore', 'pipe', 'ignore'],
       maxBuffer: 32 * 1024 * 1024,
+      env: cleanGitEnv(),
     });
   } catch {
     return null;

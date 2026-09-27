@@ -19,6 +19,8 @@ import {
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  readdirSync,
+  realpathSync,
   rmSync,
   symlinkSync,
   writeFileSync,
@@ -26,13 +28,55 @@ import {
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 
+import { cleanGitEnv } from './git-env.ts';
+
 const HERE = import.meta.dir;
 const SCRIPT = resolve(HERE, 'install-git-hooks.mjs');
 
+/** 文件以 `#!` 开头即脚本包装 (bunx / npm 装的 node shim), 复制到别处会丢相对依赖 */
+const isScriptWrapper = (file: string): boolean => {
+  try {
+    return readFileSync(file).subarray(0, 2).toString() === '#!';
+  } catch {
+    return false;
+  }
+};
+
+/**
+ * 取一份「可搬运」的 lefthook 可执行文件: 复制到临时路径后仍能独立运行的那种。
+ * 搬运是「装完即删, 让模板写死的 install 期绝对路径失效」这一步的前提。
+ * 不能直接搬 `command -v lefthook` 的命中项: hook 环境里 bunx 把自己的
+ * node_modules/.bin 前置进 PATH, 命中的是官方包的 node 包装脚本 (靠相邻的 ../get-exe
+ * 找平台二进制), 单独复制出去会以 Cannot find module 失败 (钩子压根不落地); 且它转手
+ * spawn 的是平台二进制, 模板写死的也是那一份路径, 删包装脚本副本失效不了这一跳。
+ * 故命中包装脚本时改取其同包 node_modules 下的平台二进制。
+ * 两处都取不到时退回原命中项: 该环境下复制出去仍会失败, 用例响亮失败而非静默跳过。
+ */
+const resolveRelocatableLefthook = (): string => {
+  const found = spawnSync('sh', ['-c', 'command -v lefthook'], {
+    encoding: 'utf8',
+    env: cleanGitEnv(),
+  }).stdout.trim();
+  if (found === '' || !isScriptWrapper(found)) return found;
+
+  // <nm>/lefthook/bin/index.js -> <nm>: 平台二进制与 lefthook 包平级 (lefthook-<os>-<arch>)
+  const nodeModules = resolve(realpathSync(found), '..', '..', '..');
+  if (existsSync(nodeModules)) {
+    for (const entry of readdirSync(nodeModules)) {
+      if (!entry.startsWith('lefthook-')) continue;
+      const platform = join(nodeModules, entry, 'bin', 'lefthook');
+      if (existsSync(platform) && !isScriptWrapper(platform)) return platform;
+    }
+  }
+  return found;
+};
+
 const hasGit =
-  spawnSync('git', ['--version'], { stdio: 'ignore' }).status === 0;
+  spawnSync('git', ['--version'], { stdio: 'ignore', env: cleanGitEnv() })
+    .status === 0;
 const hasLefthook =
-  spawnSync('lefthook', ['--version'], { stdio: 'ignore' }).status === 0;
+  spawnSync('lefthook', ['--version'], { stdio: 'ignore', env: cleanGitEnv() })
+    .status === 0;
 const isWindows = process.platform === 'win32';
 
 /** 本仓 lefthook.yml 的执行链兜底命令 (单一事实来源: 生成钩子与安装取用同读这一处) */
@@ -58,7 +102,7 @@ const git = (cwd: string, args: string[]) =>
   spawnSync('git', args, {
     cwd,
     encoding: 'utf8',
-    env: { ...process.env, GIT_CONFIG_GLOBAL: '/dev/null' },
+    env: { ...cleanGitEnv(), GIT_CONFIG_GLOBAL: '/dev/null' },
   });
 
 /**
@@ -88,7 +132,7 @@ const makeFakeLefthookEnv = (
   writeFileSync(fake, `#!/bin/sh\necho "$@" >> "${logPath}"\nexit 0\n`);
   chmodSync(fake, 0o755);
   const env: Record<string, string> = {
-    ...process.env,
+    ...cleanGitEnv(),
     PATH: `${binDir}:${process.env.PATH ?? ''}`,
   };
   // 基线环境不携带 CI (用例要的 CI 场景经 extraEnv 显式注入)
@@ -220,12 +264,13 @@ describe.skipIf(!hasGit || isWindows)('install-git-hooks 守卫', () => {
     // PATH 只保留 git: 关掉全局 lefthook / bunx 的干扰, 同时保证脚本内的 git 探测可用
     const gitPath = spawnSync('which', ['git'], {
       encoding: 'utf8',
+      env: cleanGitEnv(),
     }).stdout.trim();
     const binDir = join(root, 'only-git-bin');
     mkdirSync(binDir, { recursive: true });
     symlinkSync(gitPath, join(binDir, 'git'));
 
-    const env: Record<string, string> = { ...process.env, PATH: binDir };
+    const env: Record<string, string> = { ...cleanGitEnv(), PATH: binDir };
     delete env.CI;
 
     const result = runScript(script, pkgRoot, env);
@@ -259,7 +304,7 @@ const makeHookRepo = (root: string, configHead: string) => {
   const install = spawnSync('lefthook', ['install'], {
     cwd: dir,
     encoding: 'utf8',
-    env: { ...process.env, GIT_CONFIG_GLOBAL: '/dev/null' },
+    env: { ...cleanGitEnv(), GIT_CONFIG_GLOBAL: '/dev/null' },
   });
   return { dir, install };
 };
@@ -267,7 +312,7 @@ const makeHookRepo = (root: string, configHead: string) => {
 /** 净化 PATH (不含全局 lefthook; 只留系统基础目录, 可选前置注入 bin) */
 const cleanPathEnv = (injectedBin: string | null): Record<string, string> => {
   const env: Record<string, string> = {
-    ...process.env,
+    ...cleanGitEnv(),
     PATH:
       injectedBin === null ? '/usr/bin:/bin' : `${injectedBin}:/usr/bin:/bin`,
   };
@@ -345,10 +390,7 @@ describe.skipIf(!hasGit || !hasLefthook || isWindows)(
       // 用真 lefthook 的临时副本装钩子 (探测链会写入副本的绝对路径), 装完即删副本:
       // 这样 PATH 净化之外, 连「install 时的绝对路径」这一跳也失效, 才真正复现「本机无任何 lefthook」
       const copyPath = join(root, 'lh-copy-lefthook');
-      const realLefthook = spawnSync('sh', ['-c', 'command -v lefthook'], {
-        encoding: 'utf8',
-      }).stdout.trim();
-      copyFileSync(realLefthook, copyPath);
+      copyFileSync(resolveRelocatableLefthook(), copyPath);
       chmodSync(copyPath, 0o755);
 
       const dir = join(root, 'repo');
@@ -361,7 +403,7 @@ describe.skipIf(!hasGit || !hasLefthook || isWindows)(
       spawnSync(copyPath, ['install'], {
         cwd: dir,
         encoding: 'utf8',
-        env: { ...process.env, GIT_CONFIG_GLOBAL: '/dev/null' },
+        env: { ...cleanGitEnv(), GIT_CONFIG_GLOBAL: '/dev/null' },
       });
       rmSync(copyPath, { force: true });
 

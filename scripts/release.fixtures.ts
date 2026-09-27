@@ -9,6 +9,8 @@ import { mkdtemp, realpath, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
+import { cleanGitEnv } from './git-env.ts';
+
 export interface TempDir {
   root: string;
   cleanup: () => Promise<void>;
@@ -25,9 +27,16 @@ export const makeTempDir = async (prefix: string): Promise<TempDir> => {
   };
 };
 
-/** 同步跑一条 git 命令 (夹具自用; 失败即抛: 建仓出错不该被当成用例结论继续跑) */
+/**
+ * 同步跑一条 git 命令 (夹具自用; 失败即抛: 建仓出错不该被当成用例结论继续跑)。
+ * env 经 cleanGitEnv: 宿主的 GIT_* 坐标不得把临时仓库的 init / add / commit 改道到宿主仓库。
+ */
 export const runGit = (cwd: string, args: string[]): string => {
-  const result = spawnSync('git', args, { cwd, encoding: 'utf8' });
+  const result = spawnSync('git', args, {
+    cwd,
+    encoding: 'utf8',
+    env: cleanGitEnv(),
+  });
   if (result.status !== 0) {
     throw new Error(`git ${args.join(' ')} 失败: ${result.stderr.trim()}`);
   }
