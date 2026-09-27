@@ -25,7 +25,17 @@ function tempDir(): string {
 }
 
 afterEach(() => {
-  for (const dir of dirs) rmSync(dir, { recursive: true, force: true });
+  // 逐目录容错: 单个清理失败降级为警告并继续, 不抛断整条链 (否则其余目录不清理、数组也不复位)
+  for (const dir of dirs) {
+    try {
+      rmSync(dir, { recursive: true, force: true });
+    } catch (error) {
+      const code = (error as { code?: string } | null)?.code ?? String(error);
+      process.stderr.write(
+        `[Warning] 临时配置目录清理失败 (${code}), 请人工清理: ${dir}\n`,
+      );
+    }
+  }
   dirs.length = 0;
 });
 
