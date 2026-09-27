@@ -20,6 +20,8 @@ import {
 } from './config.ts';
 import { type RemovalResult, type TrustRoot, removeTargets } from './delete.ts';
 import {
+  type CrossDeviceKind,
+  findCrossDeviceTargets,
   firstSymlinkOnRoot,
   firstSymlinkOnTarget,
   validateTargets,
@@ -38,6 +40,7 @@ import {
 import { runtimeLabel, writeTextFile } from './runtime.ts';
 import { createScanner } from './scan.ts';
 import { createSizer } from './size.ts';
+import { collectSkips, crossDeviceNote, deletionBatch } from './skip.ts';
 import type { ScanHit, ScanResult, SizeResult } from './types.ts';
 
 interface CliOptions {
@@ -307,8 +310,10 @@ interface RemovalOutcome {
 /** 整批中止时给未被删除条目的统一说明 (与普通删除失败区分: 这些目标根本没被动过) */
 const ABORTED_HINT = '整批中止, 未执行删除';
 
-/** 疑似安装树被跳过时的行尾说明 (与普通删除失败区分: 这一条从未进入删除批次, 放行通道是 --force) */
-const SKIPPED_HINT = '已跳过 (加 --force 一并清理)';
+/*
+ * 跳过类目标 (疑似安装树 / 跨设备目标) 的文案与集合见 skip.ts (单源); 本层只管接线:
+ * 批次构造、结果回挂与退出码。
+ */
 
 /**
  * 删除复核用的信任根: 配置原始拼写与 realpath 归一形态配对 (见 delete.ts 的 TrustRoot)。
@@ -329,24 +334,27 @@ async function trustRoots(roots: string[]): Promise<TrustRoot[]> {
  * 把删除结果挂回清单条目, 供执行报告逐行呈现。
  * batch (实际删除批次) 与 accepted (guard 已 realpath 化) 逐位对应: guard 保输入顺序, 且整批拒绝时
  * 不会走到这里, 故不存在剔除错位; 未入批的条目一律按失败呈现并计入失败 (退出码 1), 其行尾说明
- * 按原因三分: 整批中止 / 疑似安装树跳过 (skipped) / 体积未测到 (无说明, 原因已在行尾 note 上)。
+ * 按原因三分: 整批中止 / 跳过项 (skipped: 值即该类目标的放行说明) / 体积未测到 (无说明, 原因已在行尾 note 上)。
  *
  * ### 数据追踪示例
  * ```text
  * Input（真实 Payload）
  *   entries = [{ project: 'alpha', target: '/var/w/alpha/node_modules', bytes: 4939212390 },
  *              { project: 'lib', target: '/var/w/alpha/lib/node_modules', bytes: 81920, suspect: true },
+ *              { project: 'vol', target: '/var/w/vol/proj/node_modules', bytes: 4096, note: '跨设备: 根与目标之间有挂载点' },
  *              { project: 'locked', target: '/var/w/locked/node_modules', note: '体积统计失败: 权限不足, 无法读取' }]
- *   batch = ['/var/w/alpha/node_modules']              // 测到体积且非疑似安装树的才进删除批次
+ *   batch = ['/var/w/alpha/node_modules']              // 测到体积且非疑似安装树、非跨设备的才进删除批次
  *   accepted = ['/private/var/w/alpha/node_modules']   // realpath 归一 (macOS /var 符号链接陷阱)
  *   removal = { removed: ['/private/var/w/alpha/node_modules'], missing: [], failed: [] }
- *   skipped = Set { '/var/w/alpha/lib/node_modules' }
+ *   skipped = Map { '/var/w/alpha/lib/node_modules' → '已跳过 (加 --force 一并清理)',
+ *                   '/var/w/vol/proj/node_modules' → '已跳过 (把该挂载点声明为独立根即可清理)' }
  *
  * 步骤 1：三桶并成结果表 (键为 realpath 目标)
  *   outcomes = { '/private/var/w/alpha/node_modules' → { ok: true } }
  *
  * 步骤 2：逐位回挂 (accepted[0] 对应 batch[0]), 未入批条目按原因落回对应说明
- *   report = [alpha { ok: true }, lib { ok: false, error: '已跳过 (加 --force 一并清理)' }, locked { ok: false }]
+ *   report = [alpha { ok: true }, lib { ok: false, error: '已跳过 (加 --force 一并清理)' },
+ *             vol { ok: false, error: '已跳过 (把该挂载点声明为独立根即可清理)' }, locked { ok: false }]
  *
  * Output（数据契约）
  *   return 执行报告条目 (保清单顺序)
@@ -357,7 +365,7 @@ function withOutcomes(
   batch: string[],
   accepted: string[],
   removal: RemovalResult,
-  skipped: ReadonlySet<string>,
+  skipped: ReadonlyMap<string, string>,
 ): RenderEntry[] {
   const outcomes = new Map<string, RemovalOutcome>();
   for (const target of removal.removed) outcomes.set(target, { ok: true });
@@ -376,7 +384,8 @@ function withOutcomes(
   const fallbackOf = (entry: RenderEntry): RemovalOutcome => {
     if (removal.aborted !== undefined)
       return { ok: false, error: ABORTED_HINT };
-    if (skipped.has(entry.target)) return { ok: false, error: SKIPPED_HINT };
+    const hint = skipped.get(entry.target);
+    if (hint !== undefined) return { ok: false, error: hint };
     return { ok: false };
   };
   return entries.map((entry) => ({
@@ -451,21 +460,25 @@ function collectNameNotes(
  * 清单条目: 已测到体积的 (bytes) + 存在但测不到的 (note 占位, bytes 留空, 不参与删除)。
  * 「不存在」类 (既未测到也不在 unmeasured, size 已告警) 不入清单; project 取目录名 (scan 给的是目录路径)。
  * 疑似安装树 (classify.ts 判定, 家目录由调用方注入供隐藏目录形态判定) 逐条打标: suspect 供渲染层
- * 保留路径后缀、供删除批次构造跳过, note 给出判定理由; 同时体积统计失败时两条注记并置
- * (两空格分隔, 与 render.ts 的行尾并置同款)。
+ * 保留路径后缀、供删除批次构造跳过, note 给出判定理由; 跨设备目标 (crossDevice 映射, 判定见
+ * guard.ts 的 findCrossDeviceTargets) 按形态落进 note, 供读者在预览阶段就看到该目标不进删除批;
+ * 体积统计失败时注记并置 (两空格分隔, 与 render.ts 的行尾并置同款)。
  *
  * ### 数据追踪示例
  * ```text
  * Input（真实 Payload）
  *   hits = [{ project: '/w/pkg/lib', target: '/w/pkg/lib/node_modules' },
+ *           { project: '/w/vol/proj', target: '/w/vol/proj/node_modules' },
  *           { project: '/w/app', target: '/w/app/node_modules' }]
  *   sizeResult.entries = [{ target: '/w/app/node_modules', bytes: 90177536 }]
+ *   crossDevice = Map { '/w/vol/proj/node_modules' → 'on-path' }   // /w/vol 是挂在根之下的另一文件系统
  *
  * 步骤 1：建体积与原因索引
  *   bytesOf = { '/w/app/node_modules' → 90177536 }, reasonOf = {}
  *
- * 步骤 2：逐条判类别并成条目 (lib 条目父目录为 lib → 疑似安装树)
+ * 步骤 2：逐条判类别并成条目 (lib 条目父目录为 lib → 疑似安装树; proj 条目命中跨设备映射)
  *   entries = [{ project: 'lib', target: '/w/pkg/lib/node_modules', suspect: true, note: '疑似安装树: 父目录为 lib, …' },
+ *              { project: 'proj', target: '/w/vol/proj/node_modules', note: '跨设备: 根与目标之间有挂载点' },
  *              { project: 'app', target: '/w/app/node_modules', bytes: 90177536, suspect: false }]
  *
  * Output（数据契约）
@@ -476,6 +489,7 @@ function toEntries(
   hits: ScanHit[],
   sizeResult: SizeResult,
   home: string,
+  crossDevice: ReadonlyMap<string, CrossDeviceKind>,
 ): RenderEntry[] {
   const bytesOf = new Map<string, number>(
     sizeResult.entries.map((entry): [string, number] => [
@@ -495,7 +509,11 @@ function toEntries(
     const project = basename(hit.project);
     const classification = classifyTarget(hit.target, { home });
     const suspect = classification.kind === 'suspect-install-tree';
-    const note = suspect ? `疑似安装树: ${classification.reason}` : undefined;
+    const notes: string[] = [];
+    if (suspect) notes.push(`疑似安装树: ${classification.reason}`);
+    const deviceKind = crossDevice.get(hit.target);
+    if (deviceKind !== undefined) notes.push(crossDeviceNote(deviceKind));
+    const note = notes.length > 0 ? notes.join('  ') : undefined;
 
     const bytes = bytesOf.get(hit.target);
     if (bytes !== undefined) {
@@ -521,7 +539,7 @@ function toEntries(
 /**
  * 清理流程: 扫描 → 体积 → 预览; `--yes` 时经安全闸校验后删除并出执行报告。
  * 退出码: 预览 / 空结果 / 仅 missing 记 0; 安全闸整批拒绝 / 删除复核整批中止 / 删除有失败 /
- * 有未测到体积的目标 记 1 (设计: cli-surface.md「退出码」)。
+ * 有跳过项 (疑似安装树 / 跨设备目标) 或未测到体积的目标 记 1 (设计: cli-surface.md「退出码」)。
  *
  * ### 数据追踪示例
  * ```text
@@ -529,23 +547,29 @@ function toEntries(
  *   config = { roots: ['/w'], exclude: [], include: [] }
  *   options = { command: 'sweep', yes: true, force: false, exclude: [], include: [], help: false }
  *   磁盘树 = /w/alpha/node_modules (4.6 GB, 可读), /w/pkg/lib/node_modules (80 KB, 可读),
+ *            /w/vol/proj/node_modules (4 KB, /w/vol 是挂在根之下的另一文件系统),
  *            /w/locked/node_modules (权限不足, 测不到体积)
  *
  * 步骤 1：扫描 → 收集名单回执 (collectNameNotes: 未命中名就地告警走 stderr, 命中回执交 notes 随清单输出)
- *   hits = [alpha, lib, locked], nameNotes = []  // 名单为空即无回执
+ *   hits = [alpha, lib, vol, locked], nameNotes = []  // 名单为空即无回执
  *
- * 步骤 2：实测体积 (测不到的以占位行上清单, 不再静默移出) + 逐条判类别
- *   entries = [alpha 4.6 GB, lib '?'→80 KB + 疑似安装树注记, locked '?' + note 体积统计失败]
- *   skipped = [lib]  // 疑似安装树, 未加 --force
+ * 步骤 2：实测体积 (测不到的以占位行上清单, 不再静默移出) + 设备边界探查 + 逐条判类别
+ *   crossDevice = Map { '/w/vol/proj/node_modules' → 'on-path' }  // 与根不同设备, 入口在上层
+ *   entries = [alpha 4.6 GB, lib '?'→80 KB + 疑似安装树注记, vol 4 KB + 跨设备注记,
+ *              locked '?' + note 体积统计失败]
+ *   skipped = [lib (疑似安装树, 未加 --force), vol (跨设备, 形态 on-path)]
  *
- * 步骤 3：删除批次只含测到体积且非疑似的条目 → 安全闸校验
+ * 步骤 3：删除批次只含测到体积、非跨设备且非疑似的条目 → 安全闸校验
  *   batch = ['/w/alpha/node_modules'], accepted = ['/w/alpha/node_modules'], rejected = []
  *
- * 步骤 4：删除并回挂结果 (未入批的落 ok: false, 跳过的另附放行说明)
- *   report = [alpha ✓, lib ✗ 已跳过 (加 --force 一并清理), locked ✗], releasedBytes = 4939212390
+ * 步骤 4：删除并回挂结果 (未入批的落 ok: false, 跳过的另附本类的放行说明)
+ *   report = [alpha ✓, lib ✗ 已跳过 (加 --force 一并清理),
+ *             vol ✗ 已跳过 (把该挂载点声明为独立根即可清理), locked ✗]
+ *   releasedBytes = 4939212390
  *
  * Output（数据契约）
- *   print 执行报告 (render mode: 'execute', trailer 含『疑似安装树 1 处默认跳过』); return 1
+ *   print 执行报告 (render mode: 'execute', trailer 含『疑似安装树 1 处默认跳过』与
+ *   『跨设备目标 1 处默认跳过』两行); return 1
  * ```
  */
 async function sweep(
@@ -575,16 +599,20 @@ async function sweep(
 
   // home 同时服务两处: 清单路径的 ~ 缩写与疑似安装树的隐藏目录判定 (同一份语义, 不各读一次环境)
   const home = homedir();
-  const entries = toEntries(scanResult.hits, sizeResult, home);
-  // 语义闸: 疑似安装树默认不进删除批 (删后无法由项目级重装恢复, 见 classify.ts 与
-  // deletion-guard.md「语义闸」); --force 显式放行。计数按清单上的标记行数, 与是否测得体积无关
-  const skipped = options.force
-    ? []
-    : entries.filter((entry) => entry.suspect === true);
-  const trailer =
-    skipped.length > 0
-      ? [`疑似安装树 ${skipped.length} 处默认跳过 (加 --force 一并清理)`]
-      : [];
+  // 设备边界: 逐条挑出与所属根不在同一文件系统的目标 (根之下的挂载点)。预览与执行都要这份
+  // 判定 (前者标注、后者构造批次), 故在条目成型前算一次 (判定: guard.ts findCrossDeviceTargets)
+  const crossDevice = await findCrossDeviceTargets(
+    scanResult.hits.map((hit) => hit.target),
+    { roots },
+  );
+  const entries = toEntries(scanResult.hits, sizeResult, home, crossDevice);
+  // 语义闸 + 设备边界闸: 跳过集与末行说明由 skip.ts 单源给出 (两类判定本体见 classify.ts 与
+  // guard.ts, 放行通道各异 —— 前者 --force, 后者改配置或卸载); 计数按清单上的标记行数
+  const { trailer, hints: skippedHints } = collectSkips(
+    entries,
+    crossDevice,
+    options.force,
+  );
 
   if (!options.yes) {
     print(
@@ -602,22 +630,8 @@ async function sweep(
     return 0;
   }
 
-  // 删除批次 = 测到体积且非疑似安装树的条目 (--force 时后者保留):
-  // 体积测不到的只上清单占位行, 一律不执行删除
-  const batch = entries
-    .filter(
-      (entry) =>
-        entry.bytes !== undefined && (options.force || entry.suspect !== true),
-    )
-    .map((entry) => entry.target);
-
-  // 被跳过的目标须与「体积未测到」区分: 后者本就未入批, 其行尾已有体积失败注记,
-  // 不该再被说成「已跳过」(两条原因各有各的说明, 不混同)
-  const skippedTargets = new Set(
-    skipped
-      .filter((entry) => entry.bytes !== undefined)
-      .map((entry) => entry.target),
-  );
+  // 删除批次: 测到体积且未被保守默认挡下的目标 (挡下者、说明与计数见 skip.ts)
+  const batch = deletionBatch(entries, crossDevice, options.force);
 
   // 安全闸: 任一目标被拒即整批拒绝, 不做任何删除 (保守优先; 设计: deletion-guard.md)
   const { accepted, rejected } = await validateTargets(batch, { roots });
@@ -635,13 +649,7 @@ async function sweep(
   const removal = await removeTargets(accepted, {
     roots: await trustRoots(roots),
   });
-  const report = withOutcomes(
-    entries,
-    batch,
-    accepted,
-    removal,
-    skippedTargets,
-  );
+  const report = withOutcomes(entries, batch, accepted, removal, skippedHints);
   // 释放量按成功侧条目累计 (与汇总的「成功」计数同口径); 恒提供数值, 让 0 B 与「未提供」可区分
   const releasedBytes = report.reduce(
     (total, entry) => (entry.ok === false ? total : total + (entry.bytes ?? 0)),

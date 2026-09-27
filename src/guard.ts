@@ -1,20 +1,29 @@
 /**
- * 删除安全闸与锚点判定: 五不变量 (末段恰为 node_modules / realpath 位于某 root 之下 /
+ * 删除安全闸、锚点判定与设备边界: 五不变量 (末段恰为 node_modules / realpath 位于某 root 之下 /
  * 非根与 home 本体 / realpath 去重 / 根锚点链无符号链接) 的逐条判定与理由;
  * 另导出面向任意目标的锚点判定入口 (`firstSymlinkOnTarget`, 服务写入侧的落盘前检查,
- * 见 docs/protocol/behavior-contract.md BC-40), 与删除侧的根判定同一实现。
+ * 见 docs/protocol/behavior-contract.md BC-40), 与删除侧的根判定同一实现;
+ * 设备边界: `findCrossDeviceTargets` 挑出与所属根不同文件系统的目标并分辨形态 (st_dev 比对,
+ * 探针经 `DeviceProbe` 注入, 缺省实现 `fsDeviceProbe`), 见 BC-41 与 docs/designs/deletion-guard.md「设备边界」。
  * 分层: 字符串级判定是可注入 path 风格的纯函数 (posix / win32 语义可在任意平台测试),
- * lstat / realpath 等 IO 集中于 `validateTargets` 与 `firstSymlinkOnTarget` 两处; 是否整批拒绝由调用方定夺。
+ * lstat / realpath / stat 等 IO 集中于 `validateTargets`、`firstSymlinkOnTarget` 与 `fsDeviceProbe` 三处; 是否整批拒绝由调用方定夺。
  * 设计: docs/designs/deletion-guard.md; 可移植性: docs/adrs/0007-platform-portability.md。
  */
-import { lstat, realpath } from 'node:fs/promises';
+import { lstat, realpath, stat } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { posix, win32 } from 'node:path';
 
 /** 纯判定依赖的最小 path 能力集 (node:path 的 posix / win32 均满足) */
 export type PathOps = Pick<
   typeof posix,
-  'sep' | 'basename' | 'relative' | 'isAbsolute' | 'parse' | 'join' | 'resolve'
+  | 'sep'
+  | 'basename'
+  | 'relative'
+  | 'isAbsolute'
+  | 'parse'
+  | 'join'
+  | 'resolve'
+  | 'dirname'
 >;
 
 export interface PathStyle {
@@ -355,4 +364,132 @@ export async function validateTargets(
   }
 
   return { accepted, rejected };
+}
+
+/**
+ * 设备号探针: 读路径的 st_dev (所在文件系统的设备号)。
+ * `follow` 决定 stat 语义 (解析末段符号链接) 还是 lstat 语义 (不解析), 按判定对象分流:
+ * 根取 stat (根指向的实际目录才是参照面, 与扫描侧「根为符号链接照常扫描」同向), 目标取 lstat
+ * (与 fs.rm 的末段语义对齐 —— 目标是符号链接时 rm 只删链接、不跨设备); 不可核验 (路径消失 /
+ * 权限不足) 返回 null。
+ */
+export type DeviceProbe = (
+  path: string,
+  follow: boolean,
+) => Promise<number | null>;
+
+/** 真实文件系统探针 (缺省实现) */
+export const fsDeviceProbe: DeviceProbe = async (path, follow) => {
+  try {
+    return (await (follow ? stat : lstat)(path)).dev;
+  } catch {
+    return null;
+  }
+};
+
+/**
+ * 目标归属根: 包含该目标且路径最长 (最具体) 的根; 无归属根返回 null。
+ * 与安全闸的归属判定 (insideAnyRoot 命中任一根即可, 那里归属不承载语义) 区分: 设备比对需要
+ * 唯一参照面, 取最具体者 —— 把挂载点声明为独立根, 即是「这个卷归我处置」的显式表达, 应以
+ * 该根的设备为参照 (跨设备目标的解除路径, 见 docs/designs/deletion-guard.md「设备边界」)。
+ */
+function owningRoot(
+  target: string,
+  roots: string[],
+  style: PathStyle,
+): string | null {
+  let best: string | null = null;
+  for (const root of roots) {
+    if (!insideAnyRoot(target, [root], style)) continue;
+    if (best === null || root.length > best.length) best = root;
+  }
+  return best;
+}
+
+export interface CrossDeviceOptions {
+  /** 候选目标所属的扫描根 (配置原始拼写, 与目标拼写同源; 归属按最具体根) */
+  roots: string[];
+  /** 路径判定风味; 缺省随当前平台 */
+  style?: PathStyle;
+  /** 设备号探针; 缺省读真实文件系统 (测试注入用) */
+  probe?: DeviceProbe;
+}
+
+/**
+ * 跨设备目标的两种形态 (解除路径不同, 故分行呈现):
+ * - `on-path`: 挂载点在根与目标之间 (目标所在的整棵子树在另一文件系统上);
+ * - `target-itself`: 目标本体即挂载点 (node_modules 被直接挂上了另一卷)。
+ */
+export type CrossDeviceKind = 'on-path' | 'target-itself';
+
+/**
+ * 挑出与所属根不在同一文件系统的目标 (删除面的设备边界闸), 值即形态。
+ * 根只是路径上的授权面, 而根之下的挂载点会把另一文件系统的内容带进这条路径 (云盘 / 网络挂载 /
+ * 容器卷): 跨设备删除删的是授权路径之外的实际存储, 且删除量与根所在卷的释放量不再是同一口径,
+ * 故调用方缺省不进删除批 (设计: docs/designs/deletion-guard.md「设备边界」)。
+ *
+ * 逐条独立判定, 与安全闸的一票否决整批不同: 挂载点是单个目标的局部事实, 不牵连同根下的其余
+ * 目标; 安全闸的不变量否决整批, 是因为那些事实 (根被换位 / 目标逃逸) 会让整批的可信度一起失效。
+ * 不可核验 (设备号读不到) 与无归属根的目标不入集: 未检出即无证据, 由安全闸的 realpath 与
+ * 删除侧的逐级复核兜底, 不在这里升级成跳过。
+ *
+ * ### 数据追踪示例
+ * ```text
+ * Input（真实 Payload）
+ *   targets = ['/w/plain/node_modules', '/w/vol/proj/node_modules', '/w/onnm/node_modules']
+ *   options.roots = ['/w']
+ *   probe: /w → 16777233; /w/plain/node_modules → 16777233;
+ *          /w/vol → /w/vol/proj → /w/vol/proj/node_modules → 16777253 (挂在根之下的另一文件系统);
+ *          /w/onnm/node_modules → 16777255 (这一条自身就是挂载点), /w/onnm → 16777233
+ *
+ * 步骤 1：逐条归属到最具体根 (三条都归属 /w; 无归属根者直接跳过, 归属判定归安全闸)
+ *
+ * 步骤 2：根设备号每根只探一次 (stat 语义), 目标各自探一次 (lstat 语义) 后比对;
+ *         仅对跨设备的目标再探一次其父目录, 以分辨形态 (父目录同设备 = 目标本体即挂载点)
+ *   plain: 16777233 === 16777233 → 不挑
+ *   vol/proj: 16777253 !== 16777233, 父目录 /w/vol/proj 亦为 16777253 → on-path
+ *   onnm: 16777255 !== 16777233, 父目录 /w/onnm 为 16777233 → target-itself
+ *
+ * Output（数据契约）
+ *   return Map { '/w/vol/proj/node_modules' → 'on-path',
+ *                '/w/onnm/node_modules' → 'target-itself' }
+ * ```
+ */
+export async function findCrossDeviceTargets(
+  targets: string[],
+  options: CrossDeviceOptions,
+): Promise<Map<string, CrossDeviceKind>> {
+  const style = options.style ?? nativeStyle();
+  const probe = options.probe ?? fsDeviceProbe;
+  const devices = new Map<string, number | null>();
+  const found = new Map<string, CrossDeviceKind>();
+
+  for (const target of targets) {
+    const root = owningRoot(target, options.roots, style);
+    if (root === null) continue;
+
+    let rootDev = devices.get(root);
+    if (rootDev === undefined) {
+      rootDev = await probe(root, true);
+      devices.set(root, rootDev);
+    }
+    // 根不可核验 (不存在 / 权限不足): 没有参照面, 本条不判 (交安全闸的 realpath 兜底)
+    if (rootDev === null) continue;
+
+    const targetDev = await probe(target, false);
+    if (targetDev === null || targetDev === rootDev) continue;
+
+    // 形态分辨: 目标与父目录不同设备即「目标本体是挂载点」, 否则跨设备入口在更上层;
+    // 父目录按注入风格解析 (不得落宿主平台的 dirname: 异平台风格注入时它会按错语义切分);
+    // 父目录不可核验时归 on-path (解除路径取覆盖面更广的那条)
+    const parentDev = await probe(style.ops.dirname(target), true);
+    found.set(
+      target,
+      parentDev !== null && parentDev !== targetDev
+        ? 'target-itself'
+        : 'on-path',
+    );
+  }
+
+  return found;
 }
