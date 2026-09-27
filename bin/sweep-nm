@@ -1,6 +1,12 @@
 #!/bin/sh
 # sweep-nm 启动器: 挑选运行时 (Bun 优先, 其次 Node) 后 exec 真实入口。
 # 经 ~/.local/bin/sweep-nm 软链调用; readlink 解出仓库内路径 (BSD / GNU 皆可)。
+#
+# 运行时解析防劫持 (安全审计项 runtime-resolution:bare-name-cwd-precedence-windows):
+# 本入口无需 win32 侧那套「排除当前目录」的处理 —— command -v 与 exec 的裸名查找都只按 PATH
+# 解析 (POSIX 语义), 被扫目录不在解析面内。对照实测与本条的证据面见
+# src/launcher.runtime-resolution.test.ts; win32 侧的对应处理见 bin/sweep-nm.cmd 与
+# bin/sweep-nm.mjs 的文件头。
 
 # readlink 为空 = 未经软链直跑, 此时 $0 即自身路径
 target=$(readlink "$0" 2>/dev/null)

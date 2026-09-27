@@ -27,17 +27,17 @@ pre-commit:
   commands:
     # TypeScript 全量类型检查: 不传 {staged_files}, 天然全项目执行
     type-check:
-      glob: '*.{ts,tsx,mjs}'
+      glob: '*.{ts,tsx,mts,mjs}'
       run: bunx tsc --noEmit
 
-    # JS/TS (含 .mjs): prettier 格式化后自动重暂存, 再 oxlint
+    # JS/TS (含 .mts / .mjs): prettier 格式化后自动重暂存, 再 oxlint
     prettier-js:
-      glob: '*.{ts,tsx,mjs}'
+      glob: '*.{ts,tsx,mts,mjs}'
       run: bunx prettier --write --log-level error {staged_files}
       stage_fixed: true
 
     oxlint:
-      glob: '*.{ts,tsx,mjs}'
+      glob: '*.{ts,tsx,mts,mjs}'
       run: bunx oxlint {staged_files}
 
     # 非 JS/TS: 仅 prettier 格式化
@@ -59,4 +59,4 @@ pre-push:
       run: bunx oxlint
 
     prettier:
-      run: bunx prettier --check '**/*.{ts,tsx,mjs,md,mdx,json,yaml,yml}'
+      run: bunx prettier --check '**/*.{ts,tsx,mts,mjs,md,mdx,json,yaml,yml}'

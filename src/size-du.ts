@@ -1,6 +1,7 @@
 /**
  * 候选 A (双轨快路径): 系统 du 批量单次统计磁盘占用。
- * 探针: 绝对路径 /usr/bin/du 与 /bin/du, 均缺失时本候选标记不可用, measure 返回空结果 + 告警。
+ * 探针: 绝对路径 /usr/bin/du 与 /bin/du, 均缺失时本候选标记不可用, measure 返回空结果 + 告警;
+ * win32 一律不可用 (平台守卫见 findDu: 该绝对路径在 Windows 上会被解析为当前盘根, 属执行链劫持面)。
  * 口径: 磁盘占用 (按块取整, 恒 ≥ 逻辑字节), 与 js 候选的差异由基准环节记录裁定。
  * du 的英文 stderr 一律转成自家中文告警, 不得原样透传; 输入 target 存在但不可测时结构化记入 unmeasured。
  * 防注入: `--` 终止选项解析; 含控制字符 (换行 / 回车) 的 target 前置拒绝; stdout 路径集合与输入不符即整体降级。
@@ -22,8 +23,18 @@ const DU_PROBES = ['/usr/bin/du', '/bin/du'];
 const hasControlChar = (target: string): boolean =>
   target.includes('\n') || target.includes('\r');
 
-/** 探测可用的 du 可执行文件; 均缺失返回 null */
-export function findDu(): string | null {
+/**
+ * 探测可用的 du 可执行文件; 均缺失返回 null。
+ * win32 一律返回 null (du 快路径仅 unix, 行为契约 EC-03; 设计侧同款表述见
+ * scan-and-size.md「体积统计」): 探针是 POSIX 绝对路径, 在 win32 上会被解析为「当前盘根」
+ * 下的 usr\bin\du, 该盘存在同名外来程序时即被 spawn —— 与被扫目录同盘时构成执行链劫持面;
+ * 无 du 平台走纯 JS 候选本就是设计语义, 此处的平台守卫把该语义落到实现。
+ * platform 显式传入供测试注入 (win32 宿主不可得)。
+ */
+export function findDu(
+  platform: NodeJS.Platform = process.platform,
+): string | null {
+  if (platform === 'win32') return null;
   for (const probe of DU_PROBES) {
     try {
       accessSync(probe, constants.X_OK);

@@ -452,3 +452,15 @@ describe('size 契约 [候选间一致]', () => {
     },
   );
 });
+
+describe('findDu 平台守卫', () => {
+  test('win32 一律返回 null (du 快路径仅 unix, 契约 EC-03)', () => {
+    // 探针是 POSIX 绝对路径, win32 上会被解析为当前盘根下的 usr\bin\du (执行链劫持面)
+    expect(findDu('win32')).toBeNull();
+  });
+
+  test('非 win32 平台不受守卫影响 (仍按探针实况)', () => {
+    expect(findDu('darwin')).toBe(findDu());
+    expect(findDu('linux')).toBe(findDu());
+  });
+});

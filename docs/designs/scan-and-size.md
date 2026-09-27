@@ -36,7 +36,7 @@
 
 - **口径**: du 快路径 = 磁盘占用 (macOS / Linux, 与 Finder 一致); 纯实现基线 = 逻辑字节 (无 du 平台, 与 Explorer「大小」列一致): 各自对齐所在平台的原生惯例;
 - **快路径**: unix 平台存在 `du` 时, 汇总全部命中路径后**批量单次** spawn (`du -sk -- <paths...>`, `--` 终止符防根名以 `-` 开头被当选项);
-- **基线**: 无 du 平台走纯 JS 递归统计; 门面 (`size.ts`) 按 `findDu()` 探针二选一;
+- **基线**: 无 du 平台走纯 JS 递归统计; 门面 (`size.ts`) 按 `findDu()` 探针二选一; win32 一律归入无 du —— 探针是 POSIX 绝对路径, 在 Windows 上会被解析为「当前盘根」下的 `usr\bin\du` (该盘存在同名外来程序时即被 spawn), 故 `findDu` 的平台守卫在 win32 直接返回 null (行为契约 EC-03);
 - 结果三桶: `entries` (可测量) / `unmeasured` (存在但测不到, 如权限; **不得静默移出清单**: 下游按占位行呈现并计入失败) / `warnings` (非致命, 如子目录降级); 「不存在」的路径仅告警、不入任何桶;
 - **解析防御**: du 输出按行解析后做**多重集一致性校验** (解析出的路径须与输入一一对应), 不符即整体降级 `unmeasured` (降级随附形态归类的告警, 让「什么都没删」可被归因, 不静默); 含 `\n` / `\r` 的目标在进命令行前即被拒 (防输出行注入);
 - **输出形态 (已核实, 2026-09-27)**: du 仅在 stdout 为终端时按 shell-escape 引用文件名 (`When standard output is a terminal, file names are quoted using the shell-escape style`, GNU coreutils 手册 du 节点; 源码侧 isatty 门控, 9.12 之前的版本无引用逻辑), 本快路径以管道捕获 stdout、恒非终端, 故路径恒按输入原样成行 (TAB / ESC / 引号等原样保留; 实测 GNU du 9.12 与 BSD du, 且非终端下 `QUOTING_STYLE` 环境变量亦不生效)。一致性校验因此只可能在行结构被破坏 (注入) 或该假设被推翻时失败, 两种情形一律走整体降级 (fail-safe), 不逐条采信;
