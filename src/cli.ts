@@ -369,7 +369,7 @@ function withOutcomes(
 ): RenderEntry[] {
   const outcomes = new Map<string, RemovalOutcome>();
   for (const target of removal.removed) outcomes.set(target, { ok: true });
-  // missing = 校验与删除之间目标已消失 (TOCTOU): 目标已达成的语义, 计成功侧
+  // missing = rm 报 ENOENT 且复核确认目标本体已消失 (含 TOCTOU): 目标已达成的语义, 计成功侧
   for (const target of removal.missing) outcomes.set(target, { ok: true });
   for (const item of removal.failed)
     outcomes.set(item.target, { ok: false, error: item.error });

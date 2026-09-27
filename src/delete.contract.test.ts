@@ -1,11 +1,13 @@
 /**
- * 删除执行器契约测试: 真删 fixture 目标, 钉死七条语义 (正常 / TOCTOU 缺失 / 权限失败且
- * 错误串附复查提示 / 桶内保输入序 / 空输入 / 组件级安全复核 / 链头替换),
- * 正常路径并断言邻居目录不被波及。
+ * 删除执行器契约测试: 真删 fixture 目标, 钉死语义 (正常 / TOCTOU 缺失 / 权限失败且错误串附
+ * 复查提示 / 桶内保输入序 / 空输入 / 组件级安全复核 / 链头替换 / rm 阶段 ENOENT 的本体复核),
+ * 正常路径并断言邻居目录不被波及; Node 侧由 `delete.node-smoke.ts` 直跑冒烟, 经文末用例
+ * 以子进程方式实测 (未装 node 时 skip)。
  * 设计: docs/designs/deletion-guard.md「执行语义」。
  */
 import { afterEach, describe, expect, test } from 'bun:test';
 
+import { spawnSync } from 'node:child_process';
 import {
   chmod,
   mkdir,
@@ -15,12 +17,15 @@ import {
   writeFile,
 } from 'node:fs/promises';
 import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 import { type TrustRoot, removeTargets } from './delete.ts';
 import {
   type Workspace,
   type WorkspaceSpec,
+  makeWideTree,
   makeWorkspace,
+  startChildRacer,
 } from './fixtures.ts';
 
 const workspaces: Workspace[] = [];
@@ -360,3 +365,70 @@ describe('链头替换 (信任根被换成符号链接 → 删除导向他树)',
     expect(await exists(later)).toBe(true);
   });
 });
+
+describe('rm 阶段 ENOENT 的目标本体复核 (双运行时语义分叉的兜底)', () => {
+  test('内部条目中途消失 (竞态): missing 桶 ⟹ 目标真已消失, 不得伪报成功', async () => {
+    // 双运行时语义分叉 (本机实测 2026-09-27): Node 把递归途中的内部条目 ENOENT 归一为成功;
+    // Bun 会把它冒泡为顶层 ENOENT, 且错误形态与「顶层缺失」逐字段同形, 单看错误码无法区分;
+    // 唯一判据是复核目标本体。本用例以竞态压测钉住不变量, 观测行记录本运行时的实际形态。
+    const rounds = 10;
+    const buzz = { removed: 0, missing: 0, failed: 0 };
+    for (let round = 0; round < rounds; round += 1) {
+      const { root } = await make({ projects: [{ dir: 'app' }] });
+      const target = join(root, 'app', 'node_modules');
+      await makeWideTree(target, 120);
+      const stop = startChildRacer(target);
+      try {
+        const result = await removeTargets([target], {
+          roots: [trustRoot(root)],
+        });
+
+        if (result.removed.length > 0) buzz.removed += 1;
+        if (result.missing.length > 0) buzz.missing += 1;
+        if (result.failed.length > 0) buzz.failed += 1;
+
+        // 不变量: missing 计成功侧 (报告 ✓ 且不计入失败), 只有目标本体确认消失才可归入
+        for (const item of result.missing)
+          expect(await exists(item)).toBe(false);
+        // 内部条目消失被运行时冒泡时 (Bun 语义): 必须落 failed 且带内容残缺复查提示
+        for (const item of result.failed) {
+          if (!item.error.includes('ENOENT')) continue;
+          expect(item.error).toContain(target);
+          expect(item.error).toContain('可能已被部分或全部删除');
+        }
+      } finally {
+        // 等跑者真正退出 (含 in-flight rm 落定): 不等就进 afterEach 的清理, Bun 的 rm
+        // 遇并发会静默半途而废, 让整个工作区以残骸形态留在临时目录
+        await stop();
+      }
+    }
+    // Bun 侧实测稳定命中冒泡形态 (10 轮全落 failed, 见本行观测); 若未来某轮 failed 为 0,
+    // 说明运行时语义已漂移 (rm 不再冒泡), 用例不假红, 但分类正确性仍由上方不变量守护
+    console.log(
+      `[删除竞态观测·bun] ${rounds} 轮: removed ${buzz.removed} / missing ${buzz.missing} / failed ${buzz.failed}`,
+    );
+  });
+});
+
+const nodeProbe = spawnSync('node', ['--version'], { encoding: 'utf8' });
+const hasNode = nodeProbe.error === undefined && nodeProbe.status === 0;
+
+if (!hasNode) {
+  console.warn('[skip] 未检测到 node, 删除层 node 冒烟用例跳过');
+}
+
+test.skipIf(!hasNode)(
+  'node 冒烟: delete.node-smoke.ts 直跑通过 (exit 0)',
+  () => {
+    const smokePath = fileURLToPath(
+      new URL('./delete.node-smoke.ts', import.meta.url),
+    );
+    const cwd = fileURLToPath(new URL('..', import.meta.url));
+
+    const result = spawnSync('node', [smokePath], { cwd, encoding: 'utf8' });
+
+    expect(result.status, `冒烟脚本非零退出 (stderr: ${result.stderr})`).toBe(
+      0,
+    );
+  },
+);

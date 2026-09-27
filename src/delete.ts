@@ -1,10 +1,13 @@
 /**
  * 删除执行器: 对安全闸已校验 (realpath 化、去重) 的目标逐条执行 fs.rm(recursive)。
  * 语义 (设计: docs/designs/deletion-guard.md「执行语义」): 逐条删除、单条失败不中断整批、
- * 末尾分桶汇总。ENOENT 分两种, 不可混同: rm 阶段的 ENOENT (链路已全验为真目录, 消失的
- * 即目标本体) 归 missing, 视为成功侧 (目标已达成的语义, 不计失败); 复核阶段的组件级
- * ENOENT 归 failed (组件消失不等于目标消失: 目标可能只是被 mv 走仍在占盘, 报成功会伪造
- * 成功报告与退出码 0, 脚本化调用方无从察觉)。
+ * 末尾分桶汇总。ENOENT 分两种, 不可混同: rm 阶段的 ENOENT 一律复核目标本体, 确认已消失才归
+ * missing, 视为成功侧 (目标已达成的语义, 不计失败)。双运行时语义分叉 (本机实测 2026-09-27:
+ * Node 只在目标本体缺失时抛 ENOENT, 递归中途内部条目消失被归一为成功; Bun 会把后者冒泡为顶层
+ * ENOENT, 且错误形态与前者逐字段同形, 无法从错误对象区分), 故不看错误码定论而直接复核;
+ * 复核发现目标仍在或复核不可达 → 归 failed (内部条目消失不等于目标消失, 报成功会伪造成功报告
+ * 与退出码 0, 脚本化调用方无从察觉); 复核阶段的组件级 ENOENT 同样归 failed (组件消失时目标
+ * 可能只是被 mv 走仍在占盘)。
  *
  * 安全复核 (HIGH-1: 中间组件替换 → root 外任意删除): fs.rm 只对末段取 lstat 语义,
  * 中间组件一律跟随符号链接; guard 的 realpath 只固定校验时刻的解析结果, 二者之间把某个
@@ -43,7 +46,7 @@ export interface AbortedBatch {
 export interface RemovalResult {
   /** 实际删除成功的目标 (保输入顺序) */
   removed: string[];
-  /** rm 阶段发现目标本体已不存在 (ENOENT) 的目标; 目标已达成, 计成功侧 (保输入顺序) */
+  /** rm 报 ENOENT 且复核确认目标本体已不存在的目标; 目标已达成, 计成功侧 (保输入顺序) */
   missing: string[];
   /** 删除失败与复核未完成 (组件消失 / 不可核验) 的目标及原因 (保输入顺序); 后者未执行删除 */
   failed: FailedTarget[];
@@ -122,6 +125,33 @@ function describeVanishedReview(target: string, path: string): string {
   return `安全复核未完成 (ENOENT: 路径组件消失) (目标: ${target}; 组件: ${path}; 请复查目标是否仍存在; 未执行删除; 若目标确已不存在, 可忽略此条)`;
 }
 
+/** rm 阶段 ENOENT 后的目标本体复核结果 (三态) */
+type GoneState = 'gone' | 'present' | 'unknown';
+
+/**
+ * 目标本体是否仍存在 (rm 阶段 ENOENT 后的复核, 双运行时语义分叉的兜底)。
+ * 取 lstat 语义与 fs.rm 的末段判定对齐 (目标为符号链接时判链接本体); 复核不可达归 unknown,
+ * 与 present 同侧处置 (无法证明已消失就不报成功), 方向落在安全侧。
+ */
+async function checkGone(path: string): Promise<GoneState> {
+  try {
+    await lstat(path);
+    return 'present';
+  } catch (error) {
+    return (error as FsError | null)?.code === 'ENOENT' ? 'gone' : 'unknown';
+  }
+}
+
+/**
+ * rm 报 ENOENT 但目标本体仍在 (或复核不可达) 的可读串: rm 递归先删内容后删壳, 中途失败时
+ * 内容往往已残缺, 必须复查; 与 missing (目标已消失, 成功侧) 严格区分。
+ */
+function describeSurvivor(target: string, state: GoneState): string {
+  const review =
+    state === 'present' ? '复核确认目标仍存在' : '目标是否仍存在未能核验';
+  return `ENOENT: 删除中途失败 (${review}) (目标: ${target}; ${PARTIAL_DELETION_HINT})`;
+}
+
 /** 严格包含判定 (path.relative 语义, 与 guard 的 insideAnyRoot 同型): 等于根本体或越界均不通过 */
 function isUnder(root: string, target: string): boolean {
   const rel = relative(root, target);
@@ -191,7 +221,8 @@ async function reviewComponents(
  *   步骤 1  首项 rm 成功 → removed
  *   步骤 2  次项 rm 抛 EACCES (父目录只读) → failed, 错误串 'EACCES: 权限不足, 拒绝删除
  *            (目标: ...; 注意: 目录内容可能已被部分或全部删除, 请复查)'
- *   步骤 3  末项复核通过, rm 抛 ENOENT (目标本体已消失) → missing, 不中断
+ *   步骤 3  末项复核通过, rm 抛 ENOENT 且复核确认目标本体已消失 → missing, 不中断
+ *           (若复核发现目标本体仍在或不可达, 如 Bun 把内部条目 ENOENT 冒泡为顶层, 则归 failed)
  *   Output { removed: ['/w/zeta/node_modules'], missing: ['/w/bare/node_modules'], failed: [...] }
  *          (aborted 缺省; 若 /w 被换成指向他树的符号链接, 则首条即中止, 输出只含 aborted)
  */
@@ -253,7 +284,17 @@ export async function removeTargets(
       result.removed.push(target);
     } catch (error) {
       if ((error as FsError | null)?.code === 'ENOENT') {
-        result.missing.push(target);
+        // 不以错误码本身定论: Bun 侧会把内部条目 ENOENT 冒泡为顶层拒绝且形态与顶层缺失同形
+        // (实测见文件头注释), 须复核目标本体后再分桶
+        const state = await checkGone(target);
+        if (state === 'gone') {
+          result.missing.push(target);
+          continue;
+        }
+        result.failed.push({
+          target,
+          error: describeSurvivor(target, state),
+        });
         continue;
       }
       result.failed.push({
