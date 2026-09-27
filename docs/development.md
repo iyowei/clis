@@ -5,9 +5,13 @@
 ## 环境准备
 
 ```shell
-# 装 devDependencies, 并自动装好 git 钩子 (lefthook)
+# 装 devDependencies, 并在本包仓库检出态自动装好 git 钩子 (lefthook)
 bun install
 ```
+
+装钩子由 `scripts/install-git-hooks.mjs` 把守 (prepare 入口): 只在本包自身的 git 仓库根执行 `lefthook install`, 被作为依赖安装到别的仓库时自动跳过, 不写宿主仓库的 `.git/hooks` (依据见 [ADR 0005](adrs/0005-engineering-gates-and-hooks.md) 决策第 1 条)。lefthook 不列为依赖: 安装期取 PATH 上的 lefthook (如 `brew install lefthook`), 无则按 `lefthook.yml` 的 `lefthook:` 配置经 bunx 取 pin 版; 都不可用时安装照常完成, 只是没有钩子 (可按提示手动补装)。CI 下不装。
+
+钩子执行链同样有兜底: 机器上没有全局 lefthook 时, 钩子经 `bunx` 取 pin 版照跑; 确认无处可取时按 `assert_lefthook_installed` 响亮报错退非零, 不静默放行 (两键均在 `lefthook.yml`, 依据同上)。
 
 ## 常用命令
 

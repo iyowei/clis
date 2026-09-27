@@ -7,6 +7,7 @@
 > **影响范围**: [全项目]
 > **修订 (2026-09-23)**: 本 ADR 初稿含 bun 专属的运行时范围与安装形态表述, 该部分已由 [ADR 0006](0006-dual-runtime-bun-first.md) 修订为双运行时与启动器形态; 本 ADR 收窄为纯依赖与构建策略, 运行时事项一律以 ADR 0006 为准。
 > **修订 (2026-09-23)**: 决策条第 2 条的「零构建」已被 [ADR 0009](0009-npm-distribution-form.md) 局部取代: 开发运行路径仍零构建, 仅 npm 分发态产出编译产物; 本 ADR 的零运行时依赖策略不受影响。
+> **修订 (2026-09-27)**: 决策条第 3 条的 devDependencies 列举已修订: 钩子工具 lefthook 移出依赖 (不列依赖的理由与取用方式见文末补记); 本 ADR 的零运行时依赖策略不受影响。
 
 ## 上下文与问题陈述 (Context & Problem)
 
@@ -30,7 +31,7 @@
 
 1. **运行时零依赖**: 运行路径上的代码只 import 运行时内置模块 (`bun:` / `node:`) 与相对路径模块, 不引任何第三方包; ANSI 颜色与参数解析手写。
 2. **零构建**: 源码直跑, 无产物, 无打包步骤, 改完即生效 (已被 [ADR 0009](0009-npm-distribution-form.md) 局部取代: 开发运行路径仍零构建, npm 分发态产出编译产物)。
-3. **边界: 开发工具链不受限**: devDependencies (oxlint / prettier / lefthook / typescript 等) 不进运行路径, 不属本条约束; 但它们一律精确锁定版本 (见 [ADR 0005](0005-engineering-gates-and-hooks.md))。
+3. **边界: 开发工具链不受限**: devDependencies (oxlint / prettier / lefthook / typescript 等) 不进运行路径, 不属本条约束; 但它们一律精确锁定版本 (见 [ADR 0005](0005-engineering-gates-and-hooks.md))。(2026-09-27 修订: 钩子工具 lefthook 移出依赖, 见补记)
 
 选择原因: 依赖为零则供应链面、升级负担、构建步骤同时归零, 这是个人小工具档位下最低的长期维护成本。
 
@@ -56,3 +57,7 @@
 
 - 双运行时与安装形态见 [ADR 0006](0006-dual-runtime-bun-first.md)。
 - 定位见 [ADR 0001](0001-workspace-level-cleaner.md)。
+
+## 补记 (2026-09-27)
+
+决策第 3 条的 devDependencies 列举原含 lefthook, 修订为**不列依赖**: lefthook 自带 postinstall 且被包管理器默认信任 (bun 内置信任名单含 lefthook), 本地路径 / vendor 形态下会被装进宿主 `node_modules` 并把钩子写进宿主仓库的 `.git/hooks`。取用改为: 安装期按 PATH 上的 `lefthook` (如 `brew install lefthook`) → `lefthook.yml` 的 `lefthook:` 配置值 (经 bunx 取 pin 版; 同读一行, 单一事实来源), 执行期 pin 只有 `lefthook.yml` 一处。不列依赖的理由与实测完整规格见 [ADR 0005](0005-engineering-gates-and-hooks.md) 决策第 1 条, 本文不复述。

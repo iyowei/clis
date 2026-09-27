@@ -56,7 +56,7 @@
     "access": "public"
   },
   "scripts": {
-    "prepare": "[ -z \"$CI\" ] && lefthook install || true",
+    "prepare": "node scripts/install-git-hooks.mjs || exit 0",
     "build": "bun build src/cli.ts --target=node --outfile=dist/cli.js && bun scripts/write-dist-manifest.ts",
     "prepublishOnly": "npm run build && npm run verify:release",
     "verify:release": "bun scripts/verify-release.ts",
@@ -71,7 +71,6 @@
   "devDependencies": {
     "@trivago/prettier-plugin-sort-imports": "6.0.2",
     "@types/bun": "1.4.2",
-    "lefthook": "2.1.14",
     "oxlint": "1.85.0",
     "prettier": "3.9.8",
     "typescript": "7.0.2"

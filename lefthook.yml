@@ -12,6 +12,15 @@
 # 因此 pre-push 一律只读: prettier 用 --check 而非 --write, 不设 stage_fixed
 # (--write 在 push 阶段是纯副作用: 改动进不了正在推送的提交, 只在本地凭空多出
 # 未提交改动)。
+#
+# 执行链的 lefthook 取用: 官方生成的钩子模板探测链不含 bunx, 且默认「找不到即
+# 静默放行」(门禁悄悄失效); 这里用官方两个配置键补齐 —— lefthook: 指定经 bunx
+# 取 pin 版 (无全局 lefthook 的机器也能跑, 与 LEFTHOOK_BIN / PATH 的优先级由
+# 模板决定), assert_lefthook_installed: true 让整链失败时退非零而非静默通过。
+# 依据见 ADR 0005 决策第 1 条。
+
+lefthook: bunx lefthook@2.1.14
+assert_lefthook_installed: true
 
 pre-commit:
   parallel: false
