@@ -1,6 +1,6 @@
 {
   "name": "@iyowei/sweep-node-modules",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "CLI tool to find and delete node_modules across projects: scan multiple workspace roots (monorepo friendly), bulk-remove them to free up disk space, preview first and delete after confirmation. 工作区级 node_modules 批量清理工具。",
   "keywords": [
     "cli",
