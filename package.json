@@ -56,6 +56,7 @@
     "access": "public"
   },
   "scripts": {
+    "safe-install": "bun scripts/safe-install.ts",
     "prepare": "node scripts/install-git-hooks.mjs || exit 0",
     "build": "bun build src/cli.ts --target=node --outfile=dist/cli.js && bun scripts/write-dist-manifest.ts",
     "prepublishOnly": "npm run build && npm run verify:release",
