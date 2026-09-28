@@ -5,10 +5,12 @@
  * 端到端不便造的畸形现场 (零字节产物 / 清单 JSON 损坏 / schemaVersion 不受支持等) 走注入事实的
  * 字段级用例: judgeRelease 是纯函数, 事实输入可完全摆布。
  * 发行面清单 (npm pack 输出) 同理注入, 端到端用例因而一次 npm 都不跑; 白名单与真实 npm 行为的
- * 对齐由文末「真实 npm 对齐」组在本仓库上实跑一次钉住 (防仓库根杂质复发)。
+ * 对齐由文末「真实 npm 对齐」组在本仓库上实跑一次钉住 (防仓库根杂质复发); 该组在无 dist/ 的
+ * 未构建态注册期 skip 并播报 (bun:test 无运行时 skip), 免得「还没构建」被误报成发行面回归。
  */
 import { describe, expect, test } from 'bun:test';
 
+import { existsSync } from 'node:fs';
 import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
@@ -398,14 +400,30 @@ describe('发行面白名单 · 注入式 (喂假 pack 输出, 一次 npm 都不
   });
 });
 
-describe('发行面白名单 · 真实 npm 对齐 (本仓库实测)', () => {
-  test('本仓库工作树的 pack 清单与白名单逐项一致 (仓库根杂质复发的常驻回归)', () => {
-    const facts = readPackFiles(REPO_ROOT);
+/**
+ * 真实 npm 对齐的注册门控: 工作树无 dist/ = 未构建的合法态 (safe-install 清产物后尚未重构建即如此),
+ * 此时 pack 清单必然缺 dist/cli.js 与 dist/manifest.json, 属「还没构建」而非「发行面杂质回归」。
+ * 注册期判定 skip 并播报原因; dist 在场则全程维持原有全清单断言, 不削弱真问题抓取力。
+ */
+const hasDist = existsSync(join(REPO_ROOT, 'dist'));
 
-    // 采不到即失败并显示 issue (如「需要 npm」), 不静默跳过: 该项是发行面唯一的真实对齐证据
-    expect(facts.issue).toBeNull();
-    const verdict = judgePackFiles(facts.files ?? []);
-    // 断言携带 reason 而非裸 false: 失败时测试输出直接给出差异清单, 一眼看清是多出还是缺少
-    expect(verdict.ok ? '' : verdict.reason).toBe('');
-  });
+if (!hasDist) {
+  console.warn(
+    '[Skip] 工作树无构建产物 (先 bun run build); 本用例守护发行面杂质回归',
+  );
+}
+
+describe('发行面白名单 · 真实 npm 对齐 (本仓库实测)', () => {
+  test.skipIf(!hasDist)(
+    '本仓库工作树的 pack 清单与白名单逐项一致 (仓库根杂质复发的常驻回归)',
+    () => {
+      const facts = readPackFiles(REPO_ROOT);
+
+      // 采不到即失败并显示 issue (如「需要 npm」), 不静默跳过: 该项是发行面唯一的真实对齐证据
+      expect(facts.issue).toBeNull();
+      const verdict = judgePackFiles(facts.files ?? []);
+      // 断言携带 reason 而非裸 false: 失败时测试输出直接给出差异清单, 一眼看清是多出还是缺少
+      expect(verdict.ok ? '' : verdict.reason).toBe('');
+    },
+  );
 });

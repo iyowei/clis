@@ -39,6 +39,9 @@ bun run build
 
 # 发布前置闸门 (干净检出 + 产物就位 + 清单自洽 + 发行面白名单; 发布前自动跑, 也可手动复核)
 bun run verify:release
+
+# 干净重装 (清掉 dist / bun.lock / node_modules 后重新 bun install; 只清不建, 跑测试或推送前先 bun run build 重建产物)
+bun run safe-install
 ```
 
 ## 发布
