@@ -7,6 +7,7 @@ import type { Dirent } from 'node:fs';
 import { readdir, realpath } from 'node:fs/promises';
 import { join } from 'node:path';
 
+import { SweepError } from './errors.ts';
 import type {
   ScanHit,
   ScanOptions,
@@ -84,6 +85,12 @@ export function createPruningScanner(): Scanner {
         included: boolean,
         root: string,
       ): Promise<void> => {
+        // 取消检查点 (每个遍历任务开始前): 被 abort 即 reject, 语义是「本次未完成」而非「结果为空」
+        if (options.signal?.aborted) {
+          throw new SweepError('CANCELLED', '扫描在遍历任务检查点被取消', {
+            phase: 'scan',
+          });
+        }
         let entries: Dirent[];
         try {
           entries = await readdir(dir, { withFileTypes: true });
@@ -107,8 +114,11 @@ export function createPruningScanner(): Scanner {
             // realpath 仅作去重键, 失败时退回字面路径
             const target = join(dir, name);
             const key = await realpath(target).catch(() => target);
-            if (!hitsByRealTarget.has(key))
-              hitsByRealTarget.set(key, { project: dir, target, root });
+            if (!hitsByRealTarget.has(key)) {
+              const hit: ScanHit = { project: dir, target, root };
+              hitsByRealTarget.set(key, hit);
+              options.onProgress?.({ kind: 'hit', hit });
+            }
             continue;
           }
           if (name === GIT_DIR || exclude.has(name)) continue;

@@ -38,10 +38,12 @@ import type { Dirent } from 'node:fs';
 import { readdir, realpath, stat } from 'node:fs/promises';
 import { join } from 'node:path';
 
+import { SweepError } from './errors.ts';
 import { type PathStyle, dedupeKey, nativeStyle } from './guard.ts';
 import type {
   ScanHit,
   ScanOptions,
+  ScanProgressEvent,
   ScanResult,
   Scanner,
   SweepWarning,
@@ -126,6 +128,10 @@ interface WalkContext {
   hits: Map<string, ScanHit>;
   /** 非致命告警 (不可读目录 / 根预检失败), 不中断扫描 */
   warnings: SweepWarning[];
+  /** 取消信号 (检查点在每个遍历任务开始前) */
+  signal?: AbortSignal;
+  /** 进度回调 (每命中一处发一条 hit 事件) */
+  onProgress?: (event: ScanProgressEvent) => void;
 }
 
 /**
@@ -145,6 +151,8 @@ async function walkRoot(root: string, ctx: WalkContext): Promise<void> {
     includeCounts,
     hits,
     warnings,
+    signal,
+    onProgress,
   } = ctx;
   /** 待遍历目录栈 (LIFO 取子树局部性, pop 为 O(1)) */
   const stack: Pending[] = [{ dir: root, included: include.size === 0 }];
@@ -179,6 +187,13 @@ async function walkRoot(root: string, ctx: WalkContext): Promise<void> {
 
   async function visit(dir: string, included: boolean): Promise<void> {
     try {
+      // 取消检查点 (每个遍历任务开始前): 被 abort 即 reject, 语义是「本次未完成」而非「结果为空」。
+      // 必须留在 try 内: 抛出走 failures 暂存通道, 且 finally 的 outstanding 记账照常收尾
+      if (signal?.aborted) {
+        throw new SweepError('CANCELLED', '扫描在遍历任务检查点被取消', {
+          phase: 'scan',
+        });
+      }
       let entries: Dirent[];
       try {
         entries = await readdir(dir, { withFileTypes: true });
@@ -205,7 +220,11 @@ async function walkRoot(root: string, ctx: WalkContext): Promise<void> {
             await realpath(target).catch(() => target),
             style,
           );
-          if (!hits.has(key)) hits.set(key, { project: dir, target, root });
+          if (!hits.has(key)) {
+            const hit: ScanHit = { project: dir, target, root };
+            hits.set(key, hit);
+            onProgress?.({ kind: 'hit', hit });
+          }
           continue;
         }
         if (name === GIT_DIR) continue;
@@ -325,6 +344,8 @@ export function createParallelScanner(): Scanner {
         includeCounts,
         hits: hitsByRealTarget,
         warnings,
+        signal: options.signal,
+        onProgress: options.onProgress,
       };
       for (const root of roots) {
         await walkRoot(root, context);

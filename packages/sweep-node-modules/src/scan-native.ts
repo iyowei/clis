@@ -12,6 +12,7 @@ import type { Dirent } from 'node:fs';
 import { readdir, realpath } from 'node:fs/promises';
 import { join } from 'node:path';
 
+import { SweepError } from './errors.ts';
 import type {
   ScanHit,
   ScanOptions,
@@ -44,11 +45,18 @@ interface Pending {
 async function collect(
   root: string,
   warnings: SweepWarning[],
+  signal?: AbortSignal,
 ): Promise<Candidate[]> {
   const candidates: Candidate[] = [];
   const queue: Pending[] = [{ dir: root, segments: [] }];
 
   for (let cursor = 0; cursor < queue.length; cursor += 1) {
+    // 取消检查点 (每个遍历任务开始前): 被 abort 即 reject, 语义是「本次未完成」而非「结果为空」
+    if (signal?.aborted) {
+      throw new SweepError('CANCELLED', '扫描在遍历任务检查点被取消', {
+        phase: 'scan',
+      });
+    }
     const { dir, segments } = queue[cursor]!;
 
     let entries: Dirent[];
@@ -113,25 +121,33 @@ function compareTarget(a: ScanHit, b: ScanHit): number {
 export function createNativeScanner(): Scanner {
   return {
     name: 'native',
-    async scan({ roots, exclude, include }: ScanOptions): Promise<ScanResult> {
+    async scan({
+      roots,
+      exclude,
+      include,
+      signal,
+      onProgress,
+    }: ScanOptions): Promise<ScanResult> {
       const warnings: SweepWarning[] = [];
       const excluded = new Set(exclude);
       const included = new Set(include);
       const hits = new Map<string, ScanHit>();
 
       for (const root of roots) {
-        for (const candidate of await collect(root, warnings)) {
+        for (const candidate of await collect(root, warnings, signal)) {
           if (rejected(candidate.segments, excluded, included)) continue;
           // 多根重复与嵌套根按 realpath 去重; realpath 失败 (扫描中被移除) 回退原路径
           const key = await realpath(candidate.target).catch(
             () => candidate.target,
           );
           if (!hits.has(key)) {
-            hits.set(key, {
+            const hit: ScanHit = {
               project: candidate.project,
               target: candidate.target,
               root,
-            });
+            };
+            hits.set(key, hit);
+            onProgress?.({ kind: 'hit', hit });
           }
         }
       }
