@@ -46,6 +46,6 @@ jobs:
           node-version: 24
       - run: bun install --frozen-lockfile
       - name: Conformance (bun)
-        run: bun packages/cli/scripts/transcription/run-conformance.ts --target "bun packages/cli/src/cli.ts"
+        run: bun packages/sweep-node-modules-cli/scripts/transcription/run-conformance.ts --target "bun packages/sweep-node-modules-cli/src/cli.ts"
       - name: Conformance (node)
-        run: bun packages/cli/scripts/transcription/run-conformance.ts --target "node packages/cli/src/cli.ts"
+        run: bun packages/sweep-node-modules-cli/scripts/transcription/run-conformance.ts --target "node packages/sweep-node-modules-cli/src/cli.ts"

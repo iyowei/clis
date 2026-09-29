@@ -3,7 +3,7 @@ package-lock.json
 .DS_Store
 *.log
 *.modified
-packages/api/bench/results/
-packages/cli/scripts/transcription/mutants/gen-*/
+packages/sweep-node-modules/bench/results/
+packages/sweep-node-modules-cli/scripts/transcription/mutants/gen-*/
 dist/
 .turbo/

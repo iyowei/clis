@@ -18,7 +18,7 @@ import { fileURLToPath } from 'node:url';
 
 import { cleanGitEnv } from './git-env.ts';
 
-/** 包根 (packages/cli; 本文件所在 scripts/ 上溯一级): dist/ 落点与 npm pack 的坐标; git 检查命令在此坐标下运行 (无 pathspec, 仍为全仓语义) */
+/** 包根 (packages/sweep-node-modules-cli; 本文件所在 scripts/ 上溯一级): dist/ 落点与 npm pack 的坐标; git 检查命令在此坐标下运行 (无 pathspec, 仍为全仓语义) */
 export const PACKAGE_ROOT = resolve(
   dirname(fileURLToPath(import.meta.url)),
   '..',

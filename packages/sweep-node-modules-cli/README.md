@@ -55,10 +55,10 @@ bun install -g @iyowei/sweep-node-modules-cli
 # clone, then cd into the repo root (adjust the path to your clone location)
 cd "<your clone>/sweep-node-modules"
 
-chmod +x packages/cli/bin/sweep-nm
+chmod +x packages/sweep-node-modules-cli/bin/sweep-nm
 
 # symlink it into ~/.local/bin (usually already on PATH); the launcher picks the runtime
-ln -sf "$PWD/packages/cli/bin/sweep-nm" ~/.local/packages/cli/bin/sweep-nm
+ln -sf "$PWD/packages/sweep-node-modules-cli/bin/sweep-nm" ~/.local/packages/sweep-node-modules-cli/bin/sweep-nm
 ```
 
 **Windows** (PowerShell):
@@ -66,7 +66,7 @@ ln -sf "$PWD/packages/cli/bin/sweep-nm" ~/.local/packages/cli/bin/sweep-nm
 ```powershell
 # add the repo's bin directory to your user PATH; one-time, effective after reopening the terminal
 # adjust the path to your actual clone location (the launcher locates src relative to itself, so the script cannot be copied out on its own)
-$bin = "$env:USERPROFILE\tools\sweep-node-modules\packages\cli\bin"
+$bin = "$env:USERPROFILE\tools\sweep-node-modules\packages\sweep-node-modules-cli\bin"
 [Environment]::SetEnvironmentVariable(
   'Path',
   [Environment]::GetEnvironmentVariable('Path', 'User') + ";$bin",
@@ -77,7 +77,7 @@ $bin = "$env:USERPROFILE\tools\sweep-node-modules\packages\cli\bin"
 > Or skip the command line: add the `bin` directory to your user `Path` under System Properties → Environment Variables.
 
 - **Requires**: bun or node, either works (the launcher is a shell / cmd script run by the OS; it does not depend on node)
-- The most direct entry point; afterwards just run `sweep-nm` (on Windows via `packages\cli\bin\sweep-nm.cmd`)
+- The most direct entry point; afterwards just run `sweep-nm` (on Windows via `packages\sweep-node-modules-cli\bin\sweep-nm.cmd`)
 
 > The tool also ships an API package, `@iyowei/sweep-node-modules`, for use in your own programs or scripts (usage is documented in that package).
 

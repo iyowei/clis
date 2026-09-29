@@ -52,7 +52,7 @@
   ],
   "multi-release": {
     "ignorePackages": [
-      "packages/api"
+      "packages/sweep-node-modules"
     ]
   },
   "scripts": {
@@ -64,8 +64,8 @@
     "lint:fix": "oxlint --fix",
     "format": "prettier --write .",
     "test": "turbo run test",
-    "bench": "bun packages/api/bench/run.ts",
-    "conformance": "bun packages/cli/scripts/transcription/run-conformance.ts"
+    "bench": "bun packages/sweep-node-modules/bench/run.ts",
+    "conformance": "bun packages/sweep-node-modules-cli/scripts/transcription/run-conformance.ts"
   },
   "devDependencies": {
     "@lidofinance/multi-semantic-release": "1.0.3",

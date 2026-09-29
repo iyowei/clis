@@ -13,7 +13,7 @@
  * 语料权威: docs/protocol/conformance/corpus.schema.json (字段语义以 schema 为准; 手写校验是
  * schema 的物化子集, 只为尽早给出可读报错, 不复刻 schema 的全部约束)。
  *
- * 用法: bun packages/cli/scripts/transcription/run-conformance.ts --target "bun packages/cli/src/cli.ts" [--corpus <dir>] [--filter <id 子串>]
+ * 用法: bun packages/sweep-node-modules-cli/scripts/transcription/run-conformance.ts --target "bun packages/sweep-node-modules-cli/src/cli.ts" [--corpus <dir>] [--filter <id 子串>]
  *       [--timeout <ms>] [--json] [--keep] [--help]
  *
  * 退出码: 0 全部通过; 1 存在失败用例; 2 用法 / 语料 / 环境错误 (runner 自身问题, 非被测缺陷)。
@@ -44,7 +44,7 @@ import {
 const HERE = dirname(fileURLToPath(import.meta.url));
 /**
  * 默认语料目录: 语料的权威落点在协议区 (docs/protocol/conformance/corpus), 脚本不随身携带语料。
- * 脚本现居 packages/cli/scripts/transcription/, 自 HERE 上溯 4 级到仓库根再取 docs。
+ * 脚本现居 packages/sweep-node-modules-cli/scripts/transcription/, 自 HERE 上溯 4 级到仓库根再取 docs。
  */
 const DEFAULT_CORPUS_DIR = join(
   HERE,
@@ -77,9 +77,9 @@ type ParseOutcome =
 // ---------------------------------------------------------------------------
 
 const HELP_TEXT = [
-  '用法: bun packages/cli/scripts/transcription/run-conformance.ts --target "<被测命令>" [选项]',
+  '用法: bun packages/sweep-node-modules-cli/scripts/transcription/run-conformance.ts --target "<被测命令>" [选项]',
   '',
-  '  --target <cmd>    被测进程命令 (如 "bun packages/cli/src/cli.ts" 或 "./sweep-nm"); 按空白拆分, 不支持含空格的路径',
+  '  --target <cmd>    被测进程命令 (如 "bun packages/sweep-node-modules-cli/src/cli.ts" 或 "./sweep-nm"); 按空白拆分, 不支持含空格的路径',
   '  --corpus <dir>    语料目录 (默认: docs/protocol/conformance/corpus)',
   '  --filter <text>   只跑 id 含该子串的用例',
   '  --timeout <ms>    单条用例执行超时 (默认 15000), 到期即判失败 (超时守卫)',
@@ -96,13 +96,13 @@ const HELP_TEXT = [
  * ### 数据追踪示例
  * ```text
  * Input（真实 Payload）
- *   argv = ['--target', 'bun packages/cli/src/cli.ts', '--filter', 'scan-']
+ *   argv = ['--target', 'bun packages/sweep-node-modules-cli/src/cli.ts', '--filter', 'scan-']
  *
  * 步骤 1：逐项识别
- *   --target 收值 'bun packages/cli/src/cli.ts'; --filter 收值 'scan-'; 其余取默认
+ *   --target 收值 'bun packages/sweep-node-modules-cli/src/cli.ts'; --filter 收值 'scan-'; 其余取默认
  *
  * Output（数据契约）
- *   return { ok: true, options: { target: 'bun packages/cli/src/cli.ts', corpusDir: 'docs/protocol/conformance/corpus', filter: 'scan-', timeoutMs: 15000, json: false, keep: false, help: false } }
+ *   return { ok: true, options: { target: 'bun packages/sweep-node-modules-cli/src/cli.ts', corpusDir: 'docs/protocol/conformance/corpus', filter: 'scan-', timeoutMs: 15000, json: false, keep: false, help: false } }
  * ```
  */
 function parseArgs(argv: string[]): ParseOutcome {
@@ -183,7 +183,7 @@ function parseArgs(argv: string[]): ParseOutcome {
 
 /**
  * 把 target 命令里按启动目录写的相对路径绝对化。
- * 必要原因: 被测进程的 cwd 会被设为 fixture 目录 (用例可声明), 而 `--target "bun packages/cli/src/cli.ts"`
+ * 必要原因: 被测进程的 cwd 会被设为 fixture 目录 (用例可声明), 而 `--target "bun packages/sweep-node-modules-cli/src/cli.ts"`
  * 里 `src/cli.ts` 是相对 runner 启动目录书写的; 不绝对化就会在 fixture cwd 下解析而找不到文件。
  * 规则保守: 只动 index >= 1 (argv[0] 是命令名, 留给 PATH 解析)、非旗标、且相对启动目录真实存在
  * 的路径串, 其余原样透传。

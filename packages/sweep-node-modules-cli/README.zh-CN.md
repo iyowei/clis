@@ -55,10 +55,10 @@ bun install -g @iyowei/sweep-node-modules-cli
 # 克隆后进入仓库根 (路径按你的实际位置调整)
 cd "<克隆位置>/sweep-node-modules"
 
-chmod +x packages/cli/bin/sweep-nm
+chmod +x packages/sweep-node-modules-cli/bin/sweep-nm
 
 # 软链进 ~/.local/bin (通常已在 PATH 中), 启动器会挑选运行时
-ln -sf "$PWD/packages/cli/bin/sweep-nm" ~/.local/packages/cli/bin/sweep-nm
+ln -sf "$PWD/packages/sweep-node-modules-cli/bin/sweep-nm" ~/.local/packages/sweep-node-modules-cli/bin/sweep-nm
 ```
 
 **Windows** (PowerShell):
@@ -66,7 +66,7 @@ ln -sf "$PWD/packages/cli/bin/sweep-nm" ~/.local/packages/cli/bin/sweep-nm
 ```powershell
 # 把仓库的 bin 目录加入用户 PATH, 只需一次, 重开终端后生效
 # 路径按你的实际克隆位置调整 (启动器靠自身位置定位 src, 故不能把脚本单独复制走)
-$bin = "$env:USERPROFILE\tools\sweep-node-modules\packages\cli\bin"
+$bin = "$env:USERPROFILE\tools\sweep-node-modules\packages\sweep-node-modules-cli\bin"
 [Environment]::SetEnvironmentVariable(
   'Path',
   [Environment]::GetEnvironmentVariable('Path', 'User') + ";$bin",
@@ -77,7 +77,7 @@ $bin = "$env:USERPROFILE\tools\sweep-node-modules\packages\cli\bin"
 > 也可以不经命令行: 在「系统属性 → 环境变量」里把该 `bin` 目录加到用户变量 `Path` 中。
 
 - **需要**: bun 或 node 任一 (启动器是 shell / cmd 脚本, 由系统执行, 不依赖 node)
-- 特点: 入口最直接; 之后直接敲 `sweep-nm` (Windows 经 `packages\cli\bin\sweep-nm.cmd`)
+- 特点: 入口最直接; 之后直接敲 `sweep-nm` (Windows 经 `packages\sweep-node-modules-cli\bin\sweep-nm.cmd`)
 
 > 本工具同时提供可编程 API 包 `@iyowei/sweep-node-modules`, 供在程序或脚本中调用 (用法见该包文档)。
 

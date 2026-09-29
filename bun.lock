@@ -17,18 +17,18 @@
         "typescript": "7.0.2",
       },
     },
-    "packages/api": {
+    "packages/sweep-node-modules": {
       "name": "@iyowei/sweep-node-modules",
       "version": "0.5.0",
     },
-    "packages/cli": {
+    "packages/sweep-node-modules-cli": {
       "name": "@iyowei/sweep-node-modules-cli",
-      "version": "0.1.0",
+      "version": "0.1.1",
       "bin": {
         "sweep-nm": "bin/sweep-nm.mjs",
       },
       "devDependencies": {
-        "@iyowei/sweep-node-modules": "workspace:^",
+        "@iyowei/sweep-node-modules": "*",
       },
     },
   },
@@ -63,9 +63,9 @@
 
     "@dabh/diagnostics": ["@dabh/diagnostics@2.0.9", "https://registry.npmmirror.com/@dabh/diagnostics/-/diagnostics-2.0.9.tgz", { "dependencies": { "@so-ric/colorspace": "^1.1.6", "enabled": "2.0.x", "kuler": "^2.0.0" } }, "sha512-R6siwR65Hm+3yfgP7o8DKhNvputQAwfoz9zTc3kyDudnomj2/BcLmD+uGQQPICjuFUp8ounPBU+jmKsocwVVAg=="],
 
-    "@iyowei/sweep-node-modules": ["@iyowei/sweep-node-modules@workspace:packages/api"],
+    "@iyowei/sweep-node-modules": ["@iyowei/sweep-node-modules@workspace:packages/sweep-node-modules"],
 
-    "@iyowei/sweep-node-modules-cli": ["@iyowei/sweep-node-modules-cli@workspace:packages/cli"],
+    "@iyowei/sweep-node-modules-cli": ["@iyowei/sweep-node-modules-cli@workspace:packages/sweep-node-modules-cli"],
 
     "@jridgewell/gen-mapping": ["@jridgewell/gen-mapping@0.3.13", "https://registry.npmmirror.com/@jridgewell/gen-mapping/-/gen-mapping-0.3.13.tgz", { "dependencies": { "@jridgewell/sourcemap-codec": "^1.5.0", "@jridgewell/trace-mapping": "^0.3.24" } }, "sha512-2kkt/7niJ6MgEPxF0bYdQ6etZaA+fQvDcLKckhy1yIQOzaoKjBBjSj63/aLVjYE3qhRt5dvM+uUyfCg6UKCBbA=="],
 

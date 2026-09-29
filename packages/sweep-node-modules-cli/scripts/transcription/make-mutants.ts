@@ -1,5 +1,5 @@
 /**
- * 变异生成器 (反向验收的自证件): 从两包源码 (packages/api/src + packages/cli/src) 复制一份实现
+ * 变异生成器 (反向验收的自证件): 从两包源码 (packages/sweep-node-modules/src + packages/sweep-node-modules-cli/src) 复制一份实现
  * 并注入单点缺陷, 生成到 mutants/gen-<id>/; 副本自带 node_modules 链接 (指向 api 副本), 可独立运行。
  *
  * 用途 (变异自证): 语料必须能抓住每一个 mutant; 抓不住 = 语料盲区 (或该 mutant 定义过弱),
@@ -9,11 +9,11 @@
  * 幂等: 每次重建自己的 gen-* 目录, 并清掉清单之外的陈旧 gen-*; 锚点失配 (源码在漂移) 时显式
  * 失败并报出文件, 严禁静默产出一份「没注入缺陷」的副本 (那会把反向验收变成永远绿的空转)。
  *
- * 用法: bun packages/cli/scripts/transcription/make-mutants.ts [--help]
+ * 用法: bun packages/sweep-node-modules-cli/scripts/transcription/make-mutants.ts [--help]
  *
- * 产物结构: mutants/gen-<id>/packages/{api,cli}/src/*.ts (注入后的实现) + mutants/gen-<id>/mutant.json
+ * 产物结构: mutants/gen-<id>/packages/{sweep-node-modules,sweep-node-modules-cli}/src/*.ts (注入后的实现) + mutants/gen-<id>/mutant.json
  * (注入记录)。
- * 运行某 mutant: bun packages/cli/scripts/transcription/mutants/gen-<id>/packages/cli/src/cli.ts
+ * 运行某 mutant: bun packages/sweep-node-modules-cli/scripts/transcription/mutants/gen-<id>/packages/sweep-node-modules-cli/src/cli.ts
  * (与 --target 配合喂给 run-conformance.ts)。
  */
 import {
@@ -29,13 +29,28 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
-/** 仓库根 (packages/cli/scripts/transcription/ 上溯四级): 两包源码与配置的定位基准 */
+/** 仓库根 (packages/sweep-node-modules-cli/scripts/transcription/ 上溯四级): 两包源码与配置的定位基准 */
 const REPO_ROOT = resolve(HERE, '..', '..', '..', '..');
 /** 被测源: 两包的 src (mutant 是整仓实现的注入副本) 与各自 package.json (副本自足可跑) */
-const API_SRC_DIR = join(REPO_ROOT, 'packages', 'api', 'src');
-const CLI_SRC_DIR = join(REPO_ROOT, 'packages', 'cli', 'src');
-const API_PKG_JSON = join(REPO_ROOT, 'packages', 'api', 'package.json');
-const CLI_PKG_JSON = join(REPO_ROOT, 'packages', 'cli', 'package.json');
+const API_SRC_DIR = join(REPO_ROOT, 'packages', 'sweep-node-modules', 'src');
+const CLI_SRC_DIR = join(
+  REPO_ROOT,
+  'packages',
+  'sweep-node-modules-cli',
+  'src',
+);
+const API_PKG_JSON = join(
+  REPO_ROOT,
+  'packages',
+  'sweep-node-modules',
+  'package.json',
+);
+const CLI_PKG_JSON = join(
+  REPO_ROOT,
+  'packages',
+  'sweep-node-modules-cli',
+  'package.json',
+);
 /** api 包名: cli 副本经同名 node_modules 链接解析到 api 副本 (就近优先于仓库根真包) */
 const API_PKG_NAME = '@iyowei/sweep-node-modules';
 
@@ -160,11 +175,11 @@ const MUTANTS: MutantSpec[] = [
 // ---------------------------------------------------------------------------
 
 const HELP_TEXT = [
-  '用法: bun packages/cli/scripts/transcription/make-mutants.ts',
+  '用法: bun packages/sweep-node-modules-cli/scripts/transcription/make-mutants.ts',
   '',
   '  --help       显示本帮助',
   '',
-  '产出: mutants/gen-<id>/packages/{api,cli}/src/*.ts + mutant.json (幂等重建)',
+  '产出: mutants/gen-<id>/packages/{sweep-node-modules,sweep-node-modules-cli}/src/*.ts + mutant.json (幂等重建)',
 ].join('\n');
 
 /** 统计 needle 在 text 中的出现次数 (不重叠) */
@@ -212,7 +227,7 @@ async function locatePatchTarget(
   outDir: string,
   file: string,
 ): Promise<string> {
-  for (const pkg of ['api', 'cli'] as const) {
+  for (const pkg of ['sweep-node-modules', 'sweep-node-modules-cli'] as const) {
     const candidate = join(outDir, 'packages', pkg, 'src', file);
     try {
       await stat(candidate);
@@ -232,12 +247,12 @@ async function locatePatchTarget(
  * ```text
  * Input（真实 Payload）
  *   mutant = { id: 'exit-swallowed', patches: [{ file: 'cli.ts', find: 'process.exitCode = await main();', … }] }
- *   sourceFiles = ['cli.ts', 'render.ts', …] (packages/cli/src 下全部非测试 .ts; api 侧同法)
+ *   sourceFiles = ['cli.ts', 'render.ts', …] (packages/sweep-node-modules-cli/src 下全部非测试 .ts; api 侧同法)
  *
  * 步骤 1：重建目录并复制两包源码 + package.json
- *   gen-exit-swallowed/packages/api/src/  = api 源文件全量副本
- *   gen-exit-swallowed/packages/cli/src/  = cli 源文件全量副本
- *   gen-exit-swallowed/node_modules/@iyowei/sweep-node-modules -> ../../packages/api (符号链接)
+ *   gen-exit-swallowed/packages/sweep-node-modules/src/  = api 源文件全量副本
+ *   gen-exit-swallowed/packages/sweep-node-modules-cli/src/  = cli 源文件全量副本
+ *   gen-exit-swallowed/node_modules/@iyowei/sweep-node-modules -> ../../packages/sweep-node-modules (符号链接)
  *
  * 步骤 2：逐补丁校验锚点唯一后替换 (目标文件按名在两包副本中定位)
  *   锚点出现 1 次 → 替换并记录 anchorLine (第 370 行)
@@ -249,12 +264,16 @@ async function locatePatchTarget(
 async function makeMutant(mutant: MutantSpec): Promise<AppliedPatch[]> {
   const outDir = join(MUTANTS_DIR, `${GEN_PREFIX}${mutant.id}`);
   await rm(outDir, { recursive: true, force: true });
-  await mkdir(join(outDir, 'packages', 'api', 'src'), { recursive: true });
-  await mkdir(join(outDir, 'packages', 'cli', 'src'), { recursive: true });
+  await mkdir(join(outDir, 'packages', 'sweep-node-modules', 'src'), {
+    recursive: true,
+  });
+  await mkdir(join(outDir, 'packages', 'sweep-node-modules-cli', 'src'), {
+    recursive: true,
+  });
 
   for (const [srcDir, pkgDir] of [
-    [API_SRC_DIR, join(outDir, 'packages', 'api')],
-    [CLI_SRC_DIR, join(outDir, 'packages', 'cli')],
+    [API_SRC_DIR, join(outDir, 'packages', 'sweep-node-modules')],
+    [CLI_SRC_DIR, join(outDir, 'packages', 'sweep-node-modules-cli')],
   ] as const) {
     for (const name of await listSourceFiles(srcDir)) {
       await writeFile(
@@ -264,11 +283,11 @@ async function makeMutant(mutant: MutantSpec): Promise<AppliedPatch[]> {
     }
   }
   await writeFile(
-    join(outDir, 'packages', 'api', 'package.json'),
+    join(outDir, 'packages', 'sweep-node-modules', 'package.json'),
     await readFile(API_PKG_JSON),
   );
   await writeFile(
-    join(outDir, 'packages', 'cli', 'package.json'),
+    join(outDir, 'packages', 'sweep-node-modules-cli', 'package.json'),
     await readFile(CLI_PKG_JSON),
   );
 
@@ -278,8 +297,8 @@ async function makeMutant(mutant: MutantSpec): Promise<AppliedPatch[]> {
   await mkdir(dirname(apiLink), { recursive: true });
   await symlink(
     process.platform === 'win32'
-      ? join(outDir, 'packages', 'api')
-      : join('..', '..', 'packages', 'api'),
+      ? join(outDir, 'packages', 'sweep-node-modules')
+      : join('..', '..', 'packages', 'sweep-node-modules'),
     apiLink,
     process.platform === 'win32' ? 'junction' : 'dir',
   );
@@ -304,8 +323,9 @@ async function makeMutant(mutant: MutantSpec): Promise<AppliedPatch[]> {
     id: mutant.id,
     title: mutant.title,
     expectCaughtBy: mutant.expectCaughtBy,
-    sourceDir: 'packages/api/src + packages/cli/src',
-    runHint: `bun ${join(MUTANTS_DIR, `${GEN_PREFIX}${mutant.id}`, 'packages', 'cli', 'src', 'cli.ts')}`,
+    sourceDir:
+      'packages/sweep-node-modules/src + packages/sweep-node-modules-cli/src',
+    runHint: `bun ${join(MUTANTS_DIR, `${GEN_PREFIX}${mutant.id}`, 'packages', 'sweep-node-modules-cli', 'src', 'cli.ts')}`,
     patches: applied,
   };
   await writeFile(
@@ -372,7 +392,7 @@ async function main(): Promise<number> {
   }
 
   process.stdout.write(
-    `\n合计 ${MUTANTS.length} 个 mutant → ${join(MUTANTS_DIR, 'gen-*/packages/cli/src/cli.ts')}\n`,
+    `\n合计 ${MUTANTS.length} 个 mutant → ${join(MUTANTS_DIR, 'gen-*/packages/sweep-node-modules-cli/src/cli.ts')}\n`,
   );
   return 0;
 }
