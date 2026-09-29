@@ -143,12 +143,14 @@ describe('removeTargets 契约', () => {
       expect(result.missing).toEqual([]);
       expect(result.failed.map((entry) => entry.target)).toEqual([target]);
       const [entry] = result.failed;
-      expect(entry?.error).toMatch(/E[A-Z]+/); // 含错误码
-      expect(entry?.error).toContain(target); // 含目标定位
-      expect(entry?.error).toContain('权限'); // 含人话
+      expect(entry?.code).toBe('REMOVE_FAILED'); // 机器可判别码
+      expect(entry?.partialRisk).toBe(true); // 删过 → 内容可能残缺
+      expect(entry?.message).toMatch(/E[A-Z]+/); // 含错误码
+      expect(entry?.message).toContain(target); // 含目标定位
+      expect(entry?.message).toContain('权限'); // 含人话
       // 复查提示 (rm 递归先删内容后删壳, 失败时内容可能已残缺, 不能读成「什么都没发生」)
-      expect(entry?.error).toContain('可能已被部分或全部删除');
-      expect(entry?.error).toContain('请复查');
+      expect(entry?.message).toContain('可能已被部分或全部删除');
+      expect(entry?.message).toContain('请复查');
       // 只保证空壳还在: 其内容在失败前可能已被删掉, 提示语正是为这种磁盘实况而设
       expect(await exists(target)).toBe(true);
     },
@@ -199,9 +201,9 @@ describe('removeTargets 契约', () => {
         lockB,
         lockA,
       ]);
-      expect(result.failed.every((entry) => /E[A-Z]+/.test(entry.error))).toBe(
-        true,
-      );
+      expect(
+        result.failed.every((entry) => /E[A-Z]+/.test(entry.message)),
+      ).toBe(true);
       expect(await exists(ok)).toBe(false);
     },
   );
@@ -256,8 +258,8 @@ describe('组件级安全复核 (中间路径组件替换 → root 外删除)', 
     expect(result.failed).toEqual([]);
     expect(result.missing).toEqual([]);
     expect(result.aborted?.target).toBe(swapped);
-    expect(result.aborted?.reason).toContain('路径组件被替换');
-    expect(result.aborted?.reason).toContain(join(trust, 'sub')); // 定位到被替换的组件
+    expect(result.aborted?.message).toContain('路径组件被替换');
+    expect(result.aborted?.message).toContain(join(trust, 'sub')); // 定位到被替换的组件
     // root 外完好 (含内容), 剩余条目一律不删
     expect(await exists(victim)).toBe(true);
     expect(await exists(victimFile)).toBe(true);
@@ -279,11 +281,11 @@ describe('组件级安全复核 (中间路径组件替换 → root 外删除)', 
     expect(result.missing).toEqual([]);
     expect(result.failed.map((entry) => entry.target)).toEqual([target]);
     const [entry] = result.failed;
-    expect(entry?.error).toContain('路径组件消失');
-    expect(entry?.error).toContain('请复查目标是否仍存在');
-    expect(entry?.error).toContain('未执行删除');
-    expect(entry?.error).toContain('若目标确已不存在, 可忽略此条'); // 降噪说明
-    expect(entry?.error).not.toContain('可能已被部分或全部删除'); // 未删过, 不附内容残缺提示
+    expect(entry?.message).toContain('路径组件消失');
+    expect(entry?.message).toContain('请复查目标是否仍存在');
+    expect(entry?.message).toContain('未执行删除');
+    expect(entry?.message).toContain('若目标确已不存在, 可忽略此条'); // 降噪说明
+    expect(entry?.message).not.toContain('可能已被部分或全部删除'); // 未删过, 不附内容残缺提示
     expect(result.aborted).toBeUndefined(); // 无替换证据, 不牵连整批
     // 目标确实仍存活于新位置, 正是「不能报成功」的原因
     expect(await exists(join(newHome, 'node_modules'))).toBe(true);
@@ -301,7 +303,7 @@ describe('组件级安全复核 (中间路径组件替换 → root 外删除)', 
     });
 
     expect(result.aborted?.target).toBe(stray);
-    expect(result.aborted?.reason).toContain('不在任何 roots 之下');
+    expect(result.aborted?.message).toContain('不在任何 roots 之下');
     expect(result.removed).toEqual([]);
     expect(await exists(inside)).toBe(true);
   });
@@ -322,8 +324,8 @@ describe('组件级安全复核 (中间路径组件替换 → root 外删除)', 
       });
 
       expect(result.failed.map((entry) => entry.target)).toEqual([blocked]);
-      expect(result.failed[0]?.error).toContain('安全复核未完成');
-      expect(result.failed[0]?.error).toContain('未执行删除');
+      expect(result.failed[0]?.message).toContain('安全复核未完成');
+      expect(result.failed[0]?.message).toContain('未执行删除');
       expect(result.aborted).toBeUndefined();
       expect(await exists(ok)).toBe(false); // 无替换证据, 不牵连后续条目
     },
@@ -358,8 +360,8 @@ describe('链头替换 (信任根被换成符号链接 → 删除导向他树)',
     expect(result.missing).toEqual([]);
     expect(result.failed).toEqual([]);
     expect(result.aborted?.target).toBe(target);
-    expect(result.aborted?.reason).toContain('根被替换为符号链接');
-    expect(result.aborted?.reason).toContain(join(root, 'link-root'));
+    expect(result.aborted?.message).toContain('根被替换为符号链接');
+    expect(result.aborted?.message).toContain(join(root, 'link-root'));
     // 链接指向的树必须原样活着: 放任下去, 删除就会导向它
     expect(await exists(target)).toBe(true);
     expect(await exists(later)).toBe(true);
@@ -392,9 +394,9 @@ describe('rm 阶段 ENOENT 的目标本体复核 (双运行时语义分叉的兜
           expect(await exists(item)).toBe(false);
         // 内部条目消失被运行时冒泡时 (Bun 语义): 必须落 failed 且带内容残缺复查提示
         for (const item of result.failed) {
-          if (!item.error.includes('ENOENT')) continue;
-          expect(item.error).toContain(target);
-          expect(item.error).toContain('可能已被部分或全部删除');
+          if (!item.message.includes('ENOENT')) continue;
+          expect(item.message).toContain(target);
+          expect(item.message).toContain('可能已被部分或全部删除');
         }
       } finally {
         // 等跑者真正退出 (含 in-flight rm 落定): 不等就进 afterEach 的清理, Bun 的 rm

@@ -24,9 +24,9 @@ const describeOutcome = (outcome: EntryOutcome): string => {
     case 'stale':
       return '安全闸前已不存在';
     case 'failed':
-      return `失败: ${outcome.failure.error}`;
+      return `失败: ${outcome.failure.message}`;
     case 'rejected':
-      return `拒绝: ${outcome.rejection.reason}`;
+      return `拒绝: ${outcome.rejection.message}`;
     case 'not-attempted':
       return `未尝试: ${outcome.code}`;
     case 'not-expected':
@@ -103,11 +103,21 @@ describe('编排层域类型的实际调用形态', () => {
       { kind: 'stale' },
       {
         kind: 'failed',
-        failure: { target: '/ws/x', error: 'EACCES: 权限不足' },
+        failure: {
+          target: '/ws/x',
+          code: 'REMOVE_FAILED',
+          errno: 'EACCES',
+          message: 'EACCES: 权限不足',
+          partialRisk: true,
+        },
       },
       {
         kind: 'rejected',
-        rejection: { target: '/ws/y', reason: '不在任何 root 之下' },
+        rejection: {
+          target: '/ws/y',
+          code: 'GUARD_OUTSIDE_ROOTS',
+          message: 'realpath 后不在任何 root 之下',
+        },
       },
       { kind: 'not-attempted', code: 'REVIEW_HEAD_SYMLINK' },
       { kind: 'not-expected' },
@@ -119,7 +129,7 @@ describe('编排层域类型的实际调用形态', () => {
       '核验已不存在',
       '安全闸前已不存在',
       '失败: EACCES: 权限不足',
-      '拒绝: 不在任何 root 之下',
+      '拒绝: realpath 后不在任何 root 之下',
       '未尝试: REVIEW_HEAD_SYMLINK',
       '不在期望批次',
       '跳过: suspect-install-tree',
@@ -130,7 +140,13 @@ describe('编排层域类型的实际调用形态', () => {
     const report: SweepReport = {
       status: 'executed',
       plan,
-      validation: { accepted: ['/ws/app/node_modules'], rejected: [] },
+      validation: {
+        accepted: ['/ws/app/node_modules'],
+        rejected: [],
+        mappings: [
+          { original: '/ws/app/node_modules', real: '/ws/app/node_modules' },
+        ],
+      },
       removal: {
         removed: ['/ws/app/node_modules'],
         missing: [],

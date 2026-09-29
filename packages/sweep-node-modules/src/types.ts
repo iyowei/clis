@@ -11,7 +11,7 @@ import type {
   SweepWarningCode,
   UnmeasuredCode,
 } from './codes.ts';
-import type { AbortedBatch, FailedTarget, RemovalResult } from './delete.ts';
+import type { AbortedBatch, RemovalResult, TargetFailure } from './delete.ts';
 import type {
   CrossDeviceKind,
   PathStyle,
@@ -367,7 +367,7 @@ export type EntryOutcome =
    * 两者同属「目标已达成」, 同计成功侧。
    */
   | { kind: 'stale' }
-  | { kind: 'failed'; failure: FailedTarget }
+  | { kind: 'failed'; failure: TargetFailure }
   | { kind: 'rejected'; rejection: RejectedTarget }
   /** 批次内但未轮到 (整批中止时中止点及其之后) */
   | { kind: 'not-attempted'; code: AbortCode }
@@ -452,7 +452,7 @@ export type SweepProgressEvent =
     }
   | { kind: 'skipped'; target: string; reason: SkipReason }
   | { kind: 'removed'; target: string; outcome: 'removed' | 'missing' }
-  | { kind: 'failed'; failure: FailedTarget }
+  | { kind: 'failed'; failure: TargetFailure }
   | { kind: 'aborted'; aborted: AbortedBatch }
   | { kind: 'warning'; warning: SweepWarning }
   /** 只读面终结事件: plan() 的最后一个事件, 携带完整计划 */

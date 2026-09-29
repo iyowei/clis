@@ -24,6 +24,7 @@ import {
   collectSkips,
   createScanner,
   createSizer,
+  crossDeviceIndex,
   crossDeviceNote,
   deletionBatch,
   findCrossDeviceTargets,
@@ -378,7 +379,7 @@ function withOutcomes(
   // missing = rm 报 ENOENT 且复核确认目标本体已消失 (含 TOCTOU): 目标已达成的语义, 计成功侧
   for (const target of removal.missing) outcomes.set(target, { ok: true });
   for (const item of removal.failed)
-    outcomes.set(item.target, { ok: false, error: item.error });
+    outcomes.set(item.target, { ok: false, error: item.message });
 
   const byTarget = new Map<string, RemovalOutcome>();
   for (const [index, target] of batch.entries()) {
@@ -607,10 +608,8 @@ async function sweep(
   const home = homedir();
   // 设备边界: 逐条挑出与所属根不在同一文件系统的目标 (根之下的挂载点)。预览与执行都要这份
   // 判定 (前者标注、后者构造批次), 故在条目成型前算一次 (判定: guard.ts findCrossDeviceTargets)
-  const crossDevice = await findCrossDeviceTargets(
-    scanResult.hits.map((hit) => hit.target),
-    { roots },
-  );
+  // prettier-ignore
+  const crossDevice = crossDeviceIndex(await findCrossDeviceTargets(scanResult.hits.map((hit) => hit.target), { roots })); // 有效行触顶 450 的紧凑写法, 待薄壳改造拆分
   const entries = toEntries(scanResult.hits, sizeResult, home, crossDevice);
   // 语义闸 + 设备边界闸: 跳过集与末行说明由 skip.ts 单源给出 (两类判定本体见 classify.ts 与
   // guard.ts, 放行通道各异 —— 前者 --force, 后者改配置或卸载); 计数按清单上的标记行数
@@ -646,7 +645,7 @@ async function sweep(
       `整批拒绝: ${rejected.length} 个目标未通过安全闸, 未执行任何删除`,
       color,
     );
-    for (const item of rejected) notice(`  ${item.target} (${item.reason})`);
+    for (const item of rejected) notice(`  ${item.target} (${item.message})`);
     return 1;
   }
 
@@ -677,7 +676,7 @@ async function sweep(
 
   // 复核中止与逐条失败区分展示 (紧贴汇总, 便于诊断): 此时整批目标一个都没动
   if (removal.aborted !== undefined) {
-    warn(`整批中止: ${removal.aborted.reason}`, color);
+    warn(`整批中止: ${removal.aborted.message}`, color);
     notice(`  本轮未执行删除: ${batch.length} 处`);
   }
 

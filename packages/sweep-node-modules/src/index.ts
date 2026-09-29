@@ -28,13 +28,28 @@ export {
   mergeNames,
   resolveConfigPath,
 } from './config.ts';
-export { type RemovalResult, type TrustRoot, removeTargets } from './delete.ts';
+export {
+  type BatchOutcome,
+  type RemoveBatchOptions,
+  type RemovalProgressEvent,
+  type RemovalResult,
+  type TargetFailure,
+  type TrustRoot,
+  removeBatch,
+  removeTargets,
+  toTrustRoots,
+} from './delete.ts';
 export { SweepError, type SweepErrorDetails, isSweepError } from './errors.ts';
 export {
+  type CrossDeviceEntry,
   type CrossDeviceKind,
+  type PathMapping,
   type PathStyle,
+  type RejectedTarget,
+  type RejectionDetails,
   POSIX_STYLE,
   WIN32_STYLE,
+  crossDeviceIndex,
   findCrossDeviceTargets,
   firstSymlinkOnRoot,
   firstSymlinkOnTarget,

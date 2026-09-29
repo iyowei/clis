@@ -13,6 +13,9 @@ import { lstat, realpath, stat } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { posix, win32 } from 'node:path';
 
+import type { GuardCode } from './codes.ts';
+import { SweepError } from './errors.ts';
+
 /** 纯判定依赖的最小 path 能力集 (node:path 的 posix / win32 均满足) */
 export type PathOps = Pick<
   typeof posix,
@@ -171,13 +174,37 @@ export interface ValidateOptions {
   home?: string | null;
   /** path 判定风格; 缺省随当前平台 */
   style?: PathStyle;
+  /** 取消信号; 检查点在逐目标之间 */
+  signal?: AbortSignal;
+}
+
+/** 拒绝的结构化上下文 (定位信息做字段, 本地化调用方不必去 message 里抠路径) */
+export interface RejectionDetails {
+  /** 原始 errno (realpath 失败类) */
+  errno?: string;
+  /** 锚点类拒绝: 配置里的根 */
+  root?: string;
+  /** 锚点类拒绝: 检出符号链接的级 */
+  symlink?: string;
 }
 
 export interface RejectedTarget {
   /** 调用方传入的原始目标 */
   target: string;
-  /** 拒绝理由 */
-  reason: string;
+  /** 机器可判别的拒绝码 (程序分流只许看它, 严禁对 message 做字符串匹配或前缀解析) */
+  code: GuardCode;
+  /** 中文人话理由 (文案逐字保留现状) */
+  message: string;
+  /** 拒绝的结构化上下文 */
+  details?: RejectionDetails;
+}
+
+/** 原始目标 → realpath 归一的配对 (显示侧要原拼写, 删除侧要归一形态) */
+export interface PathMapping {
+  /** 调用方传入的拼写 */
+  original: string;
+  /** realpath 归一形态 */
+  real: string;
 }
 
 export interface ValidationResult {
@@ -185,6 +212,8 @@ export interface ValidationResult {
   accepted: string[];
   /** 未通过的目标与理由, 与输入逐条对应 */
   rejected: RejectedTarget[];
+  /** 与 accepted 逐位对应的配对表 (长度与 accepted 相等, mappings[i].real === accepted[i]) */
+  mappings: PathMapping[];
 }
 
 async function tryRealpath(p: string): Promise<string | null> {
@@ -309,17 +338,46 @@ export async function validateTargets(
 
   const accepted: string[] = [];
   const rejected: RejectedTarget[] = [];
+  const mappings: PathMapping[] = [];
   const seen = new Set<string>();
 
   for (const target of targets) {
+    // 取消检查点 (逐目标之间): 被 abort 即 reject, 语义是「本次未完成」而非「结果为空」
+    if (options.signal?.aborted) {
+      throw new SweepError('CANCELLED', '安全闸校验在逐目标检查点被取消', {
+        phase: 'validate',
+      });
+    }
     if (!hasNodeModulesLeaf(target, style)) {
-      rejected.push({ target, reason: '路径末段不是 node_modules' });
+      rejected.push({
+        target,
+        code: 'GUARD_LEAF_NOT_NODE_MODULES',
+        message: '路径末段不是 node_modules',
+      });
       continue;
     }
 
-    const real = await tryRealpath(target);
+    let real: string | null = null;
+    let realpathErrno: string | undefined;
+    try {
+      real = await realpath(target);
+    } catch (error) {
+      realpathErrno = (error as { code?: string }).code;
+    }
     if (real === null) {
-      rejected.push({ target, reason: 'realpath 失败 (目标不存在或不可读)' });
+      // realpath 失败按 errno 三分: MISSING 是唯一可被 staleTargets: 'missing' 容忍的一类
+      // (目标已达成), 另两类必须维持整批拒绝; 三码共用同一句 message (黑盒语料因此零变化)
+      let code: GuardCode = 'GUARD_REALPATH_FAILED';
+      if (realpathErrno === 'ENOENT') code = 'GUARD_TARGET_MISSING';
+      else if (realpathErrno === 'EACCES' || realpathErrno === 'EPERM') {
+        code = 'GUARD_TARGET_UNREADABLE';
+      }
+      rejected.push({
+        target,
+        code,
+        message: 'realpath 失败 (目标不存在或不可读)',
+        details: { errno: realpathErrno },
+      });
       continue;
     }
 
@@ -329,41 +387,64 @@ export async function validateTargets(
     if (brokenAnchor !== undefined) {
       rejected.push({
         target,
-        reason: `根锚点被换位为符号链接 (根: ${brokenAnchor.configured}; 符号链接: ${brokenAnchor.link}), 请把配置根改为不含符号链接的真实路径`,
+        code: 'GUARD_ROOT_ANCHOR_SYMLINK',
+        message: `根锚点被换位为符号链接 (根: ${brokenAnchor.configured}; 符号链接: ${brokenAnchor.link}), 请把配置根改为不含符号链接的真实路径`,
+        details: { root: brokenAnchor.configured, symlink: brokenAnchor.link },
       });
       continue;
     }
 
     if (isFilesystemRootBody(real, style)) {
-      rejected.push({ target, reason: '目标是文件系统根本体' });
+      rejected.push({
+        target,
+        code: 'GUARD_FILESYSTEM_ROOT_BODY',
+        message: '目标是文件系统根本体',
+      });
       continue;
     }
 
     if (isHomeBody(real, home, style)) {
-      rejected.push({ target, reason: '目标是 home 本体' });
+      rejected.push({
+        target,
+        code: 'GUARD_HOME_BODY',
+        message: '目标是 home 本体',
+      });
       continue;
     }
 
     if (!hasNodeModulesLeaf(real, style)) {
-      rejected.push({ target, reason: 'realpath 后的末段不是 node_modules' });
+      rejected.push({
+        target,
+        code: 'GUARD_REAL_LEAF_NOT_NODE_MODULES',
+        message: 'realpath 后的末段不是 node_modules',
+      });
       continue;
     }
 
     if (!insideAnyRoot(real, roots, style)) {
-      rejected.push({ target, reason: 'realpath 后不在任何 root 之下' });
+      rejected.push({
+        target,
+        code: 'GUARD_OUTSIDE_ROOTS',
+        message: 'realpath 后不在任何 root 之下',
+      });
       continue;
     }
 
     const key = dedupeKey(real, style);
     if (seen.has(key)) {
-      rejected.push({ target, reason: '重复目标 (realpath 去重)' });
+      rejected.push({
+        target,
+        code: 'GUARD_DUPLICATE_TARGET',
+        message: '重复目标 (realpath 去重)',
+      });
       continue;
     }
     seen.add(key);
     accepted.push(real);
+    mappings.push({ original: target, real });
   }
 
-  return { accepted, rejected };
+  return { accepted, rejected, mappings };
 }
 
 /**
@@ -422,6 +503,14 @@ export interface CrossDeviceOptions {
  */
 export type CrossDeviceKind = 'on-path' | 'target-itself';
 
+/** 跨设备目标条目 (保输入顺序; 普通对象, 可 JSON.stringify 进审计) */
+export interface CrossDeviceEntry {
+  /** node_modules 绝对路径 */
+  target: string;
+  /** 跨设备形态 */
+  kind: CrossDeviceKind;
+}
+
 /**
  * 挑出与所属根不在同一文件系统的目标 (删除面的设备边界闸), 值即形态。
  * 根只是路径上的授权面, 而根之下的挂载点会把另一文件系统的内容带进这条路径 (云盘 / 网络挂载 /
@@ -458,7 +547,7 @@ export type CrossDeviceKind = 'on-path' | 'target-itself';
 export async function findCrossDeviceTargets(
   targets: string[],
   options: CrossDeviceOptions,
-): Promise<Map<string, CrossDeviceKind>> {
+): Promise<CrossDeviceEntry[]> {
   const style = options.style ?? nativeStyle();
   const probe = options.probe ?? fsDeviceProbe;
   const devices = new Map<string, number | null>();
@@ -491,5 +580,17 @@ export async function findCrossDeviceTargets(
     );
   }
 
-  return found;
+  // 返回数组而非 Map: 可序列化承诺无条件 (Map 经 JSON.stringify 变成空对象,
+  // 会吃掉审计里的整列); 保输入顺序由 Map 的插入序保证
+  return [...found.entries()].map(([target, kind]) => ({ target, kind }));
+}
+
+/**
+ * 跨设备条目数组 → 查询索引 (供需要 has / get 的消费方: skip.ts 三个函数的第二参形态)。
+ * 与 findCrossDeviceTargets 的数组形态配套: 落盘用数组, 查询用索引。
+ */
+export function crossDeviceIndex(
+  entries: readonly CrossDeviceEntry[],
+): ReadonlyMap<string, CrossDeviceKind> {
+  return new Map(entries.map((entry) => [entry.target, entry.kind]));
 }

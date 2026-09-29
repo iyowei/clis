@@ -235,8 +235,8 @@ describe('validateTargets · 不变量 ⑤ (根锚点链, 真实目录)', () => 
 
     expect(result.accepted).toEqual([]);
     expect(result.rejected.map((entry) => entry.target)).toEqual([target]);
-    expect(result.rejected[0]?.reason).toContain('根锚点');
-    expect(result.rejected[0]?.reason).toContain(join(root, 'link-root'));
+    expect(result.rejected[0]?.message).toContain('根锚点');
+    expect(result.rejected[0]?.message).toContain(join(root, 'link-root'));
   });
 
   test('根的祖先链被换成符号链接: 同样拒绝 (根自身经解析仍是真目录)', async () => {
@@ -249,8 +249,8 @@ describe('validateTargets · 不变量 ⑤ (根锚点链, 真实目录)', () => 
     });
 
     expect(result.accepted).toEqual([]);
-    expect(result.rejected[0]?.reason).toContain('根锚点');
-    expect(result.rejected[0]?.reason).toContain(join(root, 'link-parent'));
+    expect(result.rejected[0]?.message).toContain('根锚点');
+    expect(result.rejected[0]?.message).toContain(join(root, 'link-parent'));
   });
 
   test('多根: 只拒换位根下的目标, 正常根下的目标照常通过', async () => {
@@ -267,7 +267,7 @@ describe('validateTargets · 不变量 ⑤ (根锚点链, 真实目录)', () => 
 
     expect(result.accepted).toEqual([await realpath(safe)]);
     expect(result.rejected.map((entry) => entry.target)).toEqual([attacked]);
-    expect(result.rejected[0]?.reason).toContain('根锚点');
+    expect(result.rejected[0]?.message).toContain('根锚点');
   });
 
   test('悬空符号链接作根: 其下目标被拒 (realpath 不可解析), 校验不崩溃', async () => {
@@ -366,7 +366,7 @@ describe('validateTargets (真实目录)', () => {
 
     expect(result.accepted).toEqual([await realpath(inside)]);
     expect(result.rejected.map((entry) => entry.target)).toEqual([outside]);
-    expect(result.rejected[0]?.reason).toContain('root');
+    expect(result.rejected[0]?.message).toContain('root');
   });
 
   test('符号链接逃逸: 字符串上在根内, realpath 后在根外', async () => {
@@ -382,7 +382,7 @@ describe('validateTargets (真实目录)', () => {
 
     expect(result.accepted).toEqual([]);
     expect(result.rejected.map((entry) => entry.target)).toEqual([target]);
-    expect(result.rejected[0]?.reason).toContain('root');
+    expect(result.rejected[0]?.message).toContain('root');
   });
 
   test('符号链接指向非 node_modules 目录: realpath 末段不符, 拒绝', async () => {
@@ -397,7 +397,7 @@ describe('validateTargets (真实目录)', () => {
     const result = await validateTargets([target], { roots: [root] });
 
     expect(result.accepted).toEqual([]);
-    expect(result.rejected[0]?.reason).toContain('node_modules');
+    expect(result.rejected[0]?.message).toContain('node_modules');
   });
 
   test('去重: 别名符号链接与真身实为一条, 只保留首次', async () => {
@@ -414,7 +414,7 @@ describe('validateTargets (真实目录)', () => {
 
     expect(result.accepted).toEqual([await realpath(canonical)]);
     expect(result.rejected.map((entry) => entry.target)).toEqual([alias]);
-    expect(result.rejected[0]?.reason).toContain('重复');
+    expect(result.rejected[0]?.message).toContain('重复');
   });
 
   test('末段不符: 真实存在但非 node_modules 的目录, 拒于字符串层', async () => {
@@ -424,7 +424,7 @@ describe('validateTargets (真实目录)', () => {
     const result = await validateTargets([target], { roots: [root] });
 
     expect(result.accepted).toEqual([]);
-    expect(result.rejected[0]?.reason).toContain('node_modules');
+    expect(result.rejected[0]?.message).toContain('node_modules');
   });
 
   test('不存在的目标: realpath 失败即拒', async () => {
@@ -435,7 +435,7 @@ describe('validateTargets (真实目录)', () => {
 
     expect(result.accepted).toEqual([]);
     expect(result.rejected.map((entry) => entry.target)).toEqual([target]);
-    expect(result.rejected[0]?.reason).toContain('realpath');
+    expect(result.rejected[0]?.message).toContain('realpath');
   });
 
   test('home 本体: 即使位于 root 之内也拒', async () => {
@@ -448,6 +448,6 @@ describe('validateTargets (真实目录)', () => {
     });
 
     expect(result.accepted).toEqual([]);
-    expect(result.rejected[0]?.reason).toContain('home');
+    expect(result.rejected[0]?.message).toContain('home');
   });
 });

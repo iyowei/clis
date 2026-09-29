@@ -19,6 +19,7 @@ import {
   type DeviceProbe,
   POSIX_STYLE,
   WIN32_STYLE,
+  crossDeviceIndex,
   findCrossDeviceTargets,
 } from './guard.ts';
 
@@ -34,19 +35,21 @@ afterEach(async () => {
   workspaces.length = 0;
 });
 
+/** 设备号探针的注入工厂 (纯函数): 记录调用序列, 未登记路径返回 null */
+function makeProbe(devices: Record<string, number>): {
+  probe: DeviceProbe;
+  calls: { path: string; follow: boolean }[];
+} {
+  const calls: { path: string; follow: boolean }[] = [];
+  const probe: DeviceProbe = async (path, follow) => {
+    calls.push({ path, follow });
+    return devices[path] ?? null;
+  };
+  return { probe, calls };
+}
+
 describe('设备边界: 目标与所属根的文件系统比对 (探针注入)', () => {
   /** 记录调用次序的探针工厂: 设备号按表查, 未列出的路径即「不可核验」 */
-  function makeProbe(devices: Record<string, number>): {
-    probe: DeviceProbe;
-    calls: { path: string; follow: boolean }[];
-  } {
-    const calls: { path: string; follow: boolean }[] = [];
-    const probe: DeviceProbe = async (path, follow) => {
-      calls.push({ path, follow });
-      return devices[path] ?? null;
-    };
-    return { probe, calls };
-  }
   test('posix: 同设备的目标不挑; 跨设备的目标挑出并给出形态', async () => {
     const { probe } = makeProbe({
       '/w': 1,
@@ -66,9 +69,9 @@ describe('设备边界: 目标与所属根的文件系统比对 (探针注入)',
       { roots: ['/w'], style: POSIX_STYLE, probe },
     );
     // 挂载点在根与目标之间 (父目录同设备) 与目标本体即挂载点 (父目录不同设备) 分形
-    expect([...found]).toEqual([
-      ['/w/vol/proj/node_modules', 'on-path'],
-      ['/w/onnm/node_modules', 'target-itself'],
+    expect(found).toEqual([
+      { target: '/w/vol/proj/node_modules', kind: 'on-path' },
+      { target: '/w/onnm/node_modules', kind: 'target-itself' },
     ]);
   });
   test('形态分辨只对已挑出的目标做 (同设备目标不探父目录)', async () => {
@@ -101,7 +104,7 @@ describe('设备边界: 目标与所属根的文件系统比对 (探针注入)',
       style: POSIX_STYLE,
       probe,
     });
-    expect([...found]).toEqual([['/w/vol/node_modules', 'on-path']]);
+    expect(found).toEqual([{ target: '/w/vol/node_modules', kind: 'on-path' }]);
   });
   test('探针语义: 根取 stat (follow), 目标取 lstat (不 follow); 根设备号每根只探一次', async () => {
     const { probe, calls } = makeProbe({
@@ -133,7 +136,7 @@ describe('设备边界: 目标与所属根的文件系统比对 (探针注入)',
       style: POSIX_STYLE,
       probe: makeProbe(devices).probe,
     });
-    expect([...flagged.keys()]).toEqual([target]);
+    expect(flagged.map((entry) => entry.target)).toEqual([target]);
     expect([...released]).toEqual([]);
   });
   test('无归属根 (根之外) 与不可核验 (设备号读不到) 均不入集', async () => {
@@ -206,7 +209,9 @@ describe('设备边界: 目标与所属根的文件系统比对 (探针注入)',
       style: WIN32_STYLE,
       probe,
     });
-    expect([...found]).toEqual([['C:\\w\\vol\\node_modules', 'target-itself']]);
+    expect(found).toEqual([
+      { target: 'C:\\w\\vol\\node_modules', kind: 'target-itself' },
+    ]);
     expect(calls.map((call) => call.path)).toEqual([
       'C:\\w',
       'C:\\w\\vol\\node_modules',
@@ -224,5 +229,32 @@ describe('设备边界: 目标与所属根的文件系统比对 (探针注入)',
       { roots: [root] },
     );
     expect([...found]).toEqual([]);
+  });
+});
+
+describe('设备边界结果形态 (数组形态与索引)', () => {
+  test('crossDeviceIndex: 数组与索引往返等价 (has / get 与条目一致)', async () => {
+    const devices = { '/w': 1, '/w/vol/proj/node_modules': 2, '/w/vol': 2 };
+    const entries = await findCrossDeviceTargets(
+      ['/w/vol/proj/node_modules', '/w/plain/node_modules'],
+      { roots: ['/w'], style: POSIX_STYLE, probe: makeProbe(devices).probe },
+    );
+
+    const index = crossDeviceIndex(entries);
+
+    expect(index.size).toBe(entries.length);
+    for (const entry of entries) {
+      expect(index.has(entry.target)).toBe(true);
+      expect(index.get(entry.target)).toBe(entry.kind);
+    }
+    expect(index.has('/w/plain/node_modules')).toBe(false);
+  });
+  test('可序列化承诺: 条目数组 JSON 往返无损 (Map 形态会丢成空对象, 故改数组)', () => {
+    const entries = [
+      { target: '/w/vol/node_modules', kind: 'on-path' as const },
+      { target: '/w/onnm/node_modules', kind: 'target-itself' as const },
+    ];
+
+    expect(JSON.parse(JSON.stringify(entries))).toEqual(entries);
   });
 });

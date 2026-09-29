@@ -22,25 +22,44 @@
  * lstat 亦不可识别。调用方须传与 target 同源拼写的 real (建议即 guard 判根用的 realpath 结果),
  * 并保留配置里的原始拼写供链头判定 (见 TrustRoot)。
  */
-import { lstat, rm } from 'node:fs/promises';
+import { lstat, realpath, rm } from 'node:fs/promises';
 import { isAbsolute, join, relative, sep } from 'node:path';
 
-export interface FailedTarget {
+import type { AbortCode, RemoveFailureCode } from './codes.ts';
+import { SweepError } from './errors.ts';
+import {
+  type PathMapping,
+  type PathStyle,
+  type RejectedTarget,
+  validateTargets,
+} from './guard.ts';
+
+export interface TargetFailure {
   /** 调用方传入的目标 (原样回显, 不做二次 realpath) */
   target: string;
+  /** 机器可判别的失败码 (程序分流只许看它, 严禁对 message 做字符串匹配) */
+  code: RemoveFailureCode;
+  /** 原始 errno (EACCES / EBUSY / ENOENT …), 无则缺省 */
+  errno?: string;
   /**
-   * 「错误码: 人话 (目标: 路径; …)」形态的可读串。
+   * 「错误码: 人话 (目标: 路径; …)」形态的可读串 (文案逐字保留现状)。
    * 删除已尝试而失败时附复查提示 (内容可能已残缺); 复核未通过而根本未删则注明「未执行删除」。
    */
-  error: string;
+  message: string;
+  /** 内容可能已被部分或全部删除 (EC-05 半完成语义的机器标记); false 意味着「未执行删除」 */
+  partialRisk: boolean;
 }
 
 /** 整批中止信息 (首个复核未通过的目标) */
 export interface AbortedBatch {
   /** 触发中止的目标 (未被删除) */
   target: string;
-  /** 中止原因 (人话, 含定位) */
-  reason: string;
+  /** 机器可判别的中止码 */
+  code: AbortCode;
+  /** 中文人话, 含定位 (文案逐字保留现状) */
+  message: string;
+  /** 定位路径 (触发中止的根 / 组件) */
+  path?: string;
 }
 
 export interface RemovalResult {
@@ -49,10 +68,17 @@ export interface RemovalResult {
   /** rm 报 ENOENT 且复核确认目标本体已不存在的目标; 目标已达成, 计成功侧 (保输入顺序) */
   missing: string[];
   /** 删除失败与复核未完成 (组件消失 / 不可核验) 的目标及原因 (保输入顺序); 后者未执行删除 */
-  failed: FailedTarget[];
+  failed: TargetFailure[];
   /** 安全复核未通过即中止整批, 其间条目一律不删; 未触发时缺省 */
   aborted?: AbortedBatch;
 }
+
+/** 删除操作的进度事件 (每条目标出桶即发一条) */
+export type RemovalProgressEvent =
+  | { kind: 'removed'; target: string }
+  | { kind: 'missing'; target: string }
+  | { kind: 'failed'; failure: TargetFailure }
+  | { kind: 'aborted'; aborted: AbortedBatch };
 
 /**
  * 信任根: 配置里的原始拼写与 realpath 归一形态成对出现 (配对由类型强制, 拆开即失去一层防线)。
@@ -70,6 +96,10 @@ export interface RemovalOptions {
    * `configured` 供链头判定。目标不在任何根之下时无可信复核, 整批中止。
    */
   roots: TrustRoot[];
+  /** 取消信号; 只在条目之间检查, 绝不在单条 rm 中途中断 (那会制造新的半删状态) */
+  signal?: AbortSignal;
+  /** 进度回调; 粒度: 每条目标出桶即发一条 */
+  onProgress?: (event: RemovalProgressEvent) => void;
 }
 
 /** 常见错误码的人话映射, 未收录的码回落通用提示 */
@@ -233,14 +263,28 @@ export async function removeTargets(
   const result: RemovalResult = { removed: [], missing: [], failed: [] };
   // 防 JS 调用方漏传选项: 无信任根即无可信复核, 一律中止 (保守)
   const roots = options?.roots ?? [];
+  const signal = options?.signal;
+  /** 进度事件发射器 (options 省略时零开销) */
+  const emit = options?.onProgress;
 
   for (const target of targets) {
+    // 取消检查点 (只在条目之间; 绝不在单条 rm 中途中断 — 那会制造新的半删状态)。
+    // 已完成的分桶随取消一并交回 (details.partial), 让调用方看得到「取消点之前删了什么」
+    if (signal?.aborted) {
+      throw new SweepError('CANCELLED', '删除在条目间检查点被取消', {
+        phase: 'remove',
+        partial: result,
+      });
+    }
     const root = roots.find((candidate) => isUnder(candidate.real, target));
     if (root === undefined) {
       result.aborted = {
         target,
-        reason: `安全复核失败 (目标不在任何 roots 之下): ${target}`,
+        code: 'REVIEW_NOT_UNDER_ANY_ROOT',
+        message: `安全复核失败 (目标不在任何 roots 之下): ${target}`,
+        path: target,
       };
+      emit?.({ kind: 'aborted', aborted: result.aborted });
       break;
     }
 
@@ -248,8 +292,11 @@ export async function removeTargets(
     if (await isSymlinkHead(root.configured)) {
       result.aborted = {
         target,
-        reason: `安全复核失败 (根被替换为符号链接): ${root.configured}`,
+        code: 'REVIEW_HEAD_SYMLINK',
+        message: `安全复核失败 (根被替换为符号链接): ${root.configured}`,
+        path: root.configured,
       };
+      emit?.({ kind: 'aborted', aborted: result.aborted });
       break;
     }
 
@@ -258,30 +305,42 @@ export async function removeTargets(
     if (finding !== null) {
       if (finding.kind === 'vanished') {
         // 组件消失 ≠ 目标消失 (可能只是被 mv 走): 归 missing 会伪报成功, 必须交回人工复查
-        result.failed.push({
+        const vanished: TargetFailure = {
           target,
-          error: describeVanishedReview(target, finding.path),
-        });
+          code: 'REVIEW_COMPONENT_VANISHED',
+          message: describeVanishedReview(target, finding.path),
+          partialRisk: false,
+        };
+        result.failed.push(vanished);
+        emit?.({ kind: 'failed', failure: vanished });
         continue;
       }
       if (finding.kind === 'unsafe') {
         result.aborted = {
           target,
-          reason: `安全复核失败 (路径组件被替换): ${finding.path}`,
+          code: 'REVIEW_COMPONENT_REPLACED',
+          message: `安全复核失败 (路径组件被替换): ${finding.path}`,
+          path: finding.path,
         };
+        emit?.({ kind: 'aborted', aborted: result.aborted });
         break;
       }
       // 复核不可达但无替换证据: 只拒该条, 不牵连整批
-      result.failed.push({
+      const unverified: TargetFailure = {
         target,
-        error: describeReviewError(target, finding.path, finding.error),
-      });
+        code: 'REVIEW_UNVERIFIED',
+        message: describeReviewError(target, finding.path, finding.error),
+        partialRisk: false,
+      };
+      result.failed.push(unverified);
+      emit?.({ kind: 'failed', failure: unverified });
       continue;
     }
 
     try {
       await rm(target, { recursive: true, force: false });
       result.removed.push(target);
+      emit?.({ kind: 'removed', target });
     } catch (error) {
       if ((error as FsError | null)?.code === 'ENOENT') {
         // 不以错误码本身定论: Bun 侧会把内部条目 ENOENT 冒泡为顶层拒绝且形态与顶层缺失同形
@@ -289,20 +348,123 @@ export async function removeTargets(
         const state = await checkGone(target);
         if (state === 'gone') {
           result.missing.push(target);
+          emit?.({ kind: 'missing', target });
           continue;
         }
-        result.failed.push({
+        const survivor: TargetFailure = {
           target,
-          error: describeSurvivor(target, state),
-        });
+          code: 'REMOVE_ENOENT_SURVIVOR',
+          message: describeSurvivor(target, state),
+          partialRisk: true,
+        };
+        result.failed.push(survivor);
+        emit?.({ kind: 'failed', failure: survivor });
         continue;
       }
-      result.failed.push({
+      const failure: TargetFailure = {
         target,
-        error: describeRemovalError(target, error),
-      });
+        code: 'REMOVE_FAILED',
+        errno: (error as { code?: string } | null)?.code,
+        message: describeRemovalError(target, error),
+        partialRisk: true,
+      };
+      result.failed.push(failure);
+      emit?.({ kind: 'failed', failure });
     }
   }
 
   return result;
+}
+
+/**
+ * 信任根配对助手 (从 CLI 提升, 逻辑逐字不动): 配置拼写 (configured) + realpath 归一 (real) 逐根配对。
+ * real 须与 target 同源拼写 (target 已由 guard realpath 化); configured 供删除层的链头判定
+ * (根被换成符号链接时只有拼写形态能识破), 故原样透传配置里的拼写, 不做任何归一。
+ * realpath 失败的根其 real 保留原拼写 —— 该根下不可能有已通过 guard 的目标, 不会误伤。
+ */
+export async function toTrustRoots(roots: string[]): Promise<TrustRoot[]> {
+  return Promise.all(
+    roots.map(async (root) => ({
+      configured: root,
+      real: (await realpath(root).catch(() => null)) ?? root,
+    })),
+  );
+}
+
+/** 写侧编排的调用选项 (配对 + 安全闸 + 整批拒绝 + 陈旧容忍 + 删除收成一个入口) */
+export interface RemoveBatchOptions {
+  /** 扫描根 (原始拼写): 安全闸判归属与锚点, 配对助手供给删除侧 */
+  roots: string[];
+  home?: string | null;
+  style?: PathStyle;
+  signal?: AbortSignal;
+  onProgress?: (event: RemovalProgressEvent) => void;
+  /**
+   * 安全闸之前「目标已不存在」这一类拒绝如何处置。
+   * - 'reject' (缺省, 保现状): 与其余拒绝同款, 触发整批拒绝、零删除 (BC-22);
+   * - 'missing': 把这类目标从批次中摘出, 记入 executed 分支的 stale, 不触发整批拒绝,
+   *   其余健康目标照删 (沿用 EC-01「目标已达成」的定性); 被摘出的目标不进入删除面。
+   * 只对 GUARD_TARGET_MISSING 生效; GUARD_TARGET_UNREADABLE 与其余任何拒绝码
+   * 一律维持整批拒绝 (不可读没有任何「已达成」的语义)。
+   */
+  staleTargets?: 'reject' | 'missing';
+}
+
+/** 整批拒绝与已执行二选一 (BC-22 的判别联合表达) */
+export type BatchOutcome =
+  | { status: 'rejected'; rejected: RejectedTarget[] }
+  | {
+      status: 'executed';
+      accepted: string[];
+      mappings: PathMapping[];
+      /** 因 staleTargets: 'missing' 被摘出的已消失目标 (保输入顺序); 该策略未开启时为空数组 */
+      stale: string[];
+      removal: RemovalResult;
+    };
+
+/**
+ * 写侧编排入口: 配对 + 安全闸 + 整批拒绝 + 陈旧容忍 + 删除收成一个入口,
+ * 调用方不必知道 TrustRoot 的存在也能安全删除。
+ * 外部副作用：完整删除链 (安全闸只读; 删除按批次执行, 任一硬拒绝即零删除)。
+ */
+export async function removeBatch(
+  targets: string[],
+  options: RemoveBatchOptions,
+): Promise<BatchOutcome> {
+  const validation = await validateTargets(targets, {
+    roots: options.roots,
+    home: options.home,
+    style: options.style,
+    signal: options.signal,
+  });
+
+  // staleTargets 的窄例外: 仅 GUARD_TARGET_MISSING 被摘出 (目标已达成, 无安全信号),
+  // 其余任何拒绝码一律维持整批拒绝 (不可读没有任何「已达成」的语义)
+  const stale: string[] = [];
+  let rejected: RejectedTarget[] = validation.rejected;
+  if (options.staleTargets === 'missing') {
+    const rest: RejectedTarget[] = [];
+    for (const item of rejected) {
+      if (item.code === 'GUARD_TARGET_MISSING') stale.push(item.target);
+      else rest.push(item);
+    }
+    rejected = rest;
+  }
+
+  if (rejected.length > 0) {
+    return { status: 'rejected', rejected };
+  }
+
+  const removal = await removeTargets(validation.accepted, {
+    roots: await toTrustRoots(options.roots),
+    signal: options.signal,
+    onProgress: options.onProgress,
+  });
+  return {
+    status: 'executed',
+    accepted: validation.accepted,
+    mappings: validation.mappings,
+    stale,
+    removal,
+  };
 }
