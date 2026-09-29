@@ -177,7 +177,7 @@ async function walkRoot(root: string, ctx: WalkContext): Promise<void> {
             await realpath(target).catch(() => target),
             style,
           );
-          if (!hits.has(key)) hits.set(key, { project: dir, target });
+          if (!hits.has(key)) hits.set(key, { project: dir, target, root });
           continue;
         }
         if (name === GIT_DIR) continue;

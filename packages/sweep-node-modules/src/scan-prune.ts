@@ -69,7 +69,11 @@ export function createPruningScanner(): Scanner {
 
       // 热路径 = 目录遍历: 单次 readdir withFileTypes 取类型, 免逐个 lstat
       // included: 自根到本目录的路径上是否已命中白名单 (白名单为空时开局即真)
-      const walk = async (dir: string, included: boolean): Promise<void> => {
+      const walk = async (
+        dir: string,
+        included: boolean,
+        root: string,
+      ): Promise<void> => {
         let entries: Dirent[];
         try {
           entries = await readdir(dir, { withFileTypes: true });
@@ -90,17 +94,17 @@ export function createPruningScanner(): Scanner {
             const target = join(dir, name);
             const key = await realpath(target).catch(() => target);
             if (!hitsByRealTarget.has(key))
-              hitsByRealTarget.set(key, { project: dir, target });
+              hitsByRealTarget.set(key, { project: dir, target, root });
             continue;
           }
           if (name === GIT_DIR || exclude.has(name)) continue;
 
-          await walk(join(dir, name), included || include.has(name));
+          await walk(join(dir, name), included || include.has(name), root);
         }
       };
 
       for (const root of roots) {
-        await walk(root, include.size === 0);
+        await walk(root, include.size === 0, root);
       }
 
       const hits = [...hitsByRealTarget.values()].sort(compareTarget);

@@ -50,6 +50,7 @@ for (const scanner of candidates) {
         {
           project: join(root, 'alpha'),
           target: join(root, 'alpha', 'node_modules'),
+          root,
         },
       ]);
     });
@@ -398,8 +399,43 @@ describe('scan 契约 [parallel] 平台去重键', () => {
       {
         project: join(root, 'CaseDir'),
         target: join(root, 'CaseDir', 'node_modules'),
+        root,
       },
     ]);
+  });
+});
+
+/**
+ * 多根归属: 同一命中可被多个根覆盖时 (嵌套根), 归属取输入顺序中首个遍历到该命中的根;
+ * 各根串行推进, 结果确定可复现 (api-surface.md §7.4 的取值规则)。
+ */
+describe('scan 契约 [多根归属]', () => {
+  test('嵌套根: 同一命中归首个遍历到的根 (先到者胜)', async () => {
+    const { root } = await make({ projects: [{ dir: 'outer/inner' }] });
+    const innerRoot = join(root, 'outer');
+
+    const { hits } = await createParallelScanner().scan({
+      roots: [root, innerRoot],
+      exclude: [],
+      include: [],
+    });
+
+    expect(hits).toHaveLength(1);
+    expect(hits[0]!.root).toBe(root);
+  });
+
+  test('输入顺序反转即归属反转 (归属随输入顺序, 非固定偏好)', async () => {
+    const { root } = await make({ projects: [{ dir: 'outer/inner' }] });
+    const innerRoot = join(root, 'outer');
+
+    const { hits } = await createParallelScanner().scan({
+      roots: [innerRoot, root],
+      exclude: [],
+      include: [],
+    });
+
+    expect(hits).toHaveLength(1);
+    expect(hits[0]!.root).toBe(innerRoot);
   });
 });
 

@@ -57,6 +57,12 @@ export interface ScanHit {
   project: string;
   /** node_modules 绝对路径 */
   target: string;
+  /**
+   * 所属扫描根 (原拼写)。
+   * 取值规则: 各根串行推进, 命中以 realpath 去重、先到者胜,
+   * 故归属取输入顺序中首个遍历到该命中的根, 结果确定可复现。
+   */
+  root: string;
 }
 
 export interface ScanResult {

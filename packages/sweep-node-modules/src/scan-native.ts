@@ -117,6 +117,7 @@ export function createNativeScanner(): Scanner {
             hits.set(key, {
               project: candidate.project,
               target: candidate.target,
+              root,
             });
           }
         }
