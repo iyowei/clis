@@ -39,10 +39,10 @@ bun run bench
 # 转写一致性验收 (金样本语料见 docs/protocol/; target 为 CLI 包内源码路径)
 bun run conformance -- --target "bun packages/sweep-node-modules-cli/src/cli.ts"
 
-# 打包 CLI 单文件产物 (packages/sweep-node-modules-cli/dist/cli.js) 并写产物自证清单 (dist/manifest.json; 发布时由 prepublishOnly 自动跑)
+# 打包两包发布产物: CLI 单文件 (dist/cli.js + 自证清单) 与 API 包 (dist/index.js + 类型声明 + 自证清单); 发布时由各自的 prepublishOnly 自动跑
 bun run build
 
-# 发布前置闸门 (干净检出 + 产物就位 + 清单自洽 + 发行面白名单; 在 CLI 包目录跑, 发布前自动跑, 也可手动复核)
+# 发布前置闸门 (干净检出 + 产物自证 + 发行面白名单; API 包另加 d.ts specifier 复查; 在各自包目录跑, 发布前自动跑, 也可手动复核)
 cd packages/sweep-node-modules-cli && bun run verify:release
 
 # 干净重装 (清掉 dist / bun.lock / node_modules 后重新 bun install; 只清不建, 跑测试或推送前先 bun run build 重建产物)
@@ -51,9 +51,9 @@ bun run safe-install
 
 ## 发布
 
-主路径是 CI 自动链 (`.github/workflows/release.yml`): 推送到 `main` 后, `verify` job 先跑与 CI 同套的检查 (构建 / 类型 / 测试 / lint / 格式), 通过后 `release` job 停在 `environment: release` 的人工批准闸门外, 批准即由 Lido multi-semantic-release 执行发布; npm 侧走 OIDC Trusted Publishing, 不设 token、无 OTP, 自动带 provenance 签名, 完成后打 tag 并建 GitHub Release。版本语义按提交判定 (angular 预设): `feat` 提 minor, `fix` 提 patch。发布链当前只覆盖 CLI 包 (根 `package.json` 的 `multi-release.ignorePackages` 把 API 包排除在链外)。
+主路径是 CI 自动链 (`.github/workflows/release.yml`): 推送到 `main` 后, `verify` job 先跑与 CI 同套的检查 (构建 / 类型 / 测试 / lint / 格式), 通过后 `release` job 停在 `environment: release` 的人工批准闸门外, 批准即由 Lido multi-semantic-release 执行发布; npm 侧走 OIDC Trusted Publishing, 不设 token、无 OTP, 自动带 provenance 签名, 完成后打 tag 并建 GitHub Release。版本语义按提交判定 (angular 预设): `feat` 提 minor, `fix` 提 patch。发布链当前只覆盖 CLI 包 (根 `package.json` 的 `multi-release.ignorePackages` 把 API 包排除在链外); API 包的发布通道 (构建 + 闸门) 已就绪, 待公开面收口时 (`docs/designs/api-surface.md` §9 Q17) 从该名单移出即以同链发布。
 
-发布动作统一过 `prepublishOnly` 闸门 (链上链下同一道): 构建 (`bun run build`, 产出 `dist/cli.js` 与自证清单 `dist/manifest.json`) + 发布前置闸门 (`bun run verify:release`)。闸门四项按序短路, 任一命中即退 1 拒发: 工作树不干净 / 产物缺失 / 清单与提交或产物的对账不过 / 发行面包内文件与白名单 `PACK_FILES_EXPECTED` 不符 (该检查跑一次只读的 `npm pack --dry-run --json --ignore-scripts`, 需要 npm)。手动发布 (`npm publish` / `bun publish`) 是链外的兜底通道, 走的是同一道闸门 (两者自行打包时都执行 `prepublishOnly`, 核验依据见 [ADR 0009](adrs/0009-npm-distribution-form.md) 补记第 4 条); 已知残留口: `npm pack` 与 `npm publish <tarball>` 不经闸门。
+发布动作统一过 `prepublishOnly` 闸门 (链上链下同一道, 两包各自): 构建 (`bun run build`; CLI 产出 `dist/cli.js` 与自证清单 `dist/manifest.json`, API 产出 `dist/index.js`、类型声明与自证清单) + 发布前置闸门 (`bun run verify:release`, 在各自包目录跑)。闸门按序短路, 任一命中即退 1 拒发: 工作树不干净 / 产物缺失 / 清单与提交或产物的对账不过 / 发行面包内文件与白名单 `PACK_FILES_EXPECTED` 不符 (该检查跑一次只读的 `npm pack --dry-run --json --ignore-scripts`, 需要 npm; API 包另查 d.ts 相对 specifier 无 `.ts` 残留)。手动发布 (`npm publish` / `bun publish`) 是链外的兜底通道, 走的是同一道闸门 (两者自行打包时都执行 `prepublishOnly`, 核验依据见 [ADR 0009](adrs/0009-npm-distribution-form.md) 补记第 4 条); 已知残留口: `npm pack` 与 `npm publish <tarball>` 不经闸门。
 
 **README / LICENSE 类备份别落 CLI 包目录**: npm 会把包根 (`packages/sweep-node-modules-cli/`) 的 `README*` / `LICENSE*` 无条件收进发行包, 且没有任何配置可以排除 (官方 files 节与 npm-packlist 的 strict 规则, 见 ADR 0009 补记第 3 条), 落包根目录的备份会被静默发出去; 备份一律落 `~/tmp`。
 

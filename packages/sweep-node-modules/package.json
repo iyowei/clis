@@ -13,9 +13,12 @@
     "url": "https://github.com/iyowei/sweep-node-modules/issues"
   },
   "type": "module",
+  "sideEffects": false,
   "exports": {
-    ".": "./src/index.ts",
-    "./testing": "./src/fixtures.ts"
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
   },
   "files": [
     "dist"
@@ -28,7 +31,10 @@
     "registry": "https://registry.npmjs.org/"
   },
   "scripts": {
+    "build": "bun scripts/build.ts",
     "typecheck": "tsc --noEmit",
-    "test": "bun test"
+    "test": "bun test",
+    "verify:release": "bun scripts/verify-release.ts",
+    "prepublishOnly": "npm run build && npm run verify:release"
   }
 }

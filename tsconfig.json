@@ -5,6 +5,17 @@
     "lib": ["ES2022"],
     "module": "preserve",
     "moduleResolution": "bundler",
+    // 开发态解析: monorepo 内对 API 包的引用直指单源 src (零构建), 发布态由 API 包
+    // package.json 的 exports 指向 dist; tsconfig paths 优先级高于 node_modules 解析
+    // (bun 运行时 / tsc / bun build 三处已实测, 2026-09-29), 消费方项目无本配置不受影响
+    "paths": {
+      "@iyowei/sweep-node-modules": [
+        "./packages/sweep-node-modules/src/index.ts"
+      ],
+      "@iyowei/sweep-node-modules/testing": [
+        "./packages/sweep-node-modules/src/fixtures.ts"
+      ]
+    },
 
     "strict": true,
     "noUncheckedIndexedAccess": true,
