@@ -51,7 +51,7 @@ bun run safe-install
 
 ## 发布
 
-主路径是 CI 自动链 (`.github/workflows/release.yml`): 推送到 `main` 后, `verify` job 先跑与 CI 同套的检查 (构建 / 类型 / 测试 / lint / 格式), 通过后 `release` job 停在 `environment: release` 的人工批准闸门外, 批准即由 Lido multi-semantic-release 执行发布; npm 侧走 OIDC Trusted Publishing, 不设 token、无 OTP, 自动带 provenance 签名, 完成后打 tag 并建 GitHub Release。版本语义按提交判定 (angular 预设): `feat` 提 minor, `fix` 提 patch。发布链当前只覆盖 CLI 包 (根 `package.json` 的 `multi-release.ignorePackages` 把 API 包排除在链外); API 包的发布通道 (构建 + 闸门) 已就绪, 待公开面收口时 (`docs/designs/api-surface.md` §9 Q17) 从该名单移出即以同链发布。
+主路径是 CI 自动链 (`.github/workflows/release.yml`): 推送到 `main` 后, `verify` job 先跑与 CI 同套的检查 (构建 / 类型 / 测试 / lint / 格式), 通过后 `release` job 停在 `environment: release` 的人工批准闸门外, 批准即由 Lido multi-semantic-release 执行发布; npm 侧走 OIDC Trusted Publishing, 不设 token、无 OTP, 自动带 provenance 签名, 完成后打 tag 并建 GitHub Release。版本语义按提交判定 (angular 预设): `feat` 提 minor, `fix` 提 patch。发布链覆盖双包: CLI 包持续演进, API 包自 2026-09-29 公开面收口 (`docs/designs/api-surface.md` §9 Q17) 起以同链发布 (根 `package.json` 的 `multi-release.ignorePackages` 已清空; API 包首发 0.5.0)。
 
 发布动作统一过 `prepublishOnly` 闸门 (链上链下同一道, 两包各自): 构建 (`bun run build`; CLI 产出 `dist/cli.js` 与自证清单 `dist/manifest.json`, API 产出 `dist/index.js`、类型声明与自证清单) + 发布前置闸门 (`bun run verify:release`, 在各自包目录跑)。闸门按序短路, 任一命中即退 1 拒发: 工作树不干净 / 产物缺失 / 清单与提交或产物的对账不过 / 发行面包内文件与白名单 `PACK_FILES_EXPECTED` 不符 (该检查跑一次只读的 `npm pack --dry-run --json --ignore-scripts`, 需要 npm; API 包另查 d.ts 相对 specifier 无 `.ts` 残留)。手动发布 (`npm publish` / `bun publish`) 是链外的兜底通道, 走的是同一道闸门 (两者自行打包时都执行 `prepublishOnly`, 核验依据见 [ADR 0009](adrs/0009-npm-distribution-form.md) 补记第 4 条); 已知残留口: `npm pack` 与 `npm publish <tarball>` 不经闸门。
 

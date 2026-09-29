@@ -12,9 +12,7 @@
     "packages/*"
   ],
   "multi-release": {
-    "ignorePackages": [
-      "packages/sweep-node-modules"
-    ]
+    "ignorePackages": []
   },
   "scripts": {
     "safe-install": "bun scripts/safe-install.ts",

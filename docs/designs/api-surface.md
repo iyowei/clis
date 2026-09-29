@@ -1233,7 +1233,7 @@ export type SweepProgressEvent =
 
 - **取消的落点**: `signal` 在 `ScanOptions` / `MeasureOptions` / `ValidateOptions` / `RemovalOptions` / `SweepPlanOptions` (含 `SweepRunOptions`) 五处都可传, 检查方式统一为「条目 / 任务边界查 `signal.aborted`, 为真则抛 `SweepError('CANCELLED')`」。
 - **删除阶段的硬纪律 (设计, 安全底线)**: 取消**只在条目之间生效**。单条 `fs.rm` 不可中断, 强行中断只会制造新的半删状态 (EC-05 已登记的残余面), 所以库不试图在单条删除中途响应取消。取消发生时:
-  - 删除阶段抛 `SweepError`, `details = { phase: 'remove', partial: RemovalResult }`, 其中 `partial` 是**取消点为止**已经出桶的 `removed` / `missing` / `failed`;
+  - 删除阶段抛 `SweepError`, `details = { phase: 'remove', partial: RemovalResult }`, 其中 `partial` 是**全部已派发条目**已出桶的 `removed` / `missing` / `failed` (删除为有界并发执行: 取消检出后停止派发新条目, 在飞条目跑完并计入);
   - 未处理的条目既不入 `removed` 也不入 `failed` (它们从未被尝试), 调用方靠 `partial` 自己判断「哪些没动」。
 - **其余阶段的取消**: 抛 `SweepError('CANCELLED')`, `details.phase` 标注阶段 (**取值域为 `SweepPhase` 全集**, 回答 G8; 只处理 `'remove'` 分支会漏掉扫描 / 阶段的取消); **不返回部分结果** (半截的扫描结果与半截的体积表都足以误导判断, 而调用方若需要边跑边攒, 进度回调就是那条通道)。
 - **不可用的取消窗口 (登记)**: 取消信号在 `du` 子进程运行期间无法中断该子进程 (库不杀子进程, 杀进程会带来临时文件与信号语义的额外风险); 检查点落在批量调用前后。
@@ -1903,7 +1903,7 @@ async function refreshPanel(sweeper: Sweeper, controller: AbortController) {
 | **Q15** (新增) | `SkipCandidate` 是否干脆改用 `SweepEntry[]` 作入参 (彻底消除误传)?                                                                          | **已定夺**                                  | 不采用: 会把原语层的门槛抬高 (场景 5 / 7 式的最小用法被迫填 `root` / `project` / `kind` 等无关字段)。取「`suspect` 必填 + `toSkipCandidates()` 构造器」的组合, 误传当场报错, 同时保留最小用法                                                                                                                                                                                                                                            |
 | **Q16** (新增) | 场景 4 阶段 1 写进审计的 `skipReason` 能否在阶段 2 直接喂回, 免去重判?                                                                      | **已定夺**                                  | 不提供「按旧判定执行」的入口: 重判是刻意设计 (磁盘状态会漂移, 安全闸必须看此刻的事实)。文档写明该意图; 阶段 2 走 `removeBatch` 重判, 成本是一次 realpath 链 (远低于一次全量扫描)                                                                                                                                                                                                                                                         |
 
-| **Q17** (新增) | API 包何时进入发布流程 (根 `multi-release.ignorePackages` 豁免的移除时机)? | **已定夺 (2026-09-29 拍板)** | 公开面改造收口 (发布刀) 时从根 `package.json` 的 `multi-release.ignorePackages` 移除 `packages/sweep-node-modules`, 使 API 包进入 semrel 发版流程; 首发按 **0.5.x 过渡**一轮、不直接上 1.0 (成熟度未到); 注意: 历史提交里的 `feat!` 会让 semrel 默认算出 1.0.0, 发布刀须按 0.5.x 口径专项处置 |
+| **Q17** (新增) | API 包何时进入发布流程 (根 `multi-release.ignorePackages` 豁免的移除时机)? | **已定夺 (2026-09-29 拍板), 已执行 (2026-09-29)** | 公开面改造收口 (发布刀) 时从根 `package.json` 的 `multi-release.ignorePackages` 移除 `packages/sweep-node-modules`, 使 API 包进入 semrel 发版流程; 首发按 **0.5.x 过渡**一轮、不直接上 1.0 (成熟度未到; 2026-09-29 移出预演实测: 无 tag 包的 first-release 直接取 package.json 现值, 首发即 0.5.0, 旧稿「历史 `feat!` 会算出 1.0.0」的担忧经实测不成立)。豁免已于同日清空, 随批推送发布 |
 
 > **与 ADR 0010 的对齐 (定稿副作用)**: 本次定稿期间, 仓库新增并接受了 [ADR 0010](../adrs/0010-dual-package-monorepo.md)「双包 monorepo 结构与可编程 API」(2026-09-29 已接受), 它替本清单定了三件事: 包边界与切分原则 (= 本文档 §2.1, 一致)、包名翻转与 0.x 内接受该版本语义变化 (= Q1a 的定夺来源)、API 包分发形态与仓库结构 (= Q6 / Q10)。Q1b 的收窄与拍板亦随该决定完成: ADR 0010 未涉及过渡期转发入口, 该子项由决策者于 2026-09-29 拍板 (不保留, 见上表)。
 > 状态汇总: 共 18 条目 (Q1 拆为 Q1a / Q1b), **18 条全部已定夺** (其中 Q1b 与 Q17 的取向由决策者拍板, 其余由本文档给出并写进上文)。
