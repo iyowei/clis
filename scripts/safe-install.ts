@@ -16,9 +16,15 @@ const root = fileURLToPath(new URL('..', import.meta.url));
 /**
  * 本仓的可再生面: 构建产物、锁文件与依赖树本身
  * (与 buffett `clean` 的 `dist` / `bunlock` / `modules` 任务对应; 树小, 连树清才修得掉
- * bun install 只对齐、修不了的深脏: 被改过的包内容、平台错配残留等)
+ * bun install 只对齐、修不了的深脏: 被改过的包内容、平台错配残留等)。
+ * 构建产物随双包结构落在 CLI 包内 (packages/sweep-node-modules-cli/dist);
+ * 依赖树走 hoisted linker (bunfig.toml), 集中在一处, 清根即够。
  */
-for (const target of ['dist', 'bun.lock', 'node_modules']) {
+for (const target of [
+  'packages/sweep-node-modules-cli/dist',
+  'bun.lock',
+  'node_modules',
+]) {
   rmSync(`${root}${target}`, { recursive: true, force: true });
   console.log(`[safe-install] 已清理: ${target}`);
 }
