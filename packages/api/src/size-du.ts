@@ -163,11 +163,28 @@ function describeDuFailure(detail: string): DuFailure {
   return { reason: `读取失败 (${detail})`, missing: false };
 }
 
-/** 解析 du stderr 行 `du: <路径>: <英文短语>`; 无法解析时返回 null */
+/**
+ * 解析 du stderr 行; 兼容两发行形态 (前缀取程序名, du / gdu 均认):
+ *   BSD: `du: <路径>: <英文短语>`;
+ *   GNU: `du: cannot access '<路径>': <英文短语>` / `du: cannot read directory '<路径>': <英文短语>`
+ * (GNU coreutils 9.12 与本机 gdu 实测, 2026-09-29; Linux 的 /usr/bin/du 即 GNU 形态)。
+ * 无法解析时返回 null。
+ */
 function parseDuErrorLine(
   line: string,
 ): { path: string; detail: string } | null {
-  const match = /^du:\s+(.+):\s+(.+)$/.exec(line);
+  // 剥程序名前缀 (仅命令名形态, 防误伤路径含冒号的行); 各发行前缀随二进制名而异
+  const body = line.replace(/^[a-z][a-z0-9_-]*:\s+/, '');
+  const gnu =
+    /^cannot\s+(?:access|read directory|stat|open)\s+'(.*)':\s+(.+)$/.exec(
+      body,
+    );
+  if (gnu !== null) {
+    const path = gnu[1];
+    const detail = gnu[2];
+    if (path !== undefined && detail !== undefined) return { path, detail };
+  }
+  const match = /^(.+):\s+(.+)$/.exec(body);
   if (match === null) return null;
   const path = match[1];
   const detail = match[2];
@@ -231,7 +248,10 @@ export function createDuSizer(bin: string | null = findDu()): Sizer {
           if (line.trim() === '') continue;
           const errorLine = parseDuErrorLine(line);
           if (errorLine === null) {
-            warnings.push(`体积统计失败 (未归因): ${line.trim()}`);
+            // 未归因也剥程序名前缀: 「不得透传 du: 前缀原文」为契约面 (stderr 中文化)
+            warnings.push(
+              `体积统计失败 (未归因): ${line.replace(/^[a-z][a-z0-9_-]*:\s+/, '').trim()}`,
+            );
             continue;
           }
           const failure = describeDuFailure(errorLine.detail);
@@ -244,6 +264,10 @@ export function createDuSizer(bin: string | null = findDu()): Sizer {
           }
           failures.set(errorLine.path, failure);
         }
+
+        // stderr 已归因的 path: 其 stdout 值不可信 (GNU du 对不可读目录仍输出目录自身块大小),
+        // 从采信面剔除, 让「存在但测不到」如实落 unmeasured 而不是进 entries
+        for (const path of failures.keys()) sizes.delete(path);
       }
 
       for (const target of sorted) {

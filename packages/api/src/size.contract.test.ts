@@ -60,6 +60,18 @@ const candidates: Candidate[] = [
   },
 ];
 
+// GNU du 注入候选: macOS 开发机经 gdu 复现 Linux 侧 /usr/bin/du 的输出形态 (Linux 上主 du
+// 候选即 GNU, 两条通道同覆盖); 整组契约在本候选下复跑, 供平台差异本地回归
+if (gnuDuPath !== null) {
+  candidates.push({
+    sizer: { ...createDuSizer(gnuDuPath), name: 'du (GNU)' },
+    needsDu: true,
+    assertBytes(actual, logical) {
+      expect(actual).toBeGreaterThanOrEqual(logical);
+    },
+  });
+}
+
 const workspaces: Workspace[] = [];
 async function make(spec: WorkspaceSpec): Promise<Workspace> {
   const workspace = await makeWorkspace(spec);
