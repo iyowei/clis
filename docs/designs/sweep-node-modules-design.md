@@ -47,6 +47,8 @@
 
 ## 二、代码结构与运行时基座
 
+> 下图为单包时代形态; 双包迁移后的目录布局与包职责见 [ADR 0010](../adrs/0010-dual-package-monorepo.md)。
+
 ```text
 src/
 ├── cli.ts      # 入口编排: 参数 / 配置分流 / 扫描 / 体积 / 渲染 / 安全闸 / 删除; 帮助面外提至 help.ts (分册: 命令面与输出)
@@ -78,7 +80,7 @@ scripts/transcription/  # 转写契约套件的验收器与变异生成器 (见 
 scripts/install-git-hooks.mjs / install-git-hooks.test.ts  # prepare 的装钩子守卫: 只在本包自身仓库装 lefthook 钩子, 被作为依赖安装时跳过 (见 ADR 0005) 与单测
 ```
 
-双运行时策略见 [ADR 0006](../adrs/0006-dual-runtime-bun-first.md); `src/runtime.ts` 导出面约定:
+双运行时策略见 [ADR 0006](../adrs/0006-dual-runtime-bun-first.md); `packages/sweep-node-modules/src/runtime.ts` 导出面约定:
 
 - `isBun`: 运行时探测 (功能检测 `typeof Bun !== 'undefined'`: 有 Bun 走 Bun 实现, 无则回退 Node);
 - `spawnCapture(cmd, args)`: 子进程执行并捕获 stdout (Bun 走 `Bun.spawn`, Node 走 `node:child_process`; stderr 直通不捕获);
@@ -102,7 +104,7 @@ scripts/install-git-hooks.mjs / install-git-hooks.test.ts  # prepare 的装钩�
 
 测试文件按语义命名 (如 `scan.contract.test.ts`, `guard.contract.test.ts`); 向导的 TTY 交互不做端到端自动化 (管道冒烟见 `init.smoke.test.ts`), 由「答案到配置对象再到落盘决策」的纯逻辑单测覆盖。
 
-实现落地后实测覆盖远超本表: 用例与语料规模以 `bun test` 与 `bun run conformance -- --target "bun src/cli.ts"` 的实时输出为准 (后者不参数化, 需对两个载体各跑一遍; 含压测长跑、伪终端冒烟、双载体 e2e); 明细见各 `*.test.ts` 与 [转写契约套件](../protocol/README.md) 的覆盖表。
+实现落地后实测覆盖远超本表: 用例与语料规模以 `bun test` 与 `bun run conformance -- --target "bun packages/sweep-node-modules-cli/src/cli.ts"` 的实时输出为准 (后者不参数化, 需对两个载体各跑一遍; 含压测长跑、伪终端冒烟、双载体 e2e); 明细见各 `*.test.ts` 与 [转写契约套件](../protocol/README.md) 的覆盖表。
 
 ## 四、明确不做 (YAGNI)
 
