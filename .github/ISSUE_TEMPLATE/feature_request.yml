@@ -1,0 +1,45 @@
+name: Feature request
+description: Suggest an idea or an improvement for the CLI or the programmable API package.
+title: "[Feature]:\x20"
+labels: ['enhancement']
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for helping improve the project. Describe the problem first; a concrete problem statement is the best starting point for a solution.
+  - type: checkboxes
+    id: preflight
+    attributes:
+      label: Preflight checklist
+      options:
+        - label: I searched the existing issues and did not find this request.
+          required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      description: Which part of the project is this about?
+      options:
+        - CLI (sweep-nm)
+        - Programmable API (@iyowei/sweep-node-modules)
+        - Documentation
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: The problem
+      description: Describe the task or use case, and where the current behavior gets in the way. Include the workspace layout or setup if it matters.
+    validations:
+      required: true
+  - type: textarea
+    id: solution
+    attributes:
+      label: Proposed solution
+      description: Optional. If a specific solution shape is already in mind, describe it.
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives
+      description: Optional. Workarounds in use today, or other approaches considered.

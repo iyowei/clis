@@ -1,0 +1,86 @@
+name: Bug report
+description: Report a problem with the CLI or the programmable API package.
+title: "[Bug]:\x20"
+labels: ['bug']
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report a bug. Fill in as much as you can; a precise reproduction gets a fix faster.
+
+        For security problems, do not open a public issue. In particular, if the tool deleted something it should not have, or a safety guard can be bypassed, report it privately: on GitHub, open the Security tab and use Report a vulnerability. See [SECURITY.md](https://github.com/iyowei/sweep-node-modules/blob/main/SECURITY.md) for the full policy.
+  - type: checkboxes
+    id: preflight
+    attributes:
+      label: Preflight checklist
+      options:
+        - label: I searched the existing issues and did not find this report.
+          required: true
+        - label: I can reproduce this on the latest published version, or on the current main branch from a clone.
+          required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: The version in use (for example 0.1.1), or the commit hash when running from a clone.
+      placeholder: '0.1.1'
+    validations:
+      required: true
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating system
+      options:
+        - Windows
+        - macOS
+        - Linux
+        - Other
+    validations:
+      required: true
+  - type: input
+    id: runtime
+    attributes:
+      label: Runtime and version
+      description: The runtime the run actually used, bun or node. The header line of the preview reports it (on interactive terminals).
+      placeholder: 'node 24.7.0'
+    validations:
+      required: true
+  - type: dropdown
+    id: install-method
+    attributes:
+      label: How the tool is run
+      options:
+        - bunx (no install)
+        - npx (no install)
+        - Installed globally, run as sweep-nm
+        - From a clone of the repository
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: The exact commands that were run, copied from the terminal, and whether a config file is involved (sweep-nm config shows which config file applies to the current run).
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+      description: What happened, including the full output if possible. Error messages carry an error code; include it.
+      render: shell
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+      description: What should have happened instead.
+    validations:
+      required: true
+  - type: textarea
+    id: extra
+    attributes:
+      label: Anything else?
+      description: Optional. Related issues, screenshots, or any other context that might help.
