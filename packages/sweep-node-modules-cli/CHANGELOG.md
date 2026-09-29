@@ -1,3 +1,10 @@
+## @iyowei/sweep-node-modules-cli [0.1.2](https://github.com/iyowei/sweep-node-modules/compare/@iyowei/sweep-node-modules-cli@0.1.1...@iyowei/sweep-node-modules-cli@0.1.2) (2026-09-29)
+
+
+### Bug Fixes
+
+* 更正作者标识为 iTonyYo ([2d2be63](https://github.com/iyowei/sweep-node-modules/commit/2d2be633b25455658ed905fbad310b284257a5ec))
+
 ## @iyowei/sweep-node-modules-cli [0.1.1](https://github.com/iyowei/sweep-node-modules/compare/@iyowei/sweep-node-modules-cli@0.1.0...@iyowei/sweep-node-modules-cli@0.1.1) (2026-09-29)
 
 

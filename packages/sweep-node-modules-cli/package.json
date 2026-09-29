@@ -1,6 +1,6 @@
 {
   "name": "@iyowei/sweep-node-modules-cli",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "CLI to find and delete node_modules across projects: scan multiple workspace roots (monorepo friendly), bulk-remove them to free up disk space, preview first and delete after confirmation. 工作区级 node_modules 批量清理工具。",
   "keywords": [
     "cli",
