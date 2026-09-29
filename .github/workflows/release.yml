@@ -1,0 +1,57 @@
+name: Release
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  # 发布前置门禁: 与 CI 同套检查, 发布不依赖另一个 workflow 的状态 (自足)。
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - uses: oven-sh/setup-bun@v2
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+      - run: bun install --frozen-lockfile
+      - run: bunx turbo run build
+      - run: bunx turbo run typecheck
+      - run: bunx turbo run test
+      - run: bunx oxlint
+      - run: bunx prettier --check .
+
+  # 人工批准闸门 (environment: release, 配 required reviewers): 批准后才进入发布。
+  # OIDC 发布: 不设任何 npm token; id-token: write 供 Trusted Publishing 换取短寿命凭据。
+  release:
+    needs: verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: release
+    permissions:
+      contents: write # 打 tag / push 版本提交 / 建 GitHub Release
+      issues: write # release 评论
+      pull-requests: write # release 评论
+      id-token: write # npm Trusted Publishing (OIDC)
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0 # semantic-release 需要全历史与全部 tag
+      - uses: oven-sh/setup-bun@v2
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24 # 自带 npm 11.x: OIDC 与 provenance 所需
+          # 不设 registry-url: 它会生成带 NODE_AUTH_TOKEN 的 .npmrc, 压掉 OIDC 通道
+      - run: bun install --frozen-lockfile
+      - name: Release (multi-semantic-release, OIDC)
+        run: npx --no-install multi-semantic-release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -54,7 +54,6 @@
     "safe-install": "bun scripts/safe-install.ts",
     "prepare": "node scripts/install-git-hooks.mjs || exit 0",
     "build": "turbo run build",
-    "verify:release": "bun packages/cli/scripts/verify-release.ts",
     "typecheck": "turbo run typecheck",
     "lint": "oxlint",
     "lint:fix": "oxlint --fix",
@@ -64,10 +63,13 @@
     "conformance": "bun packages/cli/scripts/transcription/run-conformance.ts"
   },
   "devDependencies": {
+    "@lidofinance/multi-semantic-release": "1.0.3",
+    "@semantic-release/git": "11.0.1",
     "@trivago/prettier-plugin-sort-imports": "6.0.2",
     "@types/bun": "1.4.2",
     "oxlint": "1.85.0",
     "prettier": "3.9.9",
+    "semantic-release": "25.0.9",
     "turbo": "2.11.5",
     "typescript": "7.0.2"
   }
