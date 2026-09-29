@@ -22,7 +22,7 @@ import {
 } from '../src/fixtures.ts';
 import { createParallelScanner } from '../src/scan-parallel.ts';
 import { createPruningScanner } from '../src/scan-prune.ts';
-import type { ScanOptions, Scanner } from '../src/types.ts';
+import type { ScanOptions, Scanner, SweepWarning } from '../src/types.ts';
 
 const MB = 1048576;
 
@@ -235,7 +235,7 @@ interface MeasureResult {
   minMs: number;
   medianMs: number;
   hits: string[];
-  warnings: string[];
+  warnings: SweepWarning[];
   heapDeltaMB: number;
   peakRssMB: number;
   rssDeltaMB: number;
@@ -260,7 +260,7 @@ async function measure(
   const sampler = startSampler();
   const times: number[] = [];
   let hits: string[] = [];
-  let warnings: string[] = [];
+  let warnings: SweepWarning[] = [];
 
   for (let i = 0; i < iterations; i += 1) {
     const started = performance.now();

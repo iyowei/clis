@@ -588,7 +588,7 @@ async function sweep(
   const include = mergeNames(config.include, options.include);
 
   const scanResult = await createScanner().scan({ roots, exclude, include });
-  for (const warning of scanResult.warnings) warn(warning, color);
+  for (const warning of scanResult.warnings) warn(warning.message, color);
   const nameNotes = collectNameNotes(
     scanResult.excludeMatches,
     scanResult.includeMatches,

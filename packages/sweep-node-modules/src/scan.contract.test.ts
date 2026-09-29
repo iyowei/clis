@@ -169,7 +169,7 @@ for (const scanner of candidates) {
       // 名单反馈通道仅胜出门面 (parallel) 提供 (候选 A / B 无此字段, 见 types.ts):
       // 计数为 0 即被调用方译为「包含名未命中任何已扫描的目录」, 故 beta 必须计入 —— 它只是被
       // exclude 优先截走, 与「名字压根没匹配上」是两回事, 不得冒充后者误报。
-      if (result.includeMatches !== undefined) {
+      if (result.includeMatches.length > 0) {
         expect(result.includeMatches).toEqual([
           { name: 'alpha', hits: 1 },
           { name: 'beta', hits: 1 },
@@ -272,7 +272,7 @@ for (const scanner of candidates) {
           join(root, 'beta'),
         ]);
         expect(
-          result.warnings.some((warning) => warning.includes('locked')),
+          result.warnings.some((warning) => warning.message.includes('locked')),
         ).toBe(true);
       },
     );

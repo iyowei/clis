@@ -7,7 +7,13 @@ import type { Dirent } from 'node:fs';
 import { readdir, realpath } from 'node:fs/promises';
 import { join } from 'node:path';
 
-import type { ScanHit, ScanOptions, ScanResult, Scanner } from './types.ts';
+import type {
+  ScanHit,
+  ScanOptions,
+  ScanResult,
+  Scanner,
+  SweepWarning,
+} from './types.ts';
 
 const NODE_MODULES = 'node_modules';
 const GIT_DIR = '.git';
@@ -47,7 +53,7 @@ export function createPruningScanner(): Scanner {
      * ```
      */
     async scan(options: ScanOptions): Promise<ScanResult> {
-      const warnings: string[] = [];
+      const warnings: SweepWarning[] = [];
       const exclude = new Set(options.exclude);
       const include = new Set(options.include);
       /** 去重键 = target 的 realpath; 值为对外输出 (target 保留调用方拼写, 不被 realpath 改写) */
@@ -59,7 +65,11 @@ export function createPruningScanner(): Scanner {
       for (const root of options.roots) {
         const key = await realpath(root).catch(() => null);
         if (key === null) {
-          warnings.push(`根不可用, 已跳过: ${root}`);
+          warnings.push({
+            code: 'SCAN_ROOT_UNAVAILABLE',
+            message: `根不可用, 已跳过: ${root}`,
+            path: root,
+          });
           continue;
         }
         if (seenRoots.has(key)) continue;
@@ -78,7 +88,11 @@ export function createPruningScanner(): Scanner {
         try {
           entries = await readdir(dir, { withFileTypes: true });
         } catch {
-          warnings.push(`目录不可读, 已跳过: ${dir}`);
+          warnings.push({
+            code: 'SCAN_DIR_UNREADABLE',
+            message: `目录不可读, 已跳过: ${dir}`,
+            path: dir,
+          });
           return;
         }
 
@@ -108,7 +122,8 @@ export function createPruningScanner(): Scanner {
       }
 
       const hits = [...hitsByRealTarget.values()].sort(compareTarget);
-      return { hits, warnings };
+      // 名单统计为胜出候选 (parallel) 的增强契约, 历史候选不提供 (对撞测试只覆盖 hits 与告警条数)
+      return { hits, warnings, excludeMatches: [], includeMatches: [] };
     },
   };
 }

@@ -68,24 +68,25 @@ export interface ScanHit {
 export interface ScanResult {
   /** 命中清单: 按 target 排序, 已按 realpath 去重 */
   hits: ScanHit[];
-  /** 非致命告警 (如不可读目录), 不中断扫描 */
-  warnings: string[];
+  /** 非致命告警 (结构化: 机器码 + 中文人话并存, 如不可读目录), 不中断扫描 */
+  warnings: SweepWarning[];
   /**
    * 排除名单命中统计 (名称 → 命中次数); 未命中的名称也在列 (hits === 0)。
    * 性质: 破坏性动作的「保命名单」反馈通道 —— 名字打错/大小写不符时不得静默。
    * 例外: 内置默认名单项零命中不告警 (名单依平台与用户环境而异, 不是可修正的拼写错误;
    * 见 behavior-contract.md BC-09), 用户显式写出同名项时同样静默 (该项已由默认名单覆盖)。
-   * 胜出门面 (parallel) 必须提供; 历史候选可缺省。
+   * 必填的理由: 落盘形态不得随调用参数漂移 —— 月级 JSONL 序列里键时有时无,
+   * 下游 schema 校验器无从分辨「没配名单」与「版本不支持该字段」。
    */
-  excludeMatches?: { name: string; hits: number }[];
+  excludeMatches: NameMatch[];
   /**
    * 包含名单命中统计 (名称 → 命中该名的子树数); 未命中的名称也在列 (hits === 0)。
    * 计数独立于 exclude 优先: 名字命中白名单、随后被 exclude 截走的同样计入 (截走不等于没匹配上),
    * 否则被截走的名字会以 0 报「未匹配」, 诱导用户去排查不存在的拼写问题。
    * 性质: 与 excludeMatches 同款的名单反馈通道, 后果却更重: 白名单写错名字时扫描结果直接为空,
-   * 更不能静默。胜出门面 (parallel) 必须提供; 历史候选可缺省。
+   * 更不能静默。
    */
-  includeMatches?: { name: string; hits: number }[];
+  includeMatches: NameMatch[];
 }
 
 export interface Scanner {

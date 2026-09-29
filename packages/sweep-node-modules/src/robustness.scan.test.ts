@@ -133,9 +133,9 @@ for (const scanner of candidates) {
       });
 
       expect(result.warnings.length).toBeGreaterThan(0);
-      expect(result.warnings.some((warning) => warning.includes(ghost))).toBe(
-        true,
-      );
+      expect(
+        result.warnings.some((warning) => warning.message.includes(ghost)),
+      ).toBe(true);
       expect(result.hits.map((hit) => hit.project)).toEqual([
         join(root, 'alpha'),
       ]);
@@ -160,7 +160,13 @@ describe('鲁棒性 [parallel] 根病因分流', () => {
     });
 
     expect(result.hits).toEqual([]);
-    expect(result.warnings).toEqual([`根不是目录, 已跳过: ${file}`]);
+    expect(result.warnings).toEqual([
+      {
+        code: 'SCAN_ROOT_NOT_DIR',
+        message: `根不是目录, 已跳过: ${file}`,
+        path: file,
+      },
+    ]);
   });
 
   test('路径中间段是文件: 与上条同落「不是目录」(realpath 侧 ENOTDIR)', async () => {
@@ -175,7 +181,13 @@ describe('鲁棒性 [parallel] 根病因分流', () => {
       include: [],
     });
 
-    expect(result.warnings).toEqual([`根不是目录, 已跳过: ${throughFile}`]);
+    expect(result.warnings).toEqual([
+      {
+        code: 'SCAN_ROOT_NOT_DIR',
+        message: `根不是目录, 已跳过: ${throughFile}`,
+        path: throughFile,
+      },
+    ]);
   });
 
   test.skipIf(runningAsRoot)(
@@ -192,7 +204,12 @@ describe('鲁棒性 [parallel] 根病因分流', () => {
 
       expect(result.hits).toEqual([]);
       expect(result.warnings).toEqual([
-        `根不可读 (权限不足), 已跳过: ${underSealed}`,
+        {
+          code: 'SCAN_ROOT_UNREADABLE',
+          message: `根不可读 (权限不足), 已跳过: ${underSealed}`,
+          path: underSealed,
+          errno: 'EACCES',
+        },
       ]);
     },
   );
@@ -211,6 +228,13 @@ describe('鲁棒性 [parallel] 根病因分流', () => {
     });
 
     // 本机 (darwin) 自指符号链接实报 ELOOP; 换平台若报别的码, 失败信息即带出实际值
-    expect(result.warnings).toEqual([`根不可用 (ELOOP), 已跳过: ${loop}`]);
+    expect(result.warnings).toEqual([
+      {
+        code: 'SCAN_ROOT_UNAVAILABLE',
+        message: `根不可用 (ELOOP), 已跳过: ${loop}`,
+        path: loop,
+        errno: 'ELOOP',
+      },
+    ]);
   });
 });

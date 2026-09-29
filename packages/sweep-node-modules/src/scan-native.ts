@@ -12,7 +12,13 @@ import type { Dirent } from 'node:fs';
 import { readdir, realpath } from 'node:fs/promises';
 import { join } from 'node:path';
 
-import type { ScanHit, ScanOptions, ScanResult, Scanner } from './types.ts';
+import type {
+  ScanHit,
+  ScanOptions,
+  ScanResult,
+  Scanner,
+  SweepWarning,
+} from './types.ts';
 
 /** 遍历产出的未过滤候选: 含嵌套命中与待排除项, 一律交给后过滤裁决 */
 interface Candidate {
@@ -35,7 +41,10 @@ interface Pending {
  * 不可读目录记告警跳过, 不中断整次扫描。
  * 外部副作用：向传入的 warnings 数组追加告警文本。
  */
-async function collect(root: string, warnings: string[]): Promise<Candidate[]> {
+async function collect(
+  root: string,
+  warnings: SweepWarning[],
+): Promise<Candidate[]> {
   const candidates: Candidate[] = [];
   const queue: Pending[] = [{ dir: root, segments: [] }];
 
@@ -47,7 +56,11 @@ async function collect(root: string, warnings: string[]): Promise<Candidate[]> {
       entries = await readdir(dir, { withFileTypes: true });
     } catch (error) {
       const { code } = error as { code?: string };
-      warnings.push(`读取失败, 已跳过: ${dir} [${code ?? 'UNKNOWN'}]`);
+      warnings.push({
+        code: 'SCAN_DIR_UNREADABLE',
+        message: `读取失败, 已跳过: ${dir} [${code ?? 'UNKNOWN'}]`,
+        path: dir,
+      });
       continue;
     }
 
@@ -101,7 +114,7 @@ export function createNativeScanner(): Scanner {
   return {
     name: 'native',
     async scan({ roots, exclude, include }: ScanOptions): Promise<ScanResult> {
-      const warnings: string[] = [];
+      const warnings: SweepWarning[] = [];
       const excluded = new Set(exclude);
       const included = new Set(include);
       const hits = new Map<string, ScanHit>();
@@ -123,7 +136,13 @@ export function createNativeScanner(): Scanner {
         }
       }
 
-      return { hits: [...hits.values()].sort(compareTarget), warnings };
+      // 名单统计为胜出候选 (parallel) 的增强契约, 历史候选不提供 (对撞测试只覆盖 hits 与告警条数)
+      return {
+        hits: [...hits.values()].sort(compareTarget),
+        warnings,
+        excludeMatches: [],
+        includeMatches: [],
+      };
     },
   };
 }

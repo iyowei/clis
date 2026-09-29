@@ -39,7 +39,13 @@ import { readdir, realpath, stat } from 'node:fs/promises';
 import { join } from 'node:path';
 
 import { type PathStyle, dedupeKey, nativeStyle } from './guard.ts';
-import type { ScanHit, ScanOptions, ScanResult, Scanner } from './types.ts';
+import type {
+  ScanHit,
+  ScanOptions,
+  ScanResult,
+  Scanner,
+  SweepWarning,
+} from './types.ts';
 
 const NODE_MODULES = 'node_modules';
 const GIT_DIR = '.git';
@@ -69,18 +75,36 @@ function compareTarget(a: ScanHit, b: ScanHit): number {
  * 根预检失败的原因分句 (不含路径): 按 realpath 的错误码分流为「不存在 / 权限不足 / 不是目录 / 其他」
  * 四类, 让用户分清该修路径还是修权限; 未识别的错误码把原码带出, 便于上报。
  */
-function describeRootFailure(error: unknown): string {
+function rootFailureWarning(error: unknown, root: string): SweepWarning {
   const { code } = error as { code?: string };
   switch (code) {
     case 'ENOENT':
-      return '根不存在';
+      return {
+        code: 'SCAN_ROOT_MISSING',
+        message: `根不存在, 已跳过: ${root}`,
+        path: root,
+      };
     case 'EACCES':
     case 'EPERM':
-      return '根不可读 (权限不足)';
+      return {
+        code: 'SCAN_ROOT_UNREADABLE',
+        message: `根不可读 (权限不足), 已跳过: ${root}`,
+        path: root,
+        errno: code,
+      };
     case 'ENOTDIR':
-      return '根不是目录';
+      return {
+        code: 'SCAN_ROOT_NOT_DIR',
+        message: `根不是目录, 已跳过: ${root}`,
+        path: root,
+      };
     default:
-      return `根不可用 (${code ?? 'UNKNOWN'})`;
+      return {
+        code: 'SCAN_ROOT_UNAVAILABLE',
+        message: `根不可用 (${code ?? 'UNKNOWN'}), 已跳过: ${root}`,
+        path: root,
+        errno: code,
+      };
   }
 }
 
@@ -101,7 +125,7 @@ interface WalkContext {
   /** 去重键 = target 的 realpath; 值为对外输出 (调用方按 target 升序排序后返回) */
   hits: Map<string, ScanHit>;
   /** 非致命告警 (不可读目录 / 根预检失败), 不中断扫描 */
-  warnings: string[];
+  warnings: SweepWarning[];
 }
 
 /**
@@ -159,7 +183,11 @@ async function walkRoot(root: string, ctx: WalkContext): Promise<void> {
       try {
         entries = await readdir(dir, { withFileTypes: true });
       } catch {
-        warnings.push(`目录不可读, 已跳过: ${dir}`);
+        warnings.push({
+          code: 'SCAN_DIR_UNREADABLE',
+          message: `目录不可读, 已跳过: ${dir}`,
+          path: dir,
+        });
         return;
       }
 
@@ -246,7 +274,7 @@ export function createParallelScanner(): Scanner {
      * ```
      */
     async scan(options: ScanOptions): Promise<ScanResult> {
-      const warnings: string[] = [];
+      const warnings: SweepWarning[] = [];
       const exclude = new Set(options.exclude);
       /** 每个 exclude 名一条计数, 未命中的名字预置 0 以保证仍在列; 按名计数, 与遍历次序无关 */
       const excludeCounts = new Map<string, number>();
@@ -272,12 +300,16 @@ export function createParallelScanner(): Scanner {
           // realpath 只解析不校验类型, 故随后补一次类型判定 (根指向文件 → 根不是目录)
           const resolved = await realpath(root);
           if (!(await stat(resolved)).isDirectory()) {
-            warnings.push(`根不是目录, 已跳过: ${root}`);
+            warnings.push({
+              code: 'SCAN_ROOT_NOT_DIR',
+              message: `根不是目录, 已跳过: ${root}`,
+              path: root,
+            });
             continue;
           }
           key = dedupeKey(resolved, style);
         } catch (error) {
-          warnings.push(`${describeRootFailure(error)}, 已跳过: ${root}`);
+          warnings.push(rootFailureWarning(error, root));
           continue;
         }
         if (seenRoots.has(key)) continue;
