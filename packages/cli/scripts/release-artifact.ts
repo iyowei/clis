@@ -140,6 +140,19 @@ export const countDirtyEntries = (porcelain: string): number =>
   porcelain.split('\n').filter((line) => line.trim() !== '').length;
 
 /**
+ * 未提交改动的路径预览: porcelain 行剥状态前缀 ("XY "), 至多 `limit` 条, 超出以省略号收敛。
+ * 路径属仓库内已知文件, 落进人读文案可安全诊断「脏在哪里」; 不回显任何内容片段。
+ */
+export const previewDirtyEntries = (porcelain: string, limit = 3): string => {
+  const paths = porcelain
+    .split('\n')
+    .filter((line) => line.trim() !== '')
+    .map((line) => line.slice(3).trim());
+  const shown = paths.slice(0, limit);
+  return shown.join(', ') + (paths.length > limit ? ' …' : '');
+};
+
+/**
  * 清单形状体检: 合格返回 null, 否则返回人话病灶。
  * 只判字段形状与版本, 不判内容对错 (内容与提交 / 产物的对账归 judgeRelease); 值一律不回显,
  * 防清单里的低信任文本落进输出面。
@@ -404,7 +417,7 @@ export const judgeRelease = (facts: ReleaseFacts): ReleaseVerdict => {
   if (gitStatus.trim() !== '') {
     return {
       ok: false,
-      reason: `工作树不干净 (未提交改动 ${countDirtyEntries(gitStatus)} 项), 产物无法与任何提交对应`,
+      reason: `工作树不干净 (未提交改动 ${countDirtyEntries(gitStatus)} 项: ${previewDirtyEntries(gitStatus)}), 产物无法与任何提交对应`,
     };
   }
   if (!dist.cliExists) {

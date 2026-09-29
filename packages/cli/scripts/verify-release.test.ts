@@ -104,7 +104,9 @@ describe('发布前置闸门 · 临时检出端到端', () => {
       const { io, out, err } = capture();
 
       expect(verifyRelease(repo.root, io, PACK_OK)).toBe(1);
-      expect(err.join('\n')).toContain('工作树不干净 (未提交改动 1 项)');
+      expect(err.join('\n')).toContain(
+        '工作树不干净 (未提交改动 1 项: workspace.txt)',
+      );
       expect(out).toEqual([]);
     } finally {
       await repo.cleanup();
@@ -237,6 +239,14 @@ describe('发布前置闸门 · 字段级判定 (注入事实)', () => {
       name: '工作树脏 (改动条数进拒绝原因)',
       facts: { ...cleanFacts, gitStatus: ' M workspace.txt\n?? draft.md\n' },
       reason: '未提交改动 2 项',
+    },
+    {
+      name: '工作树脏 (路径预览逐条列出, 超三条以省略号收敛)',
+      facts: {
+        ...cleanFacts,
+        gitStatus: ' M a.txt\n?? b.txt\n M c.txt\n?? d.txt\n',
+      },
+      reason: '未提交改动 4 项: a.txt, b.txt, c.txt …',
     },
     {
       name: '产物缺失',
