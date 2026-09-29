@@ -12,7 +12,14 @@ import { DEFAULT_EXCLUDE } from '@iyowei/sweep-node-modules';
 
 import { type InitDeps, type InitIO, parseList, runInit } from './init.ts';
 
-const CONFIG_PATH = '/Users/iyowei/.config/sweep-node-modules/config.json';
+// 配置路径取真实家目录之下: 断言依赖「路径 ∈ 家目录 → 输出缩写为 ~」的坐标关系, 不得写死任一平台的
+// 家目录字面量 (写死 macOS 路径在 Linux runner 上无法触发缩写, CI 实测命中)
+const CONFIG_PATH = join(
+  homedir(),
+  '.config',
+  'sweep-node-modules',
+  'config.json',
+);
 
 /** 脚本化的 fake IO: 按序弹出预设答案; 脚本耗尽即抛错, 防漏配答案静默退化成取消态 */
 function makeFakeIO(script: {
