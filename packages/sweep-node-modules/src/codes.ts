@@ -20,7 +20,8 @@ export type SizeWarningCode =
   | 'SIZE_DU_OUTPUT_MISMATCH'
   | 'SIZE_DU_LINE_UNATTRIBUTED'
   | 'SIZE_SUBPATH_FAILED'
-  | 'SIZE_TARGET_VANISHED';
+  | 'SIZE_TARGET_VANISHED'
+  | 'SIZE_DU_UNAVAILABLE';
 
 /** 并集别名: 后续新增告警域时随之扩展 */
 export type SweepWarningCode = ScanWarningCode | SizeWarningCode;

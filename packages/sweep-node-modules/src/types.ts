@@ -50,7 +50,14 @@ export interface ScanOptions {
    * 空数组 = 不过滤 (全部纳入); 与 exclude 同时命中时 exclude 优先 (先按白名单筛候选, 再排掉命中排除的)。
    */
   include: string[];
+  /** 取消信号; 检查点在每个遍历任务开始前, 中断后 reject (SweepError CANCELLED) */
+  signal?: AbortSignal;
+  /** 进度回调; 粒度: 每命中一处发一条 hit 事件 */
+  onProgress?: (event: ScanProgressEvent) => void;
 }
+
+/** 扫描的进度事件 */
+export type ScanProgressEvent = { kind: 'hit'; hit: ScanHit };
 
 export interface ScanHit {
   /** 直接包含 node_modules 的项目目录 */
@@ -98,7 +105,7 @@ export interface Scanner {
 export interface SizeEntry {
   /** node_modules 绝对路径 (对应 ScanHit.target) */
   target: string;
-  /** 字节数; 口径: du 候选 = 磁盘占用, js 候选 = 逻辑大小 (差异由基准环节记录裁定) */
+  /** 字节数; 口径见 SizeResult.basis */
   bytes: number;
 }
 
@@ -106,23 +113,50 @@ export interface SizeEntry {
 export interface UnmeasuredEntry {
   /** node_modules 绝对路径 (对应 ScanHit.target) */
   target: string;
+  /** 机器可判别的未测到原因 */
+  code: UnmeasuredCode;
   /** 人话中文原因 (不含路径本身, 与 target 字段各司其职) */
   reason: string;
 }
 
 export interface SizeResult {
-  /** 可测量目标的体积, 按 target 排序 */
+  /** 可测量目标的体积, 按 target 升序 */
   entries: SizeEntry[];
-  /** 非致命告警 (如子目录不可读), 不中断统计 */
-  warnings: string[];
-  /** 存在但无法测量的目标 (如权限不足), 按 target 排序; 「不存在」的路径跳过、不入任何桶 */
+  /** 本次调用实际生效的体积口径 (同一实例内恒定) */
+  basis: SizeBasis;
+  /** 非致命告警 (结构化); 含 SIZE_TARGET_VANISHED 事件条 */
+  warnings: SweepWarning[];
+  /** 存在但无法测量的目标 (如权限不足), 按 target 升序 */
   unmeasured: UnmeasuredEntry[];
+  /**
+   * 扫描命中、测量时已不存在 (BC-13) 的目标, 保输入顺序。
+   * 「不存在」既不产生字节也不属「存在但测不到」, 故单列一桶, 与 warnings 里的
+   * SIZE_TARGET_VANISHED 事件同源同判定 (事件供诊断, 本桶供划分)。
+   * 划分完备性: entries ∪ unmeasured ∪ gone 恰好构成入参的全划分, 三者两两不相交。
+   */
+  gone: string[];
 }
 
+/** 体积测量的调用选项 (取消与进度透传) */
+export interface MeasureOptions {
+  /** 取消信号; 检查点在逐目标之间 (du 批量路径在批量调用前后各一次) */
+  signal?: AbortSignal;
+  /** 进度回调; 粒度: 每测到一个目标发一条事件 */
+  onProgress?: (event: MeasureProgressEvent) => void;
+}
+
+/** 体积测量的进度事件 */
+export type MeasureProgressEvent =
+  | { kind: 'measured'; target: string; bytes: number; basis: SizeBasis }
+  | { kind: 'unmeasured'; target: string; code: UnmeasuredCode; reason: string }
+  | { kind: 'gone'; target: string };
+
 export interface Sizer {
-  /** 候选中立名, 供基准与日志区分 */
+  /** 候选中立名 ('du' / 'js'), 供基准与日志区分 */
   name: string;
-  measure(targets: string[]): Promise<SizeResult>;
+  /** 本实例的体积口径; 调用前即可读 */
+  basis: SizeBasis;
+  measure(targets: string[], options?: MeasureOptions): Promise<SizeResult>;
 }
 
 /**

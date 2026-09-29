@@ -170,13 +170,15 @@ describe.skipIf(!canRunShell)(
       expect(
         result.warnings.some(
           (warning) =>
-            warning.includes('输出与输入集合不符') &&
-            warning.includes('含输入之外的路径'),
+            warning.message.includes('输出与输入集合不符') &&
+            warning.message.includes('含输入之外的路径'),
         ),
       ).toBe(true);
       // 低信任内容不外溢: 告警文案不得携带 du 输出的原始路径
       expect(
-        result.warnings.some((warning) => warning.includes('/outside/forged')),
+        result.warnings.some((warning) =>
+          warning.message.includes('/outside/forged'),
+        ),
       ).toBe(false);
     });
 
@@ -193,8 +195,8 @@ describe.skipIf(!canRunShell)(
       expect(
         result.warnings.some(
           (warning) =>
-            warning.includes('输出与输入集合不符') &&
-            warning.includes('同一路径多行'),
+            warning.message.includes('输出与输入集合不符') &&
+            warning.message.includes('同一路径多行'),
         ),
       ).toBe(true);
     });

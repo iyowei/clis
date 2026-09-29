@@ -990,12 +990,13 @@ export type SweepErrorCode =
 
 **体积告警 (SizeWarningCode)** — 进 `SizeResult.warnings`, **只作事件, 不作划分**:
 
-| code                        | 触发                                            | 归属桶 (补, 回答体验报告 2-1 / U9)                    |
-| --------------------------- | ----------------------------------------------- | ----------------------------------------------------- |
-| `SIZE_DU_OUTPUT_MISMATCH`   | du 输出与输入集合不符, 本批整体降级             | 无 (整批降级: 全部入 `unmeasured`)                    |
-| `SIZE_DU_LINE_UNATTRIBUTED` | du 的 stderr 行解析不出归属                     | 无                                                    |
-| `SIZE_SUBPATH_FAILED`       | 目标之内的路径失败 (部分降级, 该目标结果仍有效) | 无                                                    |
-| `SIZE_TARGET_VANISHED`      | 目标不存在 (`体积统计失败 (不存在)`)            | **`SizeResult.gone`** (不入 `entries` / `unmeasured`) |
+| code                        | 触发                                                 | 归属桶 (补, 回答体验报告 2-1 / U9)                    |
+| --------------------------- | ---------------------------------------------------- | ----------------------------------------------------- |
+| `SIZE_DU_OUTPUT_MISMATCH`   | du 输出与输入集合不符, 本批整体降级                  | 无 (整批降级: 全部入 `unmeasured`)                    |
+| `SIZE_DU_LINE_UNATTRIBUTED` | du 的 stderr 行解析不出归属                          | 无                                                    |
+| `SIZE_SUBPATH_FAILED`       | 目标之内的路径失败 (部分降级, 该目标结果仍有效)      | 无                                                    |
+| `SIZE_TARGET_VANISHED`      | 目标不存在 (`体积统计失败 (不存在)`)                 | **`SizeResult.gone`** (不入 `entries` / `unmeasured`) |
+| `SIZE_DU_UNAVAILABLE` (补)  | du 候选探测失败 (两路径均不存在), 本候选跳过体积统计 | 无 (候选级降级; 生产路径由门面兜底, 仅测试注入可达)   |
 
 **未测到 (UnmeasuredCode)** — 进 `SizeResult.unmeasured[].code`:
 

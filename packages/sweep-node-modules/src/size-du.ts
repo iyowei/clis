@@ -14,7 +14,16 @@
 import { spawn } from 'node:child_process';
 import { accessSync, constants } from 'node:fs';
 
-import type { SizeEntry, SizeResult, Sizer, UnmeasuredEntry } from './types.ts';
+import type { UnmeasuredCode } from './codes.ts';
+import { SweepError } from './errors.ts';
+import type {
+  MeasureOptions,
+  SizeEntry,
+  SizeResult,
+  Sizer,
+  SweepWarning,
+  UnmeasuredEntry,
+} from './types.ts';
 
 /** du 探针路径: 绝对路径, 依序探测 */
 const DU_PROBES = ['/usr/bin/du', '/bin/du'];
@@ -148,26 +157,39 @@ function describeAnomaly(assessment: DuOutputAssessment): string {
   return shapes.join(' / ');
 }
 
-/** du 单路径失败的归因 */
-interface DuFailure {
-  /** 中文人话原因 (人话短语, 不含路径) */
-  reason: string;
-  /** 「不存在」维持裁定 (跳过、不入任何桶), 不得记入 unmeasured */
-  missing: boolean;
-}
+/** du 单路径失败的归因 (判别联合: missing 项进 gone 桶, 其余带未测到码) */
+type DuFailure =
+  | { missing: true; reason: string }
+  | { missing: false; code: UnmeasuredCode; reason: string };
 
-/** 把 du 的英文错误短语转成中文人话原因; 未知短语保留原文便于诊断 (已剥离 `du:` 前缀) */
+/** 把 du 的英文错误短语转成中文人话原因与未测到码; 未知短语保留原文便于诊断 (已剥离 `du:` 前缀) */
 function describeDuFailure(detail: string): DuFailure {
   if (/no such file or directory/i.test(detail))
-    return { reason: '不存在', missing: true };
+    return { missing: true, reason: '不存在' };
   if (/permission denied/i.test(detail))
-    return { reason: '权限不足, 无法读取', missing: false };
+    return {
+      missing: false,
+      code: 'SIZE_UNMEASURED_PERMISSION',
+      reason: '权限不足, 无法读取',
+    };
   if (/not a directory/i.test(detail))
-    return { reason: '不是目录', missing: false };
+    return {
+      missing: false,
+      code: 'SIZE_UNMEASURED_NOT_DIR',
+      reason: '不是目录',
+    };
   if (/too many levels of symbolic links/i.test(detail)) {
-    return { reason: '符号链接层级过深', missing: false };
+    return {
+      missing: false,
+      code: 'SIZE_UNMEASURED_LOOP',
+      reason: '符号链接层级过深',
+    };
   }
-  return { reason: `读取失败 (${detail})`, missing: false };
+  return {
+    missing: false,
+    code: 'SIZE_UNMEASURED_OTHER',
+    reason: `读取失败 (${detail})`,
+  };
 }
 
 /**
@@ -208,24 +230,43 @@ function parseDuErrorLine(
 export function createDuSizer(bin: string | null = findDu()): Sizer {
   return {
     name: 'du',
-    async measure(targets: string[]): Promise<SizeResult> {
+    basis: 'disk-usage',
+    async measure(
+      targets: string[],
+      options?: MeasureOptions,
+    ): Promise<SizeResult> {
       if (bin === null) {
         return {
           entries: [],
+          basis: 'disk-usage',
           warnings: [
-            'du 候选不可用: /usr/bin/du 与 /bin/du 均不存在, 本候选跳过体积统计',
+            {
+              code: 'SIZE_DU_UNAVAILABLE',
+              message:
+                'du 候选不可用: /usr/bin/du 与 /bin/du 均不存在, 本候选跳过体积统计',
+            },
           ],
           unmeasured: [],
+          gone: [],
         };
       }
       if (targets.length === 0) {
-        return { entries: [], warnings: [], unmeasured: [] };
+        return {
+          entries: [],
+          basis: 'disk-usage',
+          warnings: [],
+          unmeasured: [],
+          gone: [],
+        };
       }
 
       const sorted = [...targets].sort();
-      const warnings: string[] = [];
+      const warnings: SweepWarning[] = [];
       const entries: SizeEntry[] = [];
       const unmeasured: UnmeasuredEntry[] = [];
+      const gone: string[] = [];
+      /** 进度事件发射器 (options 省略时零开销) */
+      const emit = options?.onProgress;
 
       // 含控制字符的 target 会劈裂 du 的 `size\t路径` 行结构 (伪造行可覆盖真实体积): 前置拒绝, 不进 du
       const safeTargets = sorted.filter((target) => !hasControlChar(target));
@@ -244,9 +285,10 @@ export function createDuSizer(bin: string | null = findDu()): Sizer {
         intact = assessment.intact;
         if (!intact) {
           // 整批降级不得静默: 交代后果与形态归类, 让「什么都没删」可被归因 (路径本身不进文案)
-          warnings.push(
-            `du 输出与输入集合不符 (${describeAnomaly(assessment)}): 本批 ${safeTargets.length} 个目标的体积均未采信`,
-          );
+          warnings.push({
+            code: 'SIZE_DU_OUTPUT_MISMATCH',
+            message: `du 输出与输入集合不符 (${describeAnomaly(assessment)}): 本批 ${safeTargets.length} 个目标的体积均未采信`,
+          });
         }
         for (const [path, bytes] of assessment.sizes) sizes.set(path, bytes);
 
@@ -256,17 +298,20 @@ export function createDuSizer(bin: string | null = findDu()): Sizer {
           const errorLine = parseDuErrorLine(line);
           if (errorLine === null) {
             // 未归因也剥程序名前缀: 「不得透传 du: 前缀原文」为契约面 (stderr 中文化)
-            warnings.push(
-              `体积统计失败 (未归因): ${line.replace(PROG_PREFIX_RE, '').trim()}`,
-            );
+            warnings.push({
+              code: 'SIZE_DU_LINE_UNATTRIBUTED',
+              message: `体积统计失败 (未归因): ${line.replace(PROG_PREFIX_RE, '').trim()}`,
+            });
             continue;
           }
           const failure = describeDuFailure(errorLine.detail);
           if (!safeSet.has(errorLine.path)) {
             // 输入 target 之外的路径 (如 target 内的子目录): 部分降级, 告警但该 target 结果仍有效
-            warnings.push(
-              `体积统计失败 (${failure.reason}): ${errorLine.path}`,
-            );
+            warnings.push({
+              code: 'SIZE_SUBPATH_FAILED',
+              message: `体积统计失败 (${failure.reason}): ${errorLine.path}`,
+              path: errorLine.path,
+            });
             continue;
           }
           failures.set(errorLine.path, failure);
@@ -277,19 +322,40 @@ export function createDuSizer(bin: string | null = findDu()): Sizer {
         for (const path of failures.keys()) sizes.delete(path);
       }
 
+      /** 未测到项的落桶 + 事件成对发射 (码与原因一次给全) */
+      const pushUnmeasured = (
+        target: string,
+        code: UnmeasuredCode,
+        reason: string,
+      ): void => {
+        unmeasured.push({ target, code, reason });
+        emit?.({ kind: 'unmeasured', target, code, reason });
+      };
+
       for (const target of sorted) {
+        // 取消检查点 (逐目标之间): 被 abort 即抛 CANCELLED, 语义是「本次未完成」而非「结果为空」
+        if (options?.signal?.aborted) {
+          throw new SweepError('CANCELLED', '体积统计在逐目标检查点被取消', {
+            phase: 'measure',
+          });
+        }
         if (hasControlChar(target)) {
-          unmeasured.push({ target, reason: '路径含控制字符' });
+          pushUnmeasured(
+            target,
+            'SIZE_UNMEASURED_CONTROL_CHAR',
+            '路径含控制字符',
+          );
           continue;
         }
         // 一致性校验不过: 本批 du 输出不可信, 整体降级 unmeasured, 不逐条赋值
         if (!intact) {
-          unmeasured.push({ target, reason: '输出不可解析' });
+          pushUnmeasured(target, 'SIZE_UNMEASURED_UNPARSEABLE', '输出不可解析');
           continue;
         }
         const bytes = sizes.get(target);
         if (bytes !== undefined) {
           entries.push({ target, bytes });
+          emit?.({ kind: 'measured', target, bytes, basis: 'disk-usage' });
           continue;
         }
         const failure = failures.get(target);
@@ -297,18 +363,24 @@ export function createDuSizer(bin: string | null = findDu()): Sizer {
           // 解析不出且无 stderr 归因: 结构化为 unmeasured, 不得静默丢弃 (types.ts: 存在但无法测量的
           // 目标必须上报)。现实触发面是含换行 / 回车的目标 (劈裂 `size\t路径` 行结构), 该形态已被上方
           // 前置拒绝接住, 故本分支接住的是探针或 du 侧未知形态; 引用形态不在此列 (见文件头「输出形态」)。
-          unmeasured.push({ target, reason: '输出不可解析' });
+          pushUnmeasured(target, 'SIZE_UNMEASURED_UNPARSEABLE', '输出不可解析');
           continue;
         }
         if (failure.missing) {
-          // 「不存在」维持裁定: 告警并跳过, 不入任何桶
-          warnings.push(`体积统计失败 (不存在): ${target}`);
+          // 「不存在」单列 gone 桶 (BC-13): 与 warnings 的 SIZE_TARGET_VANISHED 事件同源同判定
+          gone.push(target);
+          warnings.push({
+            code: 'SIZE_TARGET_VANISHED',
+            message: `体积统计失败 (不存在): ${target}`,
+            path: target,
+          });
+          emit?.({ kind: 'gone', target });
           continue;
         }
-        unmeasured.push({ target, reason: failure.reason });
+        pushUnmeasured(target, failure.code, failure.reason);
       }
 
-      return { entries, warnings, unmeasured };
+      return { entries, basis: 'disk-usage', warnings, unmeasured, gone };
     },
   };
 }

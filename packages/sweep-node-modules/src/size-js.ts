@@ -8,22 +8,51 @@ import type { Dirent } from 'node:fs';
 import { readdir, stat } from 'node:fs/promises';
 import { join } from 'node:path';
 
-import type { SizeEntry, SizeResult, Sizer, UnmeasuredEntry } from './types.ts';
+import type { UnmeasuredCode } from './codes.ts';
+import { SweepError } from './errors.ts';
+import type {
+  MeasureOptions,
+  SizeEntry,
+  SizeResult,
+  Sizer,
+  SweepWarning,
+  UnmeasuredEntry,
+} from './types.ts';
 
-/** 失败原因的中文短语 (人话); 未知错误码保留码值便于诊断 */
-function describeFailure(code: string | undefined): string {
+/** 失败归因 (判别联合: ENOENT 进 gone 桶, 其余带未测到码); 未知错误码保留码值便于诊断 */
+function describeFailure(
+  code: string | undefined,
+):
+  | { missing: true; reason: string }
+  | { missing: false; code: UnmeasuredCode; reason: string } {
   switch (code) {
     case 'ENOENT':
-      return '不存在';
+      return { missing: true, reason: '不存在' };
     case 'EACCES':
     case 'EPERM':
-      return '权限不足, 无法读取';
+      return {
+        missing: false,
+        code: 'SIZE_UNMEASURED_PERMISSION',
+        reason: '权限不足, 无法读取',
+      };
     case 'ENOTDIR':
-      return '不是目录';
+      return {
+        missing: false,
+        code: 'SIZE_UNMEASURED_NOT_DIR',
+        reason: '不是目录',
+      };
     case 'ELOOP':
-      return '符号链接层级过深';
+      return {
+        missing: false,
+        code: 'SIZE_UNMEASURED_LOOP',
+        reason: '符号链接层级过深',
+      };
     default:
-      return code === undefined ? '读取失败' : `读取失败 (${code})`;
+      return {
+        missing: false,
+        code: 'SIZE_UNMEASURED_OTHER',
+        reason: code === undefined ? '读取失败' : `读取失败 (${code})`,
+      };
   }
 }
 
@@ -40,7 +69,7 @@ function errorCode(error: unknown): string | undefined {
 async function sumEntries(
   dirents: Dirent[],
   dir: string,
-  warnings: string[],
+  warnings: SweepWarning[],
 ): Promise<number> {
   let total = 0;
   for (const dirent of dirents) {
@@ -56,17 +85,21 @@ async function sumEntries(
           warnings,
         );
       } catch (error) {
-        warnings.push(
-          `体积统计失败 (${describeFailure(errorCode(error))}): ${path}`,
-        );
+        warnings.push({
+          code: 'SIZE_SUBPATH_FAILED',
+          message: `体积统计失败 (${describeFailure(errorCode(error)).reason}): ${path}`,
+          path,
+        });
       }
     } else if (dirent.isFile()) {
       try {
         total += (await stat(path)).size;
       } catch (error) {
-        warnings.push(
-          `体积统计失败 (${describeFailure(errorCode(error))}): ${path}`,
-        );
+        warnings.push({
+          code: 'SIZE_SUBPATH_FAILED',
+          message: `体积统计失败 (${describeFailure(errorCode(error)).reason}): ${path}`,
+          path,
+        });
       }
     }
   }
@@ -76,34 +109,62 @@ async function sumEntries(
 export function createJsSizer(): Sizer {
   return {
     name: 'js',
-    async measure(targets: string[]): Promise<SizeResult> {
-      const warnings: string[] = [];
+    basis: 'logical-bytes',
+    async measure(
+      targets: string[],
+      options?: MeasureOptions,
+    ): Promise<SizeResult> {
+      const warnings: SweepWarning[] = [];
       const entries: SizeEntry[] = [];
       const unmeasured: UnmeasuredEntry[] = [];
+      const gone: string[] = [];
+      /** 进度事件发射器 (options 省略时零开销) */
+      const emit = options?.onProgress;
+
+      /** 未测到项的落桶 + 事件成对发射 (码与原因一次给全) */
+      const pushUnmeasured = (
+        target: string,
+        code: UnmeasuredCode,
+        reason: string,
+      ): void => {
+        unmeasured.push({ target, code, reason });
+        emit?.({ kind: 'unmeasured', target, code, reason });
+      };
 
       // 排序副本: 不改动调用方数组, 输出按 target 升序稳定
       for (const target of [...targets].sort()) {
+        // 取消检查点 (逐目标之间): 被 abort 即抛 CANCELLED, 语义是「本次未完成」而非「结果为空」
+        if (options?.signal?.aborted) {
+          throw new SweepError('CANCELLED', '体积统计在逐目标检查点被取消', {
+            phase: 'measure',
+          });
+        }
         let dirents: Dirent[];
         try {
           dirents = await readdir(target, { withFileTypes: true });
         } catch (error) {
-          const code = errorCode(error);
-          if (code === 'ENOENT') {
-            // 「不存在」维持裁定: 告警并跳过, 不入任何桶
-            warnings.push(`体积统计失败 (不存在): ${target}`);
+          const failure = describeFailure(errorCode(error));
+          if (failure.missing) {
+            // 「不存在」单列 gone 桶 (BC-13): 与 warnings 的 SIZE_TARGET_VANISHED 事件同源同判定
+            gone.push(target);
+            warnings.push({
+              code: 'SIZE_TARGET_VANISHED',
+              message: `体积统计失败 (${failure.reason}): ${target}`,
+              path: target,
+            });
+            emit?.({ kind: 'gone', target });
           } else {
             // 存在但测不到: 结构化上报, 下游不得静默移出清单
-            unmeasured.push({ target, reason: describeFailure(code) });
+            pushUnmeasured(target, failure.code, failure.reason);
           }
           continue;
         }
-        entries.push({
-          target,
-          bytes: await sumEntries(dirents, target, warnings),
-        });
+        const bytes = await sumEntries(dirents, target, warnings);
+        entries.push({ target, bytes });
+        emit?.({ kind: 'measured', target, bytes, basis: 'logical-bytes' });
       }
 
-      return { entries, warnings, unmeasured };
+      return { entries, basis: 'logical-bytes', warnings, unmeasured, gone };
     },
   };
 }

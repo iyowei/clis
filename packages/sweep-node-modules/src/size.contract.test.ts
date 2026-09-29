@@ -1,8 +1,9 @@
 /**
  * 体积统计契约测试: 同一套尺子参数化跑全部候选 (js / du)。
  * 口径差异 (js = 逻辑字节, du = 磁盘占用) 是已知且保留的设计差异, 契约不断言两者相等;
- * 结果三桶: entries (可测量) / unmeasured (存在但测不到) / warnings (非致命告警);
- * 「不存在」的路径跳过, 不入任何桶; du 候选依赖系统 du 探针, 探针缺失时整组按可用性跳过。
+ * 结果划分: entries (可测量) / unmeasured (存在但测不到) / gone (测量时已不存在) 三桶构成全划分;
+ * warnings 为非致命告警 (结构化); du 候选依赖系统 du 探针, 探针缺失时整组按可用性跳过。
+ * 本轮新增的结果形态 (basis / gone / 取消 / 进度) 的专项契约见 size.result-shape.test.ts。
  */
 import { afterEach, describe, expect, test } from 'bun:test';
 
@@ -198,7 +199,9 @@ for (const candidate of candidates) {
 
       expect(entries.map((entry) => entry.target)).toEqual([real]);
       candidate.assertBytes(at(entries, 0).bytes, 2 * 256);
-      expect(warnings.some((warning) => warning.includes('ghost'))).toBe(true);
+      expect(
+        warnings.some((warning) => warning.message.includes('ghost')),
+      ).toBe(true);
       expect(unmeasured).toEqual([]);
     });
 
@@ -234,9 +237,9 @@ for (const candidate of candidates) {
           [join(root, 'alpha', 'node_modules')],
         );
 
-        expect(warnings.some((warning) => warning.includes('locked'))).toBe(
-          true,
-        );
+        expect(
+          warnings.some((warning) => warning.message.includes('locked')),
+        ).toBe(true);
         candidate.assertBytes(at(entries, 0).bytes, 2 * 256);
         // 目标本身可测 (只是少算了 locked 子树), 不属「存在但测不到」
         expect(unmeasured).toEqual([]);
@@ -282,7 +285,7 @@ for (const candidate of candidates) {
 
         // 告警流 (含 unmeasured.reason) 里不得混入 du 的英文原文
         const texts = [
-          ...result.warnings,
+          ...result.warnings.map((w) => w.message),
           ...result.unmeasured.map((item) => item.reason),
         ];
         expect(texts.length).toBeGreaterThan(0);
@@ -327,11 +330,11 @@ for (const candidate of candidates) {
         expect(result.entries).toEqual([]);
         expect(result.unmeasured).toEqual([]);
         expect(
-          result.warnings.some((warning) => warning.includes('不存在')),
+          result.warnings.some((warning) => warning.message.includes('不存在')),
         ).toBe(true);
         // 前缀原文 (含 du: 与英文短语) 不得外泄到任何文本面
         const texts = [
-          ...result.warnings,
+          ...result.warnings.map((w) => w.message),
           ...result.unmeasured.map((item) => item.reason),
         ];
         expect(texts.some((text) => /du:|cannot access/i.test(text))).toBe(
@@ -346,7 +349,7 @@ for (const candidate of candidates) {
         expect(result.entries).toEqual([]);
         expect(result.unmeasured).toEqual([]);
         expect(
-          result.warnings.some((warning) => warning.includes('不存在')),
+          result.warnings.some((warning) => warning.message.includes('不存在')),
         ).toBe(true);
       });
 

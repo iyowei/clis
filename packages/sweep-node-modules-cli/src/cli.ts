@@ -601,7 +601,7 @@ async function sweep(
   const sizeResult = await createSizer().measure(
     scanResult.hits.map((hit) => hit.target),
   );
-  for (const warning of sizeResult.warnings) warn(warning, color);
+  for (const warning of sizeResult.warnings) warn(warning.message, color);
 
   // home 同时服务两处: 清单路径的 ~ 缩写与疑似安装树的隐藏目录判定 (同一份语义, 不各读一次环境)
   const home = homedir();
