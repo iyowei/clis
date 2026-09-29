@@ -8,7 +8,7 @@
 
 **English** | [中文](README.zh-CN.md)
 
-A workspace-level cleaner for `node_modules`: scan several root directories in one pass, list every `node_modules` directory across your projects along with its size, and bulk-delete them after you confirm, reclaiming disk space.
+A workspace-level cleaner for `node_modules`: scan several root directories in one pass, list every `node_modules` directory across your projects along with its size, and bulk-delete them after you confirm, reclaiming disk space. The CLI is a thin shell over the API package it is built on, [`@iyowei/sweep-node-modules`](https://www.npmjs.com/package/@iyowei/sweep-node-modules). For programmatic use from your own scripts and tools, reach for that package (its usage is documented there).
 
 > Where this sits: single-project cleaners handle "go into one project and clean its own artifacts"; this tool handles "stand at the workspace level and clean many projects in one pass". The two layers coexist; see [ADR 0001](../../docs/adrs/0001-workspace-level-cleaner.md).
 
@@ -82,8 +82,6 @@ $bin = "$env:USERPROFILE\tools\sweep-node-modules\packages\sweep-node-modules-cl
 
 - **Requires**: bun or node, either works (the launcher is a shell / cmd script run by the OS; it does not depend on node)
 - The most direct entry point; afterwards just run `sweep-nm` (on Windows via `packages\sweep-node-modules-cli\bin\sweep-nm.cmd`)
-
-> The tool also ships an API package, [`@iyowei/sweep-node-modules`](https://www.npmjs.com/package/@iyowei/sweep-node-modules), for use in your own programs or scripts (usage is documented in that package).
 
 ## Usage
 

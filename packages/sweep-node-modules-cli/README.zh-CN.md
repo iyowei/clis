@@ -8,7 +8,7 @@
 
 [English](README.md) | **中文**
 
-工作区级 `node_modules` 清理工具: 一次扫描多个根目录, 跨项目列出各处 `node_modules` 与体积, 确认后批量删除, 回收磁盘空间。
+工作区级 `node_modules` 清理工具: 一次扫描多个根目录, 跨项目列出各处 `node_modules` 与体积, 确认后批量删除, 回收磁盘空间。本 CLI 是 API 包 [`@iyowei/sweep-node-modules`](https://www.npmjs.com/package/@iyowei/sweep-node-modules) 之上的一层薄壳。要在你自己的脚本与工具里做程序化调用, 请用该包 (用法见该包文档)。
 
 > 分层说明: 单项目清理工具管「进入某个项目, 清它自己的产物」; 本工具管「站在工作区层面, 一次清理很多个项目」。两者分层共存, 见 [ADR 0001](../../docs/adrs/0001-workspace-level-cleaner.md)。
 
@@ -82,8 +82,6 @@ $bin = "$env:USERPROFILE\tools\sweep-node-modules\packages\sweep-node-modules-cl
 
 - **需要**: bun 或 node 任一 (启动器是 shell / cmd 脚本, 由系统执行, 不依赖 node)
 - 特点: 入口最直接; 之后直接敲 `sweep-nm` (Windows 经 `packages\sweep-node-modules-cli\bin\sweep-nm.cmd`)
-
-> 本工具同时提供可编程 API 包 [`@iyowei/sweep-node-modules`](https://www.npmjs.com/package/@iyowei/sweep-node-modules), 供在程序或脚本中调用 (用法见该包文档)。
 
 ## 使用
 
