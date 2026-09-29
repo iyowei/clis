@@ -57,7 +57,7 @@
     "registry": "https://registry.npmjs.org/"
   },
   "devDependencies": {
-    "@iyowei/sweep-node-modules": "workspace:^"
+    "@iyowei/sweep-node-modules": "*"
   },
   "scripts": {
     "build": "bun build src/cli.ts --target=node --outfile=dist/cli.js && bun scripts/write-dist-manifest.ts",
