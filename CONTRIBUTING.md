@@ -1,5 +1,7 @@
 # Contributing to sweep-node-modules
 
+**English** | [中文](CONTRIBUTING.zh-CN.md)
+
 Thanks for taking the time to contribute. Bug reports, feature requests, documentation fixes, and pull requests are all welcome.
 
 Everyone taking part in this project is covered by the [Code of Conduct](CODE_OF_CONDUCT.md).
