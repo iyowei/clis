@@ -80,7 +80,7 @@ $bin = "$env:USERPROFILE\tools\sweep-node-modules\packages\sweep-node-modules-cl
 
 > Or skip the command line: add the `bin` directory to your user `Path` under System Properties → Environment Variables.
 
-- **Requires**: bun or node, either works (the launcher is a shell / cmd script run by the OS; it does not depend on node)
+- **Requires**: bun or node, either works (the launcher is a shell / cmd script run by the OS; it does not depend on node); **node-only environments**: run one build first (`bun install && bun run build`) — node does not read the repo's path mappings, so an uncovered checkout cannot resolve the API package's artifacts
 - The most direct entry point; afterwards just run `sweep-nm` (on Windows via `packages\sweep-node-modules-cli\bin\sweep-nm.cmd`)
 
 ## Usage

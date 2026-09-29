@@ -45,6 +45,10 @@ jobs:
         with:
           node-version: 24
       - run: bun install --frozen-lockfile
+      # node target 直跑 CLI 源码时按 exports 解析 @iyowei/sweep-node-modules → dist;
+      # node 不读 tsconfig paths (bun 独有), 故 dist 必须先行构建 (bun target 无此需要)
+      - name: Build
+        run: bunx turbo run build
       - name: Conformance (bun)
         run: bun packages/sweep-node-modules-cli/scripts/transcription/run-conformance.ts --target "bun packages/sweep-node-modules-cli/src/cli.ts"
       - name: Conformance (node)

@@ -39,6 +39,9 @@ bun run bench
 # 转写一致性验收 (金样本语料见 docs/protocol/; target 为 CLI 包内源码路径)
 bun run conformance -- --target "bun packages/sweep-node-modules-cli/src/cli.ts"
 
+# 本地 CI 预演 (与 GitHub Actions 的 verify + conformance 两 job 同集合: build / 类型 / 测试 / lint / 格式 / conformance 双 target; 推前必跑, pre-push 钩子按同集合自动执行)
+bun run ci
+
 # 打包两包发布产物: CLI 单文件 (dist/cli.js + 自证清单) 与 API 包 (dist/index.js + 类型声明 + 自证清单); 发布时由各自的 prepublishOnly 自动跑
 bun run build
 
@@ -70,7 +73,7 @@ bun run safe-install
 # bun 载体
 bun run conformance -- --target "bun packages/sweep-node-modules-cli/src/cli.ts"
 
-# node 载体
+# node 载体 (需先 bun run build: node 不读 tsconfig paths, 按 exports 解析到 API 包 dist)
 bun run conformance -- --target "node packages/sweep-node-modules-cli/src/cli.ts"
 ```
 

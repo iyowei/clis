@@ -80,7 +80,7 @@ $bin = "$env:USERPROFILE\tools\sweep-node-modules\packages\sweep-node-modules-cl
 
 > 也可以不经命令行: 在「系统属性 → 环境变量」里把该 `bin` 目录加到用户变量 `Path` 中。
 
-- **需要**: bun 或 node 任一 (启动器是 shell / cmd 脚本, 由系统执行, 不依赖 node)
+- **需要**: bun 或 node 任一 (启动器是 shell / cmd 脚本, 由系统执行, 不依赖 node); **仅 node 的环境**: 需先完成一次构建 (构建链以 bun 为工具: `bun install && bun run build`)——node 不解析仓库内的路径映射, 未经构建的检出态会找不到 API 包产物
 - 特点: 入口最直接; 之后直接敲 `sweep-nm` (Windows 经 `packages\sweep-node-modules-cli\bin\sweep-nm.cmd`)
 
 ## 使用

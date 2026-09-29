@@ -52,6 +52,12 @@ pre-push:
     type-check:
       run: bun run typecheck
 
+    # build 先于 conformance: node target 直跑 CLI 源码按 exports 解析到 API 包 dist,
+    # 而 node 不读 tsconfig paths (bun 独有), 无产物即全数 ERR_MODULE_NOT_FOUND
+    # (2026-09-29 CI 实翻: conformance job 缺 Build 前置, 本地 pre-push 亦缺此步)
+    build:
+      run: bun run build
+
     test:
       run: bun run test
 
@@ -60,3 +66,7 @@ pre-push:
 
     prettier:
       run: bunx prettier --check '**/*.{ts,tsx,mts,mjs,md,mdx,json,yaml,yml}'
+
+    # 双 target (bun + node): 与 CI 的 conformance job 同集合; 复用预演脚本的同一实现
+    conformance:
+      run: bun scripts/ci.ts --conformance
