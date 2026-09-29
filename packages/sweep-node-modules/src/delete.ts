@@ -255,7 +255,7 @@ type RemovalSlot =
   | { kind: 'removed'; target: string }
   | { kind: 'missing'; target: string }
   | { kind: 'failed'; failure: TargetFailure }
-  | { kind: 'aborted'; aborted: AbortedBatch };
+  | { kind: 'aborted' };
 
 /**
  * 逐条复核并删除目标, 失败不中断整批, 复核不通过则整批中止, 按结果分桶
@@ -266,7 +266,8 @@ type RemovalSlot =
  *    实测仅占 3%), 单条 rm 仍绝不在中途中断;
  * ② 目标间不嵌套 (扫描对 node_modules 命中即剪枝), 任一目标的复核链 (root → 父目录) 不可能
  *    落在别条目标的删除面上, 故并发 rm 不会污染彼此的复核读;
- * ③ 中止 / 取消定义为「停止派发新条 + 在飞条目跑完」: aborted 取首个触发条 (与串行同);
+ * ③ 中止 / 取消定义为「停止派发新条 + 在飞条目跑完」: aborted 取**批次序最前**的触发条
+ *    (多条并发检出时按索引比较, 与串行「首个触发条」一致, 不随调度漂动);
  *    取消时 partial = 全部已派发条目的桶 (派发序确定, 已派发集合是批次的连续前缀; 前缀长度
  *    随调度水位, 仅影响中止 / 取消快照的粒度, 不影响任何安全判定)。
  * 桶恒按输入顺序输出 (收集后按批次索引重排, 与并发完成序无关); 进度事件为完成序
@@ -299,8 +300,21 @@ export async function removeTargets(
   const slots: (RemovalSlot | undefined)[] = Array.from({
     length: targets.length,
   });
-  /** 首个中止信息: 设置后停止派发新条, 在飞条目照常跑完 (与串行「中止点起不再尝试」同精神) */
+  /**
+   * 中止信息与触发条索引: 设置后停止派发新条, 在飞条目照常跑完 (与串行「中止点起不再尝试」同精神)。
+   * 多条并发检出中止时 (如同一个根被换位, 每条复核都会失败), 记录取**批次序最前**的触发条
+   * (recordAbort 按索引比较), 与串行「首个触发条」的确定性一致, 报告不随调度水位漂动
+   * (2026-09-29 CI 实翻: 首版按完成序先到先得, aborted.target 会随机落在任一条)。
+   */
   let aborted: AbortedBatch | undefined;
+  let abortedIndex = Number.POSITIVE_INFINITY;
+
+  /** 记录中止: 只收批次序更靠前的触发条 (首个触发即停派发, 与报告取值解耦) */
+  const recordAbort = (index: number, info: AbortedBatch): void => {
+    if (index >= abortedIndex) return;
+    aborted = info;
+    abortedIndex = index;
+  };
   /** 取消标记: 同上, 停止派发新条, 在飞条目照常跑完并入桶 (随 partial 交回) */
   let cancelled = false;
   /** 未预期异常暂存 (只留首个; 排空后原样抛出, 不因并发而静默丢弃) */
@@ -343,27 +357,29 @@ export async function removeTargets(
       }
       const root = roots.find((candidate) => isUnder(candidate.real, target));
       if (root === undefined) {
-        aborted ??= {
+        const info: AbortedBatch = {
           target,
           code: 'REVIEW_NOT_UNDER_ANY_ROOT',
           message: `安全复核失败 (目标不在任何 roots 之下): ${target}`,
           path: target,
         };
-        slots[index] = { kind: 'aborted', aborted };
-        emit?.({ kind: 'aborted', aborted });
+        recordAbort(index, info);
+        slots[index] = { kind: 'aborted' };
+        emit?.({ kind: 'aborted', aborted: info });
         return;
       }
 
       // 链头判定先于组件复核: 根被换位时链上其余组件全是「此刻的真目录」, 只有拼写形态能识破
       if (await isSymlinkHead(root.configured)) {
-        aborted ??= {
+        const info: AbortedBatch = {
           target,
           code: 'REVIEW_HEAD_SYMLINK',
           message: `安全复核失败 (根被替换为符号链接): ${root.configured}`,
           path: root.configured,
         };
-        slots[index] = { kind: 'aborted', aborted };
-        emit?.({ kind: 'aborted', aborted });
+        recordAbort(index, info);
+        slots[index] = { kind: 'aborted' };
+        emit?.({ kind: 'aborted', aborted: info });
         return;
       }
 
@@ -383,14 +399,15 @@ export async function removeTargets(
           return;
         }
         if (finding.kind === 'unsafe') {
-          aborted ??= {
+          const info: AbortedBatch = {
             target,
             code: 'REVIEW_COMPONENT_REPLACED',
             message: `安全复核失败 (路径组件被替换): ${finding.path}`,
             path: finding.path,
           };
-          slots[index] = { kind: 'aborted', aborted };
-          emit?.({ kind: 'aborted', aborted });
+          recordAbort(index, info);
+          slots[index] = { kind: 'aborted' };
+          emit?.({ kind: 'aborted', aborted: info });
           return;
         }
         // 复核不可达但无替换证据: 只拒该条, 不牵连整批
