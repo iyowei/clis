@@ -1,3 +1,15 @@
+## @iyowei/sweep-node-modules-cli [0.2.1](https://github.com/iyowei/sweep-node-modules/compare/@iyowei/sweep-node-modules-cli@0.2.0...@iyowei/sweep-node-modules-cli@0.2.1) (2026-09-29)
+
+
+### Bug Fixes
+
+* CI conformance 补构建前置, 固化本地全量预演入口 ([d6fd050](https://github.com/iyowei/sweep-node-modules/commit/d6fd0501b6ab0bd8780d67b5718bbf7e9de2c5ae))
+
+
+### Dependencies
+
+* **@iyowei/sweep-node-modules:** upgraded to 0.5.0
+
 # @iyowei/sweep-node-modules-cli [0.2.0](https://github.com/iyowei/sweep-node-modules/compare/@iyowei/sweep-node-modules-cli@0.1.2...@iyowei/sweep-node-modules-cli@0.2.0) (2026-09-29)
 
 
