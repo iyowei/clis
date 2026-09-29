@@ -6,6 +6,7 @@
       "name": "@iyowei/sweep-node-modules",
       "devDependencies": {
         "@lidofinance/multi-semantic-release": "1.0.3",
+        "@semantic-release/changelog": "7.0.0",
         "@semantic-release/git": "11.0.1",
         "@trivago/prettier-plugin-sort-imports": "6.0.2",
         "@types/bun": "1.4.2",
@@ -149,6 +150,8 @@
     "@pnpm/npm-conf": ["@pnpm/npm-conf@3.0.3", "https://registry.npmmirror.com/@pnpm/npm-conf/-/npm-conf-3.0.3.tgz", { "dependencies": { "@pnpm/config.env-replace": "^1.1.0", "@pnpm/network.ca-file": "^1.0.1", "config-chain": "^1.1.11" } }, "sha512-//0sR/cow/s4ICQaYoAobOl4aU8cjU6x/V24V7XkKotb9+O+3zySIYp146vpaobYHnxa4pZX8NkV54Z5AwbDKA=="],
 
     "@sec-ant/readable-stream": ["@sec-ant/readable-stream@0.4.1", "https://registry.npmmirror.com/@sec-ant/readable-stream/-/readable-stream-0.4.1.tgz", {}, "sha512-831qok9r2t8AlxLko40y2ebgSDhenenCatLVeW/uBtnHPyhHOvG0C7TvfgecV+wHzIm5KUICgzmVpWS+IMEAeg=="],
+
+    "@semantic-release/changelog": ["@semantic-release/changelog@7.0.0", "https://registry.npmmirror.com/@semantic-release/changelog/-/changelog-7.0.0.tgz", { "dependencies": { "@semantic-release/error": "^4.0.0", "aggregate-error": "^5.0.0", "lodash-es": "^4.17.21" }, "peerDependencies": { "semantic-release": ">=20.1.0" } }, "sha512-TNPyag5db24o7jWjre7UwKB4EcL8oJxbRhnDQ7hmZRAYqzreAc6PgdxQuU3pppp5xQinYtiumL0iG8SSKvnlzg=="],
 
     "@semantic-release/commit-analyzer": ["@semantic-release/commit-analyzer@13.0.1", "https://registry.npmmirror.com/@semantic-release/commit-analyzer/-/commit-analyzer-13.0.1.tgz", { "dependencies": { "conventional-changelog-angular": "^8.0.0", "conventional-changelog-writer": "^8.0.0", "conventional-commits-filter": "^5.0.0", "conventional-commits-parser": "^6.0.0", "debug": "^4.0.0", "import-from-esm": "^2.0.0", "lodash-es": "^4.17.21", "micromatch": "^4.0.2" }, "peerDependencies": { "semantic-release": ">=20.1.0" } }, "sha512-wdnBPHKkr9HhNhXOhZD5a2LNl91+hs8CC2vsAVYxtZH3y0dV3wKn+uZSN61rdJQZ8EGxzWB3inWocBHV9+u/CQ=="],
 
