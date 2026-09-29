@@ -2,7 +2,7 @@
   "name": "@iyowei/sweep-node-modules",
   "version": "0.5.0",
   "description": "Programmable API to sweep node_modules across workspace roots: scan, measure, and safely remove them from your own scripts and tools. 工作区级 node_modules 清理能力的可编程 API。",
-  "author": "iYoWei",
+  "author": "iTonyYo (https://github.com/iTonyYo)",
   "license": "MIT",
   "repository": {
     "type": "git",
