@@ -150,7 +150,9 @@ describe('档位色块', () => {
   const blockOf = (bytes: number): string => {
     const single = render({
       ...previewOptions,
-      entries: [{ project: 'x', bytes, target: '/x/node_modules' }],
+      entries: [
+        { project: 'x', bytes, target: '/x/node_modules', suspect: false },
+      ],
     });
     const row = linesOf(single)[1];
     if (row === undefined) throw new Error('清单行缺失');
@@ -331,6 +333,7 @@ describe('未测到体积的占位 (bytes undefined)', () => {
         ...UNMEASURED,
         project: 'locked2',
         target: `${HOME}/x/locked2/node_modules`,
+        suspect: false,
       },
     ];
     const text = render({ ...previewOptions, entries: all });

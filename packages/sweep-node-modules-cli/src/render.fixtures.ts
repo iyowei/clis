@@ -21,22 +21,26 @@ export const ACME_WEB: RenderEntry = {
   project: 'acme-web',
   bytes: Math.round(4.6 * GIB),
   target: `${ROOT_DEV}/acme-web/node_modules`,
+  suspect: false,
 };
 /** 中档样例 (与设计示意的 "366 MB" 同值) */
 export const DATA_PIPELINE: RenderEntry = {
   project: 'data-pipeline',
   bytes: 366 * MIB,
   target: `${ROOT_DEV}/data-pipeline/node_modules`,
+  suspect: false,
 };
 export const DOCS_SITE: RenderEntry = {
   project: 'docs-site',
   bytes: 86 * MIB,
   target: `${ROOT_DEV}/docs-site/node_modules`,
+  suspect: false,
 };
 export const NOTE_BOOK: RenderEntry = {
   project: '学习笔记',
   bytes: 12 * MIB,
   target: `${HOME}/笔记/学习笔记/node_modules`,
+  suspect: false,
 };
 export const SAMPLES: RenderEntry[] = [
   ACME_WEB,
@@ -57,6 +61,7 @@ export const RESULTS: RenderEntry[] = [
 export const UNMEASURED: RenderEntry = {
   project: 'locked',
   target: `${ROOT_DEV}/locked/node_modules`,
+  suspect: false,
   note: '体积统计失败: 权限不足',
 };
 
@@ -65,6 +70,7 @@ export const REWRITTEN: RenderEntry = {
   project: 'esc\u001b[31mname',
   bytes: 12 * MIB,
   target: `${HOME}/笔记/esc\u001b[31mname/node_modules`,
+  suspect: false,
 };
 
 export const previewOptions: RenderOptions = {

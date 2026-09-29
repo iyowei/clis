@@ -29,6 +29,7 @@ describe('控制字符与换行净化', () => {
     project: 'evil\nname',
     bytes: 620 * MIB,
     target: `${HOME}/x/evil\nname/node_modules`,
+    suspect: false,
   };
   test('换行不得撑破行结构', () => {
     const out = render({ ...previewOptions, entries: [newlineEntry] });
@@ -53,6 +54,7 @@ describe('控制字符与换行净化', () => {
       project: 'clear\u001b[2Jname',
       bytes: 620 * MIB,
       target: `${HOME}/x/clear\u001b[2Jname/node_modules`,
+      suspect: false,
     };
     const out = render({
       ...previewOptions,
@@ -100,6 +102,7 @@ describe('控制字符与换行净化', () => {
       project: `evil${code}${index}`,
       bytes: 12 * MIB,
       target: `${HOME}/x/evil${code}${index}/node_modules`,
+      suspect: false,
     }));
     const out = render({ ...previewOptions, entries });
 
@@ -158,7 +161,14 @@ describe('路径风味矩阵 (posix / win32)', () => {
   const winBase: RenderOptions = {
     mode: 'preview',
     roots: ['C:\\work'],
-    entries: [{ project: 'acme-web', bytes: 620 * MIB, target: WIN_TARGET }],
+    entries: [
+      {
+        project: 'acme-web',
+        bytes: 620 * MIB,
+        target: WIN_TARGET,
+        suspect: false,
+      },
+    ],
     color: false,
     home: WIN_HOME,
     pathStyle: WIN32_STYLE,
@@ -177,6 +187,7 @@ describe('路径风味矩阵 (posix / win32)', () => {
         project: 'acme-web',
         bytes: 620 * MIB,
         target: `${WIN_HOME}\\acme-web\\node_modules`,
+        suspect: false,
       },
     ];
     const out = render({ ...winBase, entries });
@@ -191,6 +202,7 @@ describe('路径风味矩阵 (posix / win32)', () => {
         project: 'acme-web',
         bytes: 620 * MIB,
         target: 'C:\\users\\IYOWEI\\acme-web\\NODE_MODULES',
+        suspect: false,
       },
     ];
     const out = render({ ...winBase, entries });
@@ -200,7 +212,12 @@ describe('路径风味矩阵 (posix / win32)', () => {
 
   test('posix 风味不误伤 win32 形式路径 (风味确由注入决定)', () => {
     const entries = [
-      { project: 'acme-web', bytes: 620 * MIB, target: WIN_TARGET },
+      {
+        project: 'acme-web',
+        bytes: 620 * MIB,
+        target: WIN_TARGET,
+        suspect: false,
+      },
     ];
     const out = render({
       ...winBase,
@@ -218,6 +235,7 @@ describe('路径风味矩阵 (posix / win32)', () => {
         project: 'acme-web',
         bytes: 620 * MIB,
         target: '/Users/iyowei/work/acme-web/node_modules',
+        suspect: false,
       },
     ];
     const out = render({

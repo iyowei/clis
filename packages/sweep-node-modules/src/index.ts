@@ -59,7 +59,14 @@ export {
 export { runtimeLabel, writeTextFile } from './runtime.ts';
 export { createScanner } from './scan.ts';
 export { createSizer } from './size.ts';
-export { collectSkips, crossDeviceNote, deletionBatch } from './skip.ts';
+export {
+  collectSkips,
+  crossDeviceNote,
+  deletionBatch,
+  skipReasonOf,
+  skipsBatch,
+  toSkipCandidates,
+} from './skip.ts';
 export type {
   EntryOutcome,
   EntryOutcomeKind,

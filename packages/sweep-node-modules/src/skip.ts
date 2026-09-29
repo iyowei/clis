@@ -4,9 +4,19 @@
  * (设备比对); 本模块只管「挡下之后怎么说、怎么放行」——放行通道两样, 互不通兑:
  * 疑似安装树是 `--force` (语义面: 删后能否由项目级重装恢复), 跨设备是声明独立根或先卸载
  * (授权面: 目标落在另一文件系统上, 旗标放行不了, 见 docs/designs/deletion-guard.md「设备边界」)。
+ * 入参为 SkipCandidate (非渲染类型): 判定被绑在渲染类型上会让写侧依赖读侧的展示形态。
  */
+import { type ClassifyOptions, classifyTarget } from './classify.ts';
+import type { SkipReason } from './codes.ts';
 import type { CrossDeviceKind } from './guard.ts';
-import type { RenderEntry } from './types.ts';
+import type {
+  ScanHit,
+  SizeResult,
+  SkipBook,
+  SkipCandidate,
+  SkippedTarget,
+  SweepPolicy,
+} from './types.ts';
 
 /** 疑似安装树被跳过时的行尾说明 (与普通删除失败区分: 这一条从未进入删除批次) */
 const SUSPECT_HINT = '已跳过 (加 --force 一并清理)';
@@ -36,49 +46,102 @@ export function crossDeviceNote(kind: CrossDeviceKind): string {
 }
 
 /**
- * 该条目是否因保守默认被排除出删除批。
- * `--force` 只放行疑似安装树那一类; 跨设备两类一律排除 (解除路径是改配置或卸载, 不是旗标)。
+ * 跳过原因的编码判定 (单源): null 即进批。
+ * 判定顺序即优先级: 跨设备 (两类形态, 不受 policy 影响) → 体积未测到 → 疑似安装树
+ * (仅 policy.releaseSuspects 放行); 同时命中时取更严的一侧, 与行尾/集册文案同源。
  */
-export function skipsBatch(
-  entry: RenderEntry,
+export function skipReasonOf(
+  entry: SkipCandidate,
   crossDevice: ReadonlyMap<string, CrossDeviceKind>,
-  force: boolean,
-): boolean {
-  if (crossDevice.has(entry.target)) return true;
-  return entry.suspect === true && !force;
+  policy: SweepPolicy,
+): SkipReason | null {
+  const deviceKind = crossDevice.get(entry.target);
+  if (deviceKind !== undefined) {
+    return deviceKind === 'on-path'
+      ? 'cross-device:on-path'
+      : 'cross-device:target-itself';
+  }
+  if (entry.bytes === undefined) return 'unmeasured';
+  if (entry.suspect && !policy.releaseSuspects) return 'suspect-install-tree';
+  return null;
 }
 
-/** 删除批次: 测到体积且未被保守默认挡下的目标 (保清单顺序); 体积测不到的只上占位行, 不执行删除 */
-export function deletionBatch(
-  entries: RenderEntry[],
+/**
+ * 该条目是否因保守默认 (或未测到体积) 被排除出删除批。
+ * `releaseSuspects` 只放行疑似安装树那一类; 跨设备两类一律排除 (解除路径是改配置或卸载, 不是旗标)。
+ */
+export function skipsBatch(
+  entry: SkipCandidate,
   crossDevice: ReadonlyMap<string, CrossDeviceKind>,
-  force: boolean,
+  policy: SweepPolicy,
+): boolean {
+  return skipReasonOf(entry, crossDevice, policy) !== null;
+}
+
+/**
+ * 候选构造器: 由扫描命中 + 体积结果 + 类别判定组装 SkipCandidate[]。
+ * 与 CLI 的条目构造前半段同源 (target / bytes / suspect 三项), 把「三份数据手工 join」
+ * 收进库内; size.gone 里的目标同样产出候选 (bytes 为 undefined), 天然被挡。
+ */
+export function toSkipCandidates(
+  hits: readonly ScanHit[],
+  size: SizeResult,
+  options?: ClassifyOptions,
+): SkipCandidate[] {
+  const bytesOf = new Map(
+    size.entries.map((entry): [string, number] => [entry.target, entry.bytes]),
+  );
+  const reasonOf = new Map(
+    size.unmeasured.map((item): [string, string] => [item.target, item.reason]),
+  );
+  return hits.map((hit) => {
+    const classification = classifyTarget(hit.target, options);
+    return {
+      target: hit.target,
+      bytes: bytesOf.get(hit.target),
+      unmeasuredReason:
+        bytesOf.get(hit.target) === undefined
+          ? reasonOf.get(hit.target)
+          : undefined,
+      suspect: classification.kind === 'suspect-install-tree',
+    };
+  });
+}
+
+/** 删除批次: 测到体积且未被保守默认挡下的目标 (保清单顺序) */
+export function deletionBatch(
+  entries: SkipCandidate[],
+  crossDevice: ReadonlyMap<string, CrossDeviceKind>,
+  policy: SweepPolicy,
 ): string[] {
   return entries
-    .filter(
-      (entry) =>
-        entry.bytes !== undefined && !skipsBatch(entry, crossDevice, force),
-    )
+    .filter((entry) => !skipsBatch(entry, crossDevice, policy))
     .map((entry) => entry.target);
 }
 
-/** 跳过集册: 末行说明行与行尾说明索引 (仅体积已测到的条目带说明, 理由见 cli.ts 的接线注释) */
-export interface SkipBook {
-  /** 末行说明行: 按类与形态各一行, 只在出现时出 (预览与执行同用) */
-  readonly trailer: string[];
-  /** 目标 → 行尾说明 (未测到体积的条目不入册: 其行尾已有体积失败注记, 不混同) */
-  readonly hints: ReadonlyMap<string, string>;
+/**
+ * 条目的人话说明 (单源): 跨设备与疑似取本模块既有文案常量;
+ * 未测到体积的取「体积统计失败: <原因>」, 与 CLI 现行行尾注记同源。
+ */
+function noteOf(entry: SkipCandidate, reason: SkipReason): string {
+  if (reason === 'suspect-install-tree') return SUSPECT_HINT;
+  if (reason === 'unmeasured') {
+    return `体积统计失败: ${entry.unmeasuredReason ?? '原因未知'}`;
+  }
+  return CROSS_DEVICE_HINTS[
+    reason === 'cross-device:on-path' ? 'on-path' : 'target-itself'
+  ];
 }
 
 /** 集册跳过类目标: 计数按清单上的标记行数 (与是否测得体积无关), 说明索引只收测得体积的条目 */
 export function collectSkips(
-  entries: RenderEntry[],
+  entries: SkipCandidate[],
   crossDevice: ReadonlyMap<string, CrossDeviceKind>,
-  force: boolean,
+  policy: SweepPolicy,
 ): SkipBook {
-  const suspectSkipped = force
+  const suspectSkipped = policy.releaseSuspects
     ? []
-    : entries.filter((entry) => entry.suspect === true);
+    : entries.filter((entry) => entry.suspect);
   const deviceSkipped = entries.filter((entry) =>
     crossDevice.has(entry.target),
   );
@@ -111,5 +174,13 @@ export function collectSkips(
     }
   }
 
-  return { trailer, hints };
+  // 码话合一集册 (与 plan.skipped 同源同值): 含未测到条目 (它们同属批次外目标)
+  const book: SkippedTarget[] = [];
+  for (const entry of entries) {
+    const reason = skipReasonOf(entry, crossDevice, policy);
+    if (reason === null) continue;
+    book.push({ target: entry.target, reason, note: noteOf(entry, reason) });
+  }
+
+  return { entries: book, trailer, hints };
 }

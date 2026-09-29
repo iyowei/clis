@@ -613,11 +613,9 @@ async function sweep(
   const entries = toEntries(scanResult.hits, sizeResult, home, crossDevice);
   // 语义闸 + 设备边界闸: 跳过集与末行说明由 skip.ts 单源给出 (两类判定本体见 classify.ts 与
   // guard.ts, 放行通道各异 —— 前者 --force, 后者改配置或卸载); 计数按清单上的标记行数
-  const { trailer, hints: skippedHints } = collectSkips(
-    entries,
-    crossDevice,
-    options.force,
-  );
+  const { trailer, hints: skippedHints } = collectSkips(entries, crossDevice, {
+    releaseSuspects: options.force,
+  });
 
   if (!options.yes) {
     print(
@@ -636,7 +634,9 @@ async function sweep(
   }
 
   // 删除批次: 测到体积且未被保守默认挡下的目标 (挡下者、说明与计数见 skip.ts)
-  const batch = deletionBatch(entries, crossDevice, options.force);
+  const batch = deletionBatch(entries, crossDevice, {
+    releaseSuspects: options.force,
+  });
 
   // 安全闸: 任一目标被拒即整批拒绝, 不做任何删除 (保守优先; 设计: deletion-guard.md)
   const { accepted, rejected } = await validateTargets(batch, { roots });

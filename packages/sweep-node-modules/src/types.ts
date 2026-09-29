@@ -36,8 +36,10 @@ export interface RenderEntry {
    * 疑似安装树 (工具 / 应用自身的安装树, 默认不进删除批; 判定见 classify.ts)。
    * 该行的路径不剥 node_modules 后缀: 剥掉后剩下的目录 (如 ~/.bun/install/global) 会被
    * 读成项目目录, 反而抹去唯一的类别提示; 保后缀与行尾标记互为印证。
+   * 必填的理由与 SkipCandidate.suspect 同源 (留可选等于给「疑似安装树静默进批」留后门);
+   * CLI 的构造点两条分支本就都写了值, 故为零改动。
    */
-  suspect?: boolean;
+  suspect: boolean;
 }
 
 export interface ScanOptions {
@@ -196,6 +198,12 @@ export interface SkipCandidate {
   target: string;
   /** undefined = 体积未测到 (未测到的条目不进删除批, BC-15) */
   bytes?: number;
+  /**
+   * 体积未测到时的中文原因 (补, 供 collectSkips 的 entries[].note 单源化:
+   * 未测到条目的人话说明取「体积统计失败: <本字段>」, 与 CLI 现行行尾注记同源);
+   * bytes 有值时本字段无意义
+   */
+  unmeasuredReason?: string;
   /** 疑似安装树 (语义闸判定, BC-37 / BC-38) */
   suspect: boolean;
 }

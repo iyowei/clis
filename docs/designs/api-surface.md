@@ -476,6 +476,8 @@ export interface SkipCandidate {
   target: string;
   /** undefined = 体积未测到 (体积未测到的条目不进删除批, BC-15) */
   bytes?: number;
+  /** 体积未测到时的中文原因 (补, 供 collectSkips 的 entries[].note 单源化); bytes 有值时无意义 */
+  unmeasuredReason?: string;
   /**
    * 疑似安装树 (改动: 由可选改**必填**)。
    * 必填的理由是安全的: 它承载「这条会不会被语义闸挡下」的全部信息, 而
