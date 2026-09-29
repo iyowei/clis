@@ -1,3 +1,10 @@
+# @iyowei/sweep-node-modules-cli [0.2.0](https://github.com/iyowei/sweep-node-modules/compare/@iyowei/sweep-node-modules-cli@0.1.2...@iyowei/sweep-node-modules-cli@0.2.0) (2026-09-29)
+
+
+### Features
+
+* 编排层 createSweeper 落地, CLI 退化为渲染薄壳 ([5f81bd9](https://github.com/iyowei/sweep-node-modules/commit/5f81bd92c6f24de932f3c6722ae582536e56f164))
+
 ## @iyowei/sweep-node-modules-cli [0.1.2](https://github.com/iyowei/sweep-node-modules/compare/@iyowei/sweep-node-modules-cli@0.1.1...@iyowei/sweep-node-modules-cli@0.1.2) (2026-09-29)
 
 
