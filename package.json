@@ -1,48 +1,9 @@
 {
   "name": "sweep-node-modules",
-  "version": "0.4.0",
   "private": true,
   "packageManager": "bun@1.4.2",
-  "description": "CLI tool to find and delete node_modules across projects: scan multiple workspace roots (monorepo friendly), bulk-remove them to free up disk space, preview first and delete after confirmation. 工作区级 node_modules 批量清理工具。",
-  "keywords": [
-    "cli",
-    "cli-tool",
-    "tool",
-    "node-modules",
-    "node_modules",
-    "modules",
-    "delete",
-    "remove",
-    "remover",
-    "del",
-    "cleaner",
-    "cleanup",
-    "clean",
-    "prune",
-    "sweep",
-    "bulk",
-    "batch",
-    "disk-usage",
-    "disk-space",
-    "free-up-space",
-    "workspace",
-    "monorepo",
-    "npm",
-    "pnpm",
-    "yarn",
-    "bun",
-    "node"
-  ],
   "author": "iTonyYo (https://github.com/iTonyYo)",
   "license": "MIT",
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/iyowei/sweep-node-modules.git"
-  },
-  "homepage": "https://github.com/iyowei/sweep-node-modules#readme",
-  "bugs": {
-    "url": "https://github.com/iyowei/sweep-node-modules/issues"
-  },
   "type": "module",
   "engines": {
     "node": ">=22.18.0"
