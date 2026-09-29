@@ -6,6 +6,8 @@ import { readFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { posix, win32 } from 'node:path';
 
+import { SweepError } from './errors.ts';
+
 export interface Config {
   /** 扫描根, 任意多个 */
   roots: string[];
@@ -145,37 +147,54 @@ function describeActual(value: unknown): string {
   return typeof value;
 }
 
+/** 形状校验的失败形态: 首个不符字段名 (供 SweepError 的 details.field) + 人话原因 (供 message) */
+interface ShapeProblem {
+  field: string;
+  message: string;
+}
+
 /**
- * 单字段形状校验: 字段须为字符串数组, 返回首个错误原因; 通过返回 null。
+ * 单字段形状校验: 字段须为字符串数组, 返回首个问题; 通过返回 null。
  * optional 为 true 时字段缺省放行 (由调用方补默认值), 出现但类型不符仍报错。
  */
 function fieldError(
   container: Record<string, unknown>,
   field: string,
   optional: boolean,
-): string | null {
+): ShapeProblem | null {
   const value = container[field];
   if (value === undefined) {
-    return optional ? null : `${field} 应为字符串数组 (实际: 缺失)`;
+    return optional
+      ? null
+      : { field, message: `${field} 应为字符串数组 (实际: 缺失)` };
   }
   if (!Array.isArray(value)) {
-    return `${field} 应为字符串数组 (实际: ${describeActual(value)})`;
+    return {
+      field,
+      message: `${field} 应为字符串数组 (实际: ${describeActual(value)})`,
+    };
   }
   const badIndex = value.findIndex((item) => typeof item !== 'string');
   if (badIndex !== -1) {
-    return `${field} 第 ${badIndex + 1} 项应为字符串 (实际: ${describeActual(value[badIndex])})`;
+    return {
+      field,
+      message: `${field} 第 ${badIndex + 1} 项应为字符串 (实际: ${describeActual(value[badIndex])})`,
+    };
   }
   return null;
 }
 
 /**
  * 配置形状校验 (最小口径, 只校验类型不校验语义): 顶层须为非数组对象;
- * roots 必填, exclude / include 均可缺省 (依序补 DEFAULT_EXCLUDE 与 []); 返回首个错误原因
+ * roots 必填, exclude / include 均可缺省 (依序补 DEFAULT_EXCLUDE 与 []); 返回首个问题
  * (逐字段具体), 通过返回 null。
  */
-function shapeError(value: unknown): string | null {
+function shapeError(value: unknown): ShapeProblem | null {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) {
-    return `顶层应为对象 (实际: ${describeActual(value)})`;
+    return {
+      field: '顶层',
+      message: `顶层应为对象 (实际: ${describeActual(value)})`,
+    };
   }
   const candidate = value as Record<string, unknown>;
   const rootsError = fieldError(candidate, 'roots', false);
@@ -187,7 +206,7 @@ function shapeError(value: unknown): string | null {
 
 /**
  * 装载配置: 文件缺失是正常状态 (absent), 供 init 向导分流, 不作为错误;
- * 损坏 (JSON 解析失败 / 形状不符) 与读取失败一律抛出含文件路径的明确错误。
+ * 损坏 (JSON 解析失败 / 形状不符) 与读取失败一律抛 SweepError (CONFIG_* 码与 details, 见 §3.6)。
  *
  * ### 数据追踪示例
  * ```text
@@ -212,21 +231,31 @@ export async function loadConfig(path: string): Promise<LoadConfigResult> {
   } catch (error) {
     if ((error as { code?: string }).code === 'ENOENT')
       return { state: 'absent' };
-    throw new Error(`配置读取失败 (${path}): ${(error as Error).message}`);
+    throw new SweepError(
+      'CONFIG_READ_FAILED',
+      `配置读取失败 (${path}): ${(error as Error).message}`,
+      { path, errno: (error as { code?: string }).code },
+    );
   }
 
   let data: unknown;
   try {
     data = JSON.parse(text);
   } catch (error) {
-    throw new Error(
+    throw new SweepError(
+      'CONFIG_CORRUPT_JSON',
       `配置损坏 (${path}): JSON 解析失败: ${(error as Error).message}`,
+      { path },
     );
   }
 
-  const error = shapeError(data);
-  if (error !== null) {
-    throw new Error(`配置损坏 (${path}): ${error}`);
+  const problem = shapeError(data);
+  if (problem !== null) {
+    throw new SweepError(
+      'CONFIG_CORRUPT_SHAPE',
+      `配置损坏 (${path}): ${problem.message}`,
+      { path, field: problem.field },
+    );
   }
 
   // 形状已保证: roots 为字符串数组; exclude / include 缺省分别补默认名单与空数组。
@@ -258,7 +287,11 @@ export async function loadResolvedConfig(
 ): Promise<LoadConfigResult> {
   const result = await loadConfig(resolved.path);
   if (result.state === 'absent' && resolved.source !== 'platform-default') {
-    throw new Error(`配置不存在 (${resolved.path}), 请检查路径`);
+    throw new SweepError(
+      'CONFIG_ABSENT',
+      `配置不存在 (${resolved.path}), 请检查路径`,
+      { path: resolved.path, source: resolved.source },
+    );
   }
   return result;
 }

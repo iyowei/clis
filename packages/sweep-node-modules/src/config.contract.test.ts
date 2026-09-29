@@ -15,6 +15,7 @@ import {
   mergeNames,
   resolveConfigPath,
 } from './config.ts';
+import { isSweepError } from './errors.ts';
 
 const dirs: string[] = [];
 
@@ -411,5 +412,64 @@ describe('config 契约: 合并 (mergeNames)', () => {
     // 包含名单剔空即不过滤 (空数组语义见 Config.include), 这是易误解点, 单独钉住
     expect(mergeNames([], ['node_modules'])).toEqual([]);
     expect(mergeNames(['node_modules'], [])).toEqual([]);
+  });
+});
+
+describe('config 契约: 装载错误的结构化 (SweepError + code + details)', () => {
+  /** 捕获 rejection 并断言为 SweepError, 返回 code 与 details 供逐案核对 */
+  const catchSweepError = async (
+    failure: Promise<unknown>,
+  ): Promise<{ code: string; details: unknown }> => {
+    let caught: unknown;
+    try {
+      await failure;
+    } catch (error) {
+      caught = error;
+    }
+    expect(isSweepError(caught)).toBe(true);
+    if (!isSweepError(caught)) throw new Error('应抛 SweepError');
+    return { code: caught.code, details: caught.details };
+  };
+
+  test('JSON 解析失败: CONFIG_CORRUPT_JSON, details 带 path', async () => {
+    const path = await writeConfig('config.json', '{ broken json');
+    const { code, details } = await catchSweepError(loadConfig(path));
+    expect(code).toBe('CONFIG_CORRUPT_JSON');
+    expect(details).toEqual({ path });
+  });
+
+  test('形状不符: CONFIG_CORRUPT_SHAPE, details 带 path 与首个不符字段', async () => {
+    const path = await writeConfig(
+      'config.json',
+      JSON.stringify({ exclude: [] }),
+    );
+    const { code, details } = await catchSweepError(loadConfig(path));
+    expect(code).toBe('CONFIG_CORRUPT_SHAPE');
+    expect(details).toEqual({ path, field: 'roots' });
+  });
+
+  test('读取失败 (非 ENOENT): CONFIG_READ_FAILED, details 带 path 与 errno', async () => {
+    // 指向目录: readFile 报 EISDIR, 走「读取失败」而非「缺失」分支
+    const dir = await makeDir();
+    const { code, details } = await catchSweepError(loadConfig(dir));
+    expect(code).toBe('CONFIG_READ_FAILED');
+    const payload = details as { path?: string; errno?: string };
+    expect(payload.path).toBe(dir);
+    expect(typeof payload.errno).toBe('string');
+  });
+
+  test('显式来源缺失: CONFIG_ABSENT, details 带 path 与 source', async () => {
+    const missing = join(await makeDir(), 'no-such.json');
+    const resolved = resolveConfigPath({
+      platform: 'darwin',
+      homedir: '/no-such-home',
+      env: {},
+      flag: missing,
+    });
+    const { code, details } = await catchSweepError(
+      loadResolvedConfig(resolved),
+    );
+    expect(code).toBe('CONFIG_ABSENT');
+    expect(details).toEqual({ path: missing, source: 'flag' });
   });
 });
