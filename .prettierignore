@@ -4,5 +4,6 @@ coverage
 package-lock.json
 bun.lock
 bun.lockb
+CHANGELOG.md
 *.modified
 *.deleted
