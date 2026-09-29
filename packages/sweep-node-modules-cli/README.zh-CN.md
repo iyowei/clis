@@ -1,6 +1,10 @@
-# sweep-node-modules
+# sweep-node-modules-cli
 
 [![CI](https://github.com/iyowei/sweep-node-modules/actions/workflows/ci.yml/badge.svg)](https://github.com/iyowei/sweep-node-modules/actions/workflows/ci.yml)
+[![npm version](https://img.shields.io/npm/v/@iyowei/sweep-node-modules-cli)](https://www.npmjs.com/package/@iyowei/sweep-node-modules-cli)
+[![npm downloads](https://img.shields.io/npm/dm/@iyowei/sweep-node-modules-cli)](https://www.npmjs.com/package/@iyowei/sweep-node-modules-cli)
+![node](https://img.shields.io/node/v/@iyowei/sweep-node-modules-cli)
+![bun](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Fiyowei%2Fsweep-node-modules%2Fmain%2Fpackage.json&query=%24.packageManager&label=bun)
 
 [English](README.md) | **中文**
 
@@ -58,7 +62,7 @@ cd "<克隆位置>/sweep-node-modules"
 chmod +x packages/sweep-node-modules-cli/bin/sweep-nm
 
 # 软链进 ~/.local/bin (通常已在 PATH 中), 启动器会挑选运行时
-ln -sf "$PWD/packages/sweep-node-modules-cli/bin/sweep-nm" ~/.local/packages/sweep-node-modules-cli/bin/sweep-nm
+ln -sf "$PWD/packages/sweep-node-modules-cli/bin/sweep-nm" ~/.local/bin/sweep-nm
 ```
 
 **Windows** (PowerShell):
@@ -79,7 +83,7 @@ $bin = "$env:USERPROFILE\tools\sweep-node-modules\packages\sweep-node-modules-cl
 - **需要**: bun 或 node 任一 (启动器是 shell / cmd 脚本, 由系统执行, 不依赖 node)
 - 特点: 入口最直接; 之后直接敲 `sweep-nm` (Windows 经 `packages\sweep-node-modules-cli\bin\sweep-nm.cmd`)
 
-> 本工具同时提供可编程 API 包 `@iyowei/sweep-node-modules`, 供在程序或脚本中调用 (用法见该包文档)。
+> 本工具同时提供可编程 API 包 [`@iyowei/sweep-node-modules`](https://www.npmjs.com/package/@iyowei/sweep-node-modules), 供在程序或脚本中调用 (用法见该包文档)。
 
 ## 使用
 

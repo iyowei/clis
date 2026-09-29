@@ -1,6 +1,10 @@
-# sweep-node-modules
+# sweep-node-modules-cli
 
 [![CI](https://github.com/iyowei/sweep-node-modules/actions/workflows/ci.yml/badge.svg)](https://github.com/iyowei/sweep-node-modules/actions/workflows/ci.yml)
+[![npm version](https://img.shields.io/npm/v/@iyowei/sweep-node-modules-cli)](https://www.npmjs.com/package/@iyowei/sweep-node-modules-cli)
+[![npm downloads](https://img.shields.io/npm/dm/@iyowei/sweep-node-modules-cli)](https://www.npmjs.com/package/@iyowei/sweep-node-modules-cli)
+![node](https://img.shields.io/node/v/@iyowei/sweep-node-modules-cli)
+![bun](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Fiyowei%2Fsweep-node-modules%2Fmain%2Fpackage.json&query=%24.packageManager&label=bun)
 
 **English** | [中文](README.zh-CN.md)
 
@@ -58,7 +62,7 @@ cd "<your clone>/sweep-node-modules"
 chmod +x packages/sweep-node-modules-cli/bin/sweep-nm
 
 # symlink it into ~/.local/bin (usually already on PATH); the launcher picks the runtime
-ln -sf "$PWD/packages/sweep-node-modules-cli/bin/sweep-nm" ~/.local/packages/sweep-node-modules-cli/bin/sweep-nm
+ln -sf "$PWD/packages/sweep-node-modules-cli/bin/sweep-nm" ~/.local/bin/sweep-nm
 ```
 
 **Windows** (PowerShell):
@@ -79,7 +83,7 @@ $bin = "$env:USERPROFILE\tools\sweep-node-modules\packages\sweep-node-modules-cl
 - **Requires**: bun or node, either works (the launcher is a shell / cmd script run by the OS; it does not depend on node)
 - The most direct entry point; afterwards just run `sweep-nm` (on Windows via `packages\sweep-node-modules-cli\bin\sweep-nm.cmd`)
 
-> The tool also ships an API package, `@iyowei/sweep-node-modules`, for use in your own programs or scripts (usage is documented in that package).
+> The tool also ships an API package, [`@iyowei/sweep-node-modules`](https://www.npmjs.com/package/@iyowei/sweep-node-modules), for use in your own programs or scripts (usage is documented in that package).
 
 ## Usage
 

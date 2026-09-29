@@ -22,7 +22,7 @@
 
 **安全防护保障 (全量)**
 [安全防护保障](safety-guardrails.md)
-全量沉淀六组 91 条保障点与 14 类内部账目 (含已知残余风险的诚实账); 面向想深挖的用户与未来维护者; 根 README 的安全防护节从本文裁剪而来。
+全量沉淀六组 91 条保障点与 14 类内部账目 (含已知残余风险的诚实账); 面向想深挖的用户与未来维护者; CLI 包 README 的安全防护节从本文裁剪而来。
 
 ## 转写契约
 
@@ -34,4 +34,4 @@
 
 **开发指南**
 [开发指南](development.md)
-环境准备、常用命令、双运行时验证与提交钩子; 面向仓库维护者与贡献者。使用说明见根 [README](../README.md) (英文主版; 中文版 [README.zh-CN.md](../README.zh-CN.md))。
+环境准备、常用命令、双运行时验证与提交钩子; 面向仓库维护者与贡献者。使用说明见 CLI 包 [README](../packages/sweep-node-modules-cli/README.md) (英文主版; 中文版 [README.zh-CN.md](../packages/sweep-node-modules-cli/README.zh-CN.md))。

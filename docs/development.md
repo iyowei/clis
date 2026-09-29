@@ -1,6 +1,6 @@
 # 开发指南
 
-> 面向本仓库的维护者与贡献者。使用说明见根 [README](../README.md); 设计决策见 [设计文档索引](designs/README.md); 转写套件见 [转写契约](protocol/README.md)。
+> 面向本仓库的维护者与贡献者。使用说明见 CLI 包 [README](../packages/sweep-node-modules-cli/README.md); 设计决策见 [设计文档索引](designs/README.md); 转写套件见 [转写契约](protocol/README.md)。
 
 ## 环境准备
 
@@ -50,7 +50,7 @@ bun run safe-install
 
 **README / LICENSE 类备份别落仓库根**: npm 会把仓库根的 `README*` / `LICENSE*` 无条件收进发行包, 且没有任何配置可以排除 (官方 files 节与 npm-packlist 的 strict 规则, 见 ADR 0009 补记第 3 条), 落根目录的备份会被静默发出去; 备份一律落 `~/tmp`。
 
-装进包里的 `bin/sweep-nm.mjs` 挑选运行时时, win32 下先按 PATH 解析出运行时的绝对路径再执行 (不搜当前工作目录 —— 本工具在被扫目录里执行, 目录内放同名 `bun.exe` 即可顶替真实运行时; 依据与落法见 [ADR 0007](adrs/0007-platform-portability.md) 决策第 4 条补记)。它在优先使用产物前核对清单摘要 (含形状版本), 清单缺失 / 损坏 / 版本不支持 / 摘要不符即拒收产物并给出指引 (处置按宿主分流: 仓库检出态给源码入口与重构建, 包态给重装本包); 无产物时回退源码的语义不变。启动器不判工作树脏净 (开发态常脏), 那是发布闸门的职责。清单字段、判定与两道防线的分工见 [ADR 0009](adrs/0009-npm-distribution-form.md) 补记与 `scripts/release-artifact.ts`。
+装进包里的 `bin/sweep-nm.mjs` 挑选运行时时, win32 下先按 PATH 解析出运行时的绝对路径再执行 (不搜当前工作目录: 本工具在被扫目录里执行, 目录内放同名 `bun.exe` 即可顶替真实运行时; 依据与落法见 [ADR 0007](adrs/0007-platform-portability.md) 决策第 4 条补记)。它在优先使用产物前核对清单摘要 (含形状版本), 清单缺失 / 损坏 / 版本不支持 / 摘要不符即拒收产物并给出指引 (处置按宿主分流: 仓库检出态给源码入口与重构建, 包态给重装本包); 无产物时回退源码的语义不变。启动器不判工作树脏净 (开发态常脏), 那是发布闸门的职责。清单字段、判定与两道防线的分工见 [ADR 0009](adrs/0009-npm-distribution-form.md) 补记与 `scripts/release-artifact.ts`。
 
 ## 运行时双跑
 
