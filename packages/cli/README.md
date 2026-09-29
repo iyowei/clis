@@ -1,5 +1,7 @@
 # sweep-node-modules
 
+[![CI](https://github.com/iyowei/sweep-node-modules/actions/workflows/ci.yml/badge.svg)](https://github.com/iyowei/sweep-node-modules/actions/workflows/ci.yml)
+
 **English** | [中文](README.zh-CN.md)
 
 A workspace-level cleaner for `node_modules`: scan several root directories in one pass, list every `node_modules` directory across your projects along with its size, and bulk-delete them after you confirm, reclaiming disk space.

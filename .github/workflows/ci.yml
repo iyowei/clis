@@ -1,0 +1,37 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - uses: oven-sh/setup-bun@v2
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+      - name: Install
+        run: bun install --frozen-lockfile
+      # build 先于 test: 发行面白名单用例需要 dist 在场才会执行 (缺席为设计内 skip)
+      - name: Build
+        run: bunx turbo run build
+      - name: Typecheck
+        run: bunx turbo run typecheck
+      - name: Test
+        run: bunx turbo run test
+      - name: Lint
+        run: bunx oxlint
+      - name: Format check
+        run: bunx prettier --check .
+      - name: Conformance (bun)
+        run: bun packages/cli/scripts/transcription/run-conformance.ts --target "bun packages/cli/src/cli.ts"
+      - name: Conformance (node)
+        run: bun packages/cli/scripts/transcription/run-conformance.ts --target "node packages/cli/src/cli.ts"
