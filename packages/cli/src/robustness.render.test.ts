@@ -4,7 +4,8 @@
  */
 import { describe, expect, test } from 'bun:test';
 
-import { POSIX_STYLE, WIN32_STYLE } from './guard.ts';
+import { POSIX_STYLE, WIN32_STYLE } from '@iyowei/sweep-node-modules';
+
 import {
   ACME_WEB,
   HOME,

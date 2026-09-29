@@ -24,8 +24,12 @@ import { symlink, writeFile } from 'node:fs/promises';
 import { basename, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { DEFAULT_EXCLUDE } from './config.ts';
-import { firstSymlinkOnRoot, firstSymlinkOnTarget } from './guard.ts';
+import {
+  DEFAULT_EXCLUDE,
+  firstSymlinkOnRoot,
+  firstSymlinkOnTarget,
+} from '@iyowei/sweep-node-modules';
+
 import { createReadlineIO, runInit } from './init.ts';
 
 const SELF = fileURLToPath(new URL('./init.smoke.ts', import.meta.url));

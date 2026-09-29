@@ -3,7 +3,8 @@
  * 独立于 cli 编排: 命令面 (docs/designs/cli-surface.md) 是这里唯一的事实来源,
  * 新增旗标时此文件与规格、语料 `cli-help` 三处同批更新 (见 behavior-contract.md BC-30)。
  */
-import { resolveConfigPath } from './config.ts';
+import { resolveConfigPath } from '@iyowei/sweep-node-modules';
+
 import { bannerLine, sanitizeLine } from './render.ts';
 
 /** 帮助页命令列宽度 (元变量取 ASCII, 免去全角宽度换算) */

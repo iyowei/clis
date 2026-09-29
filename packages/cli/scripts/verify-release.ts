@@ -4,7 +4,7 @@
  *
  * 由 package.json 的 prepublishOnly (`npm run build && npm run verify:release`) 在构建后调用,
  * 手动复核即 `bun run verify:release`。分工: 事实采集 (含发行面清单, 跑一次只读的 npm pack) 与
- * 判定都在 release-artifact.ts (判定是纯函数, 事实可注入), 本文件只负责坐标 (REPO_ROOT) 与
+ * 判定都在 release-artifact.ts (判定是纯函数, 事实可注入), 本文件只负责坐标 (PACKAGE_ROOT) 与
  * 输出面 (文案 + 退出码)。
  *
  * 用法: bun scripts/verify-release.ts
@@ -13,8 +13,8 @@
 import { join } from 'node:path';
 
 import {
+  PACKAGE_ROOT,
   type PackFacts,
-  REPO_ROOT,
   type ReleaseFacts,
   judgeRelease,
   normalizeCommit,
@@ -33,7 +33,7 @@ export interface ReleaseIo {
 /**
  * 跑一次发布前置校验: 采事实 (git 状态 / HEAD + dist 现状 + 发行面包内清单) → judgeRelease →
  * 输出结论。
- * root 是检出根 (默认 REPO_ROOT; 测试注入临时仓库, 判定因此不依赖当前工作树状态)。
+ * root 是包根 (默认 PACKAGE_ROOT; 测试注入临时仓库, 判定因此不依赖当前工作树状态)。
  * packFacts 默认现场采集 (跑一次只读的 npm pack, 需要 npm); 测试注入假清单以摆脱 npm 依赖。
  * 外部副作用：只读 (两条只读 git 命令 + 读 dist/ 下的产物与清单 + 一次 npm pack --dry-run)。
  */
@@ -65,7 +65,7 @@ export const verifyRelease = (
 
 // 被测试 import 时不得跑入口 (只有直接运行才落退出码)
 if (import.meta.main) {
-  process.exitCode = verifyRelease(REPO_ROOT, {
+  process.exitCode = verifyRelease(PACKAGE_ROOT, {
     out: (line) => process.stdout.write(`${line}\n`),
     err: (line) => process.stderr.write(`${line}\n`),
   });

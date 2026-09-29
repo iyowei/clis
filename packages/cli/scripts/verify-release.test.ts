@@ -18,9 +18,9 @@ import {
   CLI_FILE,
   type DistState,
   MANIFEST_FILE,
+  PACKAGE_ROOT,
   PACK_FILES_EXPECTED,
   type PackFacts,
-  REPO_ROOT,
   type ReleaseFacts,
   collectGitFacts,
   judgePackFiles,
@@ -405,7 +405,7 @@ describe('发行面白名单 · 注入式 (喂假 pack 输出, 一次 npm 都不
  * 此时 pack 清单必然缺 dist/cli.js 与 dist/manifest.json, 属「还没构建」而非「发行面杂质回归」。
  * 注册期判定 skip 并播报原因; dist 在场则全程维持原有全清单断言, 不削弱真问题抓取力。
  */
-const hasDist = existsSync(join(REPO_ROOT, 'dist'));
+const hasDist = existsSync(join(PACKAGE_ROOT, 'dist'));
 
 if (!hasDist) {
   console.warn(
@@ -415,9 +415,9 @@ if (!hasDist) {
 
 describe('发行面白名单 · 真实 npm 对齐 (本仓库实测)', () => {
   test.skipIf(!hasDist)(
-    '本仓库工作树的 pack 清单与白名单逐项一致 (仓库根杂质复发的常驻回归)',
+    '本仓库工作树的 pack 清单与白名单逐项一致 (包根杂质复发的常驻回归)',
     () => {
-      const facts = readPackFiles(REPO_ROOT);
+      const facts = readPackFiles(PACKAGE_ROOT);
 
       // 采不到即失败并显示 issue (如「需要 npm」), 不静默跳过: 该项是发行面唯一的真实对齐证据
       expect(facts.issue).toBeNull();

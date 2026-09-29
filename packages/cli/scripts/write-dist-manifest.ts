@@ -17,7 +17,7 @@ import {
   type DistManifest,
   type GitFacts,
   MANIFEST_FILE,
-  REPO_ROOT,
+  PACKAGE_ROOT,
   buildManifest,
   collectGitFacts,
   sha256File,
@@ -61,8 +61,8 @@ const sourceLabel = (manifest: DistManifest): string => {
 /** 入口: 写清单并落退出码 (0 已写入 / 1 产物缺失或为空) */
 const main = (): number => {
   const manifest = writeDistManifest(
-    join(REPO_ROOT, 'dist'),
-    collectGitFacts(REPO_ROOT),
+    join(PACKAGE_ROOT, 'dist'),
+    collectGitFacts(PACKAGE_ROOT),
     new Date().toISOString(),
   );
   if (manifest === null) {

@@ -25,10 +25,10 @@ assert_lefthook_installed: true
 pre-commit:
   parallel: false
   commands:
-    # TypeScript 全量类型检查: 不传 {staged_files}, 天然全项目执行
+    # TypeScript 类型检查 (两包, 经 turbo 编排): 不传 {staged_files}, 天然全项目执行
     type-check:
       glob: '*.{ts,tsx,mts,mjs}'
-      run: bunx tsc --noEmit
+      run: bunx turbo run typecheck
 
     # JS/TS (含 .mts / .mjs): prettier 格式化后自动重暂存, 再 oxlint
     prettier-js:
@@ -53,7 +53,7 @@ pre-push:
       run: bun run typecheck
 
     test:
-      run: bun test
+      run: bun run test
 
     oxlint:
       run: bunx oxlint

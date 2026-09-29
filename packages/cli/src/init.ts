@@ -8,7 +8,8 @@ import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { type Interface, createInterface } from 'node:readline/promises';
 
-import { type Config, DEFAULT_EXCLUDE } from './config.ts';
+import { type Config, DEFAULT_EXCLUDE } from '@iyowei/sweep-node-modules';
+
 import {
   bannerLine,
   neutralLine,

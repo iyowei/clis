@@ -4,7 +4,14 @@
  * 视觉规范: 紧凑式 + 色块 (设计: cli-surface.md「输出规格」)。
  * 可移植性: docs/adrs/0007-platform-portability.md。
  */
-import { type PathStyle, nativeStyle } from './guard.ts';
+import {
+  type PathStyle,
+  type RenderEntry,
+  nativeStyle,
+} from '@iyowei/sweep-node-modules';
+
+// RenderEntry 现居 API 包 (types.ts); 本行转出, 供本包消费方沿用从 render 模块取型的写法
+export type { RenderEntry };
 
 /** 顶栏命令名短变体 (设计: cli-surface.md「命令面」) */
 const BANNER = 'SWEEP-NM';
@@ -48,27 +55,6 @@ export const neutralLine = (text: string, color: boolean): string =>
  */
 const TIER_BIG = 512 * 1024 ** 2;
 const TIER_MID = 100 * 1024 ** 2;
-
-export interface RenderEntry {
-  /** node_modules 绝对路径 */
-  target: string;
-  /** 字节数; undefined = 体积测不到 (体积列显示 ?, 档位块转中性, 不计入合计总量) */
-  bytes?: number;
-  /** 项目名 */
-  project: string;
-  /** 执行模式: 删除是否成功 (缺省视为成功) */
-  ok?: boolean;
-  /** 执行模式: 失败原因 (ok === false 时附在行尾) */
-  error?: string;
-  /** 行尾补充说明 (如体积统计失败原因); 与失败原因同位并置, note 在前 */
-  note?: string;
-  /**
-   * 疑似安装树 (工具 / 应用自身的安装树, 默认不进删除批; 判定见 classify.ts)。
-   * 该行的路径不剥 node_modules 后缀: 剥掉后剩下的目录 (如 ~/.bun/install/global) 会被
-   * 读成项目目录, 反而抹去唯一的类别提示; 保后缀与行尾标记互为印证。
-   */
-  suspect?: boolean;
-}
 
 export interface RenderOptions {
   /** 预览 (零副作用) 或执行 (逐行结果 + 汇总) */

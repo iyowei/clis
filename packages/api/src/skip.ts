@@ -6,7 +6,7 @@
  * (授权面: 目标落在另一文件系统上, 旗标放行不了, 见 docs/designs/deletion-guard.md「设备边界」)。
  */
 import type { CrossDeviceKind } from './guard.ts';
-import type { RenderEntry } from './render.ts';
+import type { RenderEntry } from './types.ts';
 
 /** 疑似安装树被跳过时的行尾说明 (与普通删除失败区分: 这一条从未进入删除批次) */
 const SUSPECT_HINT = '已跳过 (加 --force 一并清理)';

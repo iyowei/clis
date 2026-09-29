@@ -17,7 +17,7 @@ import {
   type Workspace,
   type WorkspaceSpec,
   makeWorkspace,
-} from './fixtures.ts';
+} from '@iyowei/sweep-node-modules/testing';
 
 const CLI = fileURLToPath(new URL('./cli.ts', import.meta.url));
 const RUNNERS = ['bun', 'node'];

@@ -8,28 +8,39 @@ import { lstat, mkdir, realpath } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { basename, dirname } from 'node:path';
 
-import { classifyTarget } from './classify.ts';
 import {
   type Config,
   type ConfigSource,
-  DEFAULT_EXCLUDE,
-  type ResolvedConfigPath,
-  loadResolvedConfig,
-  mergeNames,
-  resolveConfigPath,
-} from './config.ts';
-import { type RemovalResult, type TrustRoot, removeTargets } from './delete.ts';
-import {
   type CrossDeviceKind,
+  DEFAULT_EXCLUDE,
+  type RemovalResult,
+  type RenderEntry,
+  type ResolvedConfigPath,
+  type ScanHit,
+  type ScanResult,
+  type SizeResult,
+  type TrustRoot,
+  classifyTarget,
+  collectSkips,
+  createScanner,
+  createSizer,
+  crossDeviceNote,
+  deletionBatch,
   findCrossDeviceTargets,
   firstSymlinkOnRoot,
   firstSymlinkOnTarget,
+  loadResolvedConfig,
+  mergeNames,
+  removeTargets,
+  resolveConfigPath,
+  runtimeLabel,
   validateTargets,
-} from './guard.ts';
+  writeTextFile,
+} from '@iyowei/sweep-node-modules';
+
 import { helpText } from './help.ts';
 import { type InitResult, createReadlineIO, runInit } from './init.ts';
 import {
-  type RenderEntry,
   bannerLine,
   neutralLine,
   paint,
@@ -37,11 +48,6 @@ import {
   sanitizeLine,
   sanitizeOutputLine,
 } from './render.ts';
-import { runtimeLabel, writeTextFile } from './runtime.ts';
-import { createScanner } from './scan.ts';
-import { createSizer } from './size.ts';
-import { collectSkips, crossDeviceNote, deletionBatch } from './skip.ts';
-import type { ScanHit, ScanResult, SizeResult } from './types.ts';
 
 interface CliOptions {
   /** 子命令: 缺省为清理流程, init 只跑向导, config 只报告配置 */

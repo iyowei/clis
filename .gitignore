@@ -2,6 +2,7 @@ node_modules/
 .DS_Store
 *.log
 *.modified
-bench/results/
-scripts/transcription/mutants/gen-*/
+packages/api/bench/results/
+packages/cli/scripts/transcription/mutants/gen-*/
 dist/
+.turbo/

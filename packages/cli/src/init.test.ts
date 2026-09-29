@@ -8,7 +8,8 @@ import { describe, expect, test } from 'bun:test';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 
-import { DEFAULT_EXCLUDE } from './config.ts';
+import { DEFAULT_EXCLUDE } from '@iyowei/sweep-node-modules';
+
 import { type InitDeps, type InitIO, parseList, runInit } from './init.ts';
 
 const CONFIG_PATH = '/Users/iyowei/.config/sweep-node-modules/config.json';

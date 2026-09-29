@@ -1,6 +1,8 @@
 {
-  "name": "@iyowei/sweep-node-modules",
+  "name": "sweep-node-modules",
   "version": "0.4.0",
+  "private": true,
+  "packageManager": "bun@1.4.2",
   "description": "CLI tool to find and delete node_modules across projects: scan multiple workspace roots (monorepo friendly), bulk-remove them to free up disk space, preview first and delete after confirmation. 工作区级 node_modules 批量清理工具。",
   "keywords": [
     "cli",
@@ -42,38 +44,31 @@
     "url": "https://github.com/iyowei/sweep-node-modules/issues"
   },
   "type": "module",
-  "bin": {
-    "sweep-nm": "bin/sweep-nm.mjs"
-  },
-  "files": [
-    "bin/sweep-nm.mjs",
-    "dist"
-  ],
   "engines": {
     "node": ">=22.18.0"
   },
-  "publishConfig": {
-    "access": "public"
-  },
+  "workspaces": [
+    "packages/*"
+  ],
   "scripts": {
     "safe-install": "bun scripts/safe-install.ts",
     "prepare": "node scripts/install-git-hooks.mjs || exit 0",
-    "build": "bun build src/cli.ts --target=node --outfile=dist/cli.js && bun scripts/write-dist-manifest.ts",
-    "prepublishOnly": "npm run build && npm run verify:release",
-    "verify:release": "bun scripts/verify-release.ts",
-    "typecheck": "tsc --noEmit",
+    "build": "turbo run build",
+    "verify:release": "bun packages/cli/scripts/verify-release.ts",
+    "typecheck": "turbo run typecheck",
     "lint": "oxlint",
     "lint:fix": "oxlint --fix",
     "format": "prettier --write .",
-    "test": "bun test",
-    "bench": "bun bench/run.ts",
-    "conformance": "bun scripts/transcription/run-conformance.ts"
+    "test": "turbo run test",
+    "bench": "bun packages/api/bench/run.ts",
+    "conformance": "bun packages/cli/scripts/transcription/run-conformance.ts"
   },
   "devDependencies": {
     "@trivago/prettier-plugin-sort-imports": "6.0.2",
     "@types/bun": "1.4.2",
     "oxlint": "1.85.0",
     "prettier": "3.9.9",
+    "turbo": "2.11.5",
     "typescript": "7.0.2"
   }
 }

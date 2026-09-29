@@ -18,8 +18,11 @@ import { fileURLToPath } from 'node:url';
 
 import { cleanGitEnv } from './git-env.ts';
 
-/** 仓库根 (本文件所在 scripts/ 上溯一级): git 检查目录与 dist/ 落点的默认坐标 */
-export const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+/** 包根 (packages/cli; 本文件所在 scripts/ 上溯一级): dist/ 落点与 npm pack 的坐标; git 检查命令在此坐标下运行 (无 pathspec, 仍为全仓语义) */
+export const PACKAGE_ROOT = resolve(
+  dirname(fileURLToPath(import.meta.url)),
+  '..',
+);
 
 /** 产物文件名 (构建脚本的 outfile 与启动器的入口选择都以它为准) */
 export const CLI_FILE = 'cli.js';

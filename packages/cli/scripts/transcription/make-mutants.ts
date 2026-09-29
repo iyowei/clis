@@ -1,5 +1,6 @@
 /**
- * 变异生成器 (反向验收的自证件): 从 src/ 复制一份实现并注入单点缺陷, 生成到 mutants/gen-<id>/。
+ * 变异生成器 (反向验收的自证件): 从两包源码 (packages/api/src + packages/cli/src) 复制一份实现
+ * 并注入单点缺陷, 生成到 mutants/gen-<id>/; 副本自带 node_modules 链接 (指向 api 副本), 可独立运行。
  *
  * 用途 (变异自证): 语料必须能抓住每一个 mutant; 抓不住 = 语料盲区 (或该 mutant 定义过弱),
  * 不是「实现没问题」。注入面见下方 MUTANTS 清单 (重跑纪律见 docs/protocol/README.md「维护规则」),
@@ -8,20 +9,35 @@
  * 幂等: 每次重建自己的 gen-* 目录, 并清掉清单之外的陈旧 gen-*; 锚点失配 (源码在漂移) 时显式
  * 失败并报出文件, 严禁静默产出一份「没注入缺陷」的副本 (那会把反向验收变成永远绿的空转)。
  *
- * 用法: bun scripts/transcription/make-mutants.ts [--src <dir>] [--help]
- *   --src <dir>  被测源目录 (默认: 仓库根下 src/)
+ * 用法: bun packages/cli/scripts/transcription/make-mutants.ts [--help]
  *
- * 产物结构: mutants/gen-<id>/src/*.ts (注入后的实现) + mutants/gen-<id>/mutant.json (注入记录)。
- * 运行某 mutant: bun scripts/transcription/mutants/gen-<id>/src/cli.ts (与 --target 配合喂给 run-conformance.ts)。
+ * 产物结构: mutants/gen-<id>/packages/{api,cli}/src/*.ts (注入后的实现) + mutants/gen-<id>/mutant.json
+ * (注入记录)。
+ * 运行某 mutant: bun packages/cli/scripts/transcription/mutants/gen-<id>/packages/cli/src/cli.ts
+ * (与 --target 配合喂给 run-conformance.ts)。
  */
-import { mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promises';
+import {
+  mkdir,
+  readFile,
+  readdir,
+  rm,
+  stat,
+  symlink,
+  writeFile,
+} from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
-/** 仓库根 (scripts/transcription/ 上溯两级): 默认 src 与相对路径展示都以它为基准 */
-const REPO_ROOT = resolve(HERE, '..', '..');
-const DEFAULT_SRC_DIR = join(REPO_ROOT, 'src');
+/** 仓库根 (packages/cli/scripts/transcription/ 上溯四级): 两包源码与配置的定位基准 */
+const REPO_ROOT = resolve(HERE, '..', '..', '..', '..');
+/** 被测源: 两包的 src (mutant 是整仓实现的注入副本) 与各自 package.json (副本自足可跑) */
+const API_SRC_DIR = join(REPO_ROOT, 'packages', 'api', 'src');
+const CLI_SRC_DIR = join(REPO_ROOT, 'packages', 'cli', 'src');
+const API_PKG_JSON = join(REPO_ROOT, 'packages', 'api', 'package.json');
+const CLI_PKG_JSON = join(REPO_ROOT, 'packages', 'cli', 'package.json');
+/** api 包名: cli 副本经同名 node_modules 链接解析到 api 副本 (就近优先于仓库根真包) */
+const API_PKG_NAME = '@iyowei/sweep-node-modules';
 
 /** mutant 产物根 (本脚本独占命名空间; 其下 gen-* 已由 .gitignore 忽略) */
 const MUTANTS_DIR = join(HERE, 'mutants');
@@ -34,7 +50,7 @@ const GEN_PREFIX = 'gen-';
 // ---------------------------------------------------------------------------
 
 interface PatchSpec {
-  /** 源文件名 (src/ 下, 含 .ts) */
+  /** 源文件名 (两包 src/ 下, 含 .ts; 名字在两包内不重名, 定位见 locatePatchTarget) */
   file: string;
   /** 注入锚点: 必须在目标文件中恰好出现一次, 否则脚本失败 (源码漂移的显式信号) */
   find: string;
@@ -144,12 +160,11 @@ const MUTANTS: MutantSpec[] = [
 // ---------------------------------------------------------------------------
 
 const HELP_TEXT = [
-  '用法: bun scripts/transcription/make-mutants.ts [--src <dir>]',
+  '用法: bun packages/cli/scripts/transcription/make-mutants.ts',
   '',
-  '  --src <dir>  被测源目录 (默认: <仓库根>/src)',
   '  --help       显示本帮助',
   '',
-  '产出: mutants/gen-<id>/src/*.ts + mutants/gen-<id>/mutant.json (幂等重建)',
+  '产出: mutants/gen-<id>/packages/{api,cli}/src/*.ts + mutant.json (幂等重建)',
 ].join('\n');
 
 /** 统计 needle 在 text 中的出现次数 (不重叠) */
@@ -190,50 +205,94 @@ interface AppliedPatch {
 }
 
 /**
- * 生成单个 mutant: 先清掉旧目录, 复制源文件, 再逐个应用补丁。
+ * 在 mutant 的两包副本中定位补丁目标文件 (文件名在两包内不重名)。
+ * 外部副作用：只读 (stat)。
+ */
+async function locatePatchTarget(
+  outDir: string,
+  file: string,
+): Promise<string> {
+  for (const pkg of ['api', 'cli'] as const) {
+    const candidate = join(outDir, 'packages', pkg, 'src', file);
+    try {
+      await stat(candidate);
+      return candidate;
+    } catch {
+      // 继续找另一包
+    }
+  }
+  throw new Error(`补丁目标不在两包副本中: ${file}`);
+}
+
+/**
+ * 生成单个 mutant: 先清掉旧目录, 复制两包源码与 package.json, 建 api 副本链接, 再逐个应用补丁。
  * 外部副作用：删除并重建 mutants/gen-<id>/。
  *
  * ### 数据追踪示例
  * ```text
  * Input（真实 Payload）
  *   mutant = { id: 'exit-swallowed', patches: [{ file: 'cli.ts', find: 'process.exitCode = await main();', … }] }
- *   sourceFiles = ['cli.ts', 'config.ts', …] (src/ 下全部非测试 .ts)
+ *   sourceFiles = ['cli.ts', 'render.ts', …] (packages/cli/src 下全部非测试 .ts; api 侧同法)
  *
- * 步骤 1：重建目录并复制源码
- *   gen-exit-swallowed/src/ = 源文件全量副本
+ * 步骤 1：重建目录并复制两包源码 + package.json
+ *   gen-exit-swallowed/packages/api/src/  = api 源文件全量副本
+ *   gen-exit-swallowed/packages/cli/src/  = cli 源文件全量副本
+ *   gen-exit-swallowed/node_modules/@iyowei/sweep-node-modules -> ../../packages/api (符号链接)
  *
- * 步骤 2：逐补丁校验锚点唯一后替换
+ * 步骤 2：逐补丁校验锚点唯一后替换 (目标文件按名在两包副本中定位)
  *   锚点出现 1 次 → 替换并记录 anchorLine (第 370 行)
  *
  * Output（数据契约）
  *   return 已注入的实现目录 + 注入记录 (写盘 mutant.json)
  * ```
  */
-async function makeMutant(
-  mutant: MutantSpec,
-  srcDir: string,
-): Promise<AppliedPatch[]> {
+async function makeMutant(mutant: MutantSpec): Promise<AppliedPatch[]> {
   const outDir = join(MUTANTS_DIR, `${GEN_PREFIX}${mutant.id}`);
   await rm(outDir, { recursive: true, force: true });
-  await mkdir(join(outDir, 'src'), { recursive: true });
+  await mkdir(join(outDir, 'packages', 'api', 'src'), { recursive: true });
+  await mkdir(join(outDir, 'packages', 'cli', 'src'), { recursive: true });
 
-  const files = await listSourceFiles(srcDir);
-  for (const name of files) {
-    await writeFile(
-      join(outDir, 'src', name),
-      await readFile(join(srcDir, name)),
-    );
+  for (const [srcDir, pkgDir] of [
+    [API_SRC_DIR, join(outDir, 'packages', 'api')],
+    [CLI_SRC_DIR, join(outDir, 'packages', 'cli')],
+  ] as const) {
+    for (const name of await listSourceFiles(srcDir)) {
+      await writeFile(
+        join(pkgDir, 'src', name),
+        await readFile(join(srcDir, name)),
+      );
+    }
   }
+  await writeFile(
+    join(outDir, 'packages', 'api', 'package.json'),
+    await readFile(API_PKG_JSON),
+  );
+  await writeFile(
+    join(outDir, 'packages', 'cli', 'package.json'),
+    await readFile(CLI_PKG_JSON),
+  );
+
+  // cli 副本对 '@iyowei/sweep-node-modules' 的解析必须落在 api 副本上 (而非宿主仓库的真包);
+  // 链接置于副本根 node_modules, 按就近解析优先于仓库根的真实 workspace 链接。
+  const apiLink = join(outDir, 'node_modules', API_PKG_NAME);
+  await mkdir(dirname(apiLink), { recursive: true });
+  await symlink(
+    process.platform === 'win32'
+      ? join(outDir, 'packages', 'api')
+      : join('..', '..', 'packages', 'api'),
+    apiLink,
+    process.platform === 'win32' ? 'junction' : 'dir',
+  );
 
   const applied: AppliedPatch[] = [];
   for (const patch of mutant.patches) {
-    const target = join(outDir, 'src', patch.file);
+    const target = await locatePatchTarget(outDir, patch.file);
     const text = await readFile(target, 'utf8');
     const occurrences = countOccurrences(text, patch.find);
     if (occurrences !== 1) {
       throw new Error(
         `mutant ${mutant.id}: 锚点失配 (${patch.file}, 出现 ${occurrences} 次, 期望 1 次): ${JSON.stringify(patch.find)}\n` +
-          '  源码已漂移: 校准 --src 或更新 make-mutants.ts 里的锚点后重跑, 严禁带着失配继续。',
+          '  源码已漂移: 更新 make-mutants.ts 里的锚点后重跑, 严禁带着失配继续。',
       );
     }
     const anchorLine = lineOf(text, patch.find);
@@ -245,8 +304,8 @@ async function makeMutant(
     id: mutant.id,
     title: mutant.title,
     expectCaughtBy: mutant.expectCaughtBy,
-    sourceDir: srcDir,
-    runHint: `bun ${join(MUTANTS_DIR, `${GEN_PREFIX}${mutant.id}`, 'src', 'cli.ts')}`,
+    sourceDir: 'packages/api/src + packages/cli/src',
+    runHint: `bun ${join(MUTANTS_DIR, `${GEN_PREFIX}${mutant.id}`, 'packages', 'cli', 'src', 'cli.ts')}`,
     patches: applied,
   };
   await writeFile(
@@ -276,34 +335,25 @@ async function sweepStale(knownIds: Set<string>): Promise<string[]> {
 
 async function main(): Promise<number> {
   const argv = process.argv.slice(2);
-  let srcDir = DEFAULT_SRC_DIR;
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
     if (arg === '--help' || arg === '-h') {
       process.stdout.write(`${HELP_TEXT}\n`);
       return 0;
     }
-    if (arg === '--src') {
-      const value = argv[index + 1];
-      if (value === undefined || value.startsWith('-')) {
-        process.stderr.write(`参数错误: --src 缺少取值\n\n${HELP_TEXT}\n`);
-        return 1;
-      }
-      srcDir = resolve(value);
-      index += 1;
-      continue;
-    }
     process.stderr.write(`参数错误: 未知参数 ${arg}\n\n${HELP_TEXT}\n`);
     return 1;
   }
 
-  try {
-    await readdir(srcDir);
-  } catch (error) {
-    process.stderr.write(
-      `源目录不可读: ${srcDir} (${(error as Error).message})\n`,
-    );
-    return 1;
+  for (const srcDir of [API_SRC_DIR, CLI_SRC_DIR]) {
+    try {
+      await readdir(srcDir);
+    } catch (error) {
+      process.stderr.write(
+        `源目录不可读: ${srcDir} (${(error as Error).message})\n`,
+      );
+      return 1;
+    }
   }
 
   const removed = await sweepStale(new Set(MUTANTS.map((mutant) => mutant.id)));
@@ -312,7 +362,7 @@ async function main(): Promise<number> {
   }
 
   for (const mutant of MUTANTS) {
-    const applied = await makeMutant(mutant, srcDir);
+    const applied = await makeMutant(mutant);
     process.stdout.write(`gen-${mutant.id} (${mutant.title})\n`);
     for (const patch of applied) {
       process.stdout.write(
@@ -322,7 +372,7 @@ async function main(): Promise<number> {
   }
 
   process.stdout.write(
-    `\n合计 ${MUTANTS.length} 个 mutant → ${join(MUTANTS_DIR, 'gen-*/src/cli.ts')}\n`,
+    `\n合计 ${MUTANTS.length} 个 mutant → ${join(MUTANTS_DIR, 'gen-*/packages/cli/src/cli.ts')}\n`,
   );
   return 0;
 }
