@@ -6,6 +6,5 @@ bun.lock
 bun.lockb
 CHANGELOG.md
 CODE_OF_CONDUCT.md
-CODE_OF_CONDUCT.zh-CN.md
 *.modified
 *.deleted
