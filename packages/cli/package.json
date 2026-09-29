@@ -56,7 +56,7 @@
     "access": "public",
     "registry": "https://registry.npmjs.org/"
   },
-  "dependencies": {
+  "devDependencies": {
     "@iyowei/sweep-node-modules": "workspace:^"
   },
   "scripts": {
