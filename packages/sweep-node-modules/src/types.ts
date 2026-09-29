@@ -19,29 +19,6 @@ import type {
   ValidationResult,
 } from './guard.ts';
 
-export interface RenderEntry {
-  /** node_modules 绝对路径 */
-  target: string;
-  /** 字节数; undefined = 体积测不到 (体积列显示 ?, 档位块转中性, 不计入合计总量) */
-  bytes?: number;
-  /** 项目名 */
-  project: string;
-  /** 执行模式: 删除是否成功 (缺省视为成功) */
-  ok?: boolean;
-  /** 执行模式: 失败原因 (ok === false 时附在行尾) */
-  error?: string;
-  /** 行尾补充说明 (如体积统计失败原因); 与失败原因同位并置, note 在前 */
-  note?: string;
-  /**
-   * 疑似安装树 (工具 / 应用自身的安装树, 默认不进删除批; 判定见 classify.ts)。
-   * 该行的路径不剥 node_modules 后缀: 剥掉后剩下的目录 (如 ~/.bun/install/global) 会被
-   * 读成项目目录, 反而抹去唯一的类别提示; 保后缀与行尾标记互为印证。
-   * 必填的理由与 SkipCandidate.suspect 同源 (留可选等于给「疑似安装树静默进批」留后门);
-   * CLI 的构造点两条分支本就都写了值, 故为零改动。
-   */
-  suspect: boolean;
-}
-
 export interface ScanOptions {
   /** 扫描根 (调用方保证为绝对路径) */
   roots: string[];

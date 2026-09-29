@@ -4,7 +4,7 @@
  * `--yes` 走 run; 本层只做选项组装、告警透传、渲染与退出码)。
  * 权威: docs/designs/cli-surface.md (命令面 / 退出码) 与 config-and-initialization.md。
  */
-import { lstat, mkdir } from 'node:fs/promises';
+import { lstat, mkdir, writeFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { basename, dirname } from 'node:path';
 
@@ -13,7 +13,6 @@ import {
   type ConfigSource,
   type CrossDeviceKind,
   DEFAULT_EXCLUDE,
-  type RenderEntry,
   type ResolvedConfigPath,
   type ScanResult,
   type SkipCandidate,
@@ -29,14 +28,13 @@ import {
   loadResolvedConfig,
   mergeNames,
   resolveConfigPath,
-  runtimeLabel,
   summarizeReport,
-  writeTextFile,
 } from '@iyowei/sweep-node-modules';
 
 import { helpText } from './help.ts';
 import { type InitResult, createReadlineIO, runInit } from './init.ts';
 import {
+  type RenderEntry,
   bannerLine,
   neutralLine,
   paint,
@@ -133,6 +131,18 @@ function parseArgs(argv: string[]): ParseOutcome {
   return { ok: true, options };
 }
 
+/**
+ * 运行时自述 (如 `bun 1.4.2`), 供输出如实展示本次的执行环境: 取运行时自报字段而非外部探测
+ * (直接跑 `node dist/cli.js` 或经启动器跑, 报的都是真身)。
+ * 设计裁定 runtime 适配层不属公开面 (api-surface.md §2.1: 调用方自取), 故在本层一行自取;
+ * 探测方式与原 runtime.ts 同款。
+ */
+const RUNTIME_NAME = typeof Bun === 'undefined' ? 'node' : 'bun';
+const runtimeLabel = `${RUNTIME_NAME} ${
+  (process.versions as Record<string, string | undefined>)[RUNTIME_NAME] ??
+  'unknown'
+}`;
+
 /** 着色开关: 仅标准输出为 TTY 且未设 NO_COLOR (空值按未设处理) */
 function colorEnabled(): boolean {
   return process.stdout.isTTY === true && !process.env.NO_COLOR;
@@ -196,7 +206,7 @@ function runWizard(configPath: string, color: boolean): Promise<InitResult> {
     firstSymlinkOnTarget,
     async writeFile(path, text) {
       await mkdir(dirname(path), { recursive: true });
-      await writeTextFile(path, text);
+      await writeFile(path, text, 'utf8');
     },
     io: createReadlineIO(color),
   });
