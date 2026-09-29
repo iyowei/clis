@@ -24,6 +24,13 @@ const hasControlChar = (target: string): boolean =>
   target.includes('\n') || target.includes('\r');
 
 /**
+ * 剥 stderr 行首的程序名前缀: 形态随实现与版本而异 — `du:` / `gdu:` /
+ * 完整路径形态 `/usr/bin/du:` (Ubuntu coreutils 实测为带路径, macOS coreutils 9.12 剥路径为裸名)。
+ * 路径部分限定无空白无冒号, 防误伤含冒号的路径本体。
+ */
+const PROG_PREFIX_RE = /^(?:\/[^\s:]*)?[a-z][a-z0-9_-]*:\s+/;
+
+/**
  * 探测可用的 du 可执行文件; 均缺失返回 null。
  * win32 一律返回 null (du 快路径仅 unix, 行为契约 EC-03; 设计侧同款表述见
  * scan-and-size.md「体积统计」): 探针是 POSIX 绝对路径, 在 win32 上会被解析为「当前盘根」
@@ -173,8 +180,8 @@ function describeDuFailure(detail: string): DuFailure {
 function parseDuErrorLine(
   line: string,
 ): { path: string; detail: string } | null {
-  // 剥程序名前缀 (仅命令名形态, 防误伤路径含冒号的行); 各发行前缀随二进制名而异
-  const body = line.replace(/^[a-z][a-z0-9_-]*:\s+/, '');
+  // 剥程序名前缀 (裸名与路径两形态, 见 PROG_PREFIX_RE)
+  const body = line.replace(PROG_PREFIX_RE, '');
   const gnu =
     /^cannot\s+(?:access|read directory|stat|open)\s+'(.*)':\s+(.+)$/.exec(
       body,
@@ -250,7 +257,7 @@ export function createDuSizer(bin: string | null = findDu()): Sizer {
           if (errorLine === null) {
             // 未归因也剥程序名前缀: 「不得透传 du: 前缀原文」为契约面 (stderr 中文化)
             warnings.push(
-              `体积统计失败 (未归因): ${line.replace(/^[a-z][a-z0-9_-]*:\s+/, '').trim()}`,
+              `体积统计失败 (未归因): ${line.replace(PROG_PREFIX_RE, '').trim()}`,
             );
             continue;
           }

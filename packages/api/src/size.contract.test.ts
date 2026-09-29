@@ -7,7 +7,7 @@
 import { afterEach, describe, expect, test } from 'bun:test';
 
 import { existsSync } from 'node:fs';
-import { mkdir, writeFile } from 'node:fs/promises';
+import { chmod, mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
 import {
@@ -307,6 +307,36 @@ for (const candidate of candidates) {
         expect(result.entries).toEqual([]);
         expect(result.unmeasured.map((item) => item.target)).toEqual([target]);
         expect(at(result.unmeasured, 0).reason).toContain('控制字符');
+      });
+
+      // 前缀形态随实现与版本而异: Ubuntu coreutils 实测为完整路径形态 (/usr/bin/du:),
+      // macOS coreutils 9.12 为裸名 (gdu:); 假 du 脚本直接产出路径前缀形态, 钉住归因不依赖前缀拼法
+      it('stderr 前缀为完整路径形态 (/usr/bin/du:): 归因不受影响', async () => {
+        const { root } = await make({ projects: [{ dir: 'alpha' }] });
+        const fakeDu = join(root, 'fake-du');
+        // $3 = spawn 参数 [-sk, --, <target>] 里的首个 target; 固定报「不存在」并以非零退出
+        await writeFile(
+          fakeDu,
+          '#!/bin/sh\nprintf "/usr/bin/du: cannot access \'%s\': No such file or directory\\n" "$3" >&2\nexit 1\n',
+        );
+        await chmod(fakeDu, 0o755);
+        const ghost = join(root, 'ghost', 'node_modules');
+
+        const result = await createDuSizer(fakeDu).measure([ghost]);
+
+        expect(result.entries).toEqual([]);
+        expect(result.unmeasured).toEqual([]);
+        expect(
+          result.warnings.some((warning) => warning.includes('不存在')),
+        ).toBe(true);
+        // 前缀原文 (含 du: 与英文短语) 不得外泄到任何文本面
+        const texts = [
+          ...result.warnings,
+          ...result.unmeasured.map((item) => item.reason),
+        ];
+        expect(texts.some((text) => /du:|cannot access/i.test(text))).toBe(
+          false,
+        );
       });
 
       it('以 - 开头的根: 不被 du 当选项 (-- 终止符)', async () => {
