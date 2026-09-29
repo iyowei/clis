@@ -55,3 +55,6 @@ jobs:
         run: npx --no-install multi-semantic-release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # npm 命令 (semrel prepare 的 npm version) 在 workspace 子包内运行, 会尝试生成
+          # package-lock.json 而弄脏发布闸门的「工作树干净」判定; env 通道优先于一切配置文件
+          npm_config_package_lock: 'false'
