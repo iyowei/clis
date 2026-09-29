@@ -756,7 +756,7 @@ export interface SweepPlan {
   policy: SweepPolicy;
   /** 本次体积口径 (与逐条 entry.basis 同源同值; 无目标时缺省) */
   basis?: SizeBasis;
-  /** 逐目标领域条目: 保扫描的 target 升序 */
+  /** 逐目标领域条目: 保扫描的 target 升序; 测量时已不存在的目标 (BC-13) 不产生条目 */
   entries: SweepEntry[];
   /** 删除批次 (与 deletionBatch 同源, 保清单顺序): policy 已应用 */
   batch: string[];

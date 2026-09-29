@@ -410,6 +410,26 @@ export interface RemoveBatchOptions {
   staleTargets?: 'reject' | 'missing';
 }
 
+/**
+ * 陈旧容忍分拣 (removeBatch 与编排层 sweep.ts 共用, 规则只此一处):
+ * staleTargets 为 'missing' 时把 GUARD_TARGET_MISSING 一类无安全信号的拒绝摘出
+ * (目标已达成, EC-01 语义), 其余任何拒绝码一律留在 rejected 侧
+ * (不可读等拒绝没有任何「已达成」的语义), 维持整批拒绝。两侧均保输入顺序。
+ */
+export function splitStaleRejections(
+  rejected: RejectedTarget[],
+  staleTargets: 'reject' | 'missing' | undefined,
+): { rejected: RejectedTarget[]; stale: string[] } {
+  if (staleTargets !== 'missing') return { rejected, stale: [] };
+  const rest: RejectedTarget[] = [];
+  const stale: string[] = [];
+  for (const item of rejected) {
+    if (item.code === 'GUARD_TARGET_MISSING') stale.push(item.target);
+    else rest.push(item);
+  }
+  return { rejected: rest, stale };
+}
+
 /** 整批拒绝与已执行二选一 (BC-22 的判别联合表达) */
 export type BatchOutcome =
   | { status: 'rejected'; rejected: RejectedTarget[] }
@@ -438,18 +458,11 @@ export async function removeBatch(
     signal: options.signal,
   });
 
-  // staleTargets 的窄例外: 仅 GUARD_TARGET_MISSING 被摘出 (目标已达成, 无安全信号),
-  // 其余任何拒绝码一律维持整批拒绝 (不可读没有任何「已达成」的语义)
-  const stale: string[] = [];
-  let rejected: RejectedTarget[] = validation.rejected;
-  if (options.staleTargets === 'missing') {
-    const rest: RejectedTarget[] = [];
-    for (const item of rejected) {
-      if (item.code === 'GUARD_TARGET_MISSING') stale.push(item.target);
-      else rest.push(item);
-    }
-    rejected = rest;
-  }
+  // staleTargets 的窄例外: 仅 GUARD_TARGET_MISSING 被摘出 (规则见 splitStaleRejections)
+  const { rejected, stale } = splitStaleRejections(
+    validation.rejected,
+    options.staleTargets,
+  );
 
   if (rejected.length > 0) {
     return { status: 'rejected', rejected };

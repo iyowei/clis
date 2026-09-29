@@ -3,7 +3,7 @@
  * - 公开面新增: 错误模型 (SweepError / code 体系) 与域类型 (编排层 / 跳过集册 / 诊断),
  *   按设计文档 §3 / §5 / §7 落地;
  * - 现状能力搬运: 原语层函数与既有类型, 随实现工序逐刀对齐设计 (编排层 createSweeper
- *   与进度取消见设计 §2.7 / §4)。
+ *   见 sweep.ts, 结果缝合层见 summary.ts, 设计 §2.7 / §4 / §7.8)。
  */
 export {
   type AbortCode,
@@ -67,6 +67,8 @@ export {
   skipsBatch,
   toSkipCandidates,
 } from './skip.ts';
+export { isSuccessOutcome, summarizeReport } from './summary.ts';
+export { createSweeper } from './sweep.ts';
 export type {
   EntryOutcome,
   EntryOutcomeKind,
