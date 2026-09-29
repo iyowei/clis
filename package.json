@@ -50,6 +50,11 @@
   "workspaces": [
     "packages/*"
   ],
+  "multi-release": {
+    "ignorePackages": [
+      "packages/api"
+    ]
+  },
   "scripts": {
     "safe-install": "bun scripts/safe-install.ts",
     "prepare": "node scripts/install-git-hooks.mjs || exit 0",
