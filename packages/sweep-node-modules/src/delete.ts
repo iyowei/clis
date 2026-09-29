@@ -1,5 +1,6 @@
 /**
- * 删除执行器: 对安全闸已校验 (realpath 化、去重) 的目标逐条执行 fs.rm(recursive)。
+ * 删除执行器: 对安全闸已校验 (realpath 化、去重) 的目标按有界并发 (≤4 路, 实测校准) 逐条
+ * 执行 fs.rm(recursive)。
  * 语义 (设计: docs/designs/deletion-guard.md「执行语义」): 逐条删除、单条失败不中断整批、
  * 末尾分桶汇总。ENOENT 分两种, 不可混同: rm 阶段的 ENOENT 一律复核目标本体, 确认已消失才归
  * missing, 视为成功侧 (目标已达成的语义, 不计失败)。双运行时语义分叉 (本机实测 2026-09-27:
@@ -240,139 +241,246 @@ async function reviewComponents(
 }
 
 /**
+ * 删除的并发度 (2026-09-29 性能审计实测校准): rm 是删除面的墙钟大头 (1200 条实测: 裸 rm 串行
+ * 约 800ms, 前置复核仅 35ms), 4 路并发实测 1.7× (约 530ms), 8 路回退 (APFS 元数据锁竞争),
+ * 故取 4。
+ */
+const REMOVAL_CONCURRENCY = 4;
+
+/**
+ * 单条的处理归属 (按批次索引收集, 排空后重排; undefined = 未派发 / 取消前未尝试)。
+ * 带 target 便于重排时直取, 免二次索引收窄。
+ */
+type RemovalSlot =
+  | { kind: 'removed'; target: string }
+  | { kind: 'missing'; target: string }
+  | { kind: 'failed'; failure: TargetFailure }
+  | { kind: 'aborted'; aborted: AbortedBatch };
+
+/**
  * 逐条复核并删除目标, 失败不中断整批, 复核不通过则整批中止, 按结果分桶
  * (removed / missing / failed 均保输入顺序)。
+ *
+ * 并发模型 (为什么可并发、以及安全模型为何不变, 三条论证):
+ * ① rm 不可中断的纪律与「复核紧跟删除」的条内时序逐字保留 (并发收益不来自砍复核 —— 复核
+ *    实测仅占 3%), 单条 rm 仍绝不在中途中断;
+ * ② 目标间不嵌套 (扫描对 node_modules 命中即剪枝), 任一目标的复核链 (root → 父目录) 不可能
+ *    落在别条目标的删除面上, 故并发 rm 不会污染彼此的复核读;
+ * ③ 中止 / 取消定义为「停止派发新条 + 在飞条目跑完」: aborted 取首个触发条 (与串行同);
+ *    取消时 partial = 全部已派发条目的桶 (派发序确定, 已派发集合是批次的连续前缀; 前缀长度
+ *    随调度水位, 仅影响中止 / 取消快照的粒度, 不影响任何安全判定)。
+ * 桶恒按输入顺序输出 (收集后按批次索引重排, 与并发完成序无关); 进度事件为完成序
+ * (事件顺序本不承诺, 见 §4.4)。
  *
  * 数据追踪示例:
  *   Input  targets = ['/w/zeta/node_modules', '/w/lock/node_modules', '/w/bare/node_modules'],
  *          options.roots = [{ configured: '/w', real: '/w' }]  (三者父链均为真目录)
  *   步骤 0  逐条复核: 先判链头 (配置拼写 /w 非符号链接), 再自 /w 向下 lstat 至目标父目录;
- *           链头或组件检出符号链接即整批中止, 链上组件 ENOENT 归 failed (可能只是被 mv 走)
+ *           链头或组件检出符号链接即整批中止 (停止派发, 在飞跑完), 链上组件 ENOENT 归 failed
  *   步骤 1  首项 rm 成功 → removed
  *   步骤 2  次项 rm 抛 EACCES (父目录只读) → failed, 错误串 'EACCES: 权限不足, 拒绝删除
  *            (目标: ...; 注意: 目录内容可能已被部分或全部删除, 请复查)'
  *   步骤 3  末项复核通过, rm 抛 ENOENT 且复核确认目标本体已消失 → missing, 不中断
  *           (若复核发现目标本体仍在或不可达, 如 Bun 把内部条目 ENOENT 冒泡为顶层, 则归 failed)
  *   Output { removed: ['/w/zeta/node_modules'], missing: ['/w/bare/node_modules'], failed: [...] }
- *          (aborted 缺省; 若 /w 被换成指向他树的符号链接, 则首条即中止, 输出只含 aborted)
+ *          (aborted 缺省; 若 /w 被换成指向他树的符号链接, 则中止, 未派发条目不在任何桶)
  */
 export async function removeTargets(
   targets: string[],
   options: RemovalOptions,
 ): Promise<RemovalResult> {
-  const result: RemovalResult = { removed: [], missing: [], failed: [] };
   // 防 JS 调用方漏传选项: 无信任根即无可信复核, 一律中止 (保守)
   const roots = options?.roots ?? [];
   const signal = options?.signal;
   /** 进度事件发射器 (options 省略时零开销) */
   const emit = options?.onProgress;
 
-  for (const target of targets) {
-    // 取消检查点 (只在条目之间; 绝不在单条 rm 中途中断 — 那会制造新的半删状态)。
-    // 已完成的分桶随取消一并交回 (details.partial), 让调用方看得到「取消点之前删了什么」
-    if (signal?.aborted) {
-      throw new SweepError('CANCELLED', '删除在条目间检查点被取消', {
-        phase: 'remove',
-        partial: result,
-      });
-    }
-    const root = roots.find((candidate) => isUnder(candidate.real, target));
-    if (root === undefined) {
-      result.aborted = {
-        target,
-        code: 'REVIEW_NOT_UNDER_ANY_ROOT',
-        message: `安全复核失败 (目标不在任何 roots 之下): ${target}`,
-        path: target,
-      };
-      emit?.({ kind: 'aborted', aborted: result.aborted });
-      break;
-    }
+  /** 逐条归属 (按批次索引收集; 未派发 / 取消前未尝试的保持 undefined) */
+  const slots: (RemovalSlot | undefined)[] = Array.from({
+    length: targets.length,
+  });
+  /** 首个中止信息: 设置后停止派发新条, 在飞条目照常跑完 (与串行「中止点起不再尝试」同精神) */
+  let aborted: AbortedBatch | undefined;
+  /** 取消标记: 同上, 停止派发新条, 在飞条目照常跑完并入桶 (随 partial 交回) */
+  let cancelled = false;
+  /** 未预期异常暂存 (只留首个; 排空后原样抛出, 不因并发而静默丢弃) */
+  const failures: unknown[] = [];
+  let next = 0;
+  let active = 0;
+  let resolveDrained: (() => void) | null = null;
+  const drained = new Promise<void>((resolve) => {
+    resolveDrained = resolve;
+  });
 
-    // 链头判定先于组件复核: 根被换位时链上其余组件全是「此刻的真目录」, 只有拼写形态能识破
-    if (await isSymlinkHead(root.configured)) {
-      result.aborted = {
-        target,
-        code: 'REVIEW_HEAD_SYMLINK',
-        message: `安全复核失败 (根被替换为符号链接): ${root.configured}`,
-        path: root.configured,
-      };
-      emit?.({ kind: 'aborted', aborted: result.aborted });
-      break;
-    }
+  /** 已中止或已取消 (停止派发新条) */
+  const halted = (): boolean => cancelled || aborted !== undefined;
 
-    // 复核紧跟删除: 尽可能压缩两者之间的替换窗口
-    const finding = await reviewComponents(componentChain(root.real, target));
-    if (finding !== null) {
-      if (finding.kind === 'vanished') {
-        // 组件消失 ≠ 目标消失 (可能只是被 mv 走): 归 missing 会伪报成功, 必须交回人工复查
-        const vanished: TargetFailure = {
-          target,
-          code: 'REVIEW_COMPONENT_VANISHED',
-          message: describeVanishedReview(target, finding.path),
-          partialRisk: false,
-        };
-        result.failed.push(vanished);
-        emit?.({ kind: 'failed', failure: vanished });
-        continue;
-      }
-      if (finding.kind === 'unsafe') {
-        result.aborted = {
-          target,
-          code: 'REVIEW_COMPONENT_REPLACED',
-          message: `安全复核失败 (路径组件被替换): ${finding.path}`,
-          path: finding.path,
-        };
-        emit?.({ kind: 'aborted', aborted: result.aborted });
-        break;
-      }
-      // 复核不可达但无替换证据: 只拒该条, 不牵连整批
-      const unverified: TargetFailure = {
-        target,
-        code: 'REVIEW_UNVERIFIED',
-        message: describeReviewError(target, finding.path, finding.error),
-        partialRisk: false,
-      };
-      result.failed.push(unverified);
-      emit?.({ kind: 'failed', failure: unverified });
-      continue;
+  /** 补齐并发空位; 排空 (无在飞且无待派发) 时释放等待方 */
+  function pump(): void {
+    while (active < REMOVAL_CONCURRENCY && next < targets.length && !halted()) {
+      const index = next;
+      next += 1;
+      active += 1;
+      void removeOne(index);
     }
-
-    try {
-      await rm(target, { recursive: true, force: false });
-      result.removed.push(target);
-      emit?.({ kind: 'removed', target });
-    } catch (error) {
-      if ((error as FsError | null)?.code === 'ENOENT') {
-        // 不以错误码本身定论: Bun 侧会把内部条目 ENOENT 冒泡为顶层拒绝且形态与顶层缺失同形
-        // (实测见文件头注释), 须复核目标本体后再分桶
-        const state = await checkGone(target);
-        if (state === 'gone') {
-          result.missing.push(target);
-          emit?.({ kind: 'missing', target });
-          continue;
-        }
-        const survivor: TargetFailure = {
-          target,
-          code: 'REMOVE_ENOENT_SURVIVOR',
-          message: describeSurvivor(target, state),
-          partialRisk: true,
-        };
-        result.failed.push(survivor);
-        emit?.({ kind: 'failed', failure: survivor });
-        continue;
-      }
-      const failure: TargetFailure = {
-        target,
-        code: 'REMOVE_FAILED',
-        errno: (error as { code?: string } | null)?.code,
-        message: describeRemovalError(target, error),
-        partialRisk: true,
-      };
-      result.failed.push(failure);
-      emit?.({ kind: 'failed', failure });
+    if (active === 0 && resolveDrained !== null) {
+      const resolve = resolveDrained;
+      resolveDrained = null;
+      resolve();
     }
   }
 
+  async function removeOne(index: number): Promise<void> {
+    try {
+      const target = targets[index];
+      // 索引由派发器保证在界内, 此判仅为 noUncheckedIndexedAccess 的类型收窄
+      if (target === undefined) return;
+      // 取消检查点 (只在条目之间; 绝不在单条 rm 中途中断 — 那会制造新的半删状态):
+      // 检出即停止派发, 本条从未尝试、不入桶; 在飞条目照常跑完, 结果随 partial 交回
+      if (signal?.aborted) {
+        cancelled = true;
+        return;
+      }
+      const root = roots.find((candidate) => isUnder(candidate.real, target));
+      if (root === undefined) {
+        aborted ??= {
+          target,
+          code: 'REVIEW_NOT_UNDER_ANY_ROOT',
+          message: `安全复核失败 (目标不在任何 roots 之下): ${target}`,
+          path: target,
+        };
+        slots[index] = { kind: 'aborted', aborted };
+        emit?.({ kind: 'aborted', aborted });
+        return;
+      }
+
+      // 链头判定先于组件复核: 根被换位时链上其余组件全是「此刻的真目录」, 只有拼写形态能识破
+      if (await isSymlinkHead(root.configured)) {
+        aborted ??= {
+          target,
+          code: 'REVIEW_HEAD_SYMLINK',
+          message: `安全复核失败 (根被替换为符号链接): ${root.configured}`,
+          path: root.configured,
+        };
+        slots[index] = { kind: 'aborted', aborted };
+        emit?.({ kind: 'aborted', aborted });
+        return;
+      }
+
+      // 复核紧跟删除: 尽可能压缩两者之间的替换窗口
+      const finding = await reviewComponents(componentChain(root.real, target));
+      if (finding !== null) {
+        if (finding.kind === 'vanished') {
+          // 组件消失 ≠ 目标消失 (可能只是被 mv 走): 归 missing 会伪报成功, 必须交回人工复查
+          const vanished: TargetFailure = {
+            target,
+            code: 'REVIEW_COMPONENT_VANISHED',
+            message: describeVanishedReview(target, finding.path),
+            partialRisk: false,
+          };
+          slots[index] = { kind: 'failed', failure: vanished };
+          emit?.({ kind: 'failed', failure: vanished });
+          return;
+        }
+        if (finding.kind === 'unsafe') {
+          aborted ??= {
+            target,
+            code: 'REVIEW_COMPONENT_REPLACED',
+            message: `安全复核失败 (路径组件被替换): ${finding.path}`,
+            path: finding.path,
+          };
+          slots[index] = { kind: 'aborted', aborted };
+          emit?.({ kind: 'aborted', aborted });
+          return;
+        }
+        // 复核不可达但无替换证据: 只拒该条, 不牵连整批
+        const unverified: TargetFailure = {
+          target,
+          code: 'REVIEW_UNVERIFIED',
+          message: describeReviewError(target, finding.path, finding.error),
+          partialRisk: false,
+        };
+        slots[index] = { kind: 'failed', failure: unverified };
+        emit?.({ kind: 'failed', failure: unverified });
+        return;
+      }
+
+      try {
+        await rm(target, { recursive: true, force: false });
+        slots[index] = { kind: 'removed', target };
+        emit?.({ kind: 'removed', target });
+      } catch (error) {
+        if ((error as FsError | null)?.code === 'ENOENT') {
+          // 不以错误码本身定论: Bun 侧会把内部条目 ENOENT 冒泡为顶层拒绝且形态与顶层缺失同形
+          // (实测见文件头注释), 须复核目标本体后再分桶
+          const state = await checkGone(target);
+          if (state === 'gone') {
+            slots[index] = { kind: 'missing', target };
+            emit?.({ kind: 'missing', target });
+            return;
+          }
+          const survivor: TargetFailure = {
+            target,
+            code: 'REMOVE_ENOENT_SURVIVOR',
+            message: describeSurvivor(target, state),
+            partialRisk: true,
+          };
+          slots[index] = { kind: 'failed', failure: survivor };
+          emit?.({ kind: 'failed', failure: survivor });
+          return;
+        }
+        const failure: TargetFailure = {
+          target,
+          code: 'REMOVE_FAILED',
+          errno: (error as { code?: string } | null)?.code,
+          message: describeRemovalError(target, error),
+          partialRisk: true,
+        };
+        slots[index] = { kind: 'failed', failure };
+        emit?.({ kind: 'failed', failure });
+      }
+    } catch (error) {
+      // 取首个未预期异常为准 (复核函数自身的意外抛错等), 抛点推迟到池排空之后
+      if (failures.length === 0) failures.push(error);
+    } finally {
+      // 条目完成时的取消补查: 派发点检查覆盖不了「全部已派发、取消随后到达」的窗口
+      // (如最后几条在飞时才 abort), 不补则取消被静默吞掉、本次运行照常跑完并返回
+      if (signal?.aborted) cancelled = true;
+      active -= 1;
+      pump();
+    }
+  }
+
+  pump();
+  await drained;
+  if (failures.length > 0) throw failures[0];
+
+  // 排空后按批次索引重排组装: 桶恒保输入顺序, 与并发完成序无关
+  const result: RemovalResult = { removed: [], missing: [], failed: [] };
+  for (const slot of slots) {
+    if (slot === undefined) continue;
+    switch (slot.kind) {
+      case 'removed':
+        result.removed.push(slot.target);
+        break;
+      case 'missing':
+        result.missing.push(slot.target);
+        break;
+      case 'failed':
+        result.failed.push(slot.failure);
+        break;
+      case 'aborted':
+        break;
+    }
+  }
+  if (aborted !== undefined) result.aborted = aborted;
+  // 取消: 已出桶的结果 (含检出时在飞、随后跑完的条目) 随错交回; 未派发条目从未尝试, 不入桶
+  if (cancelled) {
+    throw new SweepError('CANCELLED', '删除在条目间检查点被取消', {
+      phase: 'remove',
+      partial: result,
+    });
+  }
   return result;
 }
 

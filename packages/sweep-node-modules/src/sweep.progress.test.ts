@@ -186,7 +186,7 @@ describe('取消', () => {
     }
   });
 
-  test('删除阶段条目间取消: CANCELLED 携带取消点为止的 partial, 不打断单条 rm', async () => {
+  test('删除阶段条目间取消: CANCELLED 携带已派发条目的 partial, 不打断单条 rm', async () => {
     const { root } = await make({
       projects: [{ dir: 'alpha' }, { dir: 'beta' }],
     });
@@ -198,7 +198,8 @@ describe('取消', () => {
       await sweeper.run({
         signal: controller.signal,
         onProgress: (event) => {
-          // 第一条删除成功后立刻取消: 检查点落在条目之间 (绝不打断单条 rm)
+          // 第一条删除成功后立刻取消: 取消仍落在条目之间 (绝不打断单条 rm);
+          // 并发删除下两目标均已派发, 检出后停派发、在飞条跑完, partial 收录其已出桶结果
           if (event.kind === 'removed') controller.abort();
         },
       });
@@ -213,7 +214,8 @@ describe('取消', () => {
         expect(details.phase).toBe('remove');
       }
       if (details !== undefined && 'partial' in details) {
-        expect(details.partial?.removed).toHaveLength(1);
+        // 两目标均在首批派发 (并发 4 未满), 取消检出后在飞条目跑完: partial 收录两条
+        expect(details.partial?.removed).toHaveLength(2);
         expect(details.partial?.failed).toEqual([]);
       } else {
         throw new Error('删除阶段取消应携带 partial 部分结果');

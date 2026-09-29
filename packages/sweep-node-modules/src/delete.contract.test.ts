@@ -231,7 +231,7 @@ describe('removeTargets 契约', () => {
 });
 
 describe('组件级安全复核 (中间路径组件替换 → root 外删除)', () => {
-  test('中间组件被换成符号链接: 整批中止, root 外完好, 已成功条目如实报告', async () => {
+  test('中间组件被换成符号链接: 整批中止, root 外完好, 已派发条目如实报告', async () => {
     const { root } = await make({
       projects: [
         { dir: 'zone/ok' },
@@ -254,16 +254,17 @@ describe('组件级安全复核 (中间路径组件替换 → root 外删除)', 
       roots: [trustRoot(trust)],
     });
 
-    expect(result.removed).toEqual([ok]); // 已成功条目如实报告
+    // 三条均在首批派发 (并发 4 未满): 中止只停新派发, 已派发条目如实报告 (保输入序)
+    expect(result.removed).toEqual([ok, later]);
     expect(result.failed).toEqual([]);
     expect(result.missing).toEqual([]);
     expect(result.aborted?.target).toBe(swapped);
     expect(result.aborted?.message).toContain('路径组件被替换');
     expect(result.aborted?.message).toContain(join(trust, 'sub')); // 定位到被替换的组件
-    // root 外完好 (含内容), 剩余条目一律不删
+    // root 外完好 (含内容); 被中止条目不删, 在飞的 later 跑完
     expect(await exists(victim)).toBe(true);
     expect(await exists(victimFile)).toBe(true);
-    expect(await exists(later)).toBe(true);
+    expect(await exists(later)).toBe(false);
   });
 
   test('组件消失 (父链被 mv 走): 归 failed 而非 missing, 不伪造成功报告', async () => {
