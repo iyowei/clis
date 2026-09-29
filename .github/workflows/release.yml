@@ -52,7 +52,11 @@ jobs:
           # 不设 registry-url: 它会生成带 NODE_AUTH_TOKEN 的 .npmrc, 压掉 OIDC 通道
       - run: bun install --frozen-lockfile
       - name: Release (multi-semantic-release, OIDC)
-        run: npx --no-install multi-semantic-release
+        # 启动器用 bunx (与本地 dryrun 同链; 实测 --no-install 只经本地 devDep 启动);
+        # 「发布到 npm」的环节由 semrel 的 npm 插件内部 spawn 的 npm 本体承担 —— OIDC Trusted
+        # Publishing + provenance 需 npm 11, bun publish 未接该能力 (ADR 0010 决策 7),
+        # 与启动器选择无关
+        run: bunx --no-install multi-semantic-release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           # npm 命令 (semrel prepare 的 npm version) 在 workspace 子包内运行, 会尝试生成
