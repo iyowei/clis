@@ -89,11 +89,12 @@ export function removeRulesFor(tier: Tier): RemoveRule {
 
 /**
  * 按档裁剪模板目录: 删除 deletePaths 指向的文件 / 目录, 并对 `scripts/ci.ts` 做步骤声明手术
- * (删「单个 STEPS 条目块」(含紧贴其上的注释行) 与「组数组中的引用行」)。
+ * (删「单个 STEPS 条目块」(含紧贴其上的注释行)、「组数组中的引用行」, 与「只服务被摘步骤的
+ * 载体声明及其来源导入」)。
  *
  * 先全量校验 (路径存在 + 手术干跑与自检) 再落盘, 任一项不过即抛错且不留半成品。
- * 边界: 手术只做行级摘除, 不重排格式 —— 组数组缩为单元素后的折叠属格式化面, 由生成流程的
- * 格式化收口处置 (T7 替换后统一跑 prettier, 见 task-4 报告「生成期格式化漂移」)。
+ * 边界: 手术只做行级摘除, 不重排格式 (组数组缩为单元素后的折叠、载体摘除留下的空行都属格式化
+ * 面, 由生成流程的格式化收口处置: T7 替换后统一跑 prettier, 见 task-4 报告「生成期格式化漂移」)。
  *
  * ### 数据追踪示例
  * ```text
@@ -112,10 +113,11 @@ export function removeRulesFor(tier: Tier): RemoveRule {
  * 步骤 2：落盘
  *   删 <targetDir>/scripts/transcription/ (整目录)
  *   回写 <targetDir>/scripts/ci.ts: STEPS 少三条; VERIFY_GROUP 少 'lint:coverage';
- *   CONFORMANCE_GROUP 余 ['build'] (转写步骤引用行同步摘除)
+ *   CONFORMANCE_GROUP 余 ['build'] (转写步骤引用行同步摘除); CLI 入口坐标块与它的
+ *   resolveCliAndApi 导入随 conformance 步骤摘净 (摘后全文已无引用 = 只服务被摘步骤)
  *
  * Output（数据契约）
- *   <targetDir> 内增强档机制件与步骤声明一并消失, 其余文件逐字节原样
+ *   <targetDir> 内增强档机制件与其步骤声明、专属载体声明一并消失, 其余文件逐字节原样
  * ```
  */
 export function pruneTemplate(targetDir: string, rules: RemoveRule): void {
@@ -165,6 +167,7 @@ function pruneCiSource(
 
   let pruned = removeSpans(source, spans);
   pruned = removeGroupReferences(pruned, steps);
+  pruned = pruneOrphanedCarriers(pruned);
   assertStepSurgery(source, pruned, steps, entries);
   return pruned;
 }
@@ -275,6 +278,36 @@ function removeGroupReferences(
     .split('\n')
     .filter((line) => !referenced.has(line.trim()))
     .join('\n');
+}
+
+/** CLI 入口坐标块 (前置注释行 + 两行声明 + 紧随的空行), 形态与模板 `scripts/ci.ts` 逐行同形 */
+const CLI_COORDINATE_BLOCK =
+  /\/\*\* CLI 入口坐标[^\n]*\nconst \{ cli \} = resolveCliAndApi\(process\.cwd\(\)\);\nconst CLI_SRC = [^\n]*\n\n?/;
+
+/** 坐标块的来源导入 (只服务坐标块) */
+const CLI_COORDINATE_IMPORT =
+  /^import \{ resolveCliAndApi \} from '\.\/lib\/workspace\.ts';\n/m;
+
+/**
+ * 术后载体摘除: 「只服务被摘步骤」的顶层声明与其来源导入一并摘净。
+ *
+ * 动因 (T8 heavy-smoke 首跑实测): 步骤声明手术原本只摘 STEPS 条目与组数组引用, 留下 CLI 入口
+ * 坐标块 (它只被 conformance 步骤消费); core / standard 档生成物的 lint 随即以 no-unused-vars
+ * 三连打红 (CLI_SRC → cli → 来源导入), 与「生成物开箱即绿」的契约冲突; 摘净后才与删除面自洽
+ * (载体文件删了, 消费它的声明也不留)。
+ *
+ * 判据取「把坐标块摘掉后全文再无 CLI_SRC 引用」这个可判定信号: 只服务被摘步骤才摘, 将来若有
+ * 保留步骤也消费它则整块保留; 来源导入同理 (还有别的调用点则保留)。
+ */
+function pruneOrphanedCarriers(source: string): string {
+  const block = CLI_COORDINATE_BLOCK.exec(source);
+  if (block === null) return source;
+  const withoutBlock = source.replace(block[0], '');
+  if (withoutBlock.includes('CLI_SRC')) return source;
+  const withoutImport = withoutBlock.replace(CLI_COORDINATE_IMPORT, '');
+  return withoutImport.includes('resolveCliAndApi')
+    ? withoutBlock
+    : withoutImport;
 }
 
 /** 术后自检: 步骤名集合对账 + 被摘名零残留 + STEPS 表闭合 + 全文件括号配平 */

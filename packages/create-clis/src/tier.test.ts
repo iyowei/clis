@@ -31,8 +31,12 @@ const FIXTURE_CI_TS = `/**
  */
 import { spawnSync } from 'node:child_process';
 
+import { makeTmpRoot } from './lib/tmp-root.ts';
+import { resolveCliAndApi } from './lib/workspace.ts';
+
 process.chdir(join(import.meta.dir, '..'));
 
+/** CLI 入口坐标: 由 workspaces 派生 (chdir 之后相对仓库根; 夹具里只服务 conformance 步骤) */
 const { cli } = resolveCliAndApi(process.cwd());
 const CLI_SRC = \`\${cli.dir}/src/cli.ts\`;
 
@@ -49,6 +53,8 @@ const STEPS: Readonly<Record<string, Step>> = {
     command: 'bun',
     args: [
       'scripts/transcription/run-conformance.ts',
+      '--target',
+      \`bun \${CLI_SRC}\`,
       '--api-target',
       'bun scripts/transcription/api-harness.ts',
     ],
@@ -70,17 +76,17 @@ const CONFORMANCE_GROUP: readonly string[] = [
 const HELP_TEXT = ['步骤名: ' + Object.keys(STEPS).join(' / ')].join('\\n');
 `;
 
-/** 夹具裁剪后的期望全文: 被摘条目 (含其前置注释) 与组数组引用行整体消失, 其余逐字节原样。
+/** 夹具裁剪后的期望全文: 被摘条目 (含其前置注释) 与组数组引用行整体消失, 只服务被摘步骤的
+ *  载体声明 (CLI 入口坐标块) 与它的来源导入一并摘净, 其余逐字节原样。
  *  注: 手术只做行级摘除, 不重排格式 —— 单元素组数组的折叠归生成期格式化收口 (T7)。 */
 const FIXTURE_CI_TS_PRUNED = `/**
  * 本地 CI 预演 (夹具, 形态对齐模板 scripts/ci.ts)
  */
 import { spawnSync } from 'node:child_process';
 
-process.chdir(join(import.meta.dir, '..'));
+import { makeTmpRoot } from './lib/tmp-root.ts';
 
-const { cli } = resolveCliAndApi(process.cwd());
-const CLI_SRC = \`\${cli.dir}/src/cli.ts\`;
+process.chdir(join(import.meta.dir, '..'));
 
 const STEPS: Readonly<Record<string, Step>> = {
   build: { command: 'bun', args: ['run', 'build'] },
@@ -234,6 +240,38 @@ describe('pruneTemplate 步骤声明手术', () => {
         join(orphanStep, 'scripts/transcription/validate-coverage.ts'),
       ),
     ).toBe(true);
+  });
+
+  test('载体声明仍有其它消费者时保留 (判据是「摘后无引用」, 不是「见块就摘」)', () => {
+    const root = makeTmpRoot('create-clis-tier-shared-');
+    createdRoots.push(root);
+    mkdirSync(join(root, 'scripts/transcription'), { recursive: true });
+    // 把 CLI 坐标的消费点搬到保留步骤上: 坐标块不再只服务被摘步骤
+    writeFileSync(
+      join(root, 'scripts/ci.ts'),
+      FIXTURE_CI_TS.replace(
+        "'scripts/lint-stray-backups.ts'",
+        "'scripts/lint-stray-backups.ts', `bun ${CLI_SRC}`",
+      ),
+    );
+    for (const carrier of ['validate-coverage.ts', 'run-conformance.ts']) {
+      writeFileSync(
+        join(root, 'scripts/transcription', carrier),
+        '// 夹具载体\n',
+      );
+    }
+
+    pruneTemplate(root, {
+      deletePaths: ['scripts/transcription/'],
+      ciSteps: ['lint:coverage', 'conformance:bun'],
+    });
+
+    const pruned = readFileSync(join(root, 'scripts/ci.ts'), 'utf8');
+    expect(pruned).toContain('const CLI_SRC');
+    expect(pruned).toContain(
+      "import { resolveCliAndApi } from './lib/workspace.ts';",
+    );
+    expect(pruned).not.toContain('conformance:bun');
   });
 });
 
