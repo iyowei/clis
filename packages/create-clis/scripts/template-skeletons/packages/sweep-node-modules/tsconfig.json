@@ -1,0 +1,5 @@
+{
+  "extends": "../../tsconfig.json",
+  // 示例包只含 src; 需要额外目录 (如本地基准 / 脚本) 时自行补进 include 面
+  "include": ["src"]
+}

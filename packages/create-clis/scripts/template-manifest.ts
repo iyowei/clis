@@ -106,7 +106,8 @@ export const TEMPLATE_MANIFEST: readonly ManifestEntry[] = [
   },
   {
     path: 'packages/sweep-node-modules/tsconfig.json',
-    disposition: 'snapshot',
+    disposition: 'reset',
+    note: 'include 含 bench/ (模板排除面外, 随文件进生成物即悬空); 换只含 src 的示例包 tsconfig 骨架',
   },
   {
     path: 'packages/sweep-node-modules/tsconfig.build.json',
@@ -150,16 +151,24 @@ export const TEMPLATE_MANIFEST: readonly ManifestEntry[] = [
   { path: '.vscode/launch.json', disposition: 'generalize' },
   {
     path: 'package.json',
-    disposition: 'generalize',
-    note: '含 bench 脚本路径与 multi-release 登记; 根包名 clis 属仓库名形态 (裸词不入词面, 不产生 create-clis 子串误改写; 具体改写与 create-clis 最终形态归 T4 构建链兜底)',
+    disposition: 'reset',
+    note: '根 package.json 改判 reset (评判定): 泛化后 bench 脚本指向模板排除面外的 packages/<name>/bench/ (恒悬空), multi-release.ignorePackages 登记生成物里不存在的包 —— 都是生成物不成立的形态; 骨架手写新项目形态 (无 bench / 无 multi-release 登记, 根名取 <name>-monorepo 避开裸包名与示例包同名). 注意: 工具链 devDependencies 版本是手写快照, 本仓升级依赖时须同步这份骨架',
   },
   {
     path: 'tsconfig.json',
     disposition: 'generalize',
     note: '双态 paths 映射两包源码 (含 testing 子入口), 随泛化指向示例包',
   },
-  { path: 'CONTRIBUTING.md', disposition: 'generalize' },
-  { path: 'CONTRIBUTING.zh-CN.md', disposition: 'generalize' },
+  {
+    path: 'CONTRIBUTING.md',
+    disposition: 'reset',
+    note: '本仓贡献指南含 bench 命令与两包领域描述 (bench 随模板排除面恒悬空, 同一回事); 换通用贡献指南骨架 (仓库结构 / 环境准备 / 常用命令 / 提交与 PR / 文档登记)',
+  },
+  {
+    path: 'CONTRIBUTING.zh-CN.md',
+    disposition: 'reset',
+    note: '同上 (中文版); 换通用贡献指南骨架',
+  },
   { path: 'CODE_OF_CONDUCT.md', disposition: 'generalize' },
   {
     path: 'LICENSE',
