@@ -16,5 +16,6 @@ A collection of command-line tools for my daily development workflow, managed as
 
 ## Documentation
 
-- [Engineering documentation index](docs/README.md): decisions, designs, protocol, and development docs.
-- [Development guide](docs/development.md): environment setup, common commands, dual-runtime verification, and commit hooks.
+- [Engineering documentation index](docs/README.md): the repository-level entry to governance and scaffolding design, ADRs, and development docs;
+- [Development guide](docs/development.md): environment setup, common commands, dual-runtime verification, and commit hooks;
+- [sweep-node-modules docs hub](docs/sweep/README.md): the member's docs (product designs and the transcription conformance kit).

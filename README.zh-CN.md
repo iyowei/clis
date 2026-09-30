@@ -16,5 +16,6 @@
 
 ## 文档
 
-- [工程技术文档总索引](docs/README.md): 决策、设计、协议与开发文档的总入口。
-- [开发指南](docs/development.md): 环境准备、常用命令、双运行时验证与提交钩子。
+- [工程技术文档总索引](docs/README.md): 仓库级入口 (集合仓治理与脚手架设计、ADR 与开发文档);
+- [开发指南](docs/development.md): 环境准备、常用命令、双运行时验证与提交钩子;
+- [sweep-node-modules 文档入口](docs/sweep/README.md): 该成员的文档 (产品设计与转写契约套件)。
