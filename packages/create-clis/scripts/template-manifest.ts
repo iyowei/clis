@@ -56,7 +56,8 @@ export const TEMPLATE_MANIFEST: readonly ManifestEntry[] = [
   { path: '.releaserc.json', disposition: 'snapshot' },
   { path: 'bunfig.toml', disposition: 'snapshot' },
   { path: 'lefthook.yml', disposition: 'snapshot' },
-  { path: 'turbo.json', disposition: 'snapshot' },
+  // 用 turbo.jsonc (非 turbo.json): 缓存键输入面需就地注释说明口径, 见该文件 inputs 处注释
+  { path: 'turbo.jsonc', disposition: 'snapshot' },
   { path: '.github/PULL_REQUEST_TEMPLATE.md', disposition: 'snapshot' },
   { path: '.github/workflows/ci.yml', disposition: 'snapshot' },
   { path: '.github/workflows/release.yml', disposition: 'snapshot' },

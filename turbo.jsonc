@@ -1,0 +1,57 @@
+{
+  // 用 .jsonc 而非 .json: 缓存键的输入面需要就地注释说明口径 (turbo 官方支持的注释载体, 见
+  // https://turborepo.dev/docs/reference/configuration 「Use turbo.jsonc to add comments」)。
+  "$schema": "https://turbo.build/schema.json",
+  "tasks": {
+    "build": {
+      "dependsOn": ["^build"],
+      "outputs": ["dist/**", "assets/**"],
+      // 缓存键输入面: 生成器包 (create-clis) 的构建会从仓库根读骨架源来产出模板资产, 而 turbo
+      // 默认只把「包目录内」的文件算进缓存键, 根级文件的改动不进键; 曾实测出双向事故: 改根级
+      // 骨架源命中缓存不重算 (陈旧资产被当最新), 以及根构建把缓存里的旧资产还原回磁盘、覆盖掉
+      // 刚修好的版本。故显式补根级输入面, 范围取「宁大勿漏」。
+      // 口径: $TURBO_DEFAULT$ 保住包目录默认面 (含 .gitignore 语义; 显式写 inputs 会丢掉默认面,
+      // 官方文档明示); 其余条目是模板构建会读的根级源, 与 .gitignore 无关的保守超集。
+      // 注意: 显式 glob 不再享 .gitignore 过滤, 所以对 packages/ 这类会落构建产物的目录必须显式
+      // 排除 (dist / .turbo / node_modules), 否则产物进缓存键, 每次构建自我失效、缓存恒不命中。
+      // 同步义务: 骨架清单的唯一权威是 packages/create-clis/scripts/template-manifest.ts; 新增
+      // 根级骨架源时先登记那份清单, 再照本条补一条 glob, 两处不互为来源。
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/.editorconfig",
+        "$TURBO_ROOT$/.gitattributes",
+        "$TURBO_ROOT$/.gitignore",
+        "$TURBO_ROOT$/.gitignorerc.json",
+        "$TURBO_ROOT$/.mailmap",
+        "$TURBO_ROOT$/.npmrc",
+        "$TURBO_ROOT$/.nvmrc",
+        "$TURBO_ROOT$/.oxlintrc.json",
+        "$TURBO_ROOT$/.prettierignore",
+        "$TURBO_ROOT$/.prettierrc",
+        "$TURBO_ROOT$/.releaserc.json",
+        "$TURBO_ROOT$/.github/**",
+        "$TURBO_ROOT$/.vscode/**",
+        "$TURBO_ROOT$/AGENTS.md",
+        "$TURBO_ROOT$/CODE_OF_CONDUCT.md",
+        "$TURBO_ROOT$/CONTRIBUTING.md",
+        "$TURBO_ROOT$/CONTRIBUTING.zh-CN.md",
+        "$TURBO_ROOT$/LICENSE",
+        "$TURBO_ROOT$/README.md",
+        "$TURBO_ROOT$/README.zh-CN.md",
+        "$TURBO_ROOT$/SECURITY.md",
+        "$TURBO_ROOT$/bunfig.toml",
+        "$TURBO_ROOT$/docs/**",
+        "$TURBO_ROOT$/lefthook.yml",
+        "$TURBO_ROOT$/package.json",
+        "$TURBO_ROOT$/packages/**",
+        "!$TURBO_ROOT$/packages/**/dist/**",
+        "!$TURBO_ROOT$/packages/**/.turbo/**",
+        "!$TURBO_ROOT$/packages/**/node_modules/**",
+        "$TURBO_ROOT$/scripts/**",
+        "$TURBO_ROOT$/tsconfig.json",
+      ],
+    },
+    "typecheck": {},
+    "test": {},
+  },
+}
