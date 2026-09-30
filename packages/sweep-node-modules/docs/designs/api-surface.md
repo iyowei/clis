@@ -3,13 +3,13 @@
 > **状态**: 已定稿 (Accepted)
 > **日期**: 2026-09-29
 > **决策者**: 沈委
-> **父文档**: [设计总纲](../../../docs/designs/sweep-node-modules-design.md)
+> **父文档**: [设计总纲](../../../../docs/designs/sweep-node-modules-design.md)
 >
 > 用途: 定义 API 包 (`@iyowei/sweep-node-modules`, 承载能力与契约) 与 CLI 薄壳包 (`@iyowei/sweep-node-modules-cli`, 解析 → 调 API → 渲染 → 交互) 的切分, 以及前者对外的可编程面。
-> 范围: 本文只管「API 面长什么样」(导出面 / 错误模型 / 进度与取消 / 域类型 / 缺口处置 / 调用示例); 命令面与字节级输出规格见 [命令面与输出](../../sweep-node-modules-cli/docs/cli-surface.md), 配置模型见 [配置与初始化](../../../docs/designs/config-and-initialization.md), 删除安全语义与安全闸见 [删除安全闸](../../../docs/designs/deletion-guard.md), 扫描与体积算法见 [扫描与体积](../../../docs/designs/scan-and-size.md)。
-> 事实基准: 实读仓库 (2026-09-29) 的 `src/` 全部模块、[行为契约](../../../docs/protocol/behavior-contract.md)、`docs/designs/` 四份分册与 [ADR 0002](adrs/0002-fixed-config-and-preview-execution.md) / [0003](adrs/0003-zero-runtime-deps.md) / [0006](../../../docs/adrs/0006-dual-runtime-bun-first.md) / [0009](../../../docs/adrs/0009-npm-distribution-form.md) / [0010](../../../docs/adrs/0010-dual-package-monorepo.md); 需求侧输入为使用方场景清单 (7 场景 + 9 条跨场景观察); 验证侧输入为使用方体验报告与五份调用代码 (外部材料, 逐条处置见 §12)。
+> 范围: 本文只管「API 面长什么样」(导出面 / 错误模型 / 进度与取消 / 域类型 / 缺口处置 / 调用示例); 命令面与字节级输出规格见 [命令面与输出](../../../sweep-node-modules-cli/docs/designs/cli-surface.md), 配置模型见 [配置与初始化](../../../../docs/designs/config-and-initialization.md), 删除安全语义与安全闸见 [删除安全闸](../../../../docs/designs/deletion-guard.md), 扫描与体积算法见 [扫描与体积](../../../../docs/designs/scan-and-size.md)。
+> 事实基准: 实读仓库 (2026-09-29) 的 `src/` 全部模块、[行为契约](../../../../docs/protocol/behavior-contract.md)、`docs/designs/` 四份分册与 [ADR 0002](../adrs/0002-fixed-config-and-preview-execution.md) / [0003](../adrs/0003-zero-runtime-deps.md) / [0006](../../../../docs/adrs/0006-dual-runtime-bun-first.md) / [0009](../../../../docs/adrs/0009-npm-distribution-form.md) / [0010](../../../../docs/adrs/0010-dual-package-monorepo.md); 需求侧输入为使用方场景清单 (7 场景 + 9 条跨场景观察); 验证侧输入为使用方体验报告与五份调用代码 (外部材料, 逐条处置见 §12)。
 > 标注约定: 「实读」= 仓库现状; 「设计」= 本文的推演; 每条落点标注「复用」「新增」「改动」三档之一 (复用 = 现有函数原样升为导出面, 逻辑不动; 改动 = 现有形状或签名需变; 新增 = 今天不存在的东西)。
-> 时点说明: 标注「实读」的代码事实均为**单包时代 (2026-09-29 拆分前)** 的实读, 用于推导设计; 落地后的现坐标 (双包) 见 [ADR 0010](../../../docs/adrs/0010-dual-package-monorepo.md) 与 [设计总纲](../../../docs/designs/sweep-node-modules-design.md) 结构一节。
+> 时点说明: 标注「实读」的代码事实均为**单包时代 (2026-09-29 拆分前)** 的实读, 用于推导设计; 落地后的现坐标 (双包) 见 [ADR 0010](../../../../docs/adrs/0010-dual-package-monorepo.md) 与 [设计总纲](../../../../docs/designs/sweep-node-modules-design.md) 结构一节。
 > 反馈处置: 体验报告逐条处置见文末 §12 (57 条: 采纳 49 / 部分采纳 7 / 驳回 1)。
 
 ## 修订记录
@@ -1911,7 +1911,7 @@ async function refreshPanel(sweeper: Sweeper, controller: AbortController) {
 
 | **Q17** (新增) | API 包何时进入发布流程 (根 `multi-release.ignorePackages` 豁免的移除时机)? | **已定夺 (2026-09-29 拍板), 已执行 (2026-09-29)** | 公开面改造收口 (发布刀) 时从根 `package.json` 的 `multi-release.ignorePackages` 移除 `packages/sweep-node-modules`, 使 API 包进入 semrel 发版流程; 首发按 **0.5.x 过渡**一轮、不直接上 1.0 (成熟度未到; 2026-09-29 移出预演实测: 无 tag 包的 first-release 直接取 package.json 现值, 首发即 0.5.0, 旧稿「历史 `feat!` 会算出 1.0.0」的担忧经实测不成立)。豁免已于同日清空, 随批推送发布 |
 
-> **与 ADR 0010 的对齐 (定稿副作用)**: 本次定稿期间, 仓库新增并接受了 [ADR 0010](../../../docs/adrs/0010-dual-package-monorepo.md)「双包 monorepo 结构与可编程 API」(2026-09-29 已接受), 它替本清单定了三件事: 包边界与切分原则 (= 本文档 §2.1, 一致)、包名翻转与 0.x 内接受该版本语义变化 (= Q1a 的定夺来源)、API 包分发形态与仓库结构 (= Q6 / Q10)。Q1b 的收窄与拍板亦随该决定完成: ADR 0010 未涉及过渡期转发入口, 该子项由决策者于 2026-09-29 拍板 (不保留, 见上表)。
+> **与 ADR 0010 的对齐 (定稿副作用)**: 本次定稿期间, 仓库新增并接受了 [ADR 0010](../../../../docs/adrs/0010-dual-package-monorepo.md)「双包 monorepo 结构与可编程 API」(2026-09-29 已接受), 它替本清单定了三件事: 包边界与切分原则 (= 本文档 §2.1, 一致)、包名翻转与 0.x 内接受该版本语义变化 (= Q1a 的定夺来源)、API 包分发形态与仓库结构 (= Q6 / Q10)。Q1b 的收窄与拍板亦随该决定完成: ADR 0010 未涉及过渡期转发入口, 该子项由决策者于 2026-09-29 拍板 (不保留, 见上表)。
 > 状态汇总: 共 18 条目 (Q1 拆为 Q1a / Q1b), **18 条全部已定夺** (其中 Q1b 与 Q17 的取向由决策者拍板, 其余由本文档给出并写进上文)。
 
 ---

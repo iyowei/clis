@@ -592,7 +592,7 @@ In packaged or multi-instance environments (where two copies of the library can 
 
 ### Code families
 
-Domain codes by family (the full trigger table per code lives in the [API surface design](docs/api-surface.md)):
+Domain codes by family (the full trigger table per code lives in the [API surface design](docs/designs/api-surface.md)):
 
 ```text
 Guard (validateTargets → rejected[].code)
@@ -671,5 +671,5 @@ Environment setup, common commands, dual-runtime verification, and commit hooks:
 ## Documentation
 
 - [Engineering documentation index](../../docs/README.md)
-- [API surface design](docs/api-surface.md): the authoritative export surface, error codes, and behavior contracts behind this page
+- [API surface design](docs/designs/api-surface.md): the authoritative export surface, error codes, and behavior contracts behind this page
 - [Safety guardrails](../../docs/safety-guardrails.md), the full account (in Chinese)

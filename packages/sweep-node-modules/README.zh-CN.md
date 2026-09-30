@@ -592,7 +592,7 @@ const outcome = await removeBatch(targets, { roots, staleTargets });
 
 ### code 家族
 
-域内 code 按家族列出 (每个 code 的完整触发表见 [可编程 API 面设计](docs/api-surface.md)):
+域内 code 按家族列出 (每个 code 的完整触发表见 [可编程 API 面设计](docs/designs/api-surface.md)):
 
 ```text
 安全闸 (validateTargets → rejected[].code)
@@ -671,5 +671,5 @@ const outcome = await removeBatch(targets, { roots, staleTargets });
 ## 文档
 
 - [工程技术文档总索引](../../docs/README.md)
-- [可编程 API 面设计](docs/api-surface.md): 本页背后的权威导出面、错误码与行为契约
+- [可编程 API 面设计](docs/designs/api-surface.md): 本页背后的权威导出面、错误码与行为契约
 - [安全防护保障](../../docs/safety-guardrails.md): 全量版 (含已知残余风险的诚实账)
