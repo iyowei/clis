@@ -29,6 +29,7 @@ jobs:
       - run: bunx oxlint
       - run: bunx prettier --check .
       - run: bun run lint:refs
+      - run: bun run lint:examples
 
   # 人工批准闸门 (environment: release, 配 required reviewers): 批准后才进入发布。
   # OIDC 发布: 不设任何 npm token; id-token: write 供 Trusted Publishing 换取短寿命凭据。

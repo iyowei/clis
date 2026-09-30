@@ -24,6 +24,7 @@
     "format": "prettier --write .",
     "test": "turbo run test",
     "lint:refs": "bun scripts/lint-doc-references.ts",
+    "lint:examples": "bun scripts/lint-doc-examples.ts",
     "bench": "bun packages/sweep-node-modules/bench/run.ts",
     "conformance": "bun scripts/transcription/run-conformance.ts",
     "ci": "bun scripts/ci.ts"
