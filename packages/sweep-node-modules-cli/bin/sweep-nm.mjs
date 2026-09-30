@@ -13,7 +13,8 @@
  * 先试 cwd 再扫 PATH), 而本工具的调用现场恰是「在被扫目录里执行」, 目录内放一个同名
  * bun.exe / bun.com 即可顶替真实运行时进入执行链。故 win32 下先按 PATH 解析出绝对路径
  * (空条目与相对条目都会把解析引回当前目录, 一并跳过) 再探测与执行, 解析面与执行面都不再
- * 触发任何搜索序; POSIX 侧 Node 走 execvp 只搜 PATH, 维持裸名原样。
+ * 触发任何搜索序; POSIX 侧同法收紧 (空与相对条目在 POSIX 下同样意为当前目录), 并保持
+ * execvp「首候选不可执行时继续搜索」的语义 (逐候选探测)。
  *
  * 产物自证 (审计项「发行面 dist/cli.js 与源码和提交无身份绑定」的运行时防线): 决定跑
  * dist/cli.js 之前必须与随附的 dist/manifest.json 对账 (形状版本受支持, 且清单记的 cliSha256
@@ -28,7 +29,7 @@
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { existsSync, readFileSync, realpathSync, statSync } from 'node:fs';
-import { dirname, join, win32 } from 'node:path';
+import { dirname, join, posix, win32 } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 /** 产物与清单的文件名 (与 scripts/release-artifact.ts 的 CLI_FILE / MANIFEST_FILE 同值) */
@@ -78,9 +79,27 @@ export const resolveWin32Executable = (name, pathEnv, fileProbe) => {
 };
 
 /**
+ * 在 PATH 中解析命令的全部候选绝对路径 (POSIX 语义, 保持 PATH 顺序), 跳过空条目与相对
+ * 条目 (两者在 POSIX 下都按当前目录解析, 属本工具要摘掉的解析面; 与 win32 分支同一理由,
+ * 见文件头「运行时解析防劫持」)。返回数组而非首命中: 同名文件可能不可执行, execvp 在
+ * 该情形会继续搜索, 候选交由调用方逐个探测以保持同一语义。注入 pathEnv / fileProbe 供
+ * 测试在任意宿主上覆盖本函数。
+ */
+export const resolvePosixExecutables = (name, pathEnv, fileProbe) => {
+  const found = [];
+  for (const dir of pathEnv.split(':')) {
+    if (dir === '' || !dir.startsWith('/')) continue;
+    const candidate = posix.join(dir, name);
+    if (fileProbe(candidate)) found.push(candidate);
+  }
+  return found;
+};
+
+/**
  * 挑选运行时: Bun 优先, 其次 Node; 皆无则 null (由调用处报错退出)。
- * win32 下先按 PATH 解析绝对路径再探测 (理由见文件头「运行时解析防劫持」), POSIX 下维持
- * 裸名 (execvp 只搜 PATH); 各参数显式传入供测试注入, 生产调用不传。
+ * 两个平台都先按 PATH 解析绝对路径再探测 (理由见文件头「运行时解析防劫持」): win32 取
+ * 首个解析命中, POSIX 按 PATH 顺序逐个候选探测 (保持 execvp 的继续搜索语义); 各参数
+ * 显式传入供测试注入, 生产调用不传。
  */
 export const pickRuntime = ({
   platform = process.platform,
@@ -89,11 +108,14 @@ export const pickRuntime = ({
   probe = available,
 } = {}) => {
   for (const name of ['bun', 'node']) {
-    const resolved =
-      platform === 'win32'
-        ? resolveWin32Executable(name, pathEnv, fileProbe)
-        : name;
-    if (resolved !== null && probe(resolved)) return resolved;
+    if (platform === 'win32') {
+      const resolved = resolveWin32Executable(name, pathEnv, fileProbe);
+      if (resolved !== null && probe(resolved)) return resolved;
+      continue;
+    }
+    for (const candidate of resolvePosixExecutables(name, pathEnv, fileProbe)) {
+      if (probe(candidate)) return candidate;
+    }
   }
   return null;
 };

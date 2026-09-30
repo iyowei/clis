@@ -9,7 +9,8 @@
  *   均意为当前目录) 一律不解析; 引号包裹的目录条目剥引号后照常解析; 扩展名 .com / .exe,
  *   与 Node 实际走的 libuv 搜索同面。
  * - pickRuntime 的 win32 分支: 解析不出绝对路径时不因当前目录里有同名文件而选中。
- * - POSIX 分支维持裸名 (Node 走 execvp 只搜 PATH), 不被本次收紧波及。
+ * - POSIX 分支同法收紧: 按 PATH 解析绝对路径 (跳过空与相对条目), 逐候选探测 (保持 execvp
+ *   首候选不可执行时继续搜索的语义)。
  * - 三入口的解析形态静态钉住 (sh / cmd 两个启动器没有可注入的宿主, 只能以形态断言防回归)。
  * - POSIX 宿主实跑对照: command -v 与 Node 裸名 spawn 都不命中 cwd 里的同名可执行探针。
  */
@@ -26,7 +27,11 @@ import {
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { pickRuntime, resolveWin32Executable } from '../bin/sweep-nm.mjs';
+import {
+  pickRuntime,
+  resolvePosixExecutables,
+  resolveWin32Executable,
+} from '../bin/sweep-nm.mjs';
 
 const ROOT = join(import.meta.dir, '..');
 
@@ -89,6 +94,23 @@ describe('win32 PATH 解析 (注入)', () => {
   });
 });
 
+describe('POSIX PATH 解析 (注入)', () => {
+  test('只认绝对目录: 空条目与相对条目 (均意为当前目录) 不解析', () => {
+    const asked: string[] = [];
+    const resolved = resolvePosixExecutables(
+      'bun',
+      '::.:relative:/usr/bin',
+      (candidate) => {
+        asked.push(candidate);
+        return candidate === '/usr/bin/bun';
+      },
+    );
+
+    expect(resolved).toEqual(['/usr/bin/bun']);
+    expect(asked).toEqual(['/usr/bin/bun']);
+  });
+});
+
 describe('pickRuntime 的 win32 分支 (注入)', () => {
   test('解析不出绝对路径时不因当前目录里有同名文件而选中 (探测环节不被触发)', () => {
     let probed = 0;
@@ -133,20 +155,37 @@ describe('pickRuntime 的 win32 分支 (注入)', () => {
     expect(runtime).toBe('C:\\tools\\node.exe');
   });
 
-  test('POSIX 分支维持裸名 (execvp 只搜 PATH, 不被本次收紧波及)', () => {
+  test('POSIX 分支同法收紧: 按 PATH 解析绝对路径 (跳过空与相对条目) 并以绝对路径探测', () => {
     const probed: string[] = [];
     const runtime = pickRuntime({
       platform: 'darwin',
-      pathEnv: 'C:\\tools',
-      fileProbe: () => true,
+      pathEnv: '/opt/homebrew/bin::.tools:/usr/bin',
+      fileProbe: (candidate) => candidate === '/usr/bin/node',
       probe: (command) => {
         probed.push(command);
-        return command === 'node';
+        return true;
       },
     });
 
-    expect(runtime).toBe('node');
-    expect(probed).toEqual(['bun', 'node']);
+    expect(runtime).toBe('/usr/bin/node');
+    expect(probed).toEqual(['/usr/bin/node']);
+  });
+
+  test('POSIX 首候选探测失败时继续后续候选 (execvp 继续搜索语义)', () => {
+    const probed: string[] = [];
+    const runtime = pickRuntime({
+      platform: 'darwin',
+      pathEnv: '/first:/second',
+      fileProbe: (candidate) =>
+        candidate === '/first/bun' || candidate === '/second/bun',
+      probe: (command) => {
+        probed.push(command);
+        return command === '/second/bun';
+      },
+    });
+
+    expect(runtime).toBe('/second/bun');
+    expect(probed).toEqual(['/first/bun', '/second/bun']);
   });
 });
 
@@ -175,6 +214,14 @@ describe('三入口解析形态 (静态钉住)', () => {
     expect(source).toContain("platform === 'win32'");
     expect(source).toContain(
       'resolveWin32Executable(name, pathEnv, fileProbe)',
+    );
+  });
+
+  test('npm 启动器: POSIX 分支走 resolvePosixExecutables (形态不被摘掉)', () => {
+    const source = readLauncher('bin/sweep-nm.mjs');
+
+    expect(source).toContain(
+      'resolvePosixExecutables(name, pathEnv, fileProbe)',
     );
   });
 });
