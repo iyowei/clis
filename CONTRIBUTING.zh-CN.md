@@ -1,4 +1,4 @@
-# 为 sweep-node-modules 贡献
+# 为 clis 贡献
 
 [English](CONTRIBUTING.md) | **中文**
 

@@ -1,15 +1,15 @@
-# sweep-node-modules
+# clis
 
-[![CI](https://github.com/iyowei/sweep-node-modules/actions/workflows/ci.yml/badge.svg)](https://github.com/iyowei/sweep-node-modules/actions/workflows/ci.yml)
-[![Release](https://github.com/iyowei/sweep-node-modules/actions/workflows/release.yml/badge.svg)](https://github.com/iyowei/sweep-node-modules/actions/workflows/release.yml)
+[![CI](https://github.com/iyowei/clis/actions/workflows/ci.yml/badge.svg)](https://github.com/iyowei/clis/actions/workflows/ci.yml)
+[![Release](https://github.com/iyowei/clis/actions/workflows/release.yml/badge.svg)](https://github.com/iyowei/clis/actions/workflows/release.yml)
 
 **English** | [中文](README.zh-CN.md)
 
-A workspace-level cleaner for `node_modules`: scan several root directories in one pass, list every `node_modules` directory across your projects along with its size, and bulk-delete them after you confirm, reclaiming disk space.
+A collection of command-line tools for my daily development workflow, managed as a monorepo — plus the reusable packages they share. Members live under `packages/`, each with docs starting from its own `README.md`.
 
-## Packages
+## Members
 
-The tool ships as two packages:
+**sweep-node-modules** — a workspace-level cleaner for `node_modules`: scan several root directories in one pass, list every `node_modules` directory across your projects along with its size, and bulk-delete them after you confirm, reclaiming disk space. It ships as two packages:
 
 - **`@iyowei/sweep-node-modules-cli`**: the `sweep-nm` command-line tool; installation, usage, configuration, and the safety guardrails live in its [README](packages/sweep-node-modules-cli/README.md).
 - **`@iyowei/sweep-node-modules`**: the API package, for use in your own programs or scripts; usage is documented in its [README](packages/sweep-node-modules/README.md).

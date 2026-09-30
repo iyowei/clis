@@ -8,7 +8,7 @@ body:
       value: |
         Thanks for taking the time to report a bug. Fill in as much as you can; a precise reproduction gets a fix faster.
 
-        For security problems, do not open a public issue. In particular, if the tool deleted something it should not have, or a safety guard can be bypassed, report it privately: on GitHub, open the Security tab and use Report a vulnerability. See [SECURITY.md](https://github.com/iyowei/sweep-node-modules/blob/main/SECURITY.md) for the full policy.
+        For security problems, do not open a public issue. In particular, if the tool deleted something it should not have, or a safety guard can be bypassed, report it privately: on GitHub, open the Security tab and use Report a vulnerability. See [SECURITY.md](https://github.com/iyowei/clis/blob/main/SECURITY.md) for the full policy.
   - type: checkboxes
     id: preflight
     attributes:

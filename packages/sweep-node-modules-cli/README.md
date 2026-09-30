@@ -1,6 +1,6 @@
 # sweep-node-modules-cli
 
-[![CI](https://github.com/iyowei/sweep-node-modules/actions/workflows/ci.yml/badge.svg)](https://github.com/iyowei/sweep-node-modules/actions/workflows/ci.yml)
+[![CI](https://github.com/iyowei/clis/actions/workflows/ci.yml/badge.svg)](https://github.com/iyowei/clis/actions/workflows/ci.yml)
 [![npm version](https://img.shields.io/npm/v/@iyowei/sweep-node-modules-cli)](https://www.npmjs.com/package/@iyowei/sweep-node-modules-cli)
 [![npm downloads](https://img.shields.io/npm/dm/@iyowei/sweep-node-modules-cli)](https://www.npmjs.com/package/@iyowei/sweep-node-modules-cli)
 ![node](https://img.shields.io/node/v/@iyowei/sweep-node-modules-cli)

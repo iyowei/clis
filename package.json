@@ -1,5 +1,5 @@
 {
-  "name": "sweep-node-modules",
+  "name": "clis",
   "private": true,
   "packageManager": "bun@1.4.2",
   "author": "iTonyYo (https://github.com/iTonyYo)",
