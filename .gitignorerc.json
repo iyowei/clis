@@ -1,0 +1,21 @@
+{
+  "topics": [
+    "macOS",
+    "Windows",
+    "Linux",
+    "Node",
+    "JetBrains",
+    "VisualStudioCode",
+    "SublimeText",
+    "Vim",
+    "Archives"
+  ],
+  "custom": [
+    "package-lock.json",
+    "*.log",
+    "*.modified",
+    "packages/sweep-node-modules/bench/results/",
+    "packages/sweep-node-modules-cli/scripts/transcription/mutants/gen-*/",
+    ".turbo/"
+  ]
+}

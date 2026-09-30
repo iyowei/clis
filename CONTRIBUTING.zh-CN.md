@@ -38,6 +38,8 @@ bun install
 
 钩子在代码进门时把关 (pre-commit: 全项目类型检查, 外加对暂存文件跑 prettier 与 oxlint), 推送前重跑全量只读检查 (pre-push: typecheck / test / oxlint / 格式检查)。机器上没有 lefthook 时, 钩子链回退到经 bunx 取用的 pin 版。配置见 [lefthook.yml](lefthook.yml)。
 
+仓库的 `.gitignore` 由 fast-gitignore (`fgi`) 从 `.gitignorerc.json` 生成, 不要手改: 新增忽略规则写进该配置的 `custom` 数组, 再在仓库根重跑 `fgi` (它读取预设、全量覆盖重新生成 `.gitignore`)。
+
 ## 常用命令
 
 在仓库根目录执行:
