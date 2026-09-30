@@ -1,6 +1,6 @@
 /**
  * 本地 CI 预演 (单一入口): 与 .github/workflows/ 的 verify + conformance 两个 job 同集合 ——
- * build → typecheck → test → lint → format-check → lint:refs →
+ * build → typecheck → test (含 scripts 测试) → lint → format-check → lint:refs →
  * lint:examples → lint:coverage → lint:backups → conformance (bun + node 双 target)。
  *
  * 由来 (2026-09-29 CI 实翻): conformance 的 node target 直跑 CLI 源码时按 package.json 的
@@ -43,8 +43,8 @@ if (process.argv.includes('--conformance')) {
   conformance();
 } else {
   step('build', 'bun', ['run', 'build']);
-  step('typecheck', 'bunx', ['turbo', 'run', 'typecheck']);
-  step('test', 'bunx', ['turbo', 'run', 'test']);
+  step('typecheck', 'bun', ['run', 'typecheck']);
+  step('test', 'bun', ['run', 'test']);
   step('lint', 'bunx', ['oxlint']);
   step('format-check', 'bunx', ['prettier', '--check', '.']);
   step('lint:refs', 'bun', ['run', 'lint:refs']);

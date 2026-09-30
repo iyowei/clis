@@ -24,8 +24,8 @@ jobs:
           node-version: 24
       - run: bun install --frozen-lockfile
       - run: bunx turbo run build
-      - run: bunx turbo run typecheck
-      - run: bunx turbo run test
+      - run: bun run typecheck
+      - run: bun run test
       - run: bunx oxlint
       - run: bunx prettier --check .
       - run: bun run lint:refs

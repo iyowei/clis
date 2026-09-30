@@ -24,9 +24,9 @@ jobs:
       - name: Build
         run: bunx turbo run build
       - name: Typecheck
-        run: bunx turbo run typecheck
+        run: bun run typecheck
       - name: Test
-        run: bunx turbo run test
+        run: bun run test
       - name: Lint
         run: bunx oxlint
       - name: Format check
