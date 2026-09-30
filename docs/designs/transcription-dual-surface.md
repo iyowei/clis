@@ -23,15 +23,15 @@
 
 ### 1.1 归属岔口: ADR 0010 明说进 API 包, 迁移提交落在了 CLI 包
 
-[ADR 0010](../adrs/0010-dual-package-monorepo.md) (09-29 10:24 落盘) 明文写「既有成果随能力进 API 包: 九轮安全审计收敛与转写契约套件的归属随包边界明确」与「转写契约套件随能力进 API 包」; 但 37 分钟后的迁移提交 4fec13f (10:57) 把套件落在了 `packages/sweep-node-modules-cli/scripts/transcription/`, 执行与决策不符且此后无人察觉。2026-09-30 复审时该岔口重新裁定: 归属随「服务对象」而非「被验能力的位置」, 套件归位仓库根 (见 §2 拍板第 1 条)。
+[ADR 0010](../adrs/0010-dual-package-monorepo.md) (09-29 10:24 落盘) 明文写「既有成果随能力进 API 包: 九轮安全审计收敛与转写契约套件的归属随包边界明确」与「转写契约套件随能力进 API 包」; 但约 33 分钟后的迁移提交 4fec13f (10:57) 把套件落在了 `packages/sweep-node-modules-cli/scripts/transcription/`, 执行与决策不符且此后无人察觉。2026-09-30 复审时该岔口重新裁定: 归属随「服务对象」而非「被验能力的位置」, 套件归位仓库根 (见 §2 拍板第 1 条)。
 
 ### 1.2 覆盖缺口: 57 条语料只验收 CLI 黑盒面
 
-[转写契约套件](../protocol/README.md) ([ADR 0008](../adrs/0008-transcription-kit.md) 定义, 为未来多语言重写保行为等价的设施) 目前只验收 CLI 黑盒面 (57 条语料, argv/env → stdout/stderr/退出码/文件系统终态); API 包作为可编程库的对外面 (函数调用 → 返回值/错误码) 无任何语言中立验收。
+[转写契约套件](../protocol/README.md) ([ADR 0008](../adrs/0008-transcription-kit.md) 定义, 为未来多语言重写保行为等价的设施) 目前只验收 CLI 黑盒面 (57 条语料, argv/env → stdout/stderr/退出码/文件系统终态); API 包作为可编程库的对外面 (函数调用 → 返回值/错误码) 无任何语言中立验收 (**设计时点陈述**; 该缺口已由本设计落地, 见 §4 与覆盖表的 API 面登记)。
 
 ### 1.3 待登记悬空: 3 条「新增条款 (待登记)」未进契约
 
-[可编程 API 面](api-surface.md) §3.4 已做「平移为 API 契约底稿」的逐条映射表 (27 个条款编号 → API 表达), 并留有 3 条标注为「新增条款 (待登记)」的条款 (A: stale 窄例外 / B: SizeResult 三桶完备性恒等式 / C: 进度事件终结契约), 但 [行为契约](../protocol/behavior-contract.md) 里一条都没有。
+[可编程 API 面](api-surface.md) §3.4 已做「平移为 API 契约底稿」的逐条映射表 (27 个条款编号 → API 表达), 并留有 3 条标注为「新增条款 (待登记)」的条款 (A: stale 窄例外 / B: SizeResult 三桶完备性恒等式 / C: 进度事件终结契约), 但 [行为契约](../protocol/behavior-contract.md) 里一条都没有 (**已由本设计落地**: 登记为 BC-42 / BC-43 / BC-44)。
 
 ## 2. 已拍板决策 (2026-09-30)
 
@@ -163,6 +163,6 @@ bun / node 两个 runtime 都跑 (与 CLI 面同款; node 载体按现有解析�
 以下各项在此归口, 不在本文档执行:
 
 - 全项目文档漂移清单 (审计全量) → 波 1 范围;
-- `scripts/install-git-hooks.test.ts` import 断链 (代码缺陷, `bun test` 直通形态当前唯一红) → 独立代码修复小批;
+- ~~`scripts/install-git-hooks.test.ts` import 断链~~ (已修复, 见提交 `cd2476c`);
 - mutants 快照过期 → 波 3/4 重生;
 - `bun.lock` 记录滞后与散落的 `.modified` 备份 → 随批清理。
