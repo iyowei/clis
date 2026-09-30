@@ -19,9 +19,11 @@ import {
 const SHA = 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855';
 const HEAD = '0123456789abcdef0123456789abcdef01234567';
 
-const validFacts = (): VerifyFacts => ({
-  gitStatus: '',
-  gitHead: HEAD,
+const cleanDist = () => ({
+  entryExists: true,
+  entrySize: 26,
+  entrySha256: SHA,
+  manifestExists: true,
   manifest: {
     schemaVersion: 1,
     entry: 'index.js',
@@ -29,10 +31,16 @@ const validFacts = (): VerifyFacts => ({
     commit: HEAD,
     dirty: false,
     builtAt: '2026-09-29T00:00:00.000Z',
-  },
-  entrySha256: SHA,
+  } as Record<string, unknown> | null,
+  manifestIssue: null as string | null,
+});
+
+const validFacts = (): VerifyFacts => ({
+  gitStatus: '',
+  gitHead: HEAD,
+  dist: cleanDist(),
   dtsTsSpecifierHits: [],
-  pack: [...PACK_FILES_EXPECTED],
+  pack: { files: [...PACK_FILES_EXPECTED], issue: null },
 });
 
 describe('judgeRelease 判定链', () => {
@@ -41,31 +49,40 @@ describe('judgeRelease 判定链', () => {
     expect(verdict.ok).toBe(true);
     if (verdict.ok) {
       expect(verdict.commit).toBe(HEAD);
-      expect(verdict.entrySha256).toBe(SHA);
+      expect(verdict.sha256).toBe(SHA);
     }
   });
 
   test('非 git 检出 / 脏工作树分别拒绝', () => {
     const notGit = judgeRelease({ ...validFacts(), gitStatus: null });
     expect(notGit.ok).toBe(false);
-    if (!notGit.ok) expect(notGit.reason).toContain('不是 git 检出');
+    if (!notGit.ok) expect(notGit.reason).toContain('读不到 git 状态');
 
     const dirty = judgeRelease({
       ...validFacts(),
       gitStatus: ' M packages/x/src/a.ts\n?? scratch.md',
     });
     expect(dirty.ok).toBe(false);
-    if (!dirty.ok) expect(dirty.reason).toContain('工作树不干净 (2 处');
+    if (!dirty.ok)
+      expect(dirty.reason).toContain('工作树不干净 (未提交改动 2 项');
   });
 
-  test('清单缺失 / 版本不支持 / 构建时脏 分别拒绝', () => {
-    const missing = judgeRelease({ ...validFacts(), manifest: null });
+  test('清单缺失 / 形状病灶 / 构建时脏 分别拒绝', () => {
+    const missing = judgeRelease({
+      ...validFacts(),
+      dist: { ...cleanDist(), manifestExists: false, manifest: null },
+    });
     expect(missing.ok).toBe(false);
-    if (!missing.ok) expect(missing.reason).toContain('缺少产物清单');
+    if (!missing.ok) expect(missing.reason).toContain('产物清单缺失');
 
+    // 形状病灶在采集层落错 (readManifest), 判定层读 manifestIssue 报出
     const badSchema = judgeRelease({
       ...validFacts(),
-      manifest: { ...validFacts().manifest!, schemaVersion: 2 },
+      dist: {
+        ...cleanDist(),
+        manifest: null,
+        manifestIssue: '清单 schemaVersion 不受支持 (期望 1)',
+      },
     });
     expect(badSchema.ok).toBe(false);
     if (!badSchema.ok) expect(badSchema.reason).toContain('schemaVersion');
@@ -73,31 +90,45 @@ describe('judgeRelease 判定链', () => {
     // dirty 非 false (含未知 null) 一律拒: 产物无法自证出自干净构建
     const dirtyBuild = judgeRelease({
       ...validFacts(),
-      manifest: { ...validFacts().manifest!, dirty: null },
+      dist: {
+        ...cleanDist(),
+        manifest: { ...cleanDist().manifest!, dirty: null },
+      },
     });
     expect(dirtyBuild.ok).toBe(false);
-    if (!dirtyBuild.ok)
-      expect(dirtyBuild.reason).toContain('构建时工作树不干净');
+    if (!dirtyBuild.ok) expect(dirtyBuild.reason).toContain('脏工作树构建');
   });
 
   test('产物非本提交构建 / 摘要不符 / index.js 缺失 分别拒绝', () => {
     const otherCommit = judgeRelease({
       ...validFacts(),
-      manifest: { ...validFacts().manifest!, commit: 'f'.repeat(40) },
+      dist: {
+        ...cleanDist(),
+        manifest: { ...cleanDist().manifest!, commit: 'f'.repeat(40) },
+      },
     });
     expect(otherCommit.ok).toBe(false);
-    if (!otherCommit.ok) expect(otherCommit.reason).toContain('不是本提交构建');
+    if (!otherCommit.ok)
+      expect(otherCommit.reason).toContain('不是本次提交构建');
 
     const swapped = judgeRelease({
       ...validFacts(),
-      entrySha256: 'f'.repeat(64),
+      dist: { ...cleanDist(), entrySha256: 'f'.repeat(64) },
     });
     expect(swapped.ok).toBe(false);
-    if (!swapped.ok) expect(swapped.reason).toContain('摘要与清单不符');
+    if (!swapped.ok) expect(swapped.reason).toContain('产物摘要与清单记录不符');
 
-    const noEntry = judgeRelease({ ...validFacts(), entrySha256: null });
+    const noEntry = judgeRelease({
+      ...validFacts(),
+      dist: {
+        ...cleanDist(),
+        entryExists: false,
+        entrySize: 0,
+        entrySha256: null,
+      },
+    });
     expect(noEntry.ok).toBe(false);
-    if (!noEntry.ok) expect(noEntry.reason).toContain('dist/index.js 缺失');
+    if (!noEntry.ok) expect(noEntry.reason).toContain('产物缺失');
   });
 
   test('d.ts 残留 .ts specifier / pack 采集失败 / 白名单不符 分别拒绝', () => {
@@ -108,23 +139,29 @@ describe('judgeRelease 判定链', () => {
     expect(dts.ok).toBe(false);
     if (!dts.ok) expect(dts.reason).toContain('index.d.ts, codes.d.ts');
 
-    const noPack = judgeRelease({ ...validFacts(), pack: null });
+    const noPack = judgeRelease({
+      ...validFacts(),
+      pack: { files: null, issue: 'npm pack 跑不起来' },
+    });
     expect(noPack.ok).toBe(false);
-    if (!noPack.ok) expect(noPack.reason).toContain('采集失败');
+    if (!noPack.ok) expect(noPack.reason).toContain('采不到');
 
     const extra = judgeRelease({
       ...validFacts(),
-      pack: [...PACK_FILES_EXPECTED, 'dist/secret.env'],
+      pack: { files: [...PACK_FILES_EXPECTED, 'dist/secret.env'], issue: null },
     });
     expect(extra.ok).toBe(false);
-    if (!extra.ok) expect(extra.reason).toContain('多出: dist/secret.env');
+    if (!extra.ok) expect(extra.reason).toContain('多出 dist/secret.env');
 
     const missing = judgeRelease({
       ...validFacts(),
-      pack: PACK_FILES_EXPECTED.filter((file) => file !== 'dist/index.js'),
+      pack: {
+        files: PACK_FILES_EXPECTED.filter((file) => file !== 'dist/index.js'),
+        issue: null,
+      },
     });
     expect(missing.ok).toBe(false);
-    if (!missing.ok) expect(missing.reason).toContain('缺少: dist/index.js');
+    if (!missing.ok) expect(missing.reason).toContain('缺少 dist/index.js');
   });
 });
 
@@ -162,10 +199,10 @@ describe('collectFacts 集成采集', () => {
     const facts = collectFacts(root);
     expect(facts.gitStatus).toBe('');
     expect(facts.gitHead).toMatch(/^[0-9a-f]{40}$/);
-    expect(facts.manifest).toBeNull();
-    expect(facts.entrySha256).toMatch(/^[0-9a-f]{64}$/);
+    expect(facts.dist.manifest).toBeNull();
+    expect(facts.dist.entrySha256).toMatch(/^[0-9a-f]{64}$/);
     expect(facts.dtsTsSpecifierHits).toEqual(['bad.d.ts']);
-    expect(facts.pack).toEqual(
+    expect(facts.pack.files).toEqual(
       [
         'dist/bad.d.ts',
         'dist/index.d.ts',

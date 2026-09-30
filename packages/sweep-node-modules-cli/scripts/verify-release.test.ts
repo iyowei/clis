@@ -196,9 +196,9 @@ describe('发布前置闸门 · 字段级判定 (注入事实)', () => {
     builtAt: '2026-09-26T00:00:00.000Z',
   };
   const cleanDist: DistState = {
-    cliExists: true,
-    cliSize: 17,
-    cliSha256: CLEAN_SHA,
+    entryExists: true,
+    entrySize: 17,
+    entrySha256: CLEAN_SHA,
     manifestExists: true,
     manifest: cleanManifest,
     manifestIssue: null,
@@ -216,7 +216,7 @@ describe('发布前置闸门 · 字段级判定 (注入事实)', () => {
     expect(verdict.ok).toBe(true);
     if (verdict.ok) {
       expect(verdict.commit).toBe(CLEAN_COMMIT);
-      expect(verdict.cliSha256).toBe(CLEAN_SHA);
+      expect(verdict.sha256).toBe(CLEAN_SHA);
     }
   });
 
@@ -252,7 +252,12 @@ describe('发布前置闸门 · 字段级判定 (注入事实)', () => {
       name: '产物缺失',
       facts: {
         ...cleanFacts,
-        dist: { ...cleanDist, cliExists: false, cliSize: 0, cliSha256: null },
+        dist: {
+          ...cleanDist,
+          entryExists: false,
+          entrySize: 0,
+          entrySha256: null,
+        },
       },
       reason: '产物缺失',
     },
@@ -260,13 +265,13 @@ describe('发布前置闸门 · 字段级判定 (注入事实)', () => {
       name: '产物零字节',
       facts: {
         ...cleanFacts,
-        dist: { ...cleanDist, cliSize: 0, cliSha256: null },
+        dist: { ...cleanDist, entrySize: 0, entrySha256: null },
       },
       reason: '产物为空',
     },
     {
       name: '产物读不出 (摘要算不出)',
-      facts: { ...cleanFacts, dist: { ...cleanDist, cliSha256: null } },
+      facts: { ...cleanFacts, dist: { ...cleanDist, entrySha256: null } },
       reason: '产物不可读',
     },
     {
@@ -312,7 +317,7 @@ describe('发布前置闸门 · 字段级判定 (注入事实)', () => {
       name: '摘要与清单记录不符',
       facts: {
         ...cleanFacts,
-        dist: { ...cleanDist, cliSha256: 'c'.repeat(64) },
+        dist: { ...cleanDist, entrySha256: 'c'.repeat(64) },
       },
       reason: '摘要与清单记录不符',
     },

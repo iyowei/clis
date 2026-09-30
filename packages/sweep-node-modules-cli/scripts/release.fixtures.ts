@@ -9,7 +9,7 @@ import { mkdtemp, realpath, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { cleanGitEnv } from './git-env.ts';
+import { cleanGitEnv } from '../../../scripts/lib/git-env.ts';
 
 export interface TempDir {
   root: string;

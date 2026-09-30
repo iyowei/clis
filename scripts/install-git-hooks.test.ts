@@ -28,7 +28,7 @@ import {
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 
-import { cleanGitEnv } from '../packages/sweep-node-modules-cli/scripts/git-env.ts';
+import { cleanGitEnv } from './lib/git-env.ts';
 
 const HERE = import.meta.dir;
 const SCRIPT = resolve(HERE, 'install-git-hooks.mjs');

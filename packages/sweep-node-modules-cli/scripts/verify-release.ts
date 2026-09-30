@@ -51,7 +51,7 @@ export const verifyRelease = (
   const verdict = judgeRelease(facts);
   if (verdict.ok) {
     io.out(
-      `发布前置校验通过: 提交 ${shortHash(verdict.commit)} · 产物摘要 ${shortHash(verdict.cliSha256)}`,
+      `发布前置校验通过: 提交 ${shortHash(verdict.commit)} · 产物摘要 ${shortHash(verdict.sha256)}`,
     );
     return 0;
   }
