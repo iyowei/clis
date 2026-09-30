@@ -20,6 +20,7 @@
 | 2026-09-29 | 依使用方体验反馈 (体验官列出的 54 条 + 其代码内注顺带指出 3 条, 共 57 条) 修订, 主要动作: ① 安全闸把「目标不存在」与「目标不可读」拆成独立 code 并补 `errno`, 新增 `staleTargets` 容忍开关; ② `SkipCandidate.suspect` 改必填并新增候选构造器; ③ 新增 `expectedBatch` 与 `drift` 消掉「预览与执行不可对账」; ④ 补齐「结果 → 呈现 / 分支」缝合层 (`isSuccessOutcome` / `summarizeReport` / `SweepEntry.skipNote` / `done` 终结事件 / `SweepErrorDetails` / `SweepWarningCode` / `isSweepError`); ⑤ `SizeResult` 新增 `gone` 桶并写死完备性恒等式; ⑥ `excludeMatches` / `includeMatches` 改必填; ⑦ `findCrossDeviceTargets` 改返回可序列化数组; ⑧ 明写 `sanitizeLine` 与 `sanitizeOutputLine` 分工。逐条处置记录见 §12 |
 | 2026-09-29 | 定稿落盘 (`docs/designs/` 体例); Q1b 拍板: 不保留过渡期转发 `bin`, 迁移指引由 API 包 README (包定位变更说明) 与 release notes 承载                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
 | 2026-09-29 | §10 闭环两缺口: `.d.ts` 产出通道已实测 (按 ADR 0010 决策 5 的 `tsc --emitDeclarationOnly` 落地, 需独立构建配置排除测试与 fixtures; declaration emit 会把源码的相对 specifier `.ts` 原样带出, `rewriteRelativeImportExtensions` 在 typescript 7.0.2 的 declaration emit 下实测未生效, 由构建脚本在产物层确定性改写为 `.js`); 两包发布链经查证无依赖与顺序约束 (CLI 发布产物为 bundle 内联、零依赖声明), 实现见 `packages/sweep-node-modules/scripts/` 的 `build.ts` / `verify-release.ts` 与根 tsconfig 的 paths 双态方案 (开发态直指 src, 发布态 exports 指 dist)                                                                                                                                                   |
+| 2026-09-30 | §3.4 三条「新增条款 (待登记)」正式登记为 BC-42 / BC-43 / BC-44 (「转写双面覆盖」设计承接登记义务), 标注随之更新                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
 
 ---
 
@@ -1103,25 +1104,25 @@ export type SkipReason =
 
 **平移为 API 契约底稿的条款** (观察 8 的请求, 逐条落到本设计的哪个字段):
 
-| 条款                          | 平移到 API 契约的表达                                                                                                                                                      |
-| ----------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| BC-04 / BC-06                 | `ScanResult.hits` 按 target 升序、realpath 去重                                                                                                                            |
-| BC-07 / BC-08                 | `ScanResult.warnings` 结构化, 单根失效不中断                                                                                                                               |
-| BC-09 / BC-33                 | `ScanResult.excludeMatches` / `includeMatches` (必填, 未命中名也在列)                                                                                                      |
-| BC-13 / BC-14                 | `SizeResult.gone` 与 `unmeasured` 分桶; 划分完备性恒等式 (§2.2)                                                                                                            |
-| BC-15                         | `unmeasured` 条目不进 `plan.batch`                                                                                                                                         |
-| BC-20 / BC-34                 | `SweepOptions.exclude` 缺省取 `DEFAULT_EXCLUDE`; `mergeNames` 收口                                                                                                         |
-| BC-21 / BC-22 / EC-02         | `BatchOutcome` 判别联合: 任一被拒即零删除; **例外见下**                                                                                                                    |
-| BC-24 / BC-25 / EC-05 / EC-07 | `RemovalResult` 三桶 + `TargetFailure.message` + `partialRisk`                                                                                                             |
-| BC-26                         | 退出码口径属 CLI 包; 库侧只给 `SweepSummary` 与三种配方 (§2.7)                                                                                                             |
-| BC-37 / BC-38                 | `classifyTarget` + `SweepPolicy.releaseSuspects` + `SkipCandidate.suspect` 必填                                                                                            |
-| BC-39                         | `RejectedTarget.code = GUARD_ROOT_ANCHOR_SYMLINK` + `details`                                                                                                              |
-| BC-41                         | `SkipReason` 的两个 `cross-device:*` 取值; 不受 policy 影响                                                                                                                |
-| BC-12 / EC-03                 | `SizeResult.basis` 与 `Sizer.basis`                                                                                                                                        |
-| EC-01 / EC-04                 | `missing` 归成功侧; 符号链接只删链接; **同一「已达成」定性前延到安全闸阶段的 `stale`**                                                                                     |
-| **新增条款 (待登记)** A       | 「安全闸的整批拒绝规则存在一个窄例外: 显式开启 `staleTargets: 'missing'` 时, 仅 `GUARD_TARGET_MISSING` 不触发整批拒绝, 改判 `stale` 并计成功侧; 其余拒绝码一律维持零删除」 |
-| **新增条款 (待登记)** B       | 「`SizeResult` 三桶构成入参的全划分 (完备性恒等式), 且两两不相交」                                                                                                         |
-| **新增条款 (待登记)** C       | 「进度事件流以终结事件收尾: `plan()` 末事件恒为 `plan-done`, `run()` 末事件恒为 `done`, 之后不再有事件」                                                                   |
+| 条款                            | 平移到 API 契约的表达                                                                                                                                                      |
+| ------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| BC-04 / BC-06                   | `ScanResult.hits` 按 target 升序、realpath 去重                                                                                                                            |
+| BC-07 / BC-08                   | `ScanResult.warnings` 结构化, 单根失效不中断                                                                                                                               |
+| BC-09 / BC-33                   | `ScanResult.excludeMatches` / `includeMatches` (必填, 未命中名也在列)                                                                                                      |
+| BC-13 / BC-14                   | `SizeResult.gone` 与 `unmeasured` 分桶; 划分完备性恒等式 (§2.2)                                                                                                            |
+| BC-15                           | `unmeasured` 条目不进 `plan.batch`                                                                                                                                         |
+| BC-20 / BC-34                   | `SweepOptions.exclude` 缺省取 `DEFAULT_EXCLUDE`; `mergeNames` 收口                                                                                                         |
+| BC-21 / BC-22 / EC-02           | `BatchOutcome` 判别联合: 任一被拒即零删除; **例外见下**                                                                                                                    |
+| BC-24 / BC-25 / EC-05 / EC-07   | `RemovalResult` 三桶 + `TargetFailure.message` + `partialRisk`                                                                                                             |
+| BC-26                           | 退出码口径属 CLI 包; 库侧只给 `SweepSummary` 与三种配方 (§2.7)                                                                                                             |
+| BC-37 / BC-38                   | `classifyTarget` + `SweepPolicy.releaseSuspects` + `SkipCandidate.suspect` 必填                                                                                            |
+| BC-39                           | `RejectedTarget.code = GUARD_ROOT_ANCHOR_SYMLINK` + `details`                                                                                                              |
+| BC-41                           | `SkipReason` 的两个 `cross-device:*` 取值; 不受 policy 影响                                                                                                                |
+| BC-12 / EC-03                   | `SizeResult.basis` 与 `Sizer.basis`                                                                                                                                        |
+| EC-01 / EC-04                   | `missing` 归成功侧; 符号链接只删链接; **同一「已达成」定性前延到安全闸阶段的 `stale`**                                                                                     |
+| **新增条款 (已登记为 BC-42)** A | 「安全闸的整批拒绝规则存在一个窄例外: 显式开启 `staleTargets: 'missing'` 时, 仅 `GUARD_TARGET_MISSING` 不触发整批拒绝, 改判 `stale` 并计成功侧; 其余拒绝码一律维持零删除」 |
+| **新增条款 (已登记为 BC-43)** B | 「`SizeResult` 三桶构成入参的全划分 (完备性恒等式), 且两两不相交」                                                                                                         |
+| **新增条款 (已登记为 BC-44)** C | 「进度事件流以终结事件收尾: `plan()` 末事件恒为 `plan-done`, `run()` 末事件恒为 `done`, 之后不再有事件」                                                                   |
 
 **OF 条款不进库契约**: OF-01 至 OF-15 全是字节级输出形态 (色块、列宽、`▍` 顶栏、清单走 stdout), 拆包后归 CLI 包自持; API 契约只承诺「返回什么数据」, 不承诺「怎么打印」。其中 OF-14 (输出面净化唯一实现) 是唯一需要跨包的一条, 处置是把 `sanitizeLine` / `sanitizeOutputLine` 提进 API 包 (§2.6)。
 
