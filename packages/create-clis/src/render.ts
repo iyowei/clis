@@ -86,7 +86,8 @@ function parseRepoSlug(repoUrl: string): string | undefined {
  * 建「源形态 → 目标值」对照表 (同源去重, 先注册者胜; 末尾按形态长度降序)。
  *
  * **执行步骤**：
- * 1. 仓库地址整段 (带 `.git` / `#readme` / `/issues` 等后缀时由剩余文本承接) 与裸 slug;
+ * 1. 仓库地址整段 (带 `.git` / `#readme` / `/issues` 等后缀时由剩余文本承接) 与裸 slug
+ *    (源地址非 URL 形态时回退到 `owner/name` 组合: 模板占位词汇 `{{OWNER}}/{{NAME}}` 即由此覆盖);
  * 2. 包坐标 (含 `-cli` 薄壳包, 先于裸 name 注册);
  * 3. 裸 name; 4. bin 名; 5. 作者署名 (回退 owner) 与 owner。
  */
@@ -104,7 +105,11 @@ function buildForms(target: Vocabulary, source: Vocabulary): Form[] {
     parseRepoSlug(target.repoUrl) ?? packageName(target.owner, target.name);
 
   add(source.repoUrl, target.repoUrl);
+  // slug 形态: 源地址可解析时取路径段 (如 iyowei/clis); 不可解析 (模板占位词汇的
+  // `{{REPO_URL}}`) 时回退到 owner/name 组合 —— 模板资产里的裸 slug 形态正是
+  // `{{OWNER}}/{{NAME}}` (构建期由 targetSlug 写出), 生成期按此形态才能替换回用户 slug
   if (sourceSlug !== undefined) add(sourceSlug, targetSlug);
+  else add(packageName(source.owner, source.name), targetSlug);
   add(
     packageName(source.scope, `${source.name}-cli`),
     packageName(target.scope, `${target.name}-cli`),
