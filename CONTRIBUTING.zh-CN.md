@@ -96,6 +96,7 @@ node packages/sweep-node-modules-cli/src/cli.ts
 
 - 提交信息采用 Conventional Commits 类型前缀 (`feat` / `fix` / `chore` / `test` / `refactor` 等) 加简短描述; 现有历史中的描述以中文书写。
 - 每个提交只含一个主题, 不相关的改动拆成独立提交。
+- 破坏性变更必须同时带两处标记: 类型后的 `!` (如 `feat!: ...`) 驱动版本号跳变; 英文 `BREAKING CHANGE: <描述>` footer 才是发布说明生成器识别的形态。缺后者的 `!` 提交会从生成的 CHANGELOG 里整体消失 (2026-09-30 实证)。
 - 这里没有钩子强制提交信息格式; lefthook 钩子强制的是类型检查、lint 与格式化。
 
 ## Pull requests

@@ -96,6 +96,7 @@ node packages/sweep-node-modules-cli/src/cli.ts
 
 - Use a Conventional Commits type prefix (`feat`, `fix`, `chore`, `test`, `refactor`,...) with a short description; the existing history writes descriptions in Chinese.
 - Keep each commit to a single topic, and split unrelated changes into separate commits.
+- Breaking changes must carry both markers: the `!` after the type (`feat!: ...`) drives the version bump, and an English `BREAKING CHANGE: <description>` footer is what the release-notes generator recognizes. A `!` commit without a recognizable footer is dropped from the generated CHANGELOG entirely (verified 2026-09-30).
 - No hook enforces the message format here; the lefthook hooks enforce typecheck, lint, and formatting.
 
 ## Pull requests
