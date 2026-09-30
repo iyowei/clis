@@ -13,6 +13,9 @@
 **sweep-node-modules (API 包与 CLI 包)**
 [API 包文档入口](../packages/sweep-node-modules/docs/README.md) (可编程 API 与包级 ADR) / [CLI 包文档入口](../packages/sweep-node-modules-cli/docs/README.md) (命令用法与输出)。
 
+**create-clis (生成器包)**
+[生成器包文档入口](../packages/create-clis/docs/README.md) (生成新集合仓的文档入口与设计关联)。
+
 ## 决策与模板
 
 **架构决策记录**
