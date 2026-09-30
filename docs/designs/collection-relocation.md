@@ -28,13 +28,13 @@
 3. 仓内同步 (一次性): 根 `package.json` (name 字段与仓库引用), 两包 `package.json` 的 `repository` / `homepage` / `bugs`, 根与两包 README 的徽章与仓库链接, 两个 workflow 内的仓库引用 (如有), issue 模板, `.vscode/launch.json`, `.gitignorerc.json`, git remote;
 4. npm 侧同步 (仓库外, 必做): 重建两包的 Trusted Publisher 登记 (改名不会自动跟改, 不同步则发布链在 npm 认证处失败, 见上方「依据」段); 自动化入口 `scripts/npm-trust-guard.ts` (`check` 只读对账 / `fix` 自动 revoke + 重建, 需 npm 登录态与交互式终端); CI 侧 Release 的 `release` job (人工批准后) 已挂 `npm-trust` 预检, 改名后的第一次发布在此当场点名 (预检须与发布同 job: 换证核对的 environment 声明来自 job 的 environment, 无 environment 的 job 换证会被 npm 以误导性的 404 拒绝);
 5. 文档自称更新 (docs 里所有「sweep-node-modules」的自称, 都改为「集合仓 + 包」的说法): 允许分批慢慢改, 不阻塞改名 (旧称不算错误, 只是说法过时);
-6. 生成器包落地 (create-clis: 包骨架 + 快照 build + 契约实现, 见[生成器包](scaffold-package.md))。
+6. **生成器包落地** (已落地 2026-10-01): create-clis 的包骨架、快照构建链、档位裁剪、变量与旗标、生成主流程与发行面自证全部就位 (见[生成器包](scaffold-package.md))。
 
 ## 阶段 C: 生成器闭环
 
-1. 重量冒烟 (生成完整项目 → 跑它的全链) 挂到生成器包的 `prepublishOnly` (见[生成器包](scaffold-package.md)质量闭环);
-2. 第二实例验证: 生成一个非 sweep 领域的小项目, 端到端跑通, 作为模板领域无关性的证据;
-3. 首个生成器版本发布后的核验: 在真实环境用 `bun create clis` 完整走一遍用户路径。
+1. **重量冒烟** (已落地 2026-10-01): 生成完整项目 → 跑它的全链, 已挂到生成器包的 `prepublishOnly` (见[生成器包](scaffold-package.md)质量闭环);
+2. **第二实例验证** (待一次性执行): 生成一个非 sweep 领域的小项目, 端到端跑通, 作为模板领域无关性的证据;
+3. **发布后核验** (待首个版本发布后): 在真实环境用 `bun create clis` 完整走一遍用户路径。
 
 ## 验证清单 (两包发布链零受损)
 
@@ -59,3 +59,4 @@
 | ---------- | ---------------------------------------------------- |
 | 2026-09-30 | 初稿: 三阶段、改名要同步的位置、验证清单与回滚策略   |
 | 2026-10-01 | 修正「跟仓库名无关」的依据 + 补 npm 侧登记同步与核对 |
+| 2026-10-01 | 阶段 B 第 6 步标完成; 阶段 C 余两项列为待一次性执行  |
