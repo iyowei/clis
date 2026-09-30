@@ -44,7 +44,7 @@
 
 6. **API 面设计先行**: API 面经「使用方视角场景调研 + 设计草案 + 使用方体验验证 (灵活 / 够用 / 好用)」后定稿; 设计细节另落文档, 不在本 ADR 展开。
 
-7. **本地发布走 `bun publish`**: 打包时会执行 `prepublishOnly`, 本仓发布闸门的挂点在其下依旧生效 (依据: [ADR 0009](0009-npm-distribution-form.md) 补记第 4 条, 2026-09-26 已联网核验)。`bun publish` 目前未接 npm 的 OIDC Trusted Publishing / provenance (社区现状), 将来 CI 签名发布走 npm 本体。
+7. **本地发布走 `bun publish`**: 打包时会执行 `prepublishOnly`, 本仓发布闸门的挂点在其下依旧生效 (依据: [ADR 0009](0009-npm-distribution-form.md) 补记第 4 条, 2026-09-26 已联网核验)。`bun publish` 目前未接 npm 的 OIDC Trusted Publishing / provenance (社区现状), 将来 CI 签名发布走 npm 本体。**修订指引 (2026-09-30)**: 该「将来」已兑现: CI 发布链已落地 (environment 人工批准闸门 + npm OIDC Trusted Publishing + provenance, 不设 npm token, 见 `.github/workflows/release.yml`)。
 
 选择原因: 两个包的规模下, bun 原生 workspaces 与 Turborepo 的组合复用既有工具链 (lefthook、bun test、bun build、发布链), 不引第二套包管理器与平台级工具; 包边界与职责边界重合, 业务语义全在 API 包一处实现, CLI 是其消费方。
 
@@ -61,7 +61,7 @@
 - 迁移面: 代码按切分原则搬家与 import 重连; 工程闸门 (lefthook 两层 / `verify-release` 发布闸门 / `files` 白名单 / `prepublishOnly`) 需在两个包上重落位 (闸门结构与判定不变, 落位点与配置变, 见 [ADR 0005](0005-engineering-gates-and-hooks.md));
 - 包名翻转影响既有消费方: `@iyowei/sweep-node-modules` 的既有安装者升级后将拿到 API 包, CLI 需改从 `@iyowei/sweep-node-modules-cli` 安装; 该版本语义变化在 0.x 内被显式接受;
 - README 拆家: CLI 包 README 由现根 README 迁移适配, API 包 README 新写 (含包定位变更说明: 同名包内容由 CLI 翻转为 API, CLI 迁至 `-cli` 包), 根 README 瘦身为仓库索引; 三份均维持英文主 + 中文副双版 (沿用 [ADR 0009](0009-npm-distribution-form.md) 补记第 5 条的双语机制);
-- 本地发布暂缺签名链路: `bun publish` 未接 npm 的 OIDC Trusted Publishing / provenance, 待将来 CI 签名发布切 npm 本体补齐;
+- 本地发布暂缺签名链路: `bun publish` 未接 npm 的 OIDC Trusted Publishing / provenance, 该缺口已由 CI 发布链补齐 (2026-09-30; 见决策 7 修订指引);
 - 文档连带: 设计总纲 / 开发指南 / 文档索引随结构同步更新 (沿用仓库防漂移纪律), 属实施阶段义务。
 
 ## 补记 (实施落地, 2026-09-29)
@@ -77,7 +77,7 @@
 **验证口径 (落地后核验)**
 
 1. 双包各自构建通过; 全量测试 (单元 / 契约 / 双载体 e2e / 冒烟 / 转写 conformance) 全绿;
-2. `bun publish` 干跑, 验证 `workspace` 协议在发布时被替换为目标包实际版本号的实际行为;
+2. `bun publish` 干跑, 验证 `workspace` 协议在发布时被替换为目标包实际版本号的实际行为 (2026-09-30 标注: 已作废, 包间依赖改精确版本后无 `workspace` 协议待替换, 见决策 1 补记; 该验证项不再适用);
 3. 迁移前后 CLI 对外行为等价 (以既有金样本与 e2e 用例为尺)。
 
 **关联引用**

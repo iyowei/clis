@@ -47,7 +47,7 @@
 
 **权衡妥协**
 
-- 增加一条交互代码路径与 TTY 检测分支; 测试须把纯逻辑与交互分离 (向导的 TTY 交互以伪终端冒烟覆盖, 见 `init.smoke.test.ts`)。
+- 增加一条交互代码路径与 TTY 检测分支; 测试须把纯逻辑与交互分离 (向导的 TTY 交互以伪终端冒烟覆盖, 见 `cli.e2e.test.ts` 的 pty 用例; `init.smoke.test.ts` 走真实管道)。
 
 ## 验证方式与关联引用 (Validation & References)
 

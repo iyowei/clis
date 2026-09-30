@@ -103,7 +103,7 @@ scripts/install-git-hooks.mjs / install-git-hooks.test.ts  # prepare 的装钩�
 | 失败路径 | 删除安全闸   | 注入不可删目标, 退出码非零且汇总呈现                                                   |
 | 初始化   | 配置与初始化 | 非 TTY + 无配置走 cwd 回退不阻塞; 配置生成纯逻辑 (答案 → 配置对象); 已存在时默认不覆盖 |
 
-测试文件按语义命名 (如 `scan.contract.test.ts`, `guard.contract.test.ts`); 向导的 TTY 交互以伪终端冒烟覆盖 (见 `init.smoke.test.ts` 与 `cli.e2e.test.ts` 的 pty 用例), 纯逻辑另由「答案到配置对象再到落盘决策」的单测覆盖。
+测试文件按语义命名 (如 `scan.contract.test.ts`, `guard.contract.test.ts`); 向导的 TTY 交互以伪终端冒烟覆盖 (见 `cli.e2e.test.ts` 的 pty 用例; `init.smoke.test.ts` 走真实管道), 纯逻辑另由「答案到配置对象再到落盘决策」的单测覆盖。
 
 实现落地后实测覆盖远超本表: 用例与语料规模以 `bun test` 与 `bun run conformance -- --target "bun packages/sweep-node-modules-cli/src/cli.ts"` 的实时输出为准 (后者不参数化, 需对两个载体各跑一遍; 含压测长跑、伪终端冒烟、双载体 e2e); 明细见各 `*.test.ts` 与 [转写契约套件](../protocol/README.md) 的覆盖表。
 
