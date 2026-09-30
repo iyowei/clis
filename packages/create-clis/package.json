@@ -30,6 +30,11 @@
   "bin": {
     "create-clis": "bin/create-clis.mjs"
   },
+  "files": [
+    "bin",
+    "dist",
+    "assets"
+  ],
   "engines": {
     "node": ">=22.18.0"
   },
@@ -38,6 +43,10 @@
     "registry": "https://registry.npmjs.org/"
   },
   "scripts": {
+    "build": "bun scripts/build-template.ts && bun build src/cli.ts --target=node --outfile=dist/create-clis.js && bun scripts/write-dist-manifest.ts",
+    "prepublishOnly": "npm run build && npm run verify:release && npm run heavy-smoke",
+    "verify:release": "bun scripts/verify-release.ts",
+    "heavy-smoke": "bun scripts/heavy-smoke.ts",
     "typecheck": "tsc --noEmit",
     "test": "bun test --path-ignore-patterns=assets/**"
   },

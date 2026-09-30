@@ -1,0 +1,35 @@
+#!/bin/sh
+# create-clis 启动器: 挑选运行时 (Bun 优先, 其次 Node) 后交给 npm 分发入口 (bin/create-clis.mjs)。
+# 经 ~/.local/bin/create-clis 软链调用; readlink 解出仓库内路径 (BSD / GNU 皆可)。
+#
+# 为什么不像既有 CLI 包那样直接 exec 真实入口: 生成器只认产物 (dist/create-clis.js, 无源码回退),
+# 而产物必须先与 dist/manifest.json 的摘要对账才许执行; 该自证逻辑只在 bin/create-clis.mjs 一处
+# 实现, 三个入口全部经它, 免得 sh / cmd 两份 shell 各自复刻判定 (复刻即分叉)。
+#
+# 运行时解析防劫持 (安全审计项 runtime-resolution:bare-name-cwd-precedence-windows):
+# 本入口的 command -v 与 exec 都按 shell 的 PATH 查找; shell 层无法过滤 PATH 中的空 / 相对
+# 条目 (两者在 POSIX 下均意为当前目录), 该边界属已知前提: 本入口只负责把控制权交给
+# bin/create-clis.mjs, 真正解析「跑产物的那个运行时」在那一侧完成 (按 PATH 解析绝对路径并跳过
+# 这两类条目), 防御落在那一侧。对照实测与本条的证据面见
+# packages/sweep-node-modules-cli/src/launcher.runtime-resolution.test.ts (同款逻辑的钉住用例);
+# win32 侧的对应处理见 bin/create-clis.cmd 与 bin/create-clis.mjs 的文件头。
+
+# readlink 为空 = 未经软链直跑, 此时 $0 即自身路径
+target=$(readlink "$0" 2>/dev/null)
+case "$target" in
+  "") target=$0 ;;
+  /*) ;;
+  *) target="$(dirname "$0")/$target" ;;
+esac
+root=$(cd "$(dirname "$target")/.." && pwd)
+
+if command -v bun >/dev/null 2>&1; then
+  exec bun "$root/bin/create-clis.mjs" "$@"
+fi
+
+if command -v node >/dev/null 2>&1; then
+  exec node "$root/bin/create-clis.mjs" "$@"
+fi
+
+echo "create-clis: 未找到 bun 或 node, 请至少安装其一" >&2
+exit 1
