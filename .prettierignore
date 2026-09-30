@@ -8,3 +8,4 @@ CHANGELOG.md
 CODE_OF_CONDUCT.md
 *.modified
 *.deleted
+packages/create-clis/assets

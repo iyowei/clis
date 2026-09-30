@@ -46,6 +46,7 @@
   "ignorePatterns": [
     "dist/**",
     "node_modules/**",
-    "scripts/transcription/mutants/**"
+    "scripts/transcription/mutants/**",
+    "packages/create-clis/assets/**"
   ]
 }

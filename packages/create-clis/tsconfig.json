@@ -1,4 +1,7 @@
 {
   "extends": "../../tsconfig.json",
-  "include": ["src", "scripts"]
+  "include": ["src", "scripts"],
+  // 骨架按新项目布局镜像存放 (相对引用只在新项目树里成立), 不进本包类型检查;
+  // 产物目录 assets/ 不在 include 面内 (由根 tsconfig 的 exclude 与各闸门排除)
+  "exclude": ["scripts/template-skeletons"]
 }

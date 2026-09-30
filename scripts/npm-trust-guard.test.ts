@@ -136,18 +136,20 @@ describe('diffTrust', () => {
   });
 
   test('repository 失配逐条列出 (改名事故的典型形态)', () => {
+    // 失配样本刻意取中性名 (不与仓库自身的名字重合): 它是「另一个仓库名」的任意代表,
+    // 判定链只比较两值是否相等, 取值本身无语义; 与仓库重名反而会让模板侧的两个值塌缩成同一个
     const problems = diffTrust(
       {
         type: 'github',
         id: 'x',
         file: 'release.yml',
-        repository: 'iyowei/sweep-node-modules',
+        repository: 'iyowei/legacy-repo',
         environment: 'release',
       },
       expected,
     );
     expect(problems).toHaveLength(1);
-    expect(problems[0]).toContain('iyowei/sweep-node-modules');
+    expect(problems[0]).toContain('iyowei/legacy-repo');
     expect(problems[0]).toContain('iyowei/clis');
   });
 

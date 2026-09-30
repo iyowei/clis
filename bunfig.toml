@@ -7,3 +7,10 @@
 frozenLockfile = false
 linker = "hoisted"
 registry = "https://registry.npmmirror.com"
+
+# 测试发现面: packages/create-clis/assets 是生成器按骨架清单产出的模板资产 (目录结构是
+# 「新项目根」, 内含从本仓复制过去的 *.test.ts), 不是本仓的测试; 排除它们, 防其在生成器
+# 语境里被误跑 (同款排除见 .gitignore / .prettierignore / .oxlintrc.json 与 tsconfig.json;
+# 包内一次测试由 packages/create-clis 的 test 脚本自带同款旗标)
+[test]
+pathIgnorePatterns = ["packages/create-clis/assets/**"]

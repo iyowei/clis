@@ -35,5 +35,12 @@
   },
   // 变异生成器的产物 (scripts/transcription/mutants/gen-*/packages/*/src/*.ts) 由 make-mutants.ts
   // 生成, 是派生件而非源码; 不排除则从根跑 tsc 会把它们收进编译范围并变红 (实测命中)
-  "exclude": ["scripts/transcription/mutants"]
+  // 生成器包 (packages/create-clis) 的两个模板空间同理不进本仓检查面: assets/ 是按清单产出的
+  // 构建产物 (目录结构是新项目根, 含占位符路径与跨包引用), template-skeletons/ 是镜像新项目布局的
+  // 骨架; 二者只在新项目语境里成立 (同款排除见 .gitignore / .prettierignore / .oxlintrc.json)
+  "exclude": [
+    "scripts/transcription/mutants",
+    "packages/create-clis/assets",
+    "packages/create-clis/scripts/template-skeletons"
+  ]
 }
