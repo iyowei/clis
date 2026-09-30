@@ -12,10 +12,16 @@
  *
  * 用法: bun scripts/ci.ts [--verify | --conformance | --only <step> | --help]
  * 退出码: 0 全绿; 其余为首个失败步骤的退出码。
+ *
+ * test 步骤在隔离 HOME 下执行 (临时家目录经 makeTmpRoot 创建): 本机常备而 CI 缺失的
+ * 环境态依赖 (如 ~/tmp 目录、家目录配置) 不再被本机状态掩盖, 此类 CI 翻车本地预演即可
+ * 抓住 (2026-09-30 复盘: 环境态假设类失败)。
  */
 import { spawnSync } from 'node:child_process';
+import { rmSync } from 'node:fs';
 import { join } from 'node:path';
 
+import { makeTmpRoot } from './lib/tmp-root.ts';
 import { resolveCliAndApi } from './lib/workspace.ts';
 
 process.chdir(join(import.meta.dir, '..'));
@@ -24,6 +30,8 @@ process.chdir(join(import.meta.dir, '..'));
 interface Step {
   command: string;
   args: string[];
+  /** 在隔离 HOME 下执行 (防「本地有而 CI 无」的环境态假设被本机状态掩盖) */
+  isolatedHome?: boolean;
 }
 
 /** CLI 入口坐标: 由 workspaces 派生 (chdir 之后相对仓库根) */
@@ -34,7 +42,7 @@ const CLI_SRC = `${cli.dir}/src/cli.ts`;
 const STEPS: Readonly<Record<string, Step>> = {
   build: { command: 'bun', args: ['run', 'build'] },
   typecheck: { command: 'bun', args: ['run', 'typecheck'] },
-  test: { command: 'bun', args: ['run', 'test'] },
+  test: { command: 'bun', args: ['run', 'test'], isolatedHome: true },
   lint: { command: 'bunx', args: ['oxlint'] },
   'format-check': { command: 'bunx', args: ['prettier', '--check', '.'] },
   'lint:refs': { command: 'bun', args: ['scripts/lint-doc-references.ts'] },
@@ -94,7 +102,11 @@ const CONFORMANCE_GROUP: readonly string[] = [
 function runStep(name: string): void {
   const step = STEPS[name]!;
   process.stdout.write(`\n=== ${name} ===\n`);
-  const result = spawnSync(step.command, step.args, { stdio: 'inherit' });
+  const home = step.isolatedHome === true ? makeTmpRoot('ci-home-') : undefined;
+  if (home !== undefined) process.stdout.write(`隔离 HOME: ${home}\n`);
+  const env = home === undefined ? process.env : { ...process.env, HOME: home };
+  const result = spawnSync(step.command, step.args, { stdio: 'inherit', env });
+  if (home !== undefined) rmSync(home, { recursive: true, force: true });
   if (result.status !== 0) process.exit(result.status ?? 1);
 }
 
