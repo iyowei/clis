@@ -164,7 +164,7 @@ export const TEMPLATE_MANIFEST: readonly ManifestEntry[] = [
   {
     path: 'LICENSE',
     disposition: 'generalize',
-    note: '含作者名形态 iTonyYo (spec 词汇表 {owner} 行的位置约定, 词汇表需覆盖该形态)',
+    note: '含作者名形态 iTonyYo (spec 词汇表 {{OWNER}} 行的位置约定, 词汇表需覆盖该形态)',
   },
   {
     path: '.github/ISSUE_TEMPLATE/bug_report.yml',

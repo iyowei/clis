@@ -12,7 +12,12 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { REPO_ROOT, TEMPLATE_MANIFEST } from '../scripts/template-manifest.ts';
-import { type Vocabulary, containsResidual, renderTemplate } from './render.ts';
+import {
+  TEMPLATE_VOCABULARY,
+  type Vocabulary,
+  containsResidual,
+  renderTemplate,
+} from './render.ts';
 
 /** 本仓原词汇: 五基线 + 扩展形态 author (LICENSE / author 字段的展示名); 裸词形态不入替换面 */
 const ORIGINAL: Vocabulary = {
@@ -163,13 +168,14 @@ describe('renderTemplate 词汇形态', () => {
     ).toBe('"my-tool": "0.5.1"');
   });
 
-  test('模板占位形态 (形如 {name}) 构建期 / 生成期双向适用', () => {
+  test('模板占位形态 (TEMPLATE_VOCABULARY 的 {{NAME}} 式) 构建期 / 生成期双向适用', () => {
+    // 与 src/render.ts 的 TEMPLATE_VOCABULARY 同拼写: 双花括号大写形态, 不撞 JS 插值 `${}`
     const placeholder: Vocabulary = {
-      name: '{name}',
-      scope: '{scope}',
-      binName: '{binName}',
-      owner: '{owner}',
-      repoUrl: '{repoUrl}',
+      name: '{{NAME}}',
+      scope: '{{SCOPE}}',
+      binName: '{{BIN_NAME}}',
+      owner: '{{OWNER}}',
+      repoUrl: '{{REPO_URL}}',
     };
     // 构建期方向: 原词汇落为占位符 (slug 由 repoUrl 派生, 作者名回退 owner; 裸词与产品区路径不在替换面)
     expect(
@@ -178,13 +184,24 @@ describe('renderTemplate 词汇形态', () => {
         placeholder,
         ORIGINAL,
       ),
-    ).toBe('{owner}/{name} 与 {binName} 与 {owner}');
+    ).toBe('{{OWNER}}/{{NAME}} 与 {{BIN_NAME}} 与 {{OWNER}}');
     // 生成期方向: 占位符是「原词汇」, 替换与残留检测对称适用
-    expect(renderTemplate('name = {name}', TARGET, placeholder)).toBe(
+    expect(renderTemplate('name = {{NAME}}', TARGET, placeholder)).toBe(
       'name = my-tool',
     );
-    expect(containsResidual('name = {name}', placeholder)).toBe(true);
+    expect(containsResidual('name = {{NAME}}', placeholder)).toBe(true);
     expect(containsResidual('name = my-tool', placeholder)).toBe(false);
+  });
+
+  test('占位符拼写不与 JS 模板字面量插值撞车 (三代拼写回归)', () => {
+    // 单花括号拼写 `{name}` 是 `${name}` 的真子串, 生成期会把插值打成 `$用户词` (实测事故);
+    // 双花括号拼写下, 代码里的插值原样保留
+    expect(
+      renderTemplate('`=== ${name} ===`', TARGET, TEMPLATE_VOCABULARY),
+    ).toBe('`=== ${name} ===`');
+    expect(
+      renderTemplate('`清理陈旧产物: ${name}\\n`', TARGET, TEMPLATE_VOCABULARY),
+    ).toBe('`清理陈旧产物: ${name}\\n`');
   });
 
   test('不含词汇的内容原样返回', () => {

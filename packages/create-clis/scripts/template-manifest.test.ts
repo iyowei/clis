@@ -19,7 +19,7 @@ import { REPO_ROOT, TEMPLATE_MANIFEST } from './template-manifest.ts';
  * 原项目可识别词汇 (分类判据口径): 一律为无歧义复合形态 ——
  * 原包名 (含 `-cli` 变体前缀) / 原 scope / 原 bin 名 / 裸仓库 slug / 原 owner
  * (repoUrl 形态由 owner 覆盖) / 作者名形态 (LICENSE 与 package.json author,
- * spec 词汇表 `{owner}` 行的位置约定)。
+ * spec 词汇表 `{{OWNER}}` 行的位置约定)。
  *
  * 收窄边界 (二轮裁定): 裸词 `sweep` / `clis` 不入词面 —— 子串匹配会误伤 `sweepStale`
  * (动词义标识符, 替换后连字符入词成语法错误) 与 `create-clis` (生成器包名, 替换后

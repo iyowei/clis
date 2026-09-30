@@ -7,11 +7,16 @@
  * containsResidual 是两处共用的零残留判据 (构建自检与生成二道防线)。
  *
  * 形态面 (长形态优先, 由单遍扫描消化包含关系):
- * - 基线五形态 (spec 词汇表): `{scope}/{name}` (含 `-cli` 薄壳包坐标) / `{name}` / `{binName}` /
- *   `{owner}` / `{repoUrl}`;
+ * - 基线五形态 (spec 词汇表): `{{SCOPE}}/{{NAME}}` (含 `-cli` 薄壳包坐标) / `{{NAME}}` /
+ *   `{{BIN_NAME}}` / `{{OWNER}}` / `{{REPO_URL}}`;
  * - 实测扩展形态 (实扫 generalize 文件面暴露): 作者署名 author (owner 的展示名, 见于 LICENSE 与
- *   package.json author, 如 iTonyYo) / 裸 slug (无 scheme 的 `{owner}/{repoName}`, 如 npm 命令
+ *   package.json author, 如 iTonyYo) / 裸 slug (无 scheme 的 `{{OWNER}}/{{NAME}}`, 如 npm 命令
  *   的 `--repo iyowei/clis`)。
+ *
+ * 占位符拼写 (三轮裁定): 模板占位用双花括号大写形态 (`{{NAME}}` 式), 不用单花括号 —— 单花括号
+ * `{name}` 是 JS 模板字面量插值 `${name}` 的真子串, 生成期替换会把代码里的插值打成 `$用户词`
+ * (实测 8 处, 含 `=== ${name} ===` 这类闸门文案); 双花括号全库零命中, 且在 md / json / yaml / ts
+ * 各载体下都不与既有语法撞车 (prettier 亦原样保留)。
  *
  * 裸词收窄 (二轮裁定, 与 template-manifest 的词面口径同源): 裸 `sweep` / `clis` 不入替换面 ——
  * 子串匹配会把动词义标识符 `sweepStale` 写成含连字符的错误标识符, 把生成器包名 `create-clis`
@@ -38,6 +43,19 @@ export interface Vocabulary {
   author?: string;
 }
 
+/**
+ * 模板占位词汇: 构建期 (buildTemplate) 的替换目标, 也是生成期 (generate) 的替换来源 ——
+ * 模板资产里存的就是这组形态, 两条链共用一处定义 (单源), 防占位约定漂移。
+ * 拼写取双花括号大写形态 (不用单花括号): 见文件头「占位符拼写」。
+ */
+export const TEMPLATE_VOCABULARY: Vocabulary = {
+  name: '{{NAME}}',
+  scope: '{{SCOPE}}',
+  binName: '{{BIN_NAME}}',
+  owner: '{{OWNER}}',
+  repoUrl: '{{REPO_URL}}',
+};
+
 /** 一条替换对照: from 为源形态, to 为目标值 */
 interface Form {
   readonly from: string;
@@ -51,7 +69,7 @@ function packageName(scope: string, name: string): string {
 
 /**
  * 解析仓库地址的 slug (路径段, 如 iyowei/clis);
- * 非 URL 形态 (如构建期的模板占位符 `{repoUrl}`) 返回 undefined, 相应形态自动跳过。
+ * 非 URL 形态 (如构建期的模板占位符 `{{REPO_URL}}`) 返回 undefined, 相应形态自动跳过。
  */
 function parseRepoSlug(repoUrl: string): string | undefined {
   const matched = /^[a-z][a-z0-9+.-]*:\/\/[^/]+\/(.+)$/i.exec(repoUrl.trim());
