@@ -5,22 +5,22 @@
 > **决策者**: 沈委
 > **父文档**: [设计总纲](../../../../docs/sweep/designs/sweep-node-modules-design.md)
 >
-> 用途: 定义 API 包 (`@iyowei/sweep-node-modules`, 承载能力与契约) 与 CLI 薄壳包 (`@iyowei/sweep-node-modules-cli`, 解析 → 调 API → 渲染 → 交互) 的切分, 以及前者对外的可编程面。
+> 用途: 定义 API 包 (`@iyowei/sweep-node-modules`, 全部能力与契约都在这里) 与 CLI 薄壳包 (`@iyowei/sweep-node-modules-cli`, 解析 → 调 API → 渲染 → 交互) 的切分, 以及 API 包对外的可编程面。
 > 范围: 本文只管「API 面长什么样」(导出面 / 错误模型 / 进度与取消 / 域类型 / 缺口处置 / 调用示例); 命令面与字节级输出规格见 [命令面与输出](../../../sweep-node-modules-cli/docs/designs/cli-surface.md), 配置模型见 [配置与初始化](../../../../docs/sweep/designs/config-and-initialization.md), 删除安全语义与安全闸见 [删除安全闸](../../../../docs/sweep/designs/deletion-guard.md), 扫描与体积算法见 [扫描与体积](../../../../docs/sweep/designs/scan-and-size.md)。
-> 事实基准: 实读仓库 (2026-09-29) 的 `src/` 全部模块、[行为契约](../../../../docs/sweep/protocol/behavior-contract.md)、`docs/designs/` 四份分册与 [ADR 0002](../adrs/0002-fixed-config-and-preview-execution.md) / [0003](../adrs/0003-zero-runtime-deps.md) / [0006](../../../../docs/adrs/0006-dual-runtime-bun-first.md) / [0009](../../../../docs/adrs/0009-npm-distribution-form.md) / [0010](../../../../docs/adrs/0010-dual-package-monorepo.md); 需求侧输入为使用方场景清单 (7 场景 + 9 条跨场景观察); 验证侧输入为使用方体验报告与五份调用代码 (外部材料, 逐条处置见 §12)。
-> 标注约定: 「实读」= 仓库现状; 「设计」= 本文的推演; 每条落点标注「复用」「新增」「改动」三档之一 (复用 = 现有函数原样升为导出面, 逻辑不动; 改动 = 现有形状或签名需变; 新增 = 今天不存在的东西)。
-> 时点说明: 标注「实读」的代码事实均为**单包时代 (2026-09-29 拆分前)** 的实读, 用于推导设计; 落地后的现坐标 (双包) 见 [ADR 0010](../../../../docs/adrs/0010-dual-package-monorepo.md) 与 [设计总纲](../../../../docs/sweep/designs/sweep-node-modules-design.md) 结构一节。
+> 事实基准: 实读仓库 (2026-09-29) 的 `src/` 全部模块、[行为契约](../../../../docs/sweep/protocol/behavior-contract.md)、`docs/designs/` 四份分册与 [ADR 0002](../adrs/0002-fixed-config-and-preview-execution.md) / [0003](../adrs/0003-zero-runtime-deps.md) / [0006](../../../../docs/adrs/0006-dual-runtime-bun-first.md) / [0009](../../../../docs/adrs/0009-npm-distribution-form.md) / [0010](../../../../docs/adrs/0010-dual-package-monorepo.md); 需求侧的输入是使用方场景清单 (7 场景 + 9 条跨场景观察); 验证侧的输入是使用方体验报告与五份调用代码 (外部材料, 逐条处置见 §12)。
+> 标注约定: 「实读」= 仓库现状; 「设计」= 本文的推演; 每一条的落点都标注「复用」「新增」「改动」三档之一 (复用 = 现有函数原样升为导出面, 逻辑不动; 改动 = 现有形状或签名需变; 新增 = 今天不存在的东西)。
+> 时点说明: 标注「实读」的代码事实均为**单包时代 (2026-09-29 拆分前)** 的实读, 用于推导设计; 落地后现在的位置 (双包) 见 [ADR 0010](../../../../docs/adrs/0010-dual-package-monorepo.md) 与 [设计总纲](../../../../docs/sweep/designs/sweep-node-modules-design.md) 结构一节。
 > 反馈处置: 体验报告逐条处置见文末 §12 (57 条: 采纳 49 / 部分采纳 7 / 驳回 1)。
 
 ## 修订记录
 
-| 日期       | 修订                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
-| ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 2026-09-29 | 初稿: 两级导出面、code 体系、进度与取消、域类型、9 条观察回应、缺口处置、三份调用示例、12 条开放问题                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
-| 2026-09-29 | 依使用方体验反馈 (体验官列出的 54 条 + 其代码内注顺带指出 3 条, 共 57 条) 修订, 主要动作: ① 安全闸把「目标不存在」与「目标不可读」拆成独立 code 并补 `errno`, 新增 `staleTargets` 容忍开关; ② `SkipCandidate.suspect` 改必填并新增候选构造器; ③ 新增 `expectedBatch` 与 `drift` 消掉「预览与执行不可对账」; ④ 补齐「结果 → 呈现 / 分支」缝合层 (`isSuccessOutcome` / `summarizeReport` / `SweepEntry.skipNote` / `done` 终结事件 / `SweepErrorDetails` / `SweepWarningCode` / `isSweepError`); ⑤ `SizeResult` 新增 `gone` 桶并写死完备性恒等式; ⑥ `excludeMatches` / `includeMatches` 改必填; ⑦ `findCrossDeviceTargets` 改返回可序列化数组; ⑧ 明写 `sanitizeLine` 与 `sanitizeOutputLine` 分工。逐条处置记录见 §12 |
-| 2026-09-29 | 定稿落盘 (`docs/designs/` 体例); Q1b 拍板: 不保留过渡期转发 `bin`, 迁移指引由 API 包 README (包定位变更说明) 与 release notes 承载                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
-| 2026-09-29 | §10 闭环两缺口: `.d.ts` 产出通道已实测 (按 ADR 0010 决策 5 的 `tsc --emitDeclarationOnly` 落地, 需独立构建配置排除测试与 fixtures; declaration emit 会把源码的相对 specifier `.ts` 原样带出, `rewriteRelativeImportExtensions` 在 typescript 7.0.2 的 declaration emit 下实测未生效, 由构建脚本在产物层确定性改写为 `.js`); 两包发布链经查证无依赖与顺序约束 (CLI 发布产物为 bundle 内联、零依赖声明), 实现见 `packages/sweep-node-modules/scripts/` 的 `build.ts` / `verify-release.ts` 与根 tsconfig 的 paths 双态方案 (开发态直指 src, 发布态 exports 指 dist)                                                                                                                                                   |
-| 2026-09-30 | §3.4 三条「新增条款 (待登记)」正式登记为 BC-42 / BC-43 / BC-44 (「转写双面覆盖」设计承接登记义务), 标注随之更新                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| 日期       | 修订                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| ---------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 2026-09-29 | 初稿: 两级导出面、code 体系、进度与取消、域类型、9 条观察回应、缺口处置、三份调用示例、12 条开放问题                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| 2026-09-29 | 依使用方体验反馈 (体验报告里列出的 54 条 + 其代码注释里顺带指出的 3 条, 共 57 条) 修订, 主要动作: ① 安全闸把「目标不存在」与「目标不可读」拆成独立 code 并补 `errno`, 新增 `staleTargets` 容忍开关; ② `SkipCandidate.suspect` 改必填并新增候选构造器; ③ 新增 `expectedBatch` 与 `drift` 消掉「预览与执行不可对账」; ④ 补齐「结果 → 呈现 / 分支」缝合层 (`isSuccessOutcome` / `summarizeReport` / `SweepEntry.skipNote` / `done` 终结事件 / `SweepErrorDetails` / `SweepWarningCode` / `isSweepError`); ⑤ `SizeResult` 新增 `gone` 桶并写死完备性恒等式; ⑥ `excludeMatches` / `includeMatches` 改必填; ⑦ `findCrossDeviceTargets` 改返回可序列化数组; ⑧ 明写 `sanitizeLine` 与 `sanitizeOutputLine` 分工。逐条处置记录见 §12 |
+| 2026-09-29 | 定稿落盘 (`docs/designs/` 体例); Q1b 拍板: 不保留过渡期转发 `bin`, 迁移指引放在 API 包 README (包定位变更说明) 与 release notes 里                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| 2026-09-29 | §10 闭环两缺口: `.d.ts` 产出通道已实测 (按 ADR 0010 决策 5 的 `tsc --emitDeclarationOnly` 落地, 需独立构建配置排除测试与 fixtures; declaration emit 会把源码的相对 specifier `.ts` 原样带出, `rewriteRelativeImportExtensions` 在 typescript 7.0.2 的 declaration emit 下实测未生效, 由构建脚本在产物里确定性地改写为 `.js`); 两包发布链经查证无依赖与顺序约束 (CLI 发布产物为 bundle 内联、零依赖声明), 实现见 `packages/sweep-node-modules/scripts/` 的 `build.ts` / `verify-release.ts` 与根 tsconfig 的 paths 双态方案 (开发态直指 src, 发布态 exports 指 dist)                                                                                                                                                         |
+| 2026-09-30 | §3.4 三条「新增条款 (待登记)」正式登记为 BC-42 / BC-43 / BC-44 (登记义务由「转写双面覆盖」的设计承接), 标注随之更新                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
 
 ---
 
@@ -28,27 +28,27 @@
 
 ### 1.1 硬约束 (不可协商, 来自 ADR)
 
-| 约束                          | 来源                                                 | 对设计的具体含义                                                                                                                                                                                                  |
-| ----------------------------- | ---------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 零运行时依赖                  | ADR 0003                                             | 导出面只依赖 `node:` / `bun:` 内置与相对模块; 不引任何校验库、进度库、事件库                                                                                                                                      |
-| 双运行时 Bun 优先 / Node 回退 | ADR 0006                                             | 同一份源码两侧直跑; 仅用可擦除 TS 语法 (禁 `enum` / `namespace` / 参数属性); `erasableSyntaxOnly` 是物理闸门                                                                                                      |
-| 库的静默契约                  | 实读 `cli.ts` 集中打印 / OF-12                       | API 包零 stdout / 零 stderr 写入; 一切给人看的文字以字符串形式**返回**, 由调用方决定去哪个流                                                                                                                      |
-| 无 TTY 依赖                   | 实读 (库内无 `isTTY` 读取)                           | 库不做交互探测, 不因 stdin / stdout 非终端而分叉行为; 向导 (`init.ts`) 是 TTY 专属面, 不进 API 包                                                                                                                 |
-| 数据形态为普通对象            | 实读 (全链路无类实例, 仅 `createXxx()` 工厂交出实例) | 域数据一律 `interface` 描述、可 `JSON.stringify` 进 job summary / JSONL 审计; **含原语层的中间结果** (修正: `findCrossDeviceTargets` 由 `Map` 改返回数组, 取消初稿的 Map 例外); 唯一例外见 §3.6 (`SweepError` 类) |
-| 保输入顺序 / 确定序           | 实读 `guard.ts` / `delete.ts` / BC-06                | 结果桶保输入顺序; 扫描结果按 target 升序; 并发只影响到达先后, 不影响输出                                                                                                                                          |
-| 安全闸不可放宽                | BC-21 / BC-22 / BC-39                                | `staleTargets` 一类的容忍开关只放宽「目标已不存在」这一种**无安全信号**的拒绝; 任何不变量 (末段 / 归属 / 锚点 / 去重) 一律不放宽                                                                                  |
+| 约束                          | 来源                                                 | 对设计的具体含义                                                                                                                                                                                                      |
+| ----------------------------- | ---------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 零运行时依赖                  | ADR 0003                                             | 导出面只依赖 `node:` / `bun:` 内置与相对模块; 不引任何校验库、进度库、事件库                                                                                                                                          |
+| 双运行时 Bun 优先 / Node 回退 | ADR 0006                                             | 同一份源码在两侧直接跑; 仅用可擦除 TS 语法 (禁 `enum` / `namespace` / 参数属性); `erasableSyntaxOnly` 是物理闸门                                                                                                      |
+| 库的静默契约                  | 实读 `cli.ts` 集中打印 / OF-12                       | API 包零 stdout / 零 stderr 写入; 一切给人看的文字以字符串形式**返回**, 由调用方决定去哪个流                                                                                                                          |
+| 无 TTY 依赖                   | 实读 (库内无 `isTTY` 读取)                           | 库不做交互探测, 不因 stdin / stdout 非终端而分叉行为; 向导 (`init.ts`) 是 TTY 专属的界面, 不进 API 包                                                                                                                 |
+| 数据形态为普通对象            | 实读 (全链路无类实例, 仅 `createXxx()` 工厂交出实例) | 域数据一律 `interface` 描述、可 `JSON.stringify` 进 job summary / JSONL 审计; **这包括原语层的中间结果** (修正: `findCrossDeviceTargets` 由 `Map` 改返回数组, 取消初稿的 Map 例外); 唯一例外见 §3.6 (`SweepError` 类) |
+| 保输入顺序 / 确定序           | 实读 `guard.ts` / `delete.ts` / BC-06                | 结果桶保输入顺序; 扫描结果按 target 升序; 并发只影响到达先后, 不影响输出                                                                                                                                              |
+| 安全闸不可放宽                | BC-21 / BC-22 / BC-39                                | `staleTargets` 一类的容忍开关只放宽「目标已不存在」这一种**无安全信号**的拒绝; 任何不变量 (末段 / 归属 / 锚点 / 去重) 一律不放宽                                                                                      |
 
 ### 1.2 设计目标 (从场景清单与体验反馈提炼, 逐条可验收)
 
-1. **两级导出面互不遮挡**: 原语层 (7 个使用方都直接吃的单点能力) 与编排层 (场景 1 / 6 想要的整链封装) 并存; CLI 薄壳包必须建立在同一份编排之上, 不得各写一份 (观察 1)。
-2. **机器可判别的失败与跳过**: 每个拒绝 / 失败 / 跳过 / 告警都有稳定 `code`; 中文人话保留为附属文本; **同一 code 不合并两种处置方向相反的语义** (新增: 这条纪律直接催生了 `GUARD_TARGET_MISSING` 与 `GUARD_TARGET_UNREADABLE` 的拆分)。
+1. **两级导出面互不遮挡**: 原语层 (7 个使用方都要直接调的单点能力) 与编排层 (场景 1 / 6 想要的整链封装) 并存; CLI 薄壳包必须建立在同一份编排之上, 不得各写一份 (观察 1)。
+2. **机器可判别的失败与跳过**: 每个拒绝 / 失败 / 跳过 / 告警都有稳定 `code`; 中文人话保留为附属文本; **同一个 code 不合并两种处置方向相反的语义** (新增: 这条纪律直接催生了 `GUARD_TARGET_MISSING` 与 `GUARD_TARGET_UNREADABLE` 的拆分)。
 3. **进度与取消**: 至少覆盖编排层与扫描层; 取消必须能落在删除的**条目之间**而不制造新的半删语义; 事件流自带终结事件 (§4)。
 4. **只读面与写入面物理不粘连**: 导入只读能力不触发任何副作用, 也不需要构造写侧的入参 (观察 4)。
-5. **路径映射显式化**: `original → realpath` 以字段承载, 不再靠「保输入顺序」隐式对齐 (观察 5)。
+5. **路径映射显式化**: `original → realpath` 的映射用字段写出来, 不再靠「保输入顺序」隐式对齐 (观察 5)。
 6. **结果到呈现 / 分支的缝合层齐备** (新增目标): 「成功侧判据」「跳过的人话说明」「退出码口径配方」都由库给出或写明, 不让每个调用方各重建一次。
 7. **预览与执行可对账** (新增目标): `run()` 允许接收期望批次, 使「用户点头的那份清单」与「真正被删的那份清单」之间的差异显式化, 而不是各算一次。
 8. **配置装载是可选原语**: 导出三级覆盖与三态装载, 但库的编排层**不读**平台配置 (观察 7)。
-9. **安全语义结构化**: 两类保守默认表达为 policy 与跳过编码, `--force` 的放行边界原样保留, 跨设备不走旗标; 新增的容忍开关必须显式开启且不得放宽不变量 (观察 9)。
+9. **安全语义结构化**: 两类保守默认用 policy 与跳过编码表达, `--force` 的放行边界原样保留, 跨设备不走旗标; 新增的容忍开关必须显式开启且不得放宽不变量 (观察 9)。
 
 ### 1.3 本期窗口的特殊性 (实读, 决定了形状可以定死)
 
@@ -62,23 +62,23 @@
 
 ### 2.1 包边界: 谁进 API 包, 谁留 CLI 包
 
-| 模块 (单包时代实读)                                           | 归属            | 处理                                                                                                  |
-| ------------------------------------------------------------- | --------------- | ----------------------------------------------------------------------------------------------------- |
-| `src/scan.ts` + `scan-parallel.ts` (+ 落选候选)               | API 包          | 复用 (门面一行导出不变)                                                                               |
-| `src/size.ts` + `size-du.ts` + `size-js.ts`                   | API 包          | 改动 (`SizeResult` 加 `basis` 与 `gone`)                                                              |
-| `src/classify.ts`                                             | API 包          | 复用 (纯路径判定原样)                                                                                 |
-| `src/guard.ts`                                                | API 包          | 改动 (拒绝码拆分 + `mappings` + 设备判定改返回数组)                                                   |
-| `src/delete.ts`                                               | API 包          | 改动 (失败结构化)                                                                                     |
-| `src/skip.ts`                                                 | API 包          | 改动 (入参与 `RenderEntry` 解耦, `suspect` 改必填, 新增构造器, 见 §5.2)                               |
-| `src/config.ts`                                               | API 包          | 复用 (装载原语; 编排层不自动调用)                                                                     |
-| `src/types.ts`                                                | API 包          | 改动 (加字段, 见 §5.1)                                                                                |
-| `src/render.ts`                                               | CLI 包          | 改动 (清单渲染留 CLI; `formatBytes` / `sanitizeLine` / `sanitizeOutputLine` 三个纯函数拆进 API 包)    |
-| `src/help.ts` / `src/init.ts`                                 | CLI 包          | 复用 (帮助文案与向导都是 CLI 面)                                                                      |
-| `src/cli.ts` 的 `sweep()` 私有编排 (575 至 679 行)            | API 包 (编排层) | 新增 (提升为 `createSweeper(...).plan()` / `.run()`)                                                  |
-| `src/cli.ts` 的私有 `trustRoots()`                            | API 包          | 新增 (提升为 `toTrustRoots`, 逻辑逐字不动)                                                            |
-| `src/cli.ts` 的 `toEntries` 前半 (hits + size → 逐条状态)     | API 包          | 新增 (提升为 `toSkipCandidates` 与编排层的条目构造, 见 §7.8)                                          |
-| `src/cli.ts` 的 `parseArgs` / `collectNameNotes` / 退出码判定 | CLI 包          | 复用 (参数面具与文案面都是 CLI 的)                                                                    |
-| `src/runtime.ts`                                              | API 包内部依赖  | 不导出 (属实现细节; 生产链路已无消费方, 现仅自测引用; 调用方要运行时自述一行 `process.versions` 自取) |
+| 模块 (单包时代实读)                                           | 归属            | 处理                                                                                                            |
+| ------------------------------------------------------------- | --------------- | --------------------------------------------------------------------------------------------------------------- |
+| `src/scan.ts` + `scan-parallel.ts` (+ 落选候选)               | API 包          | 复用 (门面一行导出不变)                                                                                         |
+| `src/size.ts` + `size-du.ts` + `size-js.ts`                   | API 包          | 改动 (`SizeResult` 加 `basis` 与 `gone`)                                                                        |
+| `src/classify.ts`                                             | API 包          | 复用 (纯路径判定原样)                                                                                           |
+| `src/guard.ts`                                                | API 包          | 改动 (拒绝码拆分 + `mappings` + 设备判定改返回数组)                                                             |
+| `src/delete.ts`                                               | API 包          | 改动 (失败结构化)                                                                                               |
+| `src/skip.ts`                                                 | API 包          | 改动 (入参与 `RenderEntry` 解耦, `suspect` 改必填, 新增构造器, 见 §5.2)                                         |
+| `src/config.ts`                                               | API 包          | 复用 (装载原语; 编排层不自动调用)                                                                               |
+| `src/types.ts`                                                | API 包          | 改动 (加字段, 见 §5.1)                                                                                          |
+| `src/render.ts`                                               | CLI 包          | 改动 (清单渲染留 CLI; `formatBytes` / `sanitizeLine` / `sanitizeOutputLine` 三个纯函数拆进 API 包)              |
+| `src/help.ts` / `src/init.ts`                                 | CLI 包          | 复用 (帮助文案与向导都是 CLI 面)                                                                                |
+| `src/cli.ts` 的 `sweep()` 私有编排 (575 至 679 行)            | API 包 (编排层) | 新增 (提升为 `createSweeper(...).plan()` / `.run()`)                                                            |
+| `src/cli.ts` 的私有 `trustRoots()`                            | API 包          | 新增 (提升为 `toTrustRoots`, 逻辑逐字不动)                                                                      |
+| `src/cli.ts` 的 `toEntries` 前半 (hits + size → 逐条状态)     | API 包          | 新增 (提升为 `toSkipCandidates` 与编排层的条目构造, 见 §7.8)                                                    |
+| `src/cli.ts` 的 `parseArgs` / `collectNameNotes` / 退出码判定 | CLI 包          | 复用 (参数解析与相关文案都归 CLI)                                                                               |
+| `src/runtime.ts`                                              | API 包内部依赖  | 不导出 (属实现细节; 生产链路已无使用方, 现仅自测引用; 调用方想要运行时自述, 自己取一行 `process.versions` 即可) |
 
 ### 2.2 原语层 (一): 读侧
 
@@ -87,7 +87,7 @@
 export function createScanner(): Scanner;
 
 export interface Scanner {
-  /** 候选中立名 ('parallel'), 供基准与日志区分 */
+  /** 候选的中立名 ('parallel'), 供基准测试与日志区分 */
   name: string;
   scan(options: ScanOptions): Promise<ScanResult>;
 }
@@ -95,7 +95,7 @@ export interface Scanner {
 export interface ScanOptions {
   /** 扫描根 (调用方保证为绝对路径) */
   roots: string[];
-  /** 排除名单: 目录名; 从根到命中点的任意一级命中即整棵子树跳过 */
+  /** 排除名单: 目录名; 从根到命中点的任意一级命中名单, 即整棵子树跳过 */
   exclude: string[];
   /** 包含名单 (白名单): 空数组 = 不过滤 */
   include: string[];
@@ -106,7 +106,7 @@ export interface ScanOptions {
 }
 
 export interface ScanHit {
-  /** 直接包含 node_modules 的项目目录 (绝对路径, 调用方拼写) */
+  /** 直接包含 node_modules 的项目目录 (绝对路径, 调用方传入的拼写) */
   project: string;
   /** node_modules 绝对路径 */
   target: string;
@@ -128,7 +128,7 @@ export interface ScanResult {
   warnings: SweepWarning[];
   /**
    * 排除名单命中统计 (改动: 由可选改必填; 未配置名单时为空数组)。
-   * 必填的理由: 落盘形态不得随调用参数漂移 —— 月级 JSONL 序列里键时有时无,
+   * 必填的理由: 落盘形态不得随调用参数漂移; 月级 JSONL 序列里键时有时无,
    * 下游 schema 校验器无从分辨「没配名单」与「版本不支持该字段」。
    */
   excludeMatches: NameMatch[];
@@ -143,7 +143,7 @@ export type ScanProgressEvent = { kind: 'hit'; hit: ScanHit };
 export function createSizer(): Sizer;
 
 export interface Sizer {
-  /** 候选中立名 ('du' / 'js') */
+  /** 候选的中立名 ('du' / 'js') */
   name: string;
   /** 本实例的体积口径 (新增, 见 §7.3); 调用前即可读 */
   basis: SizeBasis;
@@ -218,7 +218,7 @@ export interface Classification {
 }
 
 export interface ClassifyOptions {
-  /** 路径风味; 缺省平台原生 */
+  /** 路径风格; 缺省平台原生 */
   style?: PathStyle;
   /** 家目录; 缺省 os.homedir(), 显式传 null 关闭「家目录下隐藏目录」形态判定 */
   home?: string | null;
@@ -235,7 +235,7 @@ export function classifyTarget(
 ```ts
 // 安全闸: 直接升 + mappings + 拒绝码拆分与 errno (src/guard.ts)
 export interface ValidateOptions {
-  /** 扫描根 (调用方给定, 须保留配置里的原始拼写; 锚点链判在拼写上) */
+  /** 扫描根 (调用方给定, 须保留配置里的原始拼写; 锚点链的判定看拼写) */
   roots: string[];
   /** home 本体防线; 缺省 os.homedir(), 显式传 null 关闭 */
   home?: string | null;
@@ -264,7 +264,7 @@ export interface RejectionDetails {
   errno?: string;
   /** 锚点类拒绝: 配置里的根 */
   root?: string;
-  /** 锚点类拒绝: 检出符号链接的级 */
+  /** 锚点类拒绝: 检出符号链接的层级 */
   symlink?: string;
 }
 
@@ -307,7 +307,7 @@ export async function findCrossDeviceTargets(
   targets: string[],
   options: CrossDeviceOptions,
 ): Promise<CrossDeviceEntry[]>;
-/** 数组 → 查询索引 (新增): 写侧的 skipsBatch / collectSkips 系列吃这个形态 */
+/** 数组 → 查询索引 (新增): 写侧的 skipsBatch / collectSkips 系列要的就是这个形态 */
 export function crossDeviceIndex(
   entries: readonly CrossDeviceEntry[],
 ): ReadonlyMap<string, CrossDeviceKind>;
@@ -319,7 +319,7 @@ export const fsDeviceProbe: DeviceProbe;
 ```
 
 ```ts
-// 路径风味的判定件与纯判定函数: 全部直接升 (src/guard.ts 的既有 export)
+// 路径风格的判定件与纯判定函数: 全部直接升 (src/guard.ts 的既有 export)
 export interface PathOps {
   /* Pick<typeof posix, 'sep' | 'basename' | 'relative' | 'isAbsolute' | 'parse' | 'join' | 'resolve' | 'dirname'> */
 }
@@ -377,7 +377,7 @@ export interface RemovalOptions {
   roots: TrustRoot[];
   /** 取消信号 (新增); 只在条目之间检查, 绝不在单条 rm 中途中断 (见 §4.3) */
   signal?: AbortSignal;
-  /** 进度回调 (新增); 粒度: 每条目标出桶即发一条 */
+  /** 进度回调 (新增); 粒度: 每条目标一有结果就发一条 */
   onProgress?: (event: RemovalProgressEvent) => void;
 }
 
@@ -436,7 +436,7 @@ export async function toTrustRoots(roots: string[]): Promise<TrustRoot[]>;
 ```ts
 // 写侧编排: 新增 (把 cli.ts sweep 的第 3、4 步收成一个入口, 见 §7.1)
 export interface RemoveBatchOptions {
-  /** 扫描根 (原始拼写): 安全闸判归属与锚点, 配对助手供给删除侧 */
+  /** 扫描根 (原始拼写): 安全闸用它判归属与锚点, 配对助手用它产出删除侧要的配对 */
   roots: string[];
   home?: string | null;
   style?: PathStyle;
@@ -483,7 +483,7 @@ export interface SkipCandidate {
   unmeasuredReason?: string;
   /**
    * 疑似安装树 (改动: 由可选改**必填**)。
-   * 必填的理由是安全的: 它承载「这条会不会被语义闸挡下」的全部信息, 而
+   * 必填的理由是安全的: 它装着「这条会不会被语义闸挡下」的全部信息, 而
    * `releaseSuspects` 缺省为 false; 一旦留成可选, 最顺手的 `SizeEntry[]`
    * (只有 target 与 bytes) 就能直接喂进写侧函数并通过类型检查, 运行时
    * `suspect` 恒为 undefined, 疑似安装树静默进批且无任何报错 (体验报告 4-1)。
@@ -534,7 +534,7 @@ export interface SkippedTarget {
 export interface SkipBook {
   /** 跳过集册: 码 + 人话一次给全 (新增, 回答体验报告 4-3 / U12); 与 plan.skipped 同源同值 */
   readonly entries: ReadonlyArray<SkippedTarget>;
-  /** 末行说明行: 按类与形态各一行, 只在出现时出 */
+  /** 末行说明行: 按类与形态各一行, 出现时才输出 */
   readonly trailer: string[];
   /** 目标 → 行尾说明 (只收测得体积的条目: 未测到者的行尾已有体积失败注记, 不混同) */
   readonly hints: ReadonlyMap<string, string>;
@@ -611,16 +611,16 @@ export function formatBytes(bytes: number): string;
 
 /**
  * 单行净化 (自 CLI `render.ts` 上移至 API 包 `display.ts`): 剥离控制类字符 (C0 含 ESC / DEL /
- * C1 / bidi 控制 / 零宽 / BOM) 并把剩余空白 (含换行) 折成单空格、两端去空白。
+ * C1 / bidi 控制 / 零宽 / BOM) 并把剩余空白 (含换行) 折成单空格、去掉两端空白。
  * 用途: 把**外部数据** (路径、他人给的字符串) 放进任何单行输出之前。
  */
 export function sanitizeLine(text: string): string;
 
 /**
  * 多行块净化 (自 CLI `render.ts` 上移至 API 包 `display.ts`): 是 sanitizeLine 的薄包装,
- * 差别只有一处 —— **保留每行的行首缩进** (自带的分级排版手段), 行内其余空白照常折叠。
+ * 差别只有一处: **保留每行的行首缩进** (这本身就是一种分级排版手段), 行内其余空白照常折叠。
  * 用途: 逐行写出多行诊断 (告警清单、块状日志), 缩进不丢。
- * 与 sanitizeLine 的选择: 整块多行输出用本函数; 单行字段 (路径、名字) 用 sanitizeLine。
+ * 与 sanitizeLine 的分工: 整块多行输出用本函数; 单行字段 (路径、名字) 用 sanitizeLine。
  */
 export function sanitizeOutputLine(text: string): string;
 ```
@@ -636,7 +636,7 @@ export interface SweepPolicy {
   /**
    * 连同疑似安装树一并纳入删除批 (对应 CLI 的 `--force`, BC-38)。
    * 缺省 false。只影响批次构造, 不放宽安全闸不变量。
-   * 跨设备目标不受本字段影响 —— 恒不进删除批 (BC-41), 解除路径是声明独立根或先卸载。
+   * 跨设备目标不受本字段影响: 恒不进删除批 (BC-41), 解除路径是声明独立根或先卸载。
    */
   releaseSuspects: boolean;
 }
@@ -650,7 +650,7 @@ export interface SweepOptions {
   include?: string[];
   /** 家目录 (清单缩写与隐藏目录形态判定共用的同一份语义); 缺省 os.homedir(), null 关闭 home 本体防线 */
   home?: string | null;
-  /** 路径风味; 缺省平台原生 (测试注入用) */
+  /** 路径风格; 缺省平台原生 (测试注入用) */
   style?: PathStyle;
   /** 安全策略; 缺省 { releaseSuspects: false } */
   policy?: SweepPolicy;
@@ -681,7 +681,7 @@ export interface SweepRunOptions extends SweepPlanOptions {
    * 提供时本次删除面 = 期望批次 ∩ 本次实时批次:
    * - 期望批次里已被删掉/被策略挡下的目标不再删 (报告里给 `drift.removed`);
    * - 本次新出现、不在期望批次里的目标**不删** (报告里给 `drift.added`, 条目结果
-   *   为 `{ kind: 'not-expected' }`) —— 这正是「用户点头的那份清单」与「真正被删的
+   *   为 `{ kind: 'not-expected' }`), 这正是「用户点头的那份清单」与「真正被删的
    *   那份清单」之间的对账点; 未提供时本次批次即为实时批次。
    * 无论提供与否, 判定链上的每个事实仍是此刻的事实 (仍重跑扫描与安全闸), 故
    * 期望批次不是「拿旧计划执行」, 而是「给本次执行加一圈用户已批准的范围」。
@@ -718,7 +718,7 @@ export type SweepPhase =
 export interface SweepEntry {
   /** node_modules 绝对路径 (扫描原拼写, 非 realpath 形态) */
   target: string;
-  /** 直接包含 node_modules 的项目目录 (绝对路径; 显示用的短名由渲染层自取 basename) */
+  /** 直接包含 node_modules 的项目目录 (绝对路径; 显示用的短名由渲染层自己取 basename) */
   project: string;
   /** 所属扫描根 (新增, 见 §7.4) */
   root: string;
@@ -862,7 +862,7 @@ export function summarizeReport(report: SweepReport): SweepSummary;
 | 计数                           | 见 `SweepSummary` (succeeded / unprocessed / failed / aborted 四档) | 库: `summarizeReport`  |
 | 「本次运行算不算成功」(退出码) | **调用方自定**; 库不内置 `ok` 字段                                  | 调用方                 |
 
-库不内置 `ok` 的理由: 「跳过算不算失败」是**产品口径**, 不是数据事实。CLI 包 (`sweep-nm`) 的口径是「有跳过项或未测到目标即退 1」(实读 `cli.ts` 的退出码注释与 BC-26, 用意是让 `--force` 的缺失可见), 而一个交互式第三方 CLI 更可能希望「用户已确认的清理成功即退 0, 跳过只作提示」。两者都合理, 库替其决定反而不对。三种常见口径的配方 (新增):
+库不内置 `ok` 的理由: 「跳过算不算失败」是**产品口径**, 不是数据事实。CLI 包 (`sweep-nm`) 的口径是「有跳过项或未测到目标即退 1」(实读 `cli.ts` 的退出码注释与 BC-26, 用意是让 `--force` 的缺失可见), 而一个交互式第三方 CLI 更可能希望「用户已确认的清理成功即退 0, 跳过只作提示」。两者都合理, 库替调用方决定反而不对。三种常见口径的配方 (新增):
 
 ```ts
 // ① 严格 (与 CLI 包同口径): 任何未处理项或失败都算失败
@@ -876,7 +876,7 @@ const strict =
 const relaxed =
   summary.failed === 0 && !summary.aborted && report.status !== 'rejected';
 
-// ③ 只读面: 任何"没删成"都不算失败, 只报数字
+// ③ 只读面: 任何「没删成」都不算失败, 只报数字
 const readOnly = true;
 ```
 
@@ -905,7 +905,7 @@ const readOnly = true;
 | `SweepErrorCode`    | 抛错码                                               | §3.2 配置与调用表 (6 个) |
 | `SweepErrorDetails` | 抛错附带的上下文                                     | §3.6 判别联合            |
 
-穷举 `switch` 的写法建议 (回答 G6): 按 `SCAN_*` / `SIZE_*` 前缀分组, 且 `default` 分支必须**记录 code 原文**而不是归入「其他」静默。新增 code 属 minor 版本, 老调用方应至少看得见它。
+穷举 `switch` 的写法建议 (回答 G6): 按 `SCAN_*` / `SIZE_*` 前缀分组, 且 `default` 分支必须**记录 code 原文**而不是静默归入「其他」。新增 code 属 minor 版本, 老调用方应至少看得见它。
 
 > 计量口径: 本文档的导出面共 **41 个值导出** (函数 / 常量 / 错误类) + **73 个类型导出** (含 §3.2 声明的 8 个 code 取值集与 `SweepErrorDetails`)。数量本身不进契约 (会随版本变), 此处只作核对用。
 
@@ -984,7 +984,7 @@ export type SweepErrorCode =
 
 **一条硬纪律 (新增)**: 同一个 code 不得合并「处置方向相反」的语义。反例即初稿的 `GUARD_REALPATH_FAILED`: 它同时盖住「目标不存在」(应可容忍、可续跑) 与「目标不可读」(必须整批拒绝), 于是调用方只能靠匹配中文 message 分流, 既违反 §3.3 的自家纪律, 又堵死并发清理、断点续跑、重复点击三条路 (体验报告 1-1 / 3-3 / 3-5 / 4-2)。
 
-**扫描告警 (ScanWarningCode)** — `SweepWarning.code` 取值, 进 `ScanResult.warnings`:
+**扫描告警 (ScanWarningCode)**: `SweepWarning.code` 的取值, 进 `ScanResult.warnings`:
 
 | code                    | 触发 (实读判定点)                              | 附带的字段      |
 | ----------------------- | ---------------------------------------------- | --------------- |
@@ -994,7 +994,7 @@ export type SweepErrorCode =
 | `SCAN_ROOT_UNAVAILABLE` | 其余根预检失败 (带原始码)                      | `path`, `errno` |
 | `SCAN_DIR_UNREADABLE`   | 遍历中 readdir 失败                            | `path` = 目录   |
 
-**体积告警 (SizeWarningCode)** — 进 `SizeResult.warnings`, **只作事件, 不作划分**:
+**体积告警 (SizeWarningCode)**: 进 `SizeResult.warnings`, **只作事件, 不作划分**:
 
 | code                        | 触发                                                 | 归属桶 (补, 回答体验报告 2-1 / U9)                    |
 | --------------------------- | ---------------------------------------------------- | ----------------------------------------------------- |
@@ -1004,7 +1004,7 @@ export type SweepErrorCode =
 | `SIZE_TARGET_VANISHED`      | 目标不存在 (`体积统计失败 (不存在)`)                 | **`SizeResult.gone`** (不入 `entries` / `unmeasured`) |
 | `SIZE_DU_UNAVAILABLE` (补)  | du 候选探测失败 (两路径均不存在), 本候选跳过体积统计 | 无 (候选级降级; 生产路径由门面兜底, 仅测试注入可达)   |
 
-**未测到 (UnmeasuredCode)** — 进 `SizeResult.unmeasured[].code`:
+**未测到 (UnmeasuredCode)**: 进 `SizeResult.unmeasured[].code`:
 
 | code                           | 触发                          |
 | ------------------------------ | ----------------------------- |
@@ -1017,7 +1017,7 @@ export type SweepErrorCode =
 
 > 初稿那张并排的表已拆成两张并加了「归属桶」列: `SIZE_TARGET_VANISHED` **只进 `SizeResult.gone` 与 `warnings` 的事件条**, 绝不进 `unmeasured`。
 
-**安全闸拒绝 (GuardCode)** — 逐条对应实读 `validateTargets` 分支, 判定顺序与中文文案均不动; realpath 失败按 errno 三分:
+**安全闸拒绝 (GuardCode)**: 逐条对应实读的 `validateTargets` 分支, 判定顺序与中文文案均不动; realpath 失败按 errno 分三类:
 
 | code                               | 现状文案 (message 逐字保留)                                                       | details                                           |
 | ---------------------------------- | --------------------------------------------------------------------------------- | ------------------------------------------------- |
@@ -1059,7 +1059,7 @@ export type SweepErrorCode =
 | `INVALID_ARGUMENT`     | 调用方传参非法 (如 `roots` 为空)            | `{ field }`           |
 | `CANCELLED`            | `signal` 被 abort                           | `{ phase, partial? }` |
 
-**跳过原因 (SkipReason)** — 复用场景 4 提的取值, 与 `classify.ts` / `guard.ts` 的既有判定同源:
+**跳过原因 (SkipReason)**: 复用场景 4 提的取值, 与 `classify.ts` / `guard.ts` 的既有判定同源:
 
 ```ts
 export type SkipReason =
@@ -1085,7 +1085,7 @@ export type SkipReason =
 
 1. 程序判断**只许看 code 与 details**, 严禁对 message 做字符串匹配或前缀解析。
 2. `message` 必须做到「不做本地化也能读」, 它是兜底而非占位; 因此不许把它写成 `code` 的英文回显。
-3. `details` 承载被格式化进文案的定位信息 (根 / 链接 / 组件 / 字段 / errno), 让本地化的调用方不必去 message 里抠路径。
+3. `details` 装着被格式化进文案的定位信息 (根 / 链接 / 组件 / 字段 / errno), 让本地化的调用方不必去 message 里抠路径。
 
 **纪律 1 的可满足性自检 (新增)**: 初稿的 `GUARD_REALPATH_FAILED` 满足不了纪律 1 (体验报告 1-1); 拆码 + 补 `errno` 后, 全部拒绝码都能被程序分流; 本地化文案也不再需要「已不存在或不可读」这类含糊兜底。**任何后续新增 code 都必须先过这条自检**: 「调用方看到这个码, 能不能不必读 message 就决定下一步?」
 
@@ -1177,16 +1177,16 @@ export function isSweepError(value: unknown): value is SweepError;
 
 **code → details 逐条对应 (补齐, 回答体验报告 U1 / G1)**:
 
-| code                   | details 形状          | 备注                                                                                                                                                 |
-| ---------------------- | --------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `CONFIG_READ_FAILED`   | `{ path, errno? }`    | —                                                                                                                                                    |
-| `CONFIG_CORRUPT_JSON`  | `{ path }`            | —                                                                                                                                                    |
-| `CONFIG_CORRUPT_SHAPE` | `{ path, field }`     | `field` 指出首个不符的字段名                                                                                                                         |
-| `CONFIG_ABSENT`        | `{ path, source }`    | 只有显式来源 (flag / env) 会抛; 平台默认缺席走 `state: 'absent'`                                                                                     |
-| `INVALID_ARGUMENT`     | `{ field }`           | 构造期同步抛 (见 §2.7)                                                                                                                               |
-| `CANCELLED`            | `{ phase, partial? }` | `phase` 取 `SweepPhase` 全集 (7 个值都可能出现, 回答 G8); `partial` **只在 `phase === 'remove'` 时出现**, 且为「取消点为止已出桶」的 `RemovalResult` |
+| code                   | details 形状          | 备注                                                                                                                                                           |
+| ---------------------- | --------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `CONFIG_READ_FAILED`   | `{ path, errno? }`    | —                                                                                                                                                              |
+| `CONFIG_CORRUPT_JSON`  | `{ path }`            | —                                                                                                                                                              |
+| `CONFIG_CORRUPT_SHAPE` | `{ path, field }`     | `field` 指出首个不符的字段名                                                                                                                                   |
+| `CONFIG_ABSENT`        | `{ path, source }`    | 只有显式来源 (flag / env) 会抛; 平台默认缺席走 `state: 'absent'`                                                                                               |
+| `INVALID_ARGUMENT`     | `{ field }`           | 构造期同步抛 (见 §2.7)                                                                                                                                         |
+| `CANCELLED`            | `{ phase, partial? }` | `phase` 取 `SweepPhase` 全集 (7 个值都可能出现, 回答 G8); `partial` **只在 `phase === 'remove'` 时出现**, 且为「取消点为止已产生的分桶结果」的 `RemovalResult` |
 
-设计说明: `SweepError` 是全仓「以 `createXxx()` 工厂交出实例、不导出类」惯例的**唯一例外** (实读惯例见 `docs/sweep/designs/architecture-overview.md`)。取例外的理由: 调用方要 `instanceof` 判别与 `stack` / `cause` 保留 (急切需要后者的场景用 `isSweepError`)。`class` 属可擦除语法, 不违反 ADR 0006 的语法约束。
+设计说明: `SweepError` 是全仓「以 `createXxx()` 工厂交出实例、不导出类」惯例的**唯一例外** (实读惯例见 `docs/sweep/designs/architecture-overview.md`)。取例外的理由: 调用方要 `instanceof` 判别, 也要保留 `stack` / `cause` (跨实例场景 `instanceof` 用不了, 改用 `isSweepError`)。`class` 属可擦除语法, 不违反 ADR 0006 的语法约束。
 
 ---
 
@@ -1225,9 +1225,9 @@ export type SweepProgressEvent =
 | 扫描   | `Scanner.scan`           | `hit`: 每命中一处 (并发完成序, 不承诺顺序)                                     | 每个遍历任务开始前 (协作池内), 与阶段边界      |
 | 体积   | `Sizer.measure`          | `measured` / `unmeasured` / `gone`: 每目标一条 (du 批量路径在解析完成后逐条发) | 逐目标之间; du 批量路径在调用前后各一次        |
 | 类别   | `classifyTarget`         | 无 (纯函数、零 IO, 不需要进度)                                                 | 不适用                                         |
-| 设备   | `findCrossDeviceTargets` | 无 (逐条 st_dev 比对, 开销远低于体积)                                          | 不适用 (无 signal 入参; 逐条比对为快操作)      |
+| 设备   | `findCrossDeviceTargets` | 无 (逐条 st_dev 比对, 开销远低于体积)                                          | 不适用 (无 signal 入参; 逐条比对很快)          |
 | 安全闸 | `validateTargets`        | 无 (逐条 realpath, 快)                                                         | 逐目标之间                                     |
-| 删除   | `removeTargets`          | `removed` / `missing` / `failed` / `aborted`: 每条出桶即发                     | **仅条目之间**, 绝不在单条 `rm` 中途 (见 §4.3) |
+| 删除   | `removeTargets`          | `removed` / `missing` / `failed` / `aborted`: 每条目标一有结果就发             | **仅条目之间**, 绝不在单条 `rm` 中途 (见 §4.3) |
 | 编排   | `Sweeper.plan` / `run`   | `phase` 阶段边界 + 上述原语事件透传 + `plan-done` / `done`                     | 透传到各层, 并在阶段切换处补一次               |
 
 原语层的 `gone` 事件在编排层被过滤, 不入 `SweepProgressEvent` (消失目标由 `plan` / `report` 的结构化桶呈现; 实现见 `sweep.ts`)。
@@ -1238,7 +1238,7 @@ export type SweepProgressEvent =
 
 - **取消的落点**: `signal` 在 `ScanOptions` / `MeasureOptions` / `ValidateOptions` / `RemovalOptions` / `RemoveBatchOptions` / `SweepPlanOptions` (含 `SweepRunOptions`) 六处都可传, 检查方式统一为「条目 / 任务边界查 `signal.aborted`, 为真则抛 `SweepError('CANCELLED')`」。
 - **删除阶段的硬纪律 (设计, 安全底线)**: 取消**只在条目之间生效**。单条 `fs.rm` 不可中断, 强行中断只会制造新的半删状态 (EC-05 已登记的残余面), 所以库不试图在单条删除中途响应取消。取消发生时:
-  - 删除阶段抛 `SweepError`, `details = { phase: 'remove', partial: RemovalResult }`, 其中 `partial` 是**全部已派发条目**已出桶的 `removed` / `missing` / `failed` (删除为有界并发执行: 取消检出后停止派发新条目, 在飞条目跑完并计入);
+  - 删除阶段抛 `SweepError`, `details = { phase: 'remove', partial: RemovalResult }`, 其中 `partial` 是**全部已派发条目**中已产生结果的 `removed` / `missing` / `failed` (删除为有界并发执行: 取消检出后停止派发新条目, 在飞条目跑完并计入);
   - 未处理的条目既不入 `removed` 也不入 `failed` (它们从未被尝试), 调用方靠 `partial` 自己判断「哪些没动」。
 - **其余阶段的取消**: 抛 `SweepError('CANCELLED')`, `details.phase` 标注阶段 (**取值域为 `SweepPhase` 全集**, 回答 G8; 只处理 `'remove'` 分支会漏掉扫描 / 阶段的取消); **不返回部分结果** (半截的扫描结果与半截的体积表都足以误导判断, 而调用方若需要边跑边攒, 进度回调就是那条通道)。
 - **不可用的取消窗口 (登记)**: 取消信号在 `du` 子进程运行期间无法中断该子进程 (库不杀子进程, 杀进程会带来临时文件与信号语义的额外风险); 检查点落在批量调用前后。
@@ -1252,7 +1252,7 @@ export type SweepProgressEvent =
 | 调用频率   | 高频 (每命中一处 / 每测到一个目标); 需要节流的调用方自行节流                               |
 | 事件顺序   | **不承诺顺序** (并发完成序); 最终结果承诺有序 (hits 升序、桶保输入顺序)                    |
 | 事件流边界 | 恒以终结事件收尾 (§4.1); 取消时终结事件不出现 (以抛错收场)                                 |
-| 舞台       | 回调在库的执行流程内同步执行, 调用方不得在回调里再次调用同一个 `Sweeper` 实例 (重入未定义) |
+| 执行位置   | 回调在库的执行流程内同步执行, 调用方不得在回调里再次调用同一个 `Sweeper` 实例 (重入未定义) |
 
 > **异步迭代形态 (修订估价)**: 场景 3 想要 `for await (const event of sweeper.watch(...))`。初稿把自桥估价为「三行」, 体验报告实测为约 50 行 (背压队列 + 结束哨兵 + 错误转发 + 提前 break 的取消联动), 该估价确实低估。本次处置: 终结事件 (§4.1) 消掉了「结束哨兵」这一项, 余下三项仍需约 20 行, 故**不新增 `watch()` 到库** (CLI 包不需要, 只有编辑器场景需要, 属 YAGNI), 但把**完整参考实现**写进文档 (§8.6), 并把估价更正为「约 20 行, 见 §8.6」。Q7 据此从「三行自桥」改为「文档给参考实现」。
 
@@ -1304,8 +1304,8 @@ export type SweepProgressEvent =
 | #   | 观察 (需求侧)                                            | 采用的设计                                                                                                                                                                                                                           | 落点               |
 | --- | -------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------ |
 | 1   | 两级导出面, 编排层是 CLI 薄壳的实现基座, 不得各写一份    | 原语层 (§2.2 至 §2.6) + 编排层 (§2.7) 两段导出; CLI 薄壳只许调 `createSweeper` 的 `plan()` / `run()` 与少量原语, **禁止自写第三条编排链**; CLI 的 `--yes` 分流就是 `plan()` 与 `run()` 的分流 (`run()` 可接收 `plan().batch` 做对账) | §2.7               |
-| 2   | 结构化错误码是最大缺口; 中文人话保留, 与 code 并存       | code 体系 (9 个别名) + `message` 并存; `SweepError` 与 `isSweepError` 承载抛错档; `partialRisk` / `errno` 机器化; **增加「一个 code 不合并方向相反的语义」纪律并据此拆码**                                                           | §3.2 / §3.3        |
-| 3   | 进度与取消整体缺位; 至少在编排层与扫描层留口子           | 六处 `signal` + 五处 `onProgress`; 编排层补阶段事件与**终结事件**; 取消在删除阶段有硬纪律; 异步迭代桥接的参考实现入文档                                                                                                              | §4 / §8.6          |
+| 2   | 结构化错误码是最大缺口; 中文人话保留, 与 code 并存       | code 体系 (9 个别名) + `message` 并存; 抛错档由 `SweepError` 与 `isSweepError` 表达; `partialRisk` / `errno` 机器化; **增加「一个 code 不合并方向相反的语义」纪律并据此拆码**                                                        | §3.2 / §3.3        |
+| 3   | 进度与取消整体缺位; 至少在编排层与扫描层留口子           | 六处 `signal` + 五处 `onProgress`; 编排层补阶段事件与**终结事件**; 取消在删除阶段有硬纪律; 异步迭代桥接的参考实现写进文档                                                                                                            | §4 / §8.6          |
 | 4   | 只读面与写入面保持物理分离                               | 事实基础: 全部库模块零模块级副作用 (实读); 包声明 `sideEffects: false`; 写侧唯一负担 (`TrustRoot` 配对) 由 `toTrustRoots` 承担且只在写侧调用                                                                                         | §7.1 / §2.4        |
 | 5   | 路径映射需要显式化                                       | `ValidationResult.mappings` (`original → real`, 与 `accepted` 逐位对应); `removeBatch` 把配对透传到结果                                                                                                                              | §2.3 / §7.2        |
 | 6   | 库的静默契约 (零 stdout / stderr, 渲染是纯函数)          | API 包承诺零打印; `render()` 留 CLI 包, `formatBytes` / `sanitizeLine` / `sanitizeOutputLine` 进 API 包 (无打印), 净化分工写死                                                                                                       | §2.6 / §5.2        |
@@ -1325,14 +1325,14 @@ export type SweepProgressEvent =
 
 ### 7.2 路径映射 (original → realpath)
 
-- **现状 (实读)**: `validateTargets` 的 `accepted` 是 realpath 化结果且保输入顺序, 而显示侧要原始拼写; 今天靠逐位对齐 (cli.ts 的 `withOutcomes` 里 `accepted[index]`) 隐性兜, 映射在 API 面上不可见。
+- **现状 (实读)**: `validateTargets` 的 `accepted` 是 realpath 化结果且保输入顺序, 而显示侧要原始拼写; 今天靠逐位对齐 (cli.ts 的 `withOutcomes` 里 `accepted[index]`) 隐式兜住, 映射在 API 面上不可见。
 - **设计 (改动)**: `ValidationResult.mappings: PathMapping[]` 与 `accepted` 逐位对应 (长度相等, `mappings[i].real === accepted[i]`); 拒绝项在 `rejected` 里同样带原始拼写。`removeBatch` 把 `mappings` 透传到 `executed` 分支; `SweepReport` 的逐条结果按 `SweepEntry.target` (原拼写) 给出, 调用方不再需要自己拼映射。
 - **兼容性**: 新增字段 (非破坏); 老调用方按索引对齐的写法继续可用。
 
 ### 7.3 体积口径标识 (basis)
 
-- **现状 (实读)**: `SizeEntry.bytes` 不标口径: du 快路径报磁盘占用, 纯实现报逻辑字节 (差异只记在基准与设计文档里); 长期序列 (场景 2 的月级 JSONL) 在同一台机器上可能发生口径切换而序列无痕。
-- **设计 (改动)**: `SizeBasis = 'disk-usage' | 'logical-bytes'`; `Sizer.basis` 由候选自报, `SizeResult.basis` 回显本次口径; 编排层把它落到 `SweepEntry.basis` **并在 `SweepPlan.basis` 给出单值** (补齐: 体验官代码里为取口径单值只能取首条 entry)。
+- **现状 (实读)**: `SizeEntry.bytes` 不标口径: du 快路径报磁盘占用, 纯实现报逻辑字节 (差异只记在基准测试与设计文档里); 长期序列 (场景 2 的月级 JSONL) 在同一台机器上可能发生口径切换而序列无痕。
+- **设计 (改动)**: `SizeBasis = 'disk-usage' | 'logical-bytes'`; `Sizer.basis` 由候选自报, `SizeResult.basis` 回显本次口径; 编排层把它落到 `SweepEntry.basis` **并在 `SweepPlan.basis` 给出单值** (补齐: 使用方代码里为了拿口径单值只能取首条 entry)。
 - **口径一致性说明**: 一次 `measure()` 调用内口径恒一 (du 不可用则门面直接选 js 候选; du 可用而输出不可信则整批转 `unmeasured`, 不混口径, 实读两条路径)。`win32` 恒为 `logical-bytes` (EC-03 的平台守卫)。
 - **兼容性**: 新增字段; 数值语义不变。
 
@@ -1358,7 +1358,7 @@ export type SweepProgressEvent =
 ### 7.7 编排器与 CLI 的单一事实来源
 
 - **现状 (实读)**: 「扫描 → 体积 → 类别 → 设备 → 批次 → 安全闸 → 删除 → 报告」只存在于 `cli.ts` 的 `sweep()` (约 575 至 679 行), 且与渲染、名单回执、退出码交织在一起。
-- **设计 (新增)**: `createSweeper(...).plan()` 承载前半链, `.run()` 承载整链 (内部复用 `plan()`); CLI 薄壳退化为「解析参数 → 装载配置 → 组装 `SweepOptions` → 调 plan / run → 用 `SweepEntry` + `SkipBook` + `RemovalResult` 组装 `RenderEntry` → `render()` → 退出码」。退出码派生规则与今天一致 (`removed` / `missing` 算成功侧, 其余一律失败侧, 见 §2.7 的三档配方)。
+- **设计 (新增)**: `createSweeper(...).plan()` 负责前半链, `.run()` 负责整链 (内部复用 `plan()`); CLI 薄壳退化为「解析参数 → 装载配置 → 组装 `SweepOptions` → 调 plan / run → 用 `SweepEntry` + `SkipBook` + `RemovalResult` 组装 `RenderEntry` → `render()` → 退出码」。退出码派生规则与今天一致 (`removed` / `missing` 算成功侧, 其余一律失败侧, 见 §2.7 的三档配方)。
 - **兼容性**: 纯新增 (CLI 侧接线重写, 黑盒行为与 OF/BC 语料不变)。
 
 ### 7.8 结果到呈现 / 分支的缝合层 (新增小节)
@@ -1382,7 +1382,7 @@ export type SweepProgressEvent =
 ### 7.9 设备边界结果的落盘形态 (新增小节)
 
 - **现状 (初稿疏漏)**: `findCrossDeviceTargets` 返回 `Map`, 而初稿把这条列为「可序列化承诺的例外」。体验报告 4-4 证实后果: 走原语层自建审计时 `JSON.stringify` 得到 `{}`, 审计里直接丢掉「为什么这台机器没删」整列。
-- **设计 (改动)**: 返回 `CrossDeviceEntry[]` (保输入顺序, 可序列化); 新增 `crossDeviceIndex(entries): ReadonlyMap<string, CrossDeviceKind>` 供需要 `has` / `get` 的消费方 (含 `skip.ts` 三个函数的第二参)。例外取消, §5.1 的承诺变成无条件。
+- **设计 (改动)**: 返回 `CrossDeviceEntry[]` (保输入顺序, 可序列化); 新增 `crossDeviceIndex(entries): ReadonlyMap<string, CrossDeviceKind>` 供需要 `has` / `get` 的使用方使用 (含 `skip.ts` 三个函数的第二参)。例外取消, §5.1 的承诺变成无条件。
 - **兼容性**: 破坏性签名改动 (返回类型), 与拆包同批落地; 影响面为 CLI 内部两处调用点。
 
 ---
@@ -1479,7 +1479,7 @@ try {
         code: error.code, // 'CONFIG_*' / 'INVALID_ARGUMENT' / 'CANCELLED' / …
         message: error.message,
         details: details ?? null,
-        // 取消落在删除阶段时, 这里带着已出桶的部分结果 (phase 为 'remove' 时才出现)
+        // 取消落在删除阶段时, 这里带着已产生的部分结果 (phase 为 'remove' 时才出现)
         partial:
           details !== undefined && 'partial' in details
             ? (details.partial ?? null)
@@ -1889,27 +1889,26 @@ async function refreshPanel(sweeper: Sweeper, controller: AbortController) {
 
 > 状态口径:「已定夺」= 取向已定并写进上文 (由本文档给出, 或由决策者拍板 / 由已接受的 ADR 裁定, 各自注明来源)。定稿后本清单不再留待决项; 后续若出现新的待决问题, 按本仓惯例追加新条目而不是改写已有取向。
 
-| #              | 问题                                                                                                                                        | 状态                                        | 取向 / 说明                                                                                                                                                                                                                                                                                                                                                                                                                              |
-| -------------- | ------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Q1a**        | 两个包名与各自职责: 程序化使用方引哪个包?                                                                                                   | **已定夺**                                  | 按任务给定的拆分: 库 / 程序化使用引 `@iyowei/sweep-node-modules` (API 包), 命令行走 `@iyowei/sweep-node-modules-cli` (CLI 薄壳包)。第三方 CLI 作者要嵌库就引前者, 不必碰后者 (回答体验报告 5-6 的前半)                                                                                                                                                                                                                                   |
-| **Q1b**        | 存量分发的迁移路径: 今天 `@iyowei/sweep-node-modules` 已发布到 0.4.0 且承载 CLI, 已全局安装的用户升级后会拿到一个没有 `bin` 的库            | **已定夺 (2026-09-29 拍板)**                | **不保留过渡期转发 `bin`**: API 包保持纯库形态 (无 `bin` 字段), 不背 CLI 入口; 存量安装者的迁移指引由 API 包 README 的「包定位变更说明」(同名包内容由 CLI 翻转为 API, CLI 迁至 `@iyowei/sweep-node-modules-cli`) 与 release notes 承载。理由: 保持 API 包纯净: 转发入口会把 CLI 的依赖与入口逻辑重新拉回库包, 与「CLI 薄壳、业务语义全归 API 包」的切分原则相反, 且 ADR 0010 已显式接受该版本语义变化 (0.x 内), 不值得为它长期留一扇后门 |
-| Q2             | `run()` 是否接受既有 `plan` (复用计划, 不重扫)?                                                                                             | **已定夺**                                  | 仍不接受「拿旧计划执行」; 但新增 `expectedBatch` 与 `drift`, 让「用户批准的清单」成为本次执行的**范围上界**: 仍重跑扫描与安全闸 (每个事实都是此刻的事实), 只是新出现的目标不进删除面并被显式报出。既保住 ADR 0002 的预览-执行承诺, 又消掉体验报告 5-1 的对账缺口                                                                                                                                                                         |
-| Q3             | `warnings` 从 `string[]` 变结构化对象, 是本期一次做掉还是分两版?                                                                            | **已定夺**                                  | 一次做掉 (§1.3 的窗口期论证); 拆码也落在同一窗口                                                                                                                                                                                                                                                                                                                                                                                         |
-| Q4             | 编排层的进度事件是否也给「精简形态」(只留阶段事件)?                                                                                         | **已定夺**                                  | 全给, 由调用方按 `kind` 自己筛; 终结事件 (`plan-done` / `done`) 保证流可判尾                                                                                                                                                                                                                                                                                                                                                             |
-| Q5             | 是否提供 `./readonly` 子路径导出 (只读面), 还是单入口 + `sideEffects: false` 足够?                                                          | **已定夺**                                  | 单入口 + 声明 `sideEffects: false` 足够 (模块零副作用已是事实); 子路径作为可选优化后置                                                                                                                                                                                                                                                                                                                                                   |
-| Q6             | 类型声明的产出通道: 包态 (编译产物) 的 `.d.ts` 从哪来? 今天只有 `bin/sweep-nm.d.mts` 这种手写投影先例 (实读)                                | **已定夺** (依 ADR 0010 决策 5)             | ADR 0010 定 `bun build` 出 JS + `tsc --emitDeclarationOnly` 出 `.d.ts`; 手写投影 (实读先例) 不作为 API 包方案, 它只服务 launcher 单测。该通道已在本仓实测落地 (`packages/sweep-node-modules/scripts/build.ts` 与 `tsconfig.build.json`; 见修订记录 2026-09-29 行)                                                                                                                                                                        |
-| Q7             | 是否提供异步迭代入口 (`watch()`)?                                                                                                           | **已定夺**                                  | 不新增 API; 改由文档给完整参考实现 (§8.6, 约 20 行), 并更正初稿的「三行」估价: 体验报告实测约 50 行, 终结事件到位后降至约 20 行。再出现第二个迭代型宿主时复议                                                                                                                                                                                                                                                                            |
-| Q8             | `SweepPolicy` 是否再加字段 (跨设备显式化 / home 防线开关)?                                                                                  | **已定夺**                                  | 不加: 跨设备不可放行是安全底线; `home` 的关闭由 `SweepOptions.home = null` 表达; 新增的 `staleTargets` 刻意**不放进** `SweepPolicy`, 因为它是执行期的容忍度 (不许影响只读的 `plan()`)                                                                                                                                                                                                                                                    |
-| Q9             | `findCrossDeviceTargets` 的返回形态 (Map 还是数组)?                                                                                         | **已定夺**                                  | 改返回 `CrossDeviceEntry[]` (可序列化, 保输入顺序), 另给 `crossDeviceIndex()`; 初稿的「Map 例外」取消 (回答体验报告 4-4)                                                                                                                                                                                                                                                                                                                 |
-| Q10            | monorepo 目录布局与既有发布基建 (ADR 0009 的 `dist/manifest.json`、`verify-release.ts`、`PACK_FILES_EXPECTED` 白名单) 如何被两个包各自承担? | **已定夺 (结构层, 依 ADR 0010 决策 1 / 2)** | 结构定为 bun 原生 workspaces + Turborepo 编排; 发布闸门「结构与判定不变, 落位点与配置变」在 ADR 0010 的权衡妥协段列为实施阶段义务, 其细则仍属未推演面, 但已不阻塞本 API 设计                                                                                                                                                                                                                                                             |
-| Q11            | `Sweeper` 的实例语义: 是否允许同一实例被并发调用?                                                                                           | **已定夺**                                  | 不允许 (文档写死「重入未定义」); 需要并发就建两个实例 (工厂无 IO, 成本为零)                                                                                                                                                                                                                                                                                                                                                              |
-| Q12            | 是否给错误对象自带本地化入口?                                                                                                               | **已定夺**                                  | 不做: code + details + message 三件已足够调用方自造文案; 拆码后本地化文案可精确到「已不存在」与「不可读」两条 (体验报告 3-3 的诉求由此满足)                                                                                                                                                                                                                                                                                              |
-| **Q13** (新增) | `staleTargets` 的默认值该取 `'reject'` 还是 `'missing'`?                                                                                    | **已定夺**                                  | 缺省 `'reject'` (不放宽既有保守语义); 调用方在知道自己手上清单可能陈旧时显式开启 (CI 并发 / 断点续跑 / 交互确认)                                                                                                                                                                                                                                                                                                                         |
-| **Q14** (新增) | 库是否内置「本次运行算不算成功」的 `ok` 判据?                                                                                               | **已定夺**                                  | 不内置: 退出码是产品口径不是数据事实 (CLI 包的口径见 BC-26, 交互式 CLI 往往更宽松)。库给 `isSuccessOutcome` + `SweepSummary` + 三档配方 (§2.7)                                                                                                                                                                                                                                                                                           |
-| **Q15** (新增) | `SkipCandidate` 是否干脆改用 `SweepEntry[]` 作入参 (彻底消除误传)?                                                                          | **已定夺**                                  | 不采用: 会把原语层的门槛抬高 (场景 5 / 7 式的最小用法被迫填 `root` / `project` / `kind` 等无关字段)。取「`suspect` 必填 + `toSkipCandidates()` 构造器」的组合, 误传当场报错, 同时保留最小用法                                                                                                                                                                                                                                            |
-| **Q16** (新增) | 场景 4 阶段 1 写进审计的 `skipReason` 能否在阶段 2 直接喂回, 免去重判?                                                                      | **已定夺**                                  | 不提供「按旧判定执行」的入口: 重判是刻意设计 (磁盘状态会漂移, 安全闸必须看此刻的事实)。文档写明该意图; 阶段 2 走 `removeBatch` 重判, 成本是一次 realpath 链 (远低于一次全量扫描)                                                                                                                                                                                                                                                         |
-
-| **Q17** (新增) | API 包何时进入发布流程 (根 `multi-release.ignorePackages` 豁免的移除时机)? | **已定夺 (2026-09-29 拍板), 已执行 (2026-09-29)** | 公开面改造收口 (发布刀) 时从根 `package.json` 的 `multi-release.ignorePackages` 移除 `packages/sweep-node-modules`, 使 API 包进入 semrel 发版流程; 首发按 **0.5.x 过渡**一轮、不直接上 1.0 (成熟度未到; 2026-09-29 移出预演实测: 无 tag 包的 first-release 直接取 package.json 现值, 首发即 0.5.0, 旧稿「历史 `feat!` 会算出 1.0.0」的担忧经实测不成立)。豁免已于同日清空, 随批推送发布 |
+| #              | 问题                                                                                                                                        | 状态                                              | 取向 / 说明                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| -------------- | ------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Q1a**        | 两个包名与各自职责: 程序化使用方引哪个包?                                                                                                   | **已定夺**                                        | 按任务给定的拆分: 库与程序化使用引 `@iyowei/sweep-node-modules` (API 包), 命令行走 `@iyowei/sweep-node-modules-cli` (CLI 薄壳包)。第三方 CLI 作者要嵌库就引前者, 不必碰后者 (回答体验报告 5-6 的前半)                                                                                                                                                                                                                                    |
+| **Q1b**        | 存量分发的迁移路径: 今天 `@iyowei/sweep-node-modules` 已发布到 0.4.0 且自带 CLI, 已全局安装的用户升级后会拿到一个没有 `bin` 的库            | **已定夺 (2026-09-29 拍板)**                      | **不保留过渡期转发 `bin`**: API 包保持纯库形态 (无 `bin` 字段), 不背 CLI 入口; 存量安装者的迁移指引放在 API 包 README 的「包定位变更说明」(同名包内容由 CLI 翻转为 API, CLI 迁至 `@iyowei/sweep-node-modules-cli`) 与 release notes 里。理由: 保持 API 包纯净: 转发入口会把 CLI 的依赖与入口逻辑重新拉回库包, 与「CLI 薄壳、业务语义全归 API 包」的切分原则相反, 且 ADR 0010 已显式接受该版本语义变化 (0.x 内), 不值得为它长期留一扇后门 |
+| Q2             | `run()` 是否接受既有 `plan` (复用计划, 不重扫)?                                                                                             | **已定夺**                                        | 仍不接受「拿旧计划执行」; 但新增 `expectedBatch` 与 `drift`, 让「用户批准的清单」成为本次执行的**范围上界**: 仍重跑扫描与安全闸 (每个事实都是此刻的事实), 只是新出现的目标不进删除面, 并被显式报出来。既保住 ADR 0002 的预览-执行承诺, 又消掉体验报告 5-1 的对账缺口                                                                                                                                                                     |
+| Q3             | `warnings` 从 `string[]` 变结构化对象, 是本期一次做掉还是分两版?                                                                            | **已定夺**                                        | 一次做掉 (§1.3 的窗口期论证); 拆码也落在同一窗口                                                                                                                                                                                                                                                                                                                                                                                         |
+| Q4             | 编排层的进度事件是否也给「精简形态」(只留阶段事件)?                                                                                         | **已定夺**                                        | 全给, 由调用方按 `kind` 自己筛; 终结事件 (`plan-done` / `done`) 让流的结束可判定                                                                                                                                                                                                                                                                                                                                                         |
+| Q5             | 是否提供 `./readonly` 子路径导出 (只读面), 还是单入口 + `sideEffects: false` 足够?                                                          | **已定夺**                                        | 单入口 + 声明 `sideEffects: false` 足够 (模块零副作用已是事实); 子路径作为可选优化后置                                                                                                                                                                                                                                                                                                                                                   |
+| Q6             | 类型声明的产出通道: 包态 (编译产物) 的 `.d.ts` 从哪来? 今天只有 `bin/sweep-nm.d.mts` 这种手写投影先例 (实读)                                | **已定夺** (依 ADR 0010 决策 5)                   | ADR 0010 定 `bun build` 出 JS + `tsc --emitDeclarationOnly` 出 `.d.ts`; 手写投影 (实读先例) 不作为 API 包方案, 它只用于 launcher 单测。该通道已在本仓实测落地 (`packages/sweep-node-modules/scripts/build.ts` 与 `tsconfig.build.json`; 见修订记录 2026-09-29 行)                                                                                                                                                                        |
+| Q7             | 是否提供异步迭代入口 (`watch()`)?                                                                                                           | **已定夺**                                        | 不新增 API; 改由文档给完整参考实现 (§8.6, 约 20 行), 并更正初稿的「三行」估价: 体验报告实测约 50 行, 终结事件到位后降至约 20 行。再出现第二个迭代型宿主时复议                                                                                                                                                                                                                                                                            |
+| Q8             | `SweepPolicy` 是否再加字段 (跨设备显式化 / home 防线开关)?                                                                                  | **已定夺**                                        | 不加: 跨设备不可放行是安全底线; `home` 的关闭由 `SweepOptions.home = null` 表达; 新增的 `staleTargets` 刻意**不放进** `SweepPolicy`, 因为它是执行期的容忍度 (不许影响只读的 `plan()`)                                                                                                                                                                                                                                                    |
+| Q9             | `findCrossDeviceTargets` 的返回形态 (Map 还是数组)?                                                                                         | **已定夺**                                        | 改返回 `CrossDeviceEntry[]` (可序列化, 保输入顺序), 另给 `crossDeviceIndex()`; 初稿的「Map 例外」取消 (回答体验报告 4-4)                                                                                                                                                                                                                                                                                                                 |
+| Q10            | monorepo 目录布局与既有发布基建 (ADR 0009 的 `dist/manifest.json`、`verify-release.ts`、`PACK_FILES_EXPECTED` 白名单) 如何被两个包各自承担? | **已定夺 (结构层, 依 ADR 0010 决策 1 / 2)**       | 结构定为 bun 原生 workspaces + Turborepo 编排; 发布闸门「结构与判定不变, 落位点与配置变」在 ADR 0010 的权衡取舍段列为实施阶段义务, 其细则仍未推演, 但已不阻塞本 API 设计                                                                                                                                                                                                                                                                 |
+| Q11            | `Sweeper` 的实例语义: 是否允许同一实例被并发调用?                                                                                           | **已定夺**                                        | 不允许 (文档写死「重入未定义」); 需要并发就建两个实例 (工厂无 IO, 成本为零)                                                                                                                                                                                                                                                                                                                                                              |
+| Q12            | 是否给错误对象自带本地化入口?                                                                                                               | **已定夺**                                        | 不做: code + details + message 三件已足够调用方自造文案; 拆码后本地化文案可精确到「已不存在」与「不可读」两条 (体验报告 3-3 的诉求由此满足)                                                                                                                                                                                                                                                                                              |
+| **Q13** (新增) | `staleTargets` 的默认值该取 `'reject'` 还是 `'missing'`?                                                                                    | **已定夺**                                        | 缺省 `'reject'` (不放宽既有保守语义); 调用方在知道自己手上清单可能陈旧时显式开启 (CI 并发 / 断点续跑 / 交互确认)                                                                                                                                                                                                                                                                                                                         |
+| **Q14** (新增) | 库是否内置「本次运行算不算成功」的 `ok` 判据?                                                                                               | **已定夺**                                        | 不内置: 退出码是产品口径不是数据事实 (CLI 包的口径见 BC-26, 交互式 CLI 往往更宽松)。库给 `isSuccessOutcome` + `SweepSummary` + 三档配方 (§2.7)                                                                                                                                                                                                                                                                                           |
+| **Q15** (新增) | `SkipCandidate` 是否干脆改用 `SweepEntry[]` 作入参 (彻底消除误传)?                                                                          | **已定夺**                                        | 不采用: 会把原语层的门槛抬高 (场景 5 / 7 式的最小用法被迫填 `root` / `project` / `kind` 等无关字段)。取「`suspect` 必填 + `toSkipCandidates()` 构造器」的组合, 误传当场报错, 同时保留最小用法                                                                                                                                                                                                                                            |
+| **Q16** (新增) | 场景 4 阶段 1 写进审计的 `skipReason` 能否在阶段 2 直接喂回, 免去重判?                                                                      | **已定夺**                                        | 不提供「按旧判定执行」的入口: 重判是刻意设计 (磁盘状态会漂移, 安全闸必须看此刻的事实)。文档写明该意图; 阶段 2 走 `removeBatch` 重判, 成本是一次 realpath 链 (远低于一次全量扫描)                                                                                                                                                                                                                                                         |
+| **Q17** (新增) | API 包何时进入发布流程 (根 `multi-release.ignorePackages` 豁免的移除时机)?                                                                  | **已定夺 (2026-09-29 拍板), 已执行 (2026-09-29)** | 公开面改造收口 (发布刀) 时从根 `package.json` 的 `multi-release.ignorePackages` 移除 `packages/sweep-node-modules`, 使 API 包进入 semrel 发版流程; 首发按 **0.5.x 过渡**一轮、不直接上 1.0 (成熟度未到; 2026-09-29 移出预演实测: 无 tag 包的 first-release 直接取 package.json 现值, 首发即 0.5.0, 旧稿「历史 `feat!` 会算出 1.0.0」的担忧经实测不成立)。豁免已于同日清空, 随批推送发布                                                  |
 
 > **与 ADR 0010 的对齐 (定稿副作用)**: 本次定稿期间, 仓库新增并接受了 [ADR 0010](../../../../docs/adrs/0010-dual-package-monorepo.md)「双包 monorepo 结构与可编程 API」(2026-09-29 已接受), 它替本清单定了三件事: 包边界与切分原则 (= 本文档 §2.1, 一致)、包名翻转与 0.x 内接受该版本语义变化 (= Q1a 的定夺来源)、API 包分发形态与仓库结构 (= Q6 / Q10)。Q1b 的收窄与拍板亦随该决定完成: ADR 0010 未涉及过渡期转发入口, 该子项由决策者于 2026-09-29 拍板 (不保留, 见上表)。
 > 状态汇总: 共 18 条目 (Q1 拆为 Q1a / Q1b), **18 条全部已定夺** (其中 Q1b 与 Q17 的取向由决策者拍板, 其余由本文档给出并写进上文)。
@@ -1943,7 +1942,7 @@ async function refreshPanel(sweeper: Sweeper, controller: AbortController) {
 ## 12. 反馈处置记录 (v2 新增)
 
 > 来源: `api_ux_review.md` 与 `experience/` 五份代码 (仓外反馈材料, 不随仓保存; 共 57 条: 逐场景堵点 27 条 + 「草案未覆盖」15 条 + 「需要猜测」9 条 + 「最想改的 3 处」3 条 + 代码内注顺带指出 3 条)。
-> 计数: **采纳 49 / 部分采纳 7 / 驳回 1**。0 条因「与 ADR 硬约束冲突」被驳回: 逐条核过后, 除下述 7 条在形态上做了取舍、1 条判定为不成立, 其余都能在不动 ADR 0003 / 0006 的前提下落地; 采纳不等于照抄, 凡与体验官给的形态不同处, 一律写在「理由」列。
+> 计数: **采纳 49 / 部分采纳 7 / 驳回 1**。0 条因「与 ADR 硬约束冲突」被驳回: 逐条核过后, 除下述 7 条在形态上做了取舍、1 条判定为不成立, 其余都能在不动 ADR 0003 / 0006 的前提下落地; 采纳不等于照抄, 凡与使用方给出的形态不同的地方, 一律写在「理由」列。
 > 改动位置列指向 v2 正文的节号, 可逐条回查。
 
 ### 表 A: 逐场景堵点 (27 条)
@@ -1963,7 +1962,7 @@ async function refreshPanel(sweeper: Sweeper, controller: AbortController) {
 | 3-1 | `watch()` 缺席, 自桥估价「三行」低估                                 | 部分采纳          | §4.4 修订估价、§8.6 参考实现、Q7                                         | 不新增库 API (只有编辑器需要); 承认估价错误并给出约 20 行完整实现 (终结事件到位后)                                                                                 |
 | 3-2 | 事件流无终结事件, 迭代器判不出流结束                                 | 采纳              | §4.1                                                                     | 同 1-4; §8.6 的桥接因此不再需要自造哨兵                                                                                                                            |
 | 3-3 | 拒绝码不区分「不存在 / 不可读」, 本地化只能含糊                      | 采纳              | §3.2、§2.3                                                               | 拆码后本地化可精确两分                                                                                                                                             |
-| 3-4 | 扩展打包后 `instanceof SweepError` 不可靠                            | 采纳              | §3.6 `isSweepError`                                                      | 推翻 v1 的 YAGNI 判断: 体验官给出真实失效场景 (同进程双实例), 理由成立                                                                                             |
+| 3-4 | 扩展打包后 `instanceof SweepError` 不可靠                            | 采纳              | §3.6 `isSweepError`                                                      | 推翻 v1 的 YAGNI 判断: 使用方给出真实失效场景 (同进程双实例), 理由成立                                                                                             |
 | 3-5 | 用户在 Finder 删掉后点「清理这一个」得到语义错误的拒绝               | 采纳              | §2.4 `staleTargets`                                                      | 与 1-1 同源; 开启后该情形落 `stale`, 不再弹红条                                                                                                                    |
 | 3-6 | 面板行只能显示机器码                                                 | 采纳              | §2.7 `skipNote`                                                          | 同 1-5                                                                                                                                                             |
 | 4-1 | `SkipCandidate.suspect` 可选 → 疑似安装树静默进批                    | 采纳 (方案 a + c) | §2.5 `SkipCandidate.suspect` 必填 + `toSkipCandidates()`、§5.2           | 双管: 必填让误传当场类型报错, 构造器让正确写法更省事。**未采纳方案 b** (入参收成 `SweepEntry[]`): 会把原语层门槛抬高, 场景 5 / 7 式最小用法被迫填无关字段 (见 Q15) |
@@ -1992,10 +1991,10 @@ async function refreshPanel(sweeper: Sweeper, controller: AbortController) {
 | U8  | `SweepWarningCode` 定义与归属       | 采纳     | §2.8 全表                                           | 并集别名 + 穷举写法建议                                                                                                                                                                                        |
 | U9  | `SIZE_TARGET_VANISHED` 归属桶       | 采纳     | §3.2 + §2.2                                         | 表拆两张加归属列; 只进 `gone` 与事件                                                                                                                                                                           |
 | U10 | 桶完备性恒等式                      | 采纳     | §2.2、§3.4                                          | 三桶互斥完备, 写进契约                                                                                                                                                                                         |
-| U11 | 名单字段缺席语义                    | 采纳     | §2.2                                                | 改必填 (体验官给的两个选项里选前者的强化版: 恒在且恒为数组)                                                                                                                                                    |
+| U11 | 名单字段缺席语义                    | 采纳     | §2.2                                                | 改必填 (使用方给的两个选项里选前者的强化版: 恒在且恒为数组)                                                                                                                                                    |
 | U12 | `SkipBook` 码 + 人话单入口          | 采纳     | §2.5 `SkipBook.entries`                             | 采用, 并保留 `hints` / `trailer` 以免动 CLI 现有渲染接线                                                                                                                                                       |
 | U13 | `crossDevice` 落盘形态              | 采纳     | §2.3、§7.9                                          | 取「返回数组」而非「补转换器」: 转换器留不住 Map 这一陷阱本身                                                                                                                                                  |
-| U14 | `INVALID_ARGUMENT` 抛出时机         | 采纳     | §2.7 / §3.1                                         | 构造期同步抛 (与体验官的倾向一致)                                                                                                                                                                              |
+| U14 | `INVALID_ARGUMENT` 抛出时机         | 采纳     | §2.7 / §3.1                                         | 构造期同步抛 (与使用方的倾向一致)                                                                                                                                                                              |
 | U15 | `SkippedTarget.note` 未测到时的来源 | 采纳     | §2.5                                                | 取 `unmeasuredReason` 组装, 与 CLI 现行注记同源                                                                                                                                                                |
 
 ### 表 C: 「需要猜测」9 条 (逐条消除)
@@ -2012,7 +2011,7 @@ async function refreshPanel(sweeper: Sweeper, controller: AbortController) {
 | G8  | `CANCELLED` 的 `details.phase` 取值域              | 采纳 | §3.6 写死为 `SweepPhase` 全集, 且 `partial` 只在 `phase === 'remove'` 出现         |
 | G9  | 报告 `plan` 与先前 `plan()` 不一致以谁为准         | 采纳 | §2.7 `SweepReport.plan` 注释写死「以报告为准」, 差异由 `drift` 显式给出            |
 
-### 表 D: 体验官「最想改的 3 处」
+### 表 D: 使用方「最想改的 3 处」
 
 | #   | 建议                                                                                                             | 处置     | 改动位置                     | 理由                                                                     |
 | --- | ---------------------------------------------------------------------------------------------------------------- | -------- | ---------------------------- | ------------------------------------------------------------------------ |
@@ -2025,11 +2024,11 @@ async function refreshPanel(sweeper: Sweeper, controller: AbortController) {
 | #   | 意见                                                        | 处置     | 改动位置               | 理由                                                                                                                                                                                  |
 | --- | ----------------------------------------------------------- | -------- | ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | E1  | 编排层没有体积口径单值, 要取口径只能拿首条 entry            | 采纳     | §2.7 `SweepPlan.basis` | 与 `Sizer.basis` 对称; 契约写明与逐条 `entry.basis` 同源同值                                                                                                                          |
-| E2  | 场景 4 阶段 1 写进审计的 `skipReason` 无法在阶段 2 直接喂回 | 部分采纳 | §9 Q16                 | 不提供「按旧判定执行」的入口 (重判是刻意设计, 磁盘状态会漂移); 按体验官建议把该意图写进文档                                                                                           |
-| E3  | 需要「跨设备形态 → 人话标签」的映射 (`deviceLabel`)         | 驳回     | —                      | 库已提供 `crossDeviceNote(kind)` (实读 `skip.ts`, 两形态各一句文案); 体验官那份带「同设备」默认分支的实现是其自定义标签, 不是库缺件。若确需第三种措辞, 属调用方文案偏好, 不该由库内置 |
+| E2  | 场景 4 阶段 1 写进审计的 `skipReason` 无法在阶段 2 直接喂回 | 部分采纳 | §9 Q16                 | 不提供「按旧判定执行」的入口 (重判是刻意设计, 磁盘状态会漂移); 按使用方建议把该意图写进文档                                                                                           |
+| E3  | 需要「跨设备形态 → 人话标签」的映射 (`deviceLabel`)         | 驳回     | —                      | 库已提供 `crossDeviceNote(kind)` (实读 `skip.ts`, 两形态各一句文案); 使用方那份带「同设备」默认分支的实现是其自定义标签, 不是库缺件。若确需第三种措辞, 属调用方文案偏好, 不该由库内置 |
 
 ### 逐条处置之外的说明
 
 - **0 条驳回不等于照单全收**: 表 A 至 D 里 7 条「部分采纳」的取舍点已逐条写在「理由」列, 主要是三处形态分歧 (陈旧目标落桶 / 退出码口径归属 / 异步迭代入口) 与一处未采纳子方案 (写侧入参类型)。
-- **本批唯一被判不成立的是 E3**: 库已有 `crossDeviceNote`; 体验官的实现是自定义标签。
-- **未处理的体验官表扬项** (PathMapping / `Sizer.basis` / `ScanHit.root` / `partialRisk` / `SweepPolicy`) 在 v2 中全部保留, 未作改动。
+- **本批唯一被判不成立的是 E3**: 库已有 `crossDeviceNote`; 使用方的实现是自定义标签。
+- **未处理的使用方表扬项** (PathMapping / `Sizer.basis` / `ScanHit.root` / `partialRisk` / `SweepPolicy`) 在 v2 中全部保留, 未作改动。

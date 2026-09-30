@@ -5,9 +5,9 @@
 
 **English** | [中文](README.zh-CN.md)
 
-A collection of command-line tools for my daily development workflow, managed as a monorepo — plus the reusable packages they share. Members live under `packages/`, each with docs starting from its own `README.md`.
+A collection of command-line tools for my day-to-day development, managed as a monorepo — plus the reusable packages they share. All packages live under `packages/`, each with docs starting from its own `README.md`.
 
-## Members
+## Packages
 
 **sweep-node-modules** — a workspace-level cleaner for `node_modules`: scan several root directories in one pass, list every `node_modules` directory across your projects along with its size, and bulk-delete them after you confirm, reclaiming disk space. It ships as two packages:
 
@@ -18,4 +18,4 @@ A collection of command-line tools for my daily development workflow, managed as
 
 - [Engineering documentation index](docs/README.md): the repository-level entry to governance and scaffolding design, ADRs, and development docs;
 - [Development guide](docs/development.md): environment setup, common commands, dual-runtime verification, and commit hooks;
-- [sweep-node-modules docs hub](docs/sweep/README.md): the member's docs (product designs and the transcription conformance kit).
+- [sweep-node-modules docs hub](docs/sweep/README.md): the tool's docs (product designs and the transcription conformance kit).

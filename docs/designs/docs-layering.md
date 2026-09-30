@@ -6,57 +6,57 @@
 
 ## 判据
 
-文档归哪一级, 看它**服务谁**:
+文档归哪一级, 看它是**给谁用的**:
 
-- **只服务单个包** (该包的实现细节、该包的对外面) → **包级**, 落 `packages/<pkg>/docs/`;
-- **服务单个产品** (该产品跨包的契约、整体设计与验收, 但不属于任一单包) → **产品区**, 落 `docs/<product>/`;
-- **服务仓库整体** (集合治理、脚手架、工程机制) → **仓库级**, 落 `docs/`。
+- **只给单个包用** (该包的实现细节、该包对外的部分) → **包级**, 落 `packages/<pkg>/docs/`;
+- **只给单个产品用** (该产品跨包的契约、整体设计与验收, 但不属于任何单个包) → **产品区**, 落 `docs/<product>/`;
+- **给整个仓库用** (集合治理、脚手架、工程机制) → **仓库级**, 落 `docs/`。
 
 ## 三级结构
 
 ### 仓库级 (`docs/`)
 
-- 索引: `README.md` (总入口, 含产品区与成员包入口的外链区);
+- 索引: `README.md` (总入口, 含产品区与各包入口的外链区);
 - 工程与治理: `development.md` / `adrs/` (仓库级 ADR) / `designs/` (仓库级设计: 集合仓治理与脚手架);
-- 产品区与 `designs/` 平级, 各占 `docs/<product>/`。
+- 产品区与 `designs/` 平级, 放在 `docs/<product>/`。
 
 ### 产品区 (`docs/<product>/`)
 
-- **入口固定为 `docs/<product>/README.md`**: 产品一句话 + 区内导航 + 回链仓库级与包入口;
-- 内部按文档形态建子区, 与仓库级同构: `designs/` (产品设计, 含区内索引 README) / 验收套件目录 (如 sweep 的 `protocol/`) 等;
-- 现例: [docs/sweep/](../sweep/README.md) (sweep-node-modules 的产品区)。
+- **入口固定为 `docs/<product>/README.md`**: 产品一句话 + 区内导航 + 指回仓库级与包入口的链接;
+- 内部按文档类型建子区, 组织方式与仓库级相同: `designs/` (产品设计, 含区内索引 README) / 验收套件目录 (如 sweep 的 `protocol/`) 等;
+- 现有例子: [docs/sweep/](../sweep/README.md) (sweep-node-modules 的产品区)。
 
 ### 包级 (`packages/<pkg>/docs/`)
 
-- **入口固定为 `docs/README.md`**: 包定位一句话 + 包内文档清单 (含包级 ADR)+ 回链仓库级核心 (索引 / 产品区 / 与包相关的设计文档);
-- 单包专属设计文档进 `docs/designs/`, 包级 ADR 进 `docs/adrs/` (与仓库级 `docs/` 的内部布局同构);
-- 包级 docs 不进 npm 发行包 (发行面由各包 `files` 白名单与发布自证闸门钉死, 消费者面看包根 README)。
+- **入口固定为 `docs/README.md`**: 包定位一句话 + 包内文档清单 (含包级 ADR) + 指回仓库级核心的链接 (索引 / 产品区 / 与包相关的设计文档);
+- 单包专属设计文档进 `docs/designs/`, 包级 ADR 进 `docs/adrs/` (内部布局与仓库级 `docs/` 相同);
+- 包级 docs 不进 npm 发布包 (发布范围由各包 `files` 白名单与发布自证闸门钉死, 使用者看包根 README 就行)。
 
-## 外链标准位 (关联关系的固定通路)
+## 外链的固定位置 (关联关系的固定通路)
 
-AI 与人类读取时的固定走法, 三级之间**双向**织链:
+AI 与人类读取文档时的固定路线 (三级之间**双向**链接):
 
 ```
-docs/README.md ──(产品区 / 成员区)──▶ docs/<product>/README.md ──(区内导航)──▶ 区内明细
-docs/README.md ──(成员区)──▶ packages/<pkg>/docs/README.md
-docs/<product>/README.md ──(包入口)──▶ packages/<pkg>/docs/README.md (包入口有回链)
-下沉到包内的篇目, 在仓库级与产品区索引里改外链其实际位置
+docs/README.md ──(产品区 / 各包)──▶ docs/<product>/README.md ──(区内导航)──▶ 区内明细
+docs/README.md ──(各包)──▶ packages/<pkg>/docs/README.md
+docs/<product>/README.md ──(包入口)──▶ packages/<pkg>/docs/README.md (包入口有指回上级的链接)
+文档下沉到包内后, 仓库级与产品区索引里对应的外链改成它的实际位置
 ```
 
-外链的有效性由引用闸门 (`scripts/lint-doc-references.ts`, 相对链接存在性) 兜底; 纯粹的文字指代 (如代码注释里的「见 X 篇」) 由变更影响面扫描在改动时人工核对。
+外链是否有效由引用闸门 (`scripts/lint-doc-references.ts`, 查相对链接是否都存在) 兜底; 纯粹的文字指代 (如代码注释里的「见 X 篇」) 闸门管不到, 改动时人工跑一遍变更影响面扫描。
 
 ## ADR 分层
 
-- **编号全局单调递增, 跨三级唯一**: 新 ADR 无论归属哪级, 编号从既有最大值续排; 已发布编号永不重编 (全仓「ADR NNNN」文字引用因此永远有效);
-- **归属判据**: 单包与产品决策 → 包级 (决策随实现包, 由包入口可达); 仓库机制与工程策略 → 仓库级;
-- **查找面**为两级并集: `docs/adrs/` + 各包 `docs/adrs/` (产品区不设 adrs; 引用闸门按此扩展);
-- **索引**: 仓库级索引 `docs/adrs/README.md` 列全部编号 (包级行外链到包内实际位置); 包级 ADR 不再另建索引文件, 由包 `docs/README.md` 的清单承载。
+- **编号全仓库共用一套, 递增、不会重号**: 新 ADR 无论归哪一级, 编号都接着现有最大号往后排; 已发布的编号永不重编 (全仓「ADR NNNN」文字引用因此永远有效);
+- **归属判据**: 单包与产品决策 → 包级 (决策跟着实现它的包走, 从包入口就能找到); 仓库机制与工程策略 → 仓库级;
+- **查找范围**: `docs/adrs/` + 各包 `docs/adrs/`, 两级合起来看 (产品区不设 adrs; 引用闸门也按这两级查);
+- **索引**: 仓库级索引 `docs/adrs/README.md` 列出全部编号 (包级的条目直接链到包内实际位置); 包级 ADR 不另建索引文件, 挂在包 `docs/README.md` 的清单里。
 
 ## 归属总表 (现行)
 
 | 内容                                                                                           | 归属                        | 位置                                                                   |
 | ---------------------------------------------------------------------------------------------- | --------------------------- | ---------------------------------------------------------------------- |
-| `api-surface` / `cli-surface`                                                                  | 包级 (单包对外面)           | `packages/sweep-node-modules/docs/designs/` 与 `...-cli/docs/designs/` |
+| `api-surface` / `cli-surface`                                                                  | 包级 (单包对外的部分)       | `packages/sweep-node-modules/docs/designs/` 与 `...-cli/docs/designs/` |
 | 产品设计九篇 (总纲 / 配置 / 扫描 / 删除闸 / 加固 / 续 / 安全总账 / 双面覆盖 / 架构) 与实施计划 | 产品区                      | `docs/sweep/designs/`                                                  |
 | 转写契约套件 (`protocol/`: 契约 / 语料 / 覆盖表 / 提示词)                                      | 产品区 (验收套件)           | `docs/sweep/protocol/`                                                 |
 | ADR 0001 / 0002 / 0003 / 0004 / 0007 / 0008                                                    | 包级 (产品决策)             | `packages/sweep-node-modules/docs/adrs/`                               |
@@ -64,12 +64,12 @@ docs/<product>/README.md ──(包入口)──▶ packages/<pkg>/docs/README.m
 
 ## 产品区演进
 
-- 新产品: 建 `docs/<product>/` (入口 README + 按其文档形态建内部区, 参照 `docs/sweep/` 的 `designs/` 与套件目录结构);
-- 现有产品区内部的进一步分合 (如子区增减) 随实际文档增长再评估, 不为想象的结构预留空目录。
+- 新产品: 建 `docs/<product>/` (入口 README + 内部按文档类型建子区, 参照 `docs/sweep/` 的 `designs/` 与套件目录结构);
+- 现有产品区内部还要不要再分再合 (如子区增减), 随实际文档增长再评估, 不为想象中的结构预留空目录。
 
 ## 与生成器/模板的关系
 
-模板中的 docs 骨架即本协议的物化: 仓库级骨架 (索引 / adrs / designs 空组) + 空产品区占位 + 每包 `docs/README.md` 入口; 结合[模板快照机制](scaffold-template-snapshot.md)的「重置类」处置执行。
+模板里的 docs 骨架就是照本协议搭的: 仓库级骨架 (索引 / adrs / designs 空组) + 空产品区占位 + 每包 `docs/README.md` 入口; 装进模板时按[模板快照机制](scaffold-template-snapshot.md)的「重置类」处置执行。
 
 ## 修订记录
 

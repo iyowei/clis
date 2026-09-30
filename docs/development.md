@@ -9,7 +9,7 @@
 bun install
 ```
 
-装钩子由 `scripts/install-git-hooks.mjs` 把守 (prepare 入口): 只在本仓库自身的 git 仓库根执行 `lefthook install`, 被作为依赖安装到别的仓库时自动跳过, 不写宿主仓库的 `.git/hooks` (依据见 [ADR 0005](adrs/0005-engineering-gates-and-hooks.md) 决策第 1 条)。lefthook 不列为依赖: 安装期取 PATH 上的 lefthook (如 `brew install lefthook`), 无则按 `lefthook.yml` 的 `lefthook:` 配置经 bunx 取 pin 版; 都不可用时安装照常完成, 只是没有钩子 (可按提示手动补装)。CI 下不装。
+装钩子由 `scripts/install-git-hooks.mjs` 把守 (prepare 入口): 只在本仓库自身的 git 仓库根执行 `lefthook install`, 被作为依赖安装到别的仓库时自动跳过, 不写使用方仓库的 `.git/hooks` (依据见 [ADR 0005](adrs/0005-engineering-gates-and-hooks.md) 决策第 1 条)。lefthook 不列为依赖: 安装期取 PATH 上的 lefthook (如 `brew install lefthook`), 无则按 `lefthook.yml` 的 `lefthook:` 配置经 bunx 取 pin 版; 都不可用时安装照常完成, 只是没有钩子 (可按提示手动补装)。CI 下不装。
 
 钩子执行链同样有兜底: 机器上没有全局 lefthook 时, 钩子经 `bunx` 取 pin 版照跑; 确认无处可取时按 `assert_lefthook_installed` 响亮报错退非零, 不静默放行 (两键均在 `lefthook.yml`, 依据同上)。
 
@@ -60,7 +60,7 @@ bun run safe-install
 
 **README / LICENSE 类备份别落 CLI 包目录**: npm 会把包根 (`packages/sweep-node-modules-cli/`) 的 `README*` / `LICENSE*` 无条件收进发行包, 且没有任何配置可以排除 (官方 files 节与 npm-packlist 的 strict 规则, 见 ADR 0009 补记第 3 条), 落包根目录的备份会被静默发出去; 备份一律落 `~/tmp`。
 
-装进包里的 `bin/sweep-nm.mjs` (CLI 包内 `packages/sweep-node-modules-cli/bin/sweep-nm.mjs`) 挑选运行时时, win32 下先按 PATH 解析出运行时的绝对路径再执行 (不搜当前工作目录: 本工具在被扫目录里执行, 目录内放同名 `bun.exe` 即可顶替真实运行时; 依据与落法见 [ADR 0007](../packages/sweep-node-modules/docs/adrs/0007-platform-portability.md) 决策第 4 条补记)。它在优先使用产物前核对清单摘要 (含形状版本), 清单缺失 / 损坏 / 版本不支持 / 摘要不符即拒收产物并给出指引 (处置按宿主分流: 仓库检出态给源码入口与重构建, 包态给重装本包); 无产物时回退源码的语义不变。启动器不判工作树脏净 (开发态常脏), 那是发布闸门的职责。清单字段、判定与两道防线的分工见 [ADR 0009](adrs/0009-npm-distribution-form.md) 补记与 `packages/sweep-node-modules-cli/scripts/release-artifact.ts`。
+装进包里的 `bin/sweep-nm.mjs` (CLI 包内 `packages/sweep-node-modules-cli/bin/sweep-nm.mjs`) 挑选运行时时, win32 下先按 PATH 解析出运行时的绝对路径再执行 (不搜当前工作目录: 本工具在被扫目录里执行, 目录内放同名 `bun.exe` 即可顶替真实运行时; 依据与落法见 [ADR 0007](../packages/sweep-node-modules/docs/adrs/0007-platform-portability.md) 决策第 4 条补记)。它在优先使用产物前核对清单摘要 (含形状版本), 清单缺失 / 损坏 / 版本不支持 / 摘要不符即拒收产物并给出指引 (处置按运行场景分流: 仓库检出态给源码入口与重构建, 包态给重装本包); 无产物时回退源码的语义不变。启动器不判工作树脏净 (开发态常脏), 那是发布闸门的职责。清单字段、判定与两道防线的分工见 [ADR 0009](adrs/0009-npm-distribution-form.md) 补记与 `packages/sweep-node-modules-cli/scripts/release-artifact.ts`。
 
 ## 运行时双跑
 
