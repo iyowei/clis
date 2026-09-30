@@ -1,0 +1,25 @@
+{
+  "id": "api-sweep-suspects-skipped-by-default",
+  "kind": "api",
+  "specRefs": ["BC-37", "BC-38"],
+  "fixture": {
+    "projects": [{ "dir": "zone/extensions/proj" }]
+  },
+  "steps": [
+    {
+      "as": "sweeper",
+      "call": {
+        "export": "createSweeper",
+        "args": [{ "roots": ["$FIXTURE/zone"], "home": "$FIXTURE/home" }]
+      }
+    },
+    { "call": { "on": "sweeper", "method": "plan" } }
+  ],
+  "expect": {
+    "result": {
+      "subset": {
+        "batch": []
+      }
+    }
+  }
+}

@@ -1,0 +1,25 @@
+{
+  "id": "api-remove-stale-default-reject",
+  "kind": "api",
+  "specRefs": ["BC-42", "BC-22"],
+  "fixture": {
+    "projects": [{ "dir": "zone/a" }]
+  },
+  "steps": [
+    {
+      "call": {
+        "export": "removeBatch",
+        "args": [
+          ["$FIXTURE/zone/ghost/node_modules", "$FIXTURE/zone/a/node_modules"],
+          { "roots": ["$FIXTURE/zone"] }
+        ]
+      }
+    }
+  ],
+  "expect": {
+    "result": {
+      "subset": { "status": "rejected" }
+    },
+    "fs": [{ "path": "zone/a/node_modules", "state": "exists" }]
+  }
+}

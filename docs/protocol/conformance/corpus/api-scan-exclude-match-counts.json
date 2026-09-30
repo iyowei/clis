@@ -1,0 +1,33 @@
+{
+  "id": "api-scan-exclude-match-counts",
+  "kind": "api",
+  "specRefs": ["BC-09", "BC-33"],
+  "fixture": {
+    "projects": [{ "dir": "zone/a" }, { "dir": "zone/b" }]
+  },
+  "steps": [
+    { "as": "scanner", "call": { "export": "createScanner" } },
+    {
+      "call": {
+        "on": "scanner",
+        "method": "scan",
+        "args": [
+          {
+            "roots": ["$FIXTURE/zone"],
+            "exclude": ["a"],
+            "include": ["b"]
+          }
+        ]
+      }
+    }
+  ],
+  "expect": {
+    "result": {
+      "subset": {
+        "hits": [{ "target": "$FIXTURE/zone/b/node_modules" }],
+        "excludeMatches": [{ "name": "a", "hits": 1 }],
+        "includeMatches": [{ "name": "b", "hits": 1 }]
+      }
+    }
+  }
+}

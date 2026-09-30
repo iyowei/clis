@@ -1,0 +1,31 @@
+{
+  "id": "api-scan-multi-root-dedupe",
+  "kind": "api",
+  "specRefs": ["BC-04", "BC-06"],
+  "fixture": {
+    "projects": [{ "dir": "zone/a" }]
+  },
+  "steps": [
+    { "as": "scanner", "call": { "export": "createScanner" } },
+    {
+      "call": {
+        "on": "scanner",
+        "method": "scan",
+        "args": [
+          {
+            "roots": ["$FIXTURE/zone", "$FIXTURE/zone/a"],
+            "exclude": [],
+            "include": []
+          }
+        ]
+      }
+    }
+  ],
+  "expect": {
+    "result": {
+      "subset": {
+        "hits": [{ "target": "$FIXTURE/zone/a/node_modules" }]
+      }
+    }
+  }
+}

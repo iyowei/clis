@@ -1,0 +1,29 @@
+{
+  "id": "api-guard-root-anchor-symlink",
+  "kind": "api",
+  "specRefs": ["BC-39", "BC-22"],
+  "fixture": {
+    "projects": [{ "dir": "zone/a" }],
+    "symlinks": [{ "at": "link-zone", "to": "zone" }]
+  },
+  "steps": [
+    {
+      "call": {
+        "export": "removeBatch",
+        "args": [
+          ["$FIXTURE/link-zone/a/node_modules"],
+          { "roots": ["$FIXTURE/link-zone"] }
+        ]
+      }
+    }
+  ],
+  "expect": {
+    "result": {
+      "subset": {
+        "status": "rejected",
+        "rejected": [{ "code": "GUARD_ROOT_ANCHOR_SYMLINK" }]
+      }
+    },
+    "fs": [{ "path": "zone/a/node_modules", "state": "exists" }]
+  }
+}

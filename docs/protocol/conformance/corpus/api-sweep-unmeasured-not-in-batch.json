@@ -1,0 +1,33 @@
+{
+  "id": "api-sweep-unmeasured-not-in-batch",
+  "kind": "api",
+  "specRefs": ["BC-14", "BC-15"],
+  "fixture": {
+    "projects": [{ "dir": "zone/a" }],
+    "unreadable": ["zone/a/node_modules"]
+  },
+  "steps": [
+    {
+      "as": "sweeper",
+      "call": {
+        "export": "createSweeper",
+        "args": [{ "roots": ["$FIXTURE/zone"], "home": "$FIXTURE/home" }]
+      }
+    },
+    { "call": { "on": "sweeper", "method": "plan" } }
+  ],
+  "expect": {
+    "result": {
+      "subset": {
+        "entries": [
+          {
+            "target": "$FIXTURE/zone/a/node_modules",
+            "inBatch": false,
+            "unmeasuredCode": "SIZE_UNMEASURED_PERMISSION"
+          }
+        ],
+        "batch": []
+      }
+    }
+  }
+}

@@ -1,0 +1,30 @@
+{
+  "id": "api-remove-partial-failure",
+  "kind": "api",
+  "specRefs": ["BC-25", "EC-05"],
+  "fixture": {
+    "projects": [{ "dir": "zone/a" }],
+    "readonly": ["zone/a/node_modules"]
+  },
+  "steps": [
+    {
+      "call": {
+        "export": "removeBatch",
+        "args": [
+          ["$FIXTURE/zone/a/node_modules"],
+          { "roots": ["$FIXTURE/zone"] }
+        ]
+      }
+    }
+  ],
+  "expect": {
+    "result": {
+      "subset": {
+        "status": "executed",
+        "removal": {
+          "failed": [{ "target": "$FIXTURE/zone/a/node_modules" }]
+        }
+      }
+    }
+  }
+}

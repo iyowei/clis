@@ -1,0 +1,24 @@
+{
+  "id": "api-config-flag-over-env",
+  "kind": "api",
+  "specRefs": ["BC-16"],
+  "fixture": {},
+  "steps": [
+    {
+      "call": {
+        "export": "resolveConfigPath",
+        "args": [
+          {
+            "flag": "$FIXTURE/flag.json",
+            "env": { "SWEEP_NM_CONFIG": "$FIXTURE/env.json" }
+          }
+        ]
+      }
+    }
+  ],
+  "expect": {
+    "result": {
+      "exact": { "path": "$FIXTURE/flag.json", "source": "flag" }
+    }
+  }
+}

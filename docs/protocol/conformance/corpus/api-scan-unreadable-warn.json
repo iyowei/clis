@@ -1,0 +1,33 @@
+{
+  "id": "api-scan-unreadable-warn",
+  "kind": "api",
+  "specRefs": ["BC-08"],
+  "fixture": {
+    "projects": [{ "dir": "zone/ok" }],
+    "unreadable": ["zone/locked"]
+  },
+  "steps": [
+    { "as": "scanner", "call": { "export": "createScanner" } },
+    {
+      "call": {
+        "on": "scanner",
+        "method": "scan",
+        "args": [
+          {
+            "roots": ["$FIXTURE/zone"],
+            "exclude": [],
+            "include": []
+          }
+        ]
+      }
+    }
+  ],
+  "expect": {
+    "result": {
+      "subset": {
+        "hits": [{ "target": "$FIXTURE/zone/ok/node_modules" }],
+        "warnings": [{ "code": "SCAN_DIR_UNREADABLE" }]
+      }
+    }
+  }
+}

@@ -1,0 +1,36 @@
+{
+  "id": "api-remove-batch-ok",
+  "kind": "api",
+  "specRefs": ["BC-24"],
+  "fixture": {
+    "projects": [{ "dir": "zone/a" }, { "dir": "zone/b" }]
+  },
+  "steps": [
+    {
+      "call": {
+        "export": "removeBatch",
+        "args": [
+          ["$FIXTURE/zone/a/node_modules", "$FIXTURE/zone/b/node_modules"],
+          { "roots": ["$FIXTURE/zone"] }
+        ]
+      }
+    }
+  ],
+  "expect": {
+    "result": {
+      "subset": {
+        "status": "executed",
+        "removal": {
+          "removed": [
+            "$FIXTURE/zone/a/node_modules",
+            "$FIXTURE/zone/b/node_modules"
+          ]
+        }
+      }
+    },
+    "fs": [
+      { "path": "zone/a/node_modules", "state": "gone" },
+      { "path": "zone/b/node_modules", "state": "gone" }
+    ]
+  }
+}

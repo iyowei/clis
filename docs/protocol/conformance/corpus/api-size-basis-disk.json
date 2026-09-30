@@ -1,0 +1,10 @@
+{
+  "id": "api-size-basis-disk",
+  "kind": "api",
+  "specRefs": ["BC-12"],
+  "fixture": {},
+  "steps": [{ "call": { "export": "createSizer", "args": [] } }],
+  "expect": {
+    "result": { "subset": { "name": "du", "basis": "disk-usage" } }
+  }
+}

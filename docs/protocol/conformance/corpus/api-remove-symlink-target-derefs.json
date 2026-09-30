@@ -1,0 +1,26 @@
+{
+  "id": "api-remove-symlink-target-derefs",
+  "kind": "api",
+  "specRefs": ["BC-21"],
+  "fixture": {
+    "projects": [{ "dir": "zone/a" }],
+    "symlinks": [{ "at": "zone/node_modules", "to": "zone/a/node_modules" }]
+  },
+  "steps": [
+    {
+      "call": {
+        "export": "removeBatch",
+        "args": [["$FIXTURE/zone/node_modules"], { "roots": ["$FIXTURE/zone"] }]
+      }
+    }
+  ],
+  "expect": {
+    "result": {
+      "subset": { "status": "executed" }
+    },
+    "fs": [
+      { "path": "zone/a/node_modules", "state": "gone" },
+      { "path": "zone/node_modules", "state": "exists" }
+    ]
+  }
+}

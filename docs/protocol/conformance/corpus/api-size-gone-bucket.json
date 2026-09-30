@@ -1,0 +1,51 @@
+{
+  "id": "api-size-gone-bucket",
+  "kind": "api",
+  "specRefs": ["BC-13", "BC-43"],
+  "fixture": {
+    "projects": [{ "dir": "zone/a" }]
+  },
+  "steps": [
+    { "as": "scanner", "call": { "export": "createScanner" } },
+    {
+      "call": {
+        "on": "scanner",
+        "method": "scan",
+        "args": [
+          {
+            "roots": ["$FIXTURE/zone"],
+            "exclude": [],
+            "include": []
+          }
+        ]
+      }
+    },
+    {
+      "call": {
+        "export": "removeBatch",
+        "args": [
+          ["$FIXTURE/zone/a/node_modules"],
+          { "roots": ["$FIXTURE/zone"] }
+        ]
+      }
+    },
+    { "as": "sizer", "call": { "export": "createSizer" } },
+    {
+      "call": {
+        "on": "sizer",
+        "method": "measure",
+        "args": [["$FIXTURE/zone/a/node_modules"]]
+      }
+    }
+  ],
+  "expect": {
+    "result": {
+      "subset": {
+        "entries": [],
+        "unmeasured": [],
+        "gone": ["$FIXTURE/zone/a/node_modules"]
+      }
+    },
+    "fs": [{ "path": "zone/a/node_modules", "state": "gone" }]
+  }
+}

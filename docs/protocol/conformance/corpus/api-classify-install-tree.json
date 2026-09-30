@@ -1,0 +1,20 @@
+{
+  "id": "api-classify-install-tree",
+  "kind": "api",
+  "specRefs": ["BC-37"],
+  "fixture": {},
+  "steps": [
+    {
+      "call": {
+        "export": "classifyTarget",
+        "args": [
+          "$FIXTURE/home/.bun/install/global/node_modules",
+          { "home": "$FIXTURE/home" }
+        ]
+      }
+    }
+  ],
+  "expect": {
+    "result": { "subset": { "kind": "suspect-install-tree" } }
+  }
+}

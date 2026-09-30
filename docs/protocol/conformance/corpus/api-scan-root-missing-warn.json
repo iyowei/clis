@@ -1,0 +1,32 @@
+{
+  "id": "api-scan-root-missing-warn",
+  "kind": "api",
+  "specRefs": ["BC-07"],
+  "fixture": {
+    "projects": [{ "dir": "zone/a" }]
+  },
+  "steps": [
+    { "as": "scanner", "call": { "export": "createScanner" } },
+    {
+      "call": {
+        "on": "scanner",
+        "method": "scan",
+        "args": [
+          {
+            "roots": ["$FIXTURE/zone", "$FIXTURE/ghost"],
+            "exclude": [],
+            "include": []
+          }
+        ]
+      }
+    }
+  ],
+  "expect": {
+    "result": {
+      "subset": {
+        "hits": [{ "target": "$FIXTURE/zone/a/node_modules" }],
+        "warnings": [{ "code": "SCAN_ROOT_MISSING" }]
+      }
+    }
+  }
+}

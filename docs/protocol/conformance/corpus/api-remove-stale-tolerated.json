@@ -1,0 +1,29 @@
+{
+  "id": "api-remove-stale-tolerated",
+  "kind": "api",
+  "specRefs": ["BC-42", "EC-01"],
+  "fixture": {
+    "projects": [{ "dir": "zone/a" }]
+  },
+  "steps": [
+    {
+      "call": {
+        "export": "removeBatch",
+        "args": [
+          ["$FIXTURE/zone/ghost/node_modules", "$FIXTURE/zone/a/node_modules"],
+          { "roots": ["$FIXTURE/zone"], "staleTargets": "missing" }
+        ]
+      }
+    }
+  ],
+  "expect": {
+    "result": {
+      "subset": {
+        "status": "executed",
+        "stale": ["$FIXTURE/zone/ghost/node_modules"],
+        "removal": { "removed": ["$FIXTURE/zone/a/node_modules"] }
+      }
+    },
+    "fs": [{ "path": "zone/a/node_modules", "state": "gone" }]
+  }
+}

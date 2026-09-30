@@ -1,5 +1,5 @@
 {
-  "id": "api-sweep-plan-terminal-event",
+  "id": "api-plan-onprogress-override",
   "kind": "api",
   "specRefs": ["BC-44"],
   "fixture": {
@@ -14,7 +14,11 @@
       }
     },
     {
-      "call": { "on": "sweeper", "method": "plan" },
+      "call": {
+        "on": "sweeper",
+        "method": "plan",
+        "args": [{ "onProgress": "sentinel" }]
+      },
       "collectEvents": true
     }
   ],

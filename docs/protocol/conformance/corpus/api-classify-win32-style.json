@@ -1,0 +1,23 @@
+{
+  "id": "api-classify-win32-style",
+  "kind": "api",
+  "specRefs": ["BC-37"],
+  "fixture": {},
+  "steps": [
+    {
+      "call": {
+        "export": "classifyTarget",
+        "args": [
+          "C:\\Users\\Dev\\.BUN\\global\\node_modules",
+          {
+            "style": { "$probe": "pathops.win32" },
+            "home": "C:\\Users\\Dev"
+          }
+        ]
+      }
+    }
+  ],
+  "expect": {
+    "result": { "subset": { "kind": "suspect-install-tree" } }
+  }
+}

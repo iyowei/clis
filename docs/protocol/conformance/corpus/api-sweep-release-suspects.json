@@ -1,0 +1,31 @@
+{
+  "id": "api-sweep-release-suspects",
+  "kind": "api",
+  "specRefs": ["BC-37", "BC-38"],
+  "fixture": {
+    "projects": [{ "dir": "zone/extensions/proj" }]
+  },
+  "steps": [
+    {
+      "as": "sweeper",
+      "call": {
+        "export": "createSweeper",
+        "args": [
+          {
+            "roots": ["$FIXTURE/zone"],
+            "home": "$FIXTURE/home",
+            "policy": { "releaseSuspects": true }
+          }
+        ]
+      }
+    },
+    { "call": { "on": "sweeper", "method": "plan" } }
+  ],
+  "expect": {
+    "result": {
+      "subset": {
+        "batch": ["$FIXTURE/zone/extensions/proj/node_modules"]
+      }
+    }
+  }
+}
