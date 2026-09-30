@@ -67,6 +67,10 @@ pre-push:
     prettier:
       run: bunx prettier --check '**/*.{ts,tsx,mts,mjs,md,mdx,json,yaml,yml}'
 
+    # 文档与仓库卫生闸门 (与 ci.ts 预演同集合): 引用
+    lint-refs:
+      run: bun run lint:refs
+
     # 双 target (bun + node): 与 CI 的 conformance job 同集合; 复用预演脚本的同一实现
     conformance:
       run: bun scripts/ci.ts --conformance

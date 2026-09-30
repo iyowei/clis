@@ -31,6 +31,8 @@ jobs:
         run: bunx oxlint
       - name: Format check
         run: bunx prettier --check .
+      - name: Doc references
+        run: bun run lint:refs
 
   # 转写验收 (逐字节金样本) 的语料为 macOS 文件系统口径录制 (du 磁盘占用含块分配差异:
   # 同一 fixture 在 APFS 计 8 KB, 在 ext4 因目录节点再计 4 KB → 12 KB), 故在 macOS runner
