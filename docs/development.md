@@ -84,6 +84,18 @@ bun run conformance -- --target "node packages/sweep-node-modules-cli/src/cli.ts
 - **pre-commit** (增量): prettier 重暂存 + oxlint 扫暂存文件; 类型检查例外, 跑全项目 `tsc --noEmit`
 - **pre-push** (全量): 单条调用 `bun scripts/ci.ts` (全链 = 验证组 + 验收组); 步骤集合的单一事实来源在 `scripts/ci.ts`, 与 CI 的两个 job 及 Release 的 verify job 同集合 (`bun scripts/ci.ts --help` 可查看步骤与分组)
 
+> 本地预演全绿不等于 CI 会绿: `bun scripts/ci.ts` 只覆盖「同一台机器 + 命令清单」两个维度, CI 是唯一在「干净环境 + 全部配置 + 真实时序」下运行的地方; 后三样恰是本地预演的全盲区, 全绿给的是虚假的安全感。
+
+2026-09-29 至 30 连续挂红, 复盘出三类盲区:
+
+- **环境态假设** (本地有而 CI 没有的东西): conformance 的 node target 按 exports 解析到 API 包 `dist`, 当时的 conformance job 没有 build 前置, 57 条验收全数报 `ERR_MODULE_NOT_FOUND`; 测试套件假设家目录下已有 `~/tmp` 再 `mkdtemp`, CI runner 的 HOME 下没有, 6 处调用点集体 ENOENT。本机常备状态把这两类假设一路遮到 CI 才爆。
+- **配置脱耦**: workflow yaml 里写死的字面脚本路径与仓库布局脱节, 曾一处多带一层包目录, 直接报「模块未找到」; 同一份命令清单当时散落多处, 改一处漏一处。
+- **并发时序**: 一条契约测试断言在并发下取值漂动, 时绿时红; semrel 往 main 推送版本提交被拒, 成因是两次 push 之间, 旧 run 被批准时分支已前进。
+
+对应的防线均已落地: test 步骤改在隔离 HOME 下执行 (临时家目录经 `scripts/lib/tmp-root.ts` 的 `makeTmpRoot` 创建, 2026-09-30), 「本机常备而 CI 缺失」的环境态依赖不再被本地状态掩盖, 这类盲区本地预演即可抓住; 两个 workflow 的验证与验收步骤已全部经 `scripts/ci.ts` 单源调用 (`bun run ci -- --verify` / `--conformance`), yaml 里不再出现字面命令路径; `release.yml` 有 `concurrency` 排队, 并发漂动的断言已改为取批次序最前触发条。
+
+推前自检因此简化为三条: 写测试与脚本时不要假设本机常备状态 (家目录、已有产物、PATH 上的工具), 这类假设会在隔离 HOME 的 test 步骤当场暴露; 闸门步骤的增删只动 `scripts/ci.ts` 一处, 不往 workflow yaml 里写字面命令; push 连发时以最后一个 run 为准, 时绿时红的用例按并发缺陷处理, 修断言而非重跑。
+
 提交信息按 Conventional Commits 前缀 (`feat` / `fix` / `chore` / `test` 等), 并守单一主题原则: 一个提交只含一个完整逻辑变更, 跨主题须拆分。仓库目前没有 commit-msg 钩子强制该约定, 靠自觉。
 
 ## 相关文档
