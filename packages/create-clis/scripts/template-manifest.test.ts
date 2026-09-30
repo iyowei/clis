@@ -16,9 +16,10 @@ import { join, relative } from 'node:path';
 import { REPO_ROOT, TEMPLATE_MANIFEST } from './template-manifest.ts';
 
 /**
- * 原项目词汇 (替换面口径, 与 spec 词汇表及作者名字段对齐):
+ * 原项目可识别词汇 (分类判据口径, 与 T3 替换引擎的形态面同步):
  * 原包名 (含 `-cli` 变体前缀) / 原 scope / 原 bin 名 / 原 owner (repoUrl 形态由 owner 覆盖) /
- * 作者名形态 (LICENSE 与 package.json author 字段出现, spec 词汇表 `{owner}` 行的位置约定)。
+ * 作者名形态 (LICENSE 与 package.json author, spec 词汇表 `{owner}` 行的位置约定) /
+ * 产品短名 (产品区路径 `docs/sweep/`、备份目录约定等) / 仓库名 (根包名与裸 slug `iyowei/clis`)。
  */
 const VOCABULARY = [
   'sweep-node-modules',
@@ -26,6 +27,8 @@ const VOCABULARY = [
   'sweep-nm',
   'iyowei',
   'iTonyYo',
+  'sweep',
+  'clis',
 ] as const;
 
 /** 走查跳过目录: 依赖 / 版本控制 / 构建缓存 / 生成物 / 变异副本 (口径同 root scripts/lint-doc-shared.ts) */
