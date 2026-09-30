@@ -73,7 +73,7 @@
 
 5. **双语 README 进包** (2026-09-27 补): 仓库根新增 `README.zh-CN.md` (根 README 的中文对照) 后, 包清单由 6 项变 7 项。该文件落在与补记第 3 条同一条强制收录通道内 (带后缀的 README 照样被收, 无需写进 `files` 字段; 2026-09-27 实测: `npm pack --dry-run --json --ignore-scripts` 清单 7 项, 即原 6 项加 `README.zh-CN.md`)。处置: 按补记第 3 条的改动义务同步 `PACK_FILES_EXPECTED`, 白名单断言与单测里的真实 npm 对齐用例照常钉住。
 
-第 2、3 条决策所述「构建」与「入口选择」由本补记扩展, 完整规格见 [开发指南](../development.md)「发布」与 [设计总纲](../designs/sweep-node-modules-design.md) 代码树, 本文不复述。
+第 2、3 条决策所述「构建」与「入口选择」由本补记扩展, 完整规格见 [开发指南](../development.md)「发布」与 [设计总纲](../sweep/designs/sweep-node-modules-design.md) 代码树, 本文不复述。
 
 ## 验证方式与关联引用 (Validation & References)
 
@@ -86,6 +86,6 @@
 **关联引用**
 
 - 被局部取代的两处判断见 [ADR 0003](../../packages/sweep-node-modules/docs/adrs/0003-zero-runtime-deps.md) 与 [ADR 0006](0006-dual-runtime-bun-first.md); 入口分轨见 [ADR 0007](../../packages/sweep-node-modules/docs/adrs/0007-platform-portability.md)。
-- 代码树与模块结构见 [设计总纲](../designs/sweep-node-modules-design.md); 文档命名约定见 [docs/README](../README.md)。
+- 代码树与模块结构见 [设计总纲](../sweep/designs/sweep-node-modules-design.md); 文档命名约定见 [docs/README](../README.md)。
 
 > **修订指引 (2026-09-30)**: 本文包名与路径为包名翻转前的坐标: CLI 发行物现为 `@iyowei/sweep-node-modules-cli` (落 `packages/sweep-node-modules-cli/`, 含 `bin/` 与 `scripts/`); 同名包 `@iyowei/sweep-node-modules` 现为 API 包 (见 [ADR 0010](0010-dual-package-monorepo.md))。

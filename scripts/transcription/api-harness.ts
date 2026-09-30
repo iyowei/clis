@@ -3,7 +3,7 @@
  *
  * 职责: 把一条 api 语料的调用指令 (stdin JSON) 物化为对 API 包真实导出的调用, 把末步返回值 /
  * 抛错 / 收集的进度事件写成 stdout JSON。它与 CLI 面「被测命令是参数」同构: 任何语言的实现
- * 按协议 (docs/protocol/conformance/api-harness-protocol.md) 提供自己的 harness 可执行,
+ * 按协议 (docs/sweep/protocol/conformance/api-harness-protocol.md) 提供自己的 harness 可执行,
  * 套件零改动即可验收。
  *
  * 指令形状 (stdin):
@@ -41,7 +41,7 @@ class HarnessError extends Error {
  * - pathops.posix / pathops.win32: 真实 PathStyle (纯 path 语义, 可直接充当被测的注入面);
  * - deviceProbe.uniform: 恒报同一设备号的 DeviceProbe stub (同设备基准面; 跨设备类场景的
  *   细分 stub 按条款需求增补, 增补不破坏既有语料)。
- * 增补探针时须同步 docs/protocol/conformance/api-harness-protocol.md 的注册表清单。
+ * 增补探针时须同步 docs/sweep/protocol/conformance/api-harness-protocol.md 的注册表清单。
  */
 const PROBES: Record<string, unknown> = {
   'pathops.posix': api.POSIX_STYLE,

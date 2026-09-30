@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "corpus.schema.json",
   "title": "转写契约套件 · 金样本语料 (conformance corpus case)",
-  "description": "每个 .json 文件承载一条用例, 文件名须为 <id>.json。三条设计原则: 其一, fixture 声明式 (工作区树由字段描述, 不写脚本, 由验收器解释执行); 其二, env 白名单 (被测进程只拿最小环境白名单, 不继承宿主环境, case 只声明增量, 保可移植); 其三, expect 断言族按用例取舍 (exitCode / stdout 逐字节 / stdout 与 stderr 的子串含与禁含 / 文件系统终态, 正反两面俱全)。字符串字段内可用 $FIXTURE 引用 fixture 根 (realpath 形态的绝对路径)。套件级语义与维护规则见 docs/protocol/README.md (决策依据见 ADR 0008), 验收器 scripts/transcription/validate.ts 的手写校验为本 schema 的物化子集。两类用例以 kind 判别: cli (缺省; 跑 --target 的被测命令, 断言字符面) 与 api (经 harness 协议调用 API 包导出, 断言返回值 / 抛错 / 事件 / fs; 协议与 harness 形状见 docs/protocol/conformance/api-harness-protocol.md)。",
+  "description": "每个 .json 文件承载一条用例, 文件名须为 <id>.json。三条设计原则: 其一, fixture 声明式 (工作区树由字段描述, 不写脚本, 由验收器解释执行); 其二, env 白名单 (被测进程只拿最小环境白名单, 不继承宿主环境, case 只声明增量, 保可移植); 其三, expect 断言族按用例取舍 (exitCode / stdout 逐字节 / stdout 与 stderr 的子串含与禁含 / 文件系统终态, 正反两面俱全)。字符串字段内可用 $FIXTURE 引用 fixture 根 (realpath 形态的绝对路径)。套件级语义与维护规则见 docs/sweep/protocol/README.md (决策依据见 ADR 0008), 验收器 scripts/transcription/validate.ts 的手写校验为本 schema 的物化子集。两类用例以 kind 判别: cli (缺省; 跑 --target 的被测命令, 断言字符面) 与 api (经 harness 协议调用 API 包导出, 断言返回值 / 抛错 / 事件 / fs; 协议与 harness 形状见 docs/sweep/protocol/conformance/api-harness-protocol.md)。",
   "type": "object",
   "additionalProperties": false,
   "required": ["id", "specRefs", "fixture", "expect"],

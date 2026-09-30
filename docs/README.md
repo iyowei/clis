@@ -4,7 +4,7 @@
 > 适用对象: 本项目维护者与 AI Agent
 > 范围说明: 本索引收录工程技术文档 (决策 / 设计 / 协议 / 开发); 新增文档必须登记 (adrs/ 与 designs/ 与 protocol/ 下登记于各自目录的 README, 其余登记于本索引), 严禁产生散落的孤岛文档。
 >
-> 分层说明: 文档分仓库级与包级两级 (判据与外链标准位见 [文档分层协议](designs/docs-layering.md) 与 [ADR 0011](adrs/0011-docs-and-adr-layering.md)); 包级入口固定为各 `packages/*/docs/README.md`。
+> 分层说明: 文档分三级: 仓库级 (`docs/`) / 产品区 (`docs/<product>/`) / 包级 (`packages/<pkg>/docs/`); 判据与外链标准位见 [文档分层协议](designs/docs-layering.md) 与 [ADR 0011](adrs/0011-docs-and-adr-layering.md); 产品区与包级入口见下「设计文档」区。
 >
 > 命名约定: `designs/` 下文件名不带日期, 文档修订在内容内以「修订记录」登记日期; ADR 按编号顺序追加, 已接受的决定不原地改写。
 
@@ -21,20 +21,24 @@
 
 ## 设计文档
 
-**设计文档索引**
+**设计文档索引 (仓库级)**
 [设计文档索引 (按最佳阅读顺序)](designs/README.md)
-设计总纲、各分册 (命令面与输出 / 可编程 API 面 / 配置与初始化 / 扫描与体积 / 删除安全闸)、两篇加固始末 (删除加固 / 安全加固 (续))、转写双面覆盖与架构总览的登记入口与推荐阅读顺序。
+仓库级设计 (集合仓治理与脚手架) 的登记入口与推荐阅读顺序。
+
+**产品区 (sweep-node-modules)**
+[产品区入口](sweep/README.md)
+sweep 的跨包文档: 产品设计 (总纲 / 配置 / 扫描 / 删除闸 / 加固 / 安全总账 / 双面覆盖 / 架构) 与转写契约套件 (下两节另列明细条目)。
 
 ## 安全防护
 
 **安全防护保障 (全量)**
-[安全防护保障](safety-guardrails.md)
+[安全防护保障](sweep/designs/safety-guardrails.md)
 全量沉淀六组 91 条保障点与 14 类内部账目 (含已知残余风险的诚实账); 面向想深挖的用户与未来维护者; CLI 包 README 的安全防护节从本文裁剪而来。
 
 ## 转写契约
 
 **转写契约套件**
-[转写契约套件 (transcription kit)](protocol/README.md)
+[转写契约套件 (transcription kit)](sweep/protocol/README.md)
 面向未来多语言精准转写的工具包: 编号行为契约、金样本语料、确定性验收器、变异自证与实施提示词; 见 [ADR 0008](../packages/sweep-node-modules/docs/adrs/0008-transcription-kit.md)。
 
 ## 开发

@@ -1,6 +1,6 @@
 # 开发指南
 
-> 面向本仓库的维护者与贡献者; 入门级开发说明见 [CONTRIBUTING](../CONTRIBUTING.md), 本文是深入版。仓库为双包 monorepo: `packages/sweep-node-modules` 承载可编程 API 与全部业务语义, `packages/sweep-node-modules-cli` 是它的 CLI 薄壳 (依据见 [ADR 0010](adrs/0010-dual-package-monorepo.md))。使用说明见 CLI 包 [README](../packages/sweep-node-modules-cli/README.md) 与 API 包 [README](../packages/sweep-node-modules/README.md); 设计决策见 [设计文档索引](designs/README.md); 转写套件见 [转写契约](protocol/README.md)。
+> 面向本仓库的维护者与贡献者; 入门级开发说明见 [CONTRIBUTING](../CONTRIBUTING.md), 本文是深入版。仓库为双包 monorepo: `packages/sweep-node-modules` 承载可编程 API 与全部业务语义, `packages/sweep-node-modules-cli` 是它的 CLI 薄壳 (依据见 [ADR 0010](adrs/0010-dual-package-monorepo.md))。使用说明见 CLI 包 [README](../packages/sweep-node-modules-cli/README.md) 与 API 包 [README](../packages/sweep-node-modules/README.md); 设计决策见 [设计文档索引](designs/README.md); 转写套件见 [转写契约](sweep/protocol/README.md)。
 
 ## 环境准备
 
@@ -36,7 +36,7 @@ bun test
 # 基准四组 (扫描 / 体积 / 真实工作区 / 压测)
 bun run bench
 
-# 转写一致性验收 (金样本语料见 docs/protocol/; target 为 CLI 包内源码路径)
+# 转写一致性验收 (金样本语料见 docs/sweep/protocol/; target 为 CLI 包内源码路径)
 bun run conformance -- --target "bun packages/sweep-node-modules-cli/src/cli.ts"
 
 # 本地 CI 预演 (与 GitHub Actions 的 verify + conformance 两 job 同集合: build / 类型 / 测试 / lint / 格式 / 文档与仓库卫生四闸门 / conformance 双 target; 推前必跑, pre-push 钩子按同集合自动执行)
@@ -91,4 +91,4 @@ bun run conformance -- --target "node packages/sweep-node-modules-cli/src/cli.ts
 - [工程技术文档总索引](README.md)
 - [设计文档索引](designs/README.md): 设计总纲与各分册
 - [架构决策记录](adrs/README.md): ADR
-- [转写契约套件](protocol/README.md): 编号行为契约与金样本语料
+- [转写契约套件](sweep/protocol/README.md): 编号行为契约与金样本语料

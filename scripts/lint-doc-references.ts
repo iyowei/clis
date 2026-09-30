@@ -38,9 +38,9 @@ export interface RefFinding {
 /** 文档别名表: 直角引号里的文档「别称」到仓库相对路径; 实测出现即增补 */
 export const DOC_ALIASES: Readonly<Record<string, string>> = {
   '可编程 API 面': 'packages/sweep-node-modules/docs/designs/api-surface.md',
-  行为契约: 'docs/protocol/behavior-contract.md',
-  覆盖表: 'docs/protocol/conformance/coverage.md',
-  安全防护: 'docs/safety-guardrails.md',
+  行为契约: 'docs/sweep/protocol/behavior-contract.md',
+  覆盖表: 'docs/sweep/protocol/conformance/coverage.md',
+  安全防护: 'docs/sweep/designs/safety-guardrails.md',
 };
 
 /** ADR 引用的行级豁免词: 文档正在陈述「该 ADR 尚不存在」时不算断裂 */

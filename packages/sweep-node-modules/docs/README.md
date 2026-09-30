@@ -24,4 +24,4 @@
 ## 仓库级关联
 
 - [仓库文档索引](../../../docs/README.md) / [设计文档索引](../../../docs/designs/README.md);
-- 本包相关的仓库级设计: [设计总纲](../../../docs/designs/sweep-node-modules-design.md) / [扫描与体积](../../../docs/designs/scan-and-size.md) / [删除安全闸](../../../docs/designs/deletion-guard.md) / [安全防护保障](../../../docs/safety-guardrails.md) / [转写契约套件](../../../docs/protocol/README.md)。
+- 本包相关的仓库级设计: [设计总纲](../../../docs/sweep/designs/sweep-node-modules-design.md) / [扫描与体积](../../../docs/sweep/designs/scan-and-size.md) / [删除安全闸](../../../docs/sweep/designs/deletion-guard.md) / [安全防护保障](../../../docs/sweep/designs/safety-guardrails.md) / [转写契约套件](../../../docs/sweep/protocol/README.md)。

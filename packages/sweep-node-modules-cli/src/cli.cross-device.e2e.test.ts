@@ -3,12 +3,12 @@
  * 与解除路径 (把挂载点声明为独立根)。
  * 现场用 macOS 的 hdiutil 建小磁盘映像挂进 fixture 根 —— 这是测试里造出「另一文件系统」的唯一手段
  * (st_dev 由内核给出, 造不了假); 非 macOS / 无 hdiutil 的宿主整组跳过, 登记见
- * docs/protocol/conformance/coverage.md「未覆盖条款」。
+ * docs/sweep/protocol/conformance/coverage.md「未覆盖条款」。
  * 两道环境门 (任一道不过即整组跳过并播报原因, 不制造假 FAIL): 平台门 (MOUNTABLE, 命令在不在) 与
  * 注册期的真实挂载探针 (probeMountCapability, 映像真挂得起来吗); 用例内的挂载一线
  * (attachImage / attachImageCopy) 与卸载侧对称带重试。
  * 与 cli.e2e.test.ts / cli.anchor.e2e.test.ts 同款双载体参数化。
- * 设计: docs/designs/deletion-guard.md「设备边界」; 契约: docs/protocol/behavior-contract.md BC-41 / OF-15。
+ * 设计: docs/sweep/designs/deletion-guard.md「设备边界」; 契约: docs/sweep/protocol/behavior-contract.md BC-41 / OF-15。
  */
 import { afterAll, afterEach, describe, expect, test } from 'bun:test';
 

@@ -4,7 +4,7 @@
  * 故判定面由注入探针覆盖 (设备号按表给), 真实探针只跑「同卷不误判」与「不可核验不判」的对照;
  * 端到端的真实挂载现场在 cli.cross-device.e2e.test.ts (macOS + hdiutil 门控)。
  * 同批的不变量与锚点用例在 guard.contract.test.ts (按主题分文件, 与 cli.*.e2e.test.ts 同例)。
- * 设计: docs/designs/deletion-guard.md「设备边界」; 契约: docs/protocol/behavior-contract.md BC-41。
+ * 设计: docs/sweep/designs/deletion-guard.md「设备边界」; 契约: docs/sweep/protocol/behavior-contract.md BC-41。
  */
 import { afterEach, describe, expect, test } from 'bun:test';
 

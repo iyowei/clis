@@ -3,13 +3,13 @@
 > **状态**: 已定稿 (Accepted)
 > **日期**: 2026-09-29
 > **决策者**: 沈委
-> **父文档**: [设计总纲](../../../../docs/designs/sweep-node-modules-design.md)
+> **父文档**: [设计总纲](../../../../docs/sweep/designs/sweep-node-modules-design.md)
 >
 > 用途: 定义 API 包 (`@iyowei/sweep-node-modules`, 承载能力与契约) 与 CLI 薄壳包 (`@iyowei/sweep-node-modules-cli`, 解析 → 调 API → 渲染 → 交互) 的切分, 以及前者对外的可编程面。
-> 范围: 本文只管「API 面长什么样」(导出面 / 错误模型 / 进度与取消 / 域类型 / 缺口处置 / 调用示例); 命令面与字节级输出规格见 [命令面与输出](../../../sweep-node-modules-cli/docs/designs/cli-surface.md), 配置模型见 [配置与初始化](../../../../docs/designs/config-and-initialization.md), 删除安全语义与安全闸见 [删除安全闸](../../../../docs/designs/deletion-guard.md), 扫描与体积算法见 [扫描与体积](../../../../docs/designs/scan-and-size.md)。
-> 事实基准: 实读仓库 (2026-09-29) 的 `src/` 全部模块、[行为契约](../../../../docs/protocol/behavior-contract.md)、`docs/designs/` 四份分册与 [ADR 0002](../adrs/0002-fixed-config-and-preview-execution.md) / [0003](../adrs/0003-zero-runtime-deps.md) / [0006](../../../../docs/adrs/0006-dual-runtime-bun-first.md) / [0009](../../../../docs/adrs/0009-npm-distribution-form.md) / [0010](../../../../docs/adrs/0010-dual-package-monorepo.md); 需求侧输入为使用方场景清单 (7 场景 + 9 条跨场景观察); 验证侧输入为使用方体验报告与五份调用代码 (外部材料, 逐条处置见 §12)。
+> 范围: 本文只管「API 面长什么样」(导出面 / 错误模型 / 进度与取消 / 域类型 / 缺口处置 / 调用示例); 命令面与字节级输出规格见 [命令面与输出](../../../sweep-node-modules-cli/docs/designs/cli-surface.md), 配置模型见 [配置与初始化](../../../../docs/sweep/designs/config-and-initialization.md), 删除安全语义与安全闸见 [删除安全闸](../../../../docs/sweep/designs/deletion-guard.md), 扫描与体积算法见 [扫描与体积](../../../../docs/sweep/designs/scan-and-size.md)。
+> 事实基准: 实读仓库 (2026-09-29) 的 `src/` 全部模块、[行为契约](../../../../docs/sweep/protocol/behavior-contract.md)、`docs/designs/` 四份分册与 [ADR 0002](../adrs/0002-fixed-config-and-preview-execution.md) / [0003](../adrs/0003-zero-runtime-deps.md) / [0006](../../../../docs/adrs/0006-dual-runtime-bun-first.md) / [0009](../../../../docs/adrs/0009-npm-distribution-form.md) / [0010](../../../../docs/adrs/0010-dual-package-monorepo.md); 需求侧输入为使用方场景清单 (7 场景 + 9 条跨场景观察); 验证侧输入为使用方体验报告与五份调用代码 (外部材料, 逐条处置见 §12)。
 > 标注约定: 「实读」= 仓库现状; 「设计」= 本文的推演; 每条落点标注「复用」「新增」「改动」三档之一 (复用 = 现有函数原样升为导出面, 逻辑不动; 改动 = 现有形状或签名需变; 新增 = 今天不存在的东西)。
-> 时点说明: 标注「实读」的代码事实均为**单包时代 (2026-09-29 拆分前)** 的实读, 用于推导设计; 落地后的现坐标 (双包) 见 [ADR 0010](../../../../docs/adrs/0010-dual-package-monorepo.md) 与 [设计总纲](../../../../docs/designs/sweep-node-modules-design.md) 结构一节。
+> 时点说明: 标注「实读」的代码事实均为**单包时代 (2026-09-29 拆分前)** 的实读, 用于推导设计; 落地后的现坐标 (双包) 见 [ADR 0010](../../../../docs/adrs/0010-dual-package-monorepo.md) 与 [设计总纲](../../../../docs/sweep/designs/sweep-node-modules-design.md) 结构一节。
 > 反馈处置: 体验报告逐条处置见文末 §12 (57 条: 采纳 49 / 部分采纳 7 / 驳回 1)。
 
 ## 修订记录
@@ -1093,10 +1093,10 @@ export type SkipReason =
 
 **关系定性 (设计): 编号体系与 code 体系并列而不同职能, 不复用编号当 code。**
 
-| 体系              | 是什么                                                                                     | 覆盖面                                           | 生命周期                         |
-| ----------------- | ------------------------------------------------------------------------------------------ | ------------------------------------------------ | -------------------------------- |
-| BC / OF / EC 编号 | **行为条款编号**, 面向「转写与验收」的语料背书 (实读 `docs/protocol/behavior-contract.md`) | 全行为面 (含非错误的形态约束, 如 OF-05 体积格式) | 会随设计演进拆分 / 合并 / 重编号 |
-| 本文档的 `code`   | **调用期判别值**, 面向程序分支                                                             | 失败 / 跳过 / 告警 / 未测到                      | 发布即冻结                       |
+| 体系              | 是什么                                                                                           | 覆盖面                                           | 生命周期                         |
+| ----------------- | ------------------------------------------------------------------------------------------------ | ------------------------------------------------ | -------------------------------- |
+| BC / OF / EC 编号 | **行为条款编号**, 面向「转写与验收」的语料背书 (实读 `docs/sweep/protocol/behavior-contract.md`) | 全行为面 (含非错误的形态约束, 如 OF-05 体积格式) | 会随设计演进拆分 / 合并 / 重编号 |
+| 本文档的 `code`   | **调用期判别值**, 面向程序分支                                                                   | 失败 / 跳过 / 告警 / 未测到                      | 发布即冻结                       |
 
 **复用哪些** (语义与判定逐条复用, 不新造判定): 全部判定原样来自现有代码分支; EC-01 (TOCTOU 归 missing)、EC-02 (整批拒绝)、EC-03 (win32 与 du 平台守卫)、EC-04 (符号链接只删链接)、EC-05 (半完成语义 → `partialRisk`)、EC-07 (ENOENT 两分 → `REMOVE_ENOENT_SURVIVOR`)、EC-08 (命令解析面不含 cwd, 属 CLI 侧) 各自的判定一个不改。
 
@@ -1186,7 +1186,7 @@ export function isSweepError(value: unknown): value is SweepError;
 | `INVALID_ARGUMENT`     | `{ field }`           | 构造期同步抛 (见 §2.7)                                                                                                                               |
 | `CANCELLED`            | `{ phase, partial? }` | `phase` 取 `SweepPhase` 全集 (7 个值都可能出现, 回答 G8); `partial` **只在 `phase === 'remove'` 时出现**, 且为「取消点为止已出桶」的 `RemovalResult` |
 
-设计说明: `SweepError` 是全仓「以 `createXxx()` 工厂交出实例、不导出类」惯例的**唯一例外** (实读惯例见 `docs/designs/architecture-overview.md`)。取例外的理由: 调用方要 `instanceof` 判别与 `stack` / `cause` 保留 (急切需要后者的场景用 `isSweepError`)。`class` 属可擦除语法, 不违反 ADR 0006 的语法约束。
+设计说明: `SweepError` 是全仓「以 `createXxx()` 工厂交出实例、不导出类」惯例的**唯一例外** (实读惯例见 `docs/sweep/designs/architecture-overview.md`)。取例外的理由: 调用方要 `instanceof` 判别与 `stack` / `cause` 保留 (急切需要后者的场景用 `isSweepError`)。`class` 属可擦除语法, 不违反 ADR 0006 的语法约束。
 
 ---
 

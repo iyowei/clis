@@ -22,7 +22,7 @@
 
 ## 决策结论与选择原因 (Decision & Why)
 
-1. **判定模型: 固定配置**. `roots` (扫描根, 任意多个) + `exclude` (排除名单, 从根到 `node_modules` 的任意一级目录名命中即跳过) + `include` (包含名单, 白名单, 命中才纳入, 口径与 `exclude` 同款) 写在 `~/.config/sweep-node-modules/config.json`; 名单字段的完整规格 (含「排除优先」等规则) 见 [配置与初始化](../../../../docs/designs/config-and-initialization.md)。
+1. **判定模型: 固定配置**. `roots` (扫描根, 任意多个) + `exclude` (排除名单, 从根到 `node_modules` 的任意一级目录名命中即跳过) + `include` (包含名单, 白名单, 命中才纳入, 口径与 `exclude` 同款) 写在 `~/.config/sweep-node-modules/config.json`; 名单字段的完整规格 (含「排除优先」等规则) 见 [配置与初始化](../../../../docs/sweep/designs/config-and-initialization.md)。
 2. **执行模型: 预览默认, `--yes` 才删**. 不带 `--yes` 时只输出清单 (路径 + 体积 + 合计), 零副作用; 带 `--yes` 时执行删除。
 3. **临时追加**: 命令行 `--exclude` 与 `--include` 均可重复, 与配置合并。
 
@@ -41,7 +41,7 @@
 
 **补记 (2026-09-24)**
 
-上述「权衡妥协」首条的前提 (被清项目的 `node_modules` 需要重装, 可恢复, 非数据损失) 经安全审计确证在「包管理器 / 应用的安装树」类目标上**不成立**: 全局包树、npx 缓存、编辑器扩展依赖与版本管理器的 `lib/node_modules` 删后无法由项目级重装恢复 (词表与实测理由见 [配置与初始化](../../../../docs/designs/config-and-initialization.md)「默认排除名单」)。据此补两道防线: 扫描面 `exclude` 字段缺省取内置默认排除名单; 删除面按目标类别语义闸把疑似安装树移出缺省删除批 (`--force` 显式放行, 判定见 [删除安全闸](../../../../docs/designs/deletion-guard.md)「语义闸」)。第 1 条所述名单字段的规格随之扩展 (默认值 + `--force` 旗标), 完整规格见 [配置与初始化](../../../../docs/designs/config-and-initialization.md)「配置规格」与 [命令面与输出](../../../sweep-node-modules-cli/docs/designs/cli-surface.md)「命令面」, 本文不复述。
+上述「权衡妥协」首条的前提 (被清项目的 `node_modules` 需要重装, 可恢复, 非数据损失) 经安全审计确证在「包管理器 / 应用的安装树」类目标上**不成立**: 全局包树、npx 缓存、编辑器扩展依赖与版本管理器的 `lib/node_modules` 删后无法由项目级重装恢复 (词表与实测理由见 [配置与初始化](../../../../docs/sweep/designs/config-and-initialization.md)「默认排除名单」)。据此补两道防线: 扫描面 `exclude` 字段缺省取内置默认排除名单; 删除面按目标类别语义闸把疑似安装树移出缺省删除批 (`--force` 显式放行, 判定见 [删除安全闸](../../../../docs/sweep/designs/deletion-guard.md)「语义闸」)。第 1 条所述名单字段的规格随之扩展 (默认值 + `--force` 旗标), 完整规格见 [配置与初始化](../../../../docs/sweep/designs/config-and-initialization.md)「配置规格」与 [命令面与输出](../../../sweep-node-modules-cli/docs/designs/cli-surface.md)「命令面」, 本文不复述。
 
 ## 验证方式与关联引用 (Validation & References)
 
@@ -52,5 +52,5 @@
 **关联引用**
 
 - 定位见 [ADR 0001](0001-workspace-level-cleaner.md)。
-- 删除安全闸 (只允许删「末段恰为 `node_modules` 且在根之下」的目录) 属实现级设计, 见 [删除安全闸](../../../../docs/designs/deletion-guard.md)。
+- 删除安全闸 (只允许删「末段恰为 `node_modules` 且在根之下」的目录) 属实现级设计, 见 [删除安全闸](../../../../docs/sweep/designs/deletion-guard.md)。
 - 配置的生成与再编辑 (`sweep-nm init` 向导) 属一次性设置, 不属每次运行的删除判定链, 见 [ADR 0004](0004-config-initialization-wizard.md)。

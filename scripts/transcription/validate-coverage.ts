@@ -19,9 +19,9 @@ import { join } from 'node:path';
 
 import { REPO_ROOT } from '../lint-doc-shared.ts';
 
-const CONTRACT_MD = 'docs/protocol/behavior-contract.md';
-const COVERAGE_MD = 'docs/protocol/conformance/coverage.md';
-const CORPUS_DIR = 'docs/protocol/conformance/corpus';
+const CONTRACT_MD = 'docs/sweep/protocol/behavior-contract.md';
+const COVERAGE_MD = 'docs/sweep/protocol/conformance/coverage.md';
+const CORPUS_DIR = 'docs/sweep/protocol/conformance/corpus';
 
 /** 条款号形态 (行首表格单元格): BC-01 / OF-15 / EC-08 */
 const CLAUSE_IN_CELL = /(?:BC|OF|EC)-\d+/g;

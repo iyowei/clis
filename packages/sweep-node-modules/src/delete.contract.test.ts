@@ -3,7 +3,7 @@
  * 复查提示 / 桶内保输入序 / 空输入 / 组件级安全复核 / 链头替换 / rm 阶段 ENOENT 的本体复核),
  * 正常路径并断言邻居目录不被波及; Node 侧由 `delete.node-smoke.ts` 直跑冒烟, 经文末用例
  * 以子进程方式实测 (未装 node 时 skip)。
- * 设计: docs/designs/deletion-guard.md「执行语义」。
+ * 设计: docs/sweep/designs/deletion-guard.md「执行语义」。
  */
 import { afterEach, describe, expect, test } from 'bun:test';
 

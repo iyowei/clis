@@ -30,7 +30,7 @@
 
 ## 决策结论与选择原因 (Decision & Why)
 
-1. **套件结构** (`docs/protocol/` + `scripts/transcription/`): 编号行为契约 (BC / OF / EC) + 语料 schema + 金样本语料 + 覆盖表 + 确定性验收器 + 变异生成器 + 实施提示词。
+1. **套件结构** (`docs/sweep/protocol/` + `scripts/transcription/`): 编号行为契约 (BC / OF / EC) + 语料 schema + 金样本语料 + 覆盖表 + 确定性验收器 + 变异生成器 + 实施提示词。
 2. **黑盒优先**: 验收接口 = argv / env / stdin → stdout / stderr / 退出码 / 文件系统终态; 任何语言的实现经同一语料验收 (各语言的模块边界不进验收口径)。
 3. **语料纪律**: 期望必须能由条款 + fixture 尺寸**推演辩护**, 严禁「跑一遍记下来」式捕获; 语料只增不改既有期望, 改期望须过三向定责 (修语料 / 修契约 / 修实现) 并写明依据。
 4. **变异自证**: 验收器必须能抓住注入缺陷的 mutant, 抓不住的语料不算数。
@@ -55,19 +55,19 @@
 **验证口径 (落地核验)**
 
 1. TS 参考实现金样本全部用例通过 (bun 与 node 双载体, 三连跑逐字节一致);
-2. 变异自证全部被抓住 (覆盖表见 `docs/protocol/conformance/coverage.md`);
+2. 变异自证全部被抓住 (覆盖表见 `docs/sweep/protocol/conformance/coverage.md`);
 3. 不可黑盒条款显式豁免并写明理由 (逐条见覆盖表)。
 
 **关联引用**
 
 - 路径与入口形态见 [ADR 0007](0007-platform-portability.md); 零依赖约束见 [ADR 0003](0003-zero-runtime-deps.md)。
-- 套件门面与转写流程见 [docs/protocol/README.md](../../../../docs/protocol/README.md)。
+- 套件门面与转写流程见 [docs/sweep/protocol/README.md](../../../../docs/sweep/protocol/README.md)。
 
 ## 补记 (API 面验收机制与套件归位, 2026-09-30)
 
-依「转写双面覆盖」设计 ([transcription-dual-surface.md](../../../../docs/designs/transcription-dual-surface.md)) 的承诺补记:
+依「转写双面覆盖」设计 ([transcription-dual-surface.md](../../../../docs/sweep/designs/transcription-dual-surface.md)) 的承诺补记:
 
-1. **双面覆盖**: 套件在 CLI 面 (既有金样本) 之外新增 **API 面验收**: 经 [API harness 协议](../../../../docs/protocol/conformance/api-harness-protocol.md), 任意语言的实现提供 harness 可执行 (stdin 收调用指令 JSON, stdout 回结果 JSON; 含探针注册表), 验收器以 `--api-target` 参数化接入, 与「被测命令是参数」同构; 参考实现为 `scripts/transcription/api-harness.ts`; api 语料已落位 (首批 23 条, 复审清偿轮补 2 条, 现 25 条; 覆盖表登记)。
+1. **双面覆盖**: 套件在 CLI 面 (既有金样本) 之外新增 **API 面验收**: 经 [API harness 协议](../../../../docs/sweep/protocol/conformance/api-harness-protocol.md), 任意语言的实现提供 harness 可执行 (stdin 收调用指令 JSON, stdout 回结果 JSON; 含探针注册表), 验收器以 `--api-target` 参数化接入, 与「被测命令是参数」同构; 参考实现为 `scripts/transcription/api-harness.ts`; api 语料已落位 (首批 23 条, 复审清偿轮补 2 条, 现 25 条; 覆盖表登记)。
 2. **机制决策与排除备选**: 采纳「通用 JSON 调用协议 harness」; 排除「验收器直接 import TS」(绑死语言, 与转写使命脱节) 与「CLI 加 `--json` 模式间接验」(属产品功能变更, 且覆盖不了 CLI 不消费的 API 面)。
-3. **套件归位**: 套件自 CLI 包归位仓库根 (`scripts/transcription/` 与 `docs/protocol/` 同在根), 归位判据为「服务对象」(服务两包与未来多语言重写, 属仓库级设施); [ADR 0010](../../../../docs/adrs/0010-dual-package-monorepo.md) 的「随能力进 API 包」表述已由其修订指引重新裁定。
+3. **套件归位**: 套件自 CLI 包归位仓库根 (`scripts/transcription/` 与 `docs/sweep/protocol/` 同在根), 归位判据为「服务对象」(服务两包与未来多语言重写, 属仓库级设施); [ADR 0010](../../../../docs/adrs/0010-dual-package-monorepo.md) 的「随能力进 API 包」表述已由其修订指引重新裁定。
 4. **实证回退两则**: EC-04 与 BC-26 的「API 黑盒」标注经语料实证各自回退 (realpath 化使「只删链接」命题不可黑盒触达; 退出码口径属 CLI 包)。

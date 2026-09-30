@@ -1,7 +1,7 @@
 /**
  * 转写契约套件 · 语料层。
  *
- * 职责: 语料字段类型 (与 docs/protocol/conformance/corpus.schema.json 对应) + $FIXTURE 变量替换
+ * 职责: 语料字段类型 (与 docs/sweep/protocol/conformance/corpus.schema.json 对应) + $FIXTURE 变量替换
  * 契约 + 目录加载。字段语义以 schema 为准; 手写校验 (schema 的物化子集) 在 validate.ts, 只为尽早
  * 给出可读报错, 不复刻 schema 的全部约束。
  */
@@ -75,7 +75,7 @@ export interface CliCorpusCase {
   expect: ExpectSpec;
 }
 
-/** api 用例的单步调用指令 (形状与执行语义见 docs/protocol/conformance/api-harness-protocol.md) */
+/** api 用例的单步调用指令 (形状与执行语义见 docs/sweep/protocol/conformance/api-harness-protocol.md) */
 export interface ApiCallStep {
   as?: string;
   call: {
@@ -148,7 +148,7 @@ export function replaceVarsDeep(value: unknown, root: string): unknown {
  * ### 数据追踪示例
  * ```text
  * Input（真实 Payload）
- *   dir = 'docs/protocol/conformance/corpus' (含 scan-nested-prune.json 与 delete-execute-ok.json)
+ *   dir = 'docs/sweep/protocol/conformance/corpus' (含 scan-nested-prune.json 与 delete-execute-ok.json)
  *
  * 步骤 1：取 .json 文件名并排序
  *   names = ['delete-execute-ok.json', 'scan-nested-prune.json']

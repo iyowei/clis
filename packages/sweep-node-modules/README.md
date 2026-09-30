@@ -672,4 +672,4 @@ Environment setup, common commands, dual-runtime verification, and commit hooks:
 
 - [Engineering documentation index](../../docs/README.md)
 - [API surface design](docs/designs/api-surface.md): the authoritative export surface, error codes, and behavior contracts behind this page
-- [Safety guardrails](../../docs/safety-guardrails.md), the full account (in Chinese)
+- [Safety guardrails](../../docs/sweep/designs/safety-guardrails.md), the full account (in Chinese)

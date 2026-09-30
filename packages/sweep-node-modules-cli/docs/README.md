@@ -17,4 +17,4 @@
 ## 仓库级关联
 
 - [仓库文档索引](../../../docs/README.md) / [设计文档索引](../../../docs/designs/README.md);
-- 本包相关的仓库级设计: [设计总纲](../../../docs/designs/sweep-node-modules-design.md) / [配置与初始化](../../../docs/designs/config-and-initialization.md) / [安全防护保障](../../../docs/safety-guardrails.md)。
+- 本包相关的仓库级设计: [设计总纲](../../../docs/sweep/designs/sweep-node-modules-design.md) / [配置与初始化](../../../docs/sweep/designs/config-and-initialization.md) / [安全防护保障](../../../docs/sweep/designs/safety-guardrails.md)。

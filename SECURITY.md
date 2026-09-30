@@ -38,4 +38,4 @@ Reports we treat as security issues include, for example:
 - output that can be forged or injected into, so the CLI shows something other than what is actually on disk;
 - a published artifact that fails or bypasses its self-check, or a compromise of the release chain.
 
-The full set of safety guarantees, including the honest account of the known residual risks, is documented in [docs/safety-guardrails.md](docs/safety-guardrails.md) (in Chinese).
+The full set of safety guarantees, including the honest account of the known residual risks, is documented in [docs/sweep/designs/safety-guardrails.md](docs/sweep/designs/safety-guardrails.md) (in Chinese).

@@ -3,7 +3,7 @@
  * 并注入单点缺陷, 生成到 mutants/gen-<id>/; 副本自带 node_modules 链接 (指向 api 副本), 可独立运行。
  *
  * 用途 (变异自证): 语料必须能抓住每一个 mutant; 抓不住 = 语料盲区 (或该 mutant 定义过弱),
- * 不是「实现没问题」。注入面见下方 MUTANTS 清单 (重跑纪律见 docs/protocol/README.md「维护规则」),
+ * 不是「实现没问题」。注入面见下方 MUTANTS 清单 (重跑纪律见 docs/sweep/protocol/README.md「维护规则」),
  * 每个 mutant 只做一行级补丁。
  *
  * 幂等: 每次重建自己的 gen-* 目录, 并清掉清单之外的陈旧 gen-*; 锚点失配 (源码在漂移) 时显式

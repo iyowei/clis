@@ -7,7 +7,7 @@
 > **前篇**: [删除加固](install-tree-hardening.md)
 >
 > 用途: 讲清安全审计第二批 (第 3~11 条) 的来龙去脉: 问题怎么形成、为什么严重、怎么修的; 面向未来的维护者, 以及第一次读这个仓库的技术读者。
-> 范围: 条款与旗标语义的权威在 [删除安全闸](deletion-guard.md)、[配置与初始化](config-and-initialization.md)、[命令面与输出](../../packages/sweep-node-modules-cli/docs/designs/cli-surface.md)、[扫描与体积](scan-and-size.md); 本文不复述条款, 只讲它们为什么长成现在这样。
+> 范围: 条款与旗标语义的权威在 [删除安全闸](deletion-guard.md)、[配置与初始化](config-and-initialization.md)、[命令面与输出](../../../packages/sweep-node-modules-cli/docs/designs/cli-surface.md)、[扫描与体积](scan-and-size.md); 本文不复述条款, 只讲它们为什么长成现在这样。
 > 权威: 行为与决策的权威在 `docs/designs/` 各分册与 `docs/adrs/`; 本文属解释性归纳。
 
 ## 修订记录
@@ -70,7 +70,7 @@
 
 这不是经验之谈: npm 官方 `files` 节原文写着 "Certain files are always included, regardless of settings", 实现侧同证 (npm-packlist 里对包根 README / LICENSE 的硬编码规则, 独立于 `files` 与 `.npmignore`)。于是落在仓库根的一份 README 备份, 会被静默发出去。治前实测: 包清单 8 项, 含两份 README 备份; 治后 6 项 (当轮快照; 后在白名单增补 `README.zh-CN.md` 一项, 现为 7 项 — 以 `release-artifact.ts` 的 `PACK_FILES_EXPECTED` 实时内容为准)。打包规则里写着「这几样永远随车」, 不设例外通道; 对策只能是: 把不该上车的移出仓库 (备份落 `~/tmp`), 再让白名单断言常驻钉住复发。
 
-闸门的触发面也查过, 边界如实: `npm publish` 与 `bun publish` 都在闸门内 (`bun publish` 的结论来自官方测试与源码核证, 不是凭印象); 已知残留口是 `npm pack` 与 `npm publish <tarball>`, 打好的包再发布, 不经它。不补 `prepack` 兜底的理由: `npm pack --dry-run` 是常用的只读查看动作, 挂上闸门会让它在脏树 / 未构建时硬失败, 代价大于收益; 该残留口的补偿是白名单断言已在闸门内覆盖同一风险面。本节的闸门与自证设计, 完整规格见 [ADR 0009](../adrs/0009-npm-distribution-form.md) 补记。
+闸门的触发面也查过, 边界如实: `npm publish` 与 `bun publish` 都在闸门内 (`bun publish` 的结论来自官方测试与源码核证, 不是凭印象); 已知残留口是 `npm pack` 与 `npm publish <tarball>`, 打好的包再发布, 不经它。不补 `prepack` 兜底的理由: `npm pack --dry-run` 是常用的只读查看动作, 挂上闸门会让它在脏树 / 未构建时硬失败, 代价大于收益; 该残留口的补偿是白名单断言已在闸门内覆盖同一风险面。本节的闸门与自证设计, 完整规格见 [ADR 0009](../../adrs/0009-npm-distribution-form.md) 补记。
 
 ## 根之下的另一块盘
 
@@ -118,7 +118,7 @@
 
 第二条链: 只要 lefthook 留在 `devDependencies`, 宿主安装本包时会被连带装上它; 而它自带 `postinstall`, 且被包管理器的默认信任名单放行 (bun 的内置名单含它), 于是它的 `postinstall` 也会去写宿主钩子。两条链互为备份, 防住一条还有另一条。
 
-修法对应两刀, 加两个保险 (设计依据见 [ADR 0005](../adrs/0005-engineering-gates-and-hooks.md) 决策第 1 条):
+修法对应两刀, 加两个保险 (设计依据见 [ADR 0005](../../adrs/0005-engineering-gates-and-hooks.md) 决策第 1 条):
 
 - `prepare` 换守卫脚本 (`scripts/install-git-hooks.mjs`): 只在本包自身的 git 仓库根 (cwd 所在 git 根即包根) 执行装钩子; 被作为依赖安装时整支跳过, 不写宿主仓库; CI 下短路; 装钩子失败也不阻断依赖安装。
 - lefthook 移出依赖: 不再往依赖树里预装; 取用改为「PATH 上的全局安装优先, 无则 `bunx` 取 pin 版」。
@@ -134,7 +134,7 @@
 
 Windows 上的裸名执行, 把处境变成了入口: `CreateProcessW` 的搜索序把当前目录排在 PATH 之前 (微软官方文档: 搜索序第 2 位即 the current directory for the parent process); Node 走的 libuv 同样先试 cwd 再扫 PATH, 且只试 `.com` / `.exe` 两个扩展名 (微软官方文档与 libuv 源码双证)。于是: 在被扫目录里放一个 `bun.exe` (或 `bun.com`), 启动器喊「bun」时, 先应声的就是它。像喊一个名字, 先应声的是房间里站着的人, 而不是通讯录上的那位; 而被扫的目录, 恰恰是一间外人能进出的房间。
 
-修法是三个入口的运行时解析统一排除当前目录 (依据见 [ADR 0007](../../packages/sweep-node-modules/docs/adrs/0007-platform-portability.md) 决策第 4 条补记): npm 入口 (`.mjs`) 在 win32 下先按 PATH 解析绝对路径再执行 (空条目与相对条目跳过, 两者在 Windows 上都意为当前目录); cmd 入口改用 `for` 的 PATH 展开修饰符, 只搜 PATH; sh 入口的 `command -v` 与 `exec` 本就只按 PATH。
+修法是三个入口的运行时解析统一排除当前目录 (依据见 [ADR 0007](../../../packages/sweep-node-modules/docs/adrs/0007-platform-portability.md) 决策第 4 条补记): npm 入口 (`.mjs`) 在 win32 下先按 PATH 解析绝对路径再执行 (空条目与相对条目跳过, 两者在 Windows 上都意为当前目录); cmd 入口改用 `for` 的 PATH 展开修饰符, 只搜 PATH; sh 入口的 `command -v` 与 `exec` 本就只按 PATH。
 
 同一次审计还带出一处同型修复: 体积统计的 `du` 探针是 POSIX 绝对路径 (`/usr/bin/du`), 在 win32 上会被解析成「当前盘根」下的 `usr\bin\du`, 该盘存在同名外来程序时即被 spawn。守卫落在探针处: win32 一律返回「无 `du`」, 走纯实现基线, 与「du 快路径仅 unix」的既有口径对齐。
 

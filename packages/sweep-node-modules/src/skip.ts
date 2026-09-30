@@ -3,7 +3,7 @@
  * 两类判定本体不在本模块: 疑似安装树见 classify.ts (纯路径形态, 零 IO), 跨设备目标见 guard.ts
  * (设备比对); 本模块只管「挡下之后怎么说、怎么放行」——放行通道两样, 互不通兑:
  * 疑似安装树是 `--force` (语义面: 删后能否由项目级重装恢复), 跨设备是声明独立根或先卸载
- * (授权面: 目标落在另一文件系统上, 旗标放行不了, 见 docs/designs/deletion-guard.md「设备边界」)。
+ * (授权面: 目标落在另一文件系统上, 旗标放行不了, 见 docs/sweep/designs/deletion-guard.md「设备边界」)。
  * 入参为 SkipCandidate (非渲染类型): 判定被绑在渲染类型上会让写侧依赖读侧的展示形态。
  */
 import { type ClassifyOptions, classifyTarget } from './classify.ts';

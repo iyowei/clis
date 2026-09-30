@@ -15,10 +15,11 @@ This block is written and re-added by `turbo` before repository-scoped commands 
 
 ## 文档分层与读取路径
 
-- **仓库级文档**在 `docs/`: 先读 [文档总索引](docs/README.md); 设计文档入口为 [设计文档索引](docs/designs/README.md) (分「仓库级设计」与「产品设计」两组);
-- **包级文档**在各包 `packages/<pkg>/docs/`, 入口固定为包内 `docs/README.md` (该包文档清单 + 包级 ADR + 回链仓库级);
-- **ADR 编号跨两级全局唯一**: 仓库级在 `docs/adrs/`, 包级在各包 `docs/adrs/`; 总索引 [docs/adrs/README.md](docs/adrs/README.md) 列全部编号 (包级行外链到包内);
-- **读取顺序**: 仓库级索引 → 顺外链进包 → 包内文档; 从包回到仓库级同样有回链 (双向织链)。
+- **仓库级文档**在 `docs/`: 先读 [文档总索引](docs/README.md); 仓库级设计入口为 [设计文档索引](docs/designs/README.md);
+- **产品区文档**在 `docs/<product>/` (现为 `docs/sweep/`): 该产品的跨包/整体文档与验收套件, 入口为 [产品区 README](docs/sweep/README.md);
+- **包级文档**在各包 `packages/<pkg>/docs/`, 入口固定为包内 `docs/README.md` (该包文档清单 + 包级 ADR + 回链; 内部 `designs/` 与 `adrs/` 与仓库级同构);
+- **ADR 编号跨三级全局唯一**: 仓库级在 `docs/adrs/`, 包级在各包 `docs/adrs/`; 总索引 [docs/adrs/README.md](docs/adrs/README.md) 列全部编号 (包级行外链到包内);
+- **读取顺序**: 总索引 → 产品区 / 包入口 → 明细; 各级之间有双向外链 (仓库级 ↔ 产品区 ↔ 包级)。
 
 ## 结构事实
 

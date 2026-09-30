@@ -10,9 +10,9 @@
  * - fixture.ts  fixture 建树 / setup 预置 / 最小 env / 执行 / 清理 (cli 与 api 两类 case);
  * - compare.ts  逐项比对 (cli: 退出码 / stdout 与 stderr 的子串含与禁含 / fs 终态; api: 返回值 / 抛错 / 事件);
  * - report.ts   报告数据结构与人读 / JSON 渲染;
- * - api-harness.ts 参考 API harness (独立入口; 协议见 docs/protocol/conformance/api-harness-protocol.md)。
+ * - api-harness.ts 参考 API harness (独立入口; 协议见 docs/sweep/protocol/conformance/api-harness-protocol.md)。
  *
- * 语料权威: docs/protocol/conformance/corpus.schema.json (字段语义以 schema 为准; 手写校验是
+ * 语料权威: docs/sweep/protocol/conformance/corpus.schema.json (字段语义以 schema 为准; 手写校验是
  * schema 的物化子集, 只为尽早给出可读报错, 不复刻 schema 的全部约束)。
  *
  * 用法: bun scripts/transcription/run-conformance.ts --target "bun packages/sweep-node-modules-cli/src/cli.ts" [--api-target "bun scripts/transcription/api-harness.ts"] [--corpus <dir>] [--filter <id 子串>]
@@ -46,7 +46,7 @@ import {
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 /**
- * 默认语料目录: 语料的权威落点在协议区 (docs/protocol/conformance/corpus), 脚本不随身携带语料。
+ * 默认语料目录: 语料的权威落点在协议区 (docs/sweep/protocol/conformance/corpus), 脚本不随身携带语料。
  * 脚本现居 scripts/transcription/, 自 HERE 上溯 2 级到仓库根再取 docs。
  */
 const DEFAULT_CORPUS_DIR = join(
@@ -54,6 +54,7 @@ const DEFAULT_CORPUS_DIR = join(
   '..',
   '..',
   'docs',
+  'sweep',
   'protocol',
   'conformance',
   'corpus',
@@ -85,7 +86,7 @@ const HELP_TEXT = [
   '',
   '  --target <cmd>    被测进程命令 (如 "bun packages/sweep-node-modules-cli/src/cli.ts", 或 PATH 中的 "sweep-nm" / 绝对路径形态); 按空白拆分, 不支持含空格的路径',
   '  --api-target <cmd> API 用例的被测 harness 命令 (缺省: 随套件参考 harness, 即 "bun <仓库根>/scripts/transcription/api-harness.ts"); 拆分与绝对化规则同 --target',
-  '  --corpus <dir>    语料目录 (默认: docs/protocol/conformance/corpus)',
+  '  --corpus <dir>    语料目录 (默认: docs/sweep/protocol/conformance/corpus)',
   '  --filter <text>   只跑 id 含该子串的用例',
   '  --timeout <ms>    单条用例执行超时 (默认 15000), 到期即判失败 (超时守卫)',
   '  --json            输出结构化 JSON 报告 (stdout 仅 JSON, 诊断走 stderr)',
@@ -107,7 +108,7 @@ const HELP_TEXT = [
  *   --target 收值 'bun packages/sweep-node-modules-cli/src/cli.ts'; --filter 收值 'scan-'; 其余取默认
  *
  * Output（数据契约）
- *   return { ok: true, options: { target: 'bun packages/sweep-node-modules-cli/src/cli.ts', corpusDir: 'docs/protocol/conformance/corpus', filter: 'scan-', timeoutMs: 15000, json: false, keep: false, help: false } }
+ *   return { ok: true, options: { target: 'bun packages/sweep-node-modules-cli/src/cli.ts', corpusDir: 'docs/sweep/protocol/conformance/corpus', filter: 'scan-', timeoutMs: 15000, json: false, keep: false, help: false } }
  * ```
  */
 function parseArgs(argv: string[]): ParseOutcome {

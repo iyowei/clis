@@ -83,7 +83,7 @@
 **关联引用**
 
 - 闸门重落位不改结构, 见 [ADR 0005](0005-engineering-gates-and-hooks.md); 双运行时策略见 [ADR 0006](0006-dual-runtime-bun-first.md), 对 API 包同样适用; 转写契约套件随能力进 API 包, 见 [ADR 0008](../../packages/sweep-node-modules/docs/adrs/0008-transcription-kit.md)。
-  > **修订指引 (2026-09-30)**: 套件归属经复审重新裁定为**仓库根** (`scripts/transcription/` 与 `docs/protocol/` 同根): 归位判据从「随能力」更新为「随服务对象」(套件服务两包与未来多语言重写, 属仓库级设施; 双面验收横跨两包职责, 原判据无解), 见 [转写双面覆盖](../designs/transcription-dual-surface.md)。
+  > **修订指引 (2026-09-30)**: 套件归属经复审重新裁定为**仓库根** (`scripts/transcription/` 与 `docs/sweep/protocol/` 同根): 归位判据从「随能力」更新为「随服务对象」(套件服务两包与未来多语言重写, 属仓库级设施; 双面验收横跨两包职责, 原判据无解), 见 [转写双面覆盖](../sweep/designs/transcription-dual-surface.md)。
 - CLI 分发形态由 [ADR 0009](0009-npm-distribution-form.md) 继续管辖 (单文件产物 / 三入口 / 白名单 / 产物自证不变); `bun publish` 执行 `prepublishOnly` 的依据见其补记第 4 条。
 - 修订义务: [ADR 0007](../../packages/sweep-node-modules/docs/adrs/0007-platform-portability.md) / [ADR 0009](0009-npm-distribution-form.md) 等文本中「本包 / `@iyowei/sweep-node-modules`」的指代对象随包名翻转而变, 按既有惯例 (保留原文 + 修订指引) 由实施阶段落地。
-- 结构细节见 [设计总纲](../designs/sweep-node-modules-design.md), 操作细节见 [开发指南](../development.md); API 面设计细节另落文档, 本文不复述。
+- 结构细节见 [设计总纲](../sweep/designs/sweep-node-modules-design.md), 操作细节见 [开发指南](../development.md); API 面设计细节另落文档, 本文不复述。

@@ -2,7 +2,7 @@
  * 转写契约套件 · 语料手写校验层 (schema 的物化子集)。
  *
  * 职责: 对 loadCorpus 读入的单条 case 做结构校验 (cli 与 api 两类按 kind 分流), 返回可读
- * 问题清单; 字段语义以 docs/protocol/conformance/corpus.schema.json 为准, 本层只为尽早给出
+ * 问题清单; 字段语义以 docs/sweep/protocol/conformance/corpus.schema.json 为准, 本层只为尽早给出
  * 报错, 不复刻 schema 的全部约束。
  */
 import { isAbsolute } from 'node:path';

@@ -1,7 +1,7 @@
 # API harness 协议 (api harness protocol)
 
 > 用途: 定义「被测 API 的黑盒可执行化」契约: api 用例 (语料 `kind: "api"`) 经此协议驱动任意语言的实现做行为等价验收。与 CLI 面「被测命令是参数」完全同构: harness 只是一个可执行命令, 验收器 (`run-conformance.ts`) 零改动即可验收新语言的实现。
-> 权威: 字段语义以 [`corpus.schema.json`](corpus.schema.json) 为准; 本文件是协议面 (指令 / 输出 / 探针 / 实现者契约) 的规范正文; 决策依据见 [ADR 0008](../../../packages/sweep-node-modules/docs/adrs/0008-transcription-kit.md) 与「转写双面覆盖」设计。
+> 权威: 字段语义以 [`corpus.schema.json`](corpus.schema.json) 为准; 本文件是协议面 (指令 / 输出 / 探针 / 实现者契约) 的规范正文; 决策依据见 [ADR 0008](../../../../packages/sweep-node-modules/docs/adrs/0008-transcription-kit.md) 与「转写双面覆盖」设计。
 > 参考实现: `scripts/transcription/api-harness.ts` (TypeScript); 被测方亦可自写等价 harness, 唯一的约束是本协议。
 
 ## 1. 定位与调用形态

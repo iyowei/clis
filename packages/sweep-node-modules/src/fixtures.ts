@@ -3,7 +3,7 @@
  * 全部生成在系统临时目录下; 调用方经返回的 cleanup() 清理。
  * 返回的 root 取 realpath 归一形态: macOS 的临时目录拼写 (/var/folders/...) 含系统符号链接
  * (/var → /private/var), 而删除侧的根锚点检查要求信任根为真实路径形态
- * (见 docs/designs/deletion-guard.md「校验不变量」⑤), 未归一会让所有删除用例假性拒绝。
+ * (见 docs/sweep/designs/deletion-guard.md「校验不变量」⑤), 未归一会让所有删除用例假性拒绝。
  */
 import {
   chmod,

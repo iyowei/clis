@@ -2,12 +2,12 @@
  * 删除安全闸、锚点判定与设备边界: 五不变量 (末段恰为 node_modules / realpath 位于某 root 之下 /
  * 非根与 home 本体 / realpath 去重 / 根锚点链无符号链接) 的逐条判定与理由;
  * 另导出面向任意目标的锚点判定入口 (`firstSymlinkOnTarget`, 服务写入侧的落盘前检查,
- * 见 docs/protocol/behavior-contract.md BC-40), 与删除侧的根判定同一实现;
+ * 见 docs/sweep/protocol/behavior-contract.md BC-40), 与删除侧的根判定同一实现;
  * 设备边界: `findCrossDeviceTargets` 挑出与所属根不同文件系统的目标并分辨形态 (st_dev 比对,
- * 探针经 `DeviceProbe` 注入, 缺省实现 `fsDeviceProbe`), 见 BC-41 与 docs/designs/deletion-guard.md「设备边界」。
+ * 探针经 `DeviceProbe` 注入, 缺省实现 `fsDeviceProbe`), 见 BC-41 与 docs/sweep/designs/deletion-guard.md「设备边界」。
  * 分层: 字符串级判定是可注入 path 风格的纯函数 (posix / win32 语义可在任意平台测试),
  * lstat / realpath / stat 等 IO 集中于 `validateTargets`、`firstSymlinkOnTarget` 与 `fsDeviceProbe` 三处; 是否整批拒绝由调用方定夺。
- * 设计: docs/designs/deletion-guard.md; 可移植性: packages/sweep-node-modules/docs/adrs/0007-platform-portability.md。
+ * 设计: docs/sweep/designs/deletion-guard.md; 可移植性: packages/sweep-node-modules/docs/adrs/0007-platform-portability.md。
  */
 import { lstat, realpath, stat } from 'node:fs/promises';
 import { homedir } from 'node:os';
@@ -472,7 +472,7 @@ export const fsDeviceProbe: DeviceProbe = async (path, follow) => {
  * 目标归属根: 包含该目标且路径最长 (最具体) 的根; 无归属根返回 null。
  * 与安全闸的归属判定 (insideAnyRoot 命中任一根即可, 那里归属不承载语义) 区分: 设备比对需要
  * 唯一参照面, 取最具体者 —— 把挂载点声明为独立根, 即是「这个卷归我处置」的显式表达, 应以
- * 该根的设备为参照 (跨设备目标的解除路径, 见 docs/designs/deletion-guard.md「设备边界」)。
+ * 该根的设备为参照 (跨设备目标的解除路径, 见 docs/sweep/designs/deletion-guard.md「设备边界」)。
  */
 function owningRoot(
   target: string,
@@ -515,7 +515,7 @@ export interface CrossDeviceEntry {
  * 挑出与所属根不在同一文件系统的目标 (删除面的设备边界闸), 值即形态。
  * 根只是路径上的授权面, 而根之下的挂载点会把另一文件系统的内容带进这条路径 (云盘 / 网络挂载 /
  * 容器卷): 跨设备删除删的是授权路径之外的实际存储, 且删除量与根所在卷的释放量不再是同一口径,
- * 故调用方缺省不进删除批 (设计: docs/designs/deletion-guard.md「设备边界」)。
+ * 故调用方缺省不进删除批 (设计: docs/sweep/designs/deletion-guard.md「设备边界」)。
  *
  * 逐条独立判定, 与安全闸的一票否决整批不同: 挂载点是单个目标的局部事实, 不牵连同根下的其余
  * 目标; 安全闸的不变量否决整批, 是因为那些事实 (根被换位 / 目标逃逸) 会让整批的可信度一起失效。

@@ -83,10 +83,11 @@ describe('reconcile', () => {
 describe('validateCoverage 集成', () => {
   test('健康态全绿; 造一处悬空与一处漏登记即分别抓出', () => {
     const healthy = makeRoot({
-      'docs/protocol/behavior-contract.md': '| BC-01 | 甲 |\n| BC-02 | 乙 |\n',
-      'docs/protocol/conformance/coverage.md':
+      'docs/sweep/protocol/behavior-contract.md':
+        '| BC-01 | 甲 |\n| BC-02 | 乙 |\n',
+      'docs/sweep/protocol/conformance/coverage.md':
         '## 一、覆盖表\n| BC-01 | 1 | 甲语料 |\n## 二、未覆盖条款\n| BC-02 | 模块级 | 理由 |\n',
-      'docs/protocol/conformance/corpus/a.json':
+      'docs/sweep/protocol/conformance/corpus/a.json':
         '{"id":"a","specRefs":["BC-01"]}\n',
     });
     expect(validateCoverage(healthy)).toEqual({
@@ -96,9 +97,10 @@ describe('validateCoverage 集成', () => {
     });
 
     const broken = makeRoot({
-      'docs/protocol/behavior-contract.md': '| BC-01 | 甲 |\n| BC-02 | 乙 |\n',
-      'docs/protocol/conformance/coverage.md': '## 一、覆盖表\n',
-      'docs/protocol/conformance/corpus/a.json':
+      'docs/sweep/protocol/behavior-contract.md':
+        '| BC-01 | 甲 |\n| BC-02 | 乙 |\n',
+      'docs/sweep/protocol/conformance/coverage.md': '## 一、覆盖表\n',
+      'docs/sweep/protocol/conformance/corpus/a.json':
         '{"id":"a","specRefs":["BC-01","BC-77"]}\n',
     });
     const result = validateCoverage(broken);
@@ -108,10 +110,10 @@ describe('validateCoverage 集成', () => {
 
   test('corpus 目录单文件缺 specRefs 即抛 (语料损坏属硬错)', () => {
     const root = makeRoot({
-      'docs/protocol/conformance/corpus/bad.json': '{"id":"bad"}\n',
+      'docs/sweep/protocol/conformance/corpus/bad.json': '{"id":"bad"}\n',
     });
     expect(() =>
-      collectCorpusRefs(join(root, 'docs/protocol/conformance/corpus')),
+      collectCorpusRefs(join(root, 'docs/sweep/protocol/conformance/corpus')),
     ).toThrow(/缺 specRefs/);
   });
 });

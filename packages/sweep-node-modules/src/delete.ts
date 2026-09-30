@@ -1,7 +1,7 @@
 /**
  * 删除执行器: 对安全闸已校验 (realpath 化、去重) 的目标按有界并发 (≤4 路, 实测校准) 逐条
  * 执行 fs.rm(recursive)。
- * 语义 (设计: docs/designs/deletion-guard.md「执行语义」): 逐条删除、单条失败不中断整批、
+ * 语义 (设计: docs/sweep/designs/deletion-guard.md「执行语义」): 逐条删除、单条失败不中断整批、
  * 末尾分桶汇总。ENOENT 分两种, 不可混同: rm 阶段的 ENOENT 一律复核目标本体, 确认已消失才归
  * missing, 视为成功侧 (目标已达成的语义, 不计失败)。双运行时语义分叉 (本机实测 2026-09-27:
  * Node 只在目标本体缺失时抛 ENOENT, 递归中途内部条目消失被归一为成功; Bun 会把后者冒泡为顶层

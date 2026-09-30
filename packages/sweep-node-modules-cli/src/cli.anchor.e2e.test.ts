@@ -3,7 +3,7 @@
  * 扫描侧照常 (BC-11 显式即授权)、删除侧整批拒绝 (BC-39)。
  * 与 cli.e2e.test.ts 同款双载体参数化; 按主题独立成文件 (那份已触 lint 的 max-lines 上限,
  * 与本组用例共用的写法同 cli.suspect.e2e.test.ts)。
- * 设计: docs/designs/deletion-guard.md「校验不变量」⑤; 契约: docs/protocol/behavior-contract.md BC-39。
+ * 设计: docs/sweep/designs/deletion-guard.md「校验不变量」⑤; 契约: docs/sweep/protocol/behavior-contract.md BC-39。
  */
 import { afterEach, describe, expect, test } from 'bun:test';
 

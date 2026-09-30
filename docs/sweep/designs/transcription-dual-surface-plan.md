@@ -10,7 +10,7 @@
 
 **技术栈**: TypeScript (bun 直跑 / node 双载体), JSON schema (语料), git, 仓库既有闸门链 (`bun run ci`)。
 
-**设计文档 (随本计划并行阅读)**: `docs/designs/transcription-dual-surface.md`
+**设计文档 (随本计划并行阅读)**: `docs/sweep/designs/transcription-dual-surface.md`
 
 ## 全局约束
 
@@ -30,10 +30,10 @@
 **文件**:
 
 - 移动: `packages/sweep-node-modules-cli/scripts/transcription/` → `scripts/transcription/`
-- 修改: `scripts/transcription/run-conformance.ts` (常量与注释), `scripts/transcription/make-mutants.ts` (常量与注释), `package.json` (根), `scripts/ci.ts`, `packages/sweep-node-modules-cli/tsconfig.json`, 根 `tsconfig.json`, `.gitignore`, `docs/protocol/conformance/corpus/README.md`
+- 修改: `scripts/transcription/run-conformance.ts` (常量与注释), `scripts/transcription/make-mutants.ts` (常量与注释), `package.json` (根), `scripts/ci.ts`, `packages/sweep-node-modules-cli/tsconfig.json`, 根 `tsconfig.json`, `.gitignore`, `docs/sweep/protocol/conformance/corpus/README.md`
 - 清理: 旧位置遗留的 `mutants/` 生成物 (过期快照, 波 3 重生于新位置)
 
-**接口**: 归位后套件入口 = `scripts/transcription/run-conformance.ts` (仓库根相对路径); 语料默认目录仍解析到 `docs/protocol/conformance/corpus/`。
+**接口**: 归位后套件入口 = `scripts/transcription/run-conformance.ts` (仓库根相对路径); 语料默认目录仍解析到 `docs/sweep/protocol/conformance/corpus/`。
 
 - [x] **Step 1: git mv 搬家 (保历史)**
 
@@ -68,7 +68,7 @@ rm -rf packages/sweep-node-modules-cli/scripts/transcription
 
 - [x] **Step 6: 修正 corpus/README.md 的命令区**
 
-`docs/protocol/conformance/corpus/README.md` 运行命令统一为「从仓库根执行」的完整路径形态; mutant target 改为 `bun scripts/transcription/mutants/gen-<id>/packages/sweep-node-modules-cli/src/cli.ts`; 示例中单 token 相对路径 (如 `./sweep-nm-rs`) 改为完整路径形态 (不动 runner 的 argv[0] 解析逻辑, 属文档侧修正)。
+`docs/sweep/protocol/conformance/corpus/README.md` 运行命令统一为「从仓库根执行」的完整路径形态; mutant target 改为 `bun scripts/transcription/mutants/gen-<id>/packages/sweep-node-modules-cli/src/cli.ts`; 示例中单 token 相对路径 (如 `./sweep-nm-rs`) 改为完整路径形态 (不动 runner 的 argv[0] 解析逻辑, 属文档侧修正)。
 
 - [x] **Step 7: 验证 conformance 双载体**
 
@@ -82,15 +82,15 @@ bun scripts/ci.ts --conformance
 
 派 `@agent-x:commit`, 主题「套件归位仓库根」, 含: git mv 结果 + 常量/注释/配置/命令修正。
 
-### Task 2: docs/protocol 区自愈验证与残余修正
+### Task 2: docs/sweep/protocol 区自愈验证与残余修正
 
-**文件**: `docs/protocol/README.md`, `docs/protocol/conformance/corpus.schema.json`, `docs/protocol/conformance/coverage.md`, `docs/protocol/prompts/*`
+**文件**: `docs/sweep/protocol/README.md`, `docs/sweep/protocol/conformance/corpus.schema.json`, `docs/sweep/protocol/conformance/coverage.md`, `docs/sweep/protocol/prompts/*`
 
 **背景**: 该区大量引用本来就是「指向根」的写法, 归位后应自愈; 本任务只验证 + 修残余。
 
 - [x] **Step 1: 验证自愈**: 逐文件实读以下引用是否已正确 (指向 `scripts/transcription/...` 且文件存在): README.md 验收器/变异生成器两行与两处命令; corpus.schema.json description; coverage.md 的 fixture.ts 提及。
 
-- [x] **Step 2: 修残余**: 凡仍不正确处按实际路径修正; `docs/protocol/README.md` 的「维护规则」与「用本套件转写一门新语言」两节命令过一遍 (改后须与 Task 1 Step 6 的形态一致)。
+- [x] **Step 2: 修残余**: 凡仍不正确处按实际路径修正; `docs/sweep/protocol/README.md` 的「维护规则」与「用本套件转写一门新语言」两节命令过一遍 (改后须与 Task 1 Step 6 的形态一致)。
 
 - [x] **Step 3: 闸门**: 排版 lint + prettier 过。
 
@@ -127,7 +127,7 @@ bun scripts/ci.ts --conformance
 
 ### Task 5: 契约三档口径与平移表标注
 
-**文件**: `docs/protocol/behavior-contract.md`
+**文件**: `docs/sweep/protocol/behavior-contract.md`
 
 **接口**: 「可验收」列取值域 = `CLI 黑盒` / `API 黑盒` / `API 黑盒 + CLI 黑盒` / `模块级 (理由)` / `成本性未覆盖 (理由)` / TTY 专属面等既有豁免形态。
 
@@ -138,7 +138,7 @@ bun scripts/ci.ts --conformance
 
 ### Task 6: 3 条新增条款正式登记 (BC-42 / BC-43 / BC-44)
 
-**文件**: `docs/protocol/behavior-contract.md`
+**文件**: `docs/sweep/protocol/behavior-contract.md`
 
 - [x] **Step 1: 登记三行**: 按既有表格结构追加:
 
@@ -155,7 +155,7 @@ bun scripts/ci.ts --conformance
 
 ### Task 7: coverage.md 骨架更新
 
-**文件**: `docs/protocol/conformance/coverage.md`
+**文件**: `docs/sweep/protocol/conformance/coverage.md`
 
 - [x] **Step 1: 加 API 面章节骨架**: 说明 API 面覆盖将随波 3/4 的语料落位; 台账结构预留 API case 引用列。
 - [x] **Step 2: 台账校验说明更新**: jq 可追溯校验脚本/说明覆盖两类语料 (cli + api)。
@@ -169,15 +169,15 @@ bun scripts/ci.ts --conformance
 
 ### Task 8: harness 协议规范文档
 
-**文件**: 新建 `docs/protocol/conformance/api-harness-protocol.md`
+**文件**: 新建 `docs/sweep/protocol/conformance/api-harness-protocol.md`
 
 - [x] **Step 1: 落协议全文** (按设计文档 §4.1-4.4 展开为规范性文本, 含): 输入 `{ steps: [...] }` 的形状与两步骤型 (创建步 `{as, call:{export, args}}` / 方法步 `{call:{on, method, args}, collectEvents}`); `$FIXTURE` 替换契约; `{"$probe": "<名>"}` 标记与初版探针目录 (pathops.posix / pathops.win32 / deviceProbe 的确定性 stub, 命名集合本任务定稿); 输出 `{ok, value}` / `{ok, error:{name, code, message, details?}}` + `events`; 崩溃语义 (非零退出 + stderr 诊断, 验收器按环境错误分流); 语言实现者契约 (任何语言按此协议提供 harness 可执行, 套件零改动)。
-- [x] **Step 2: 与 docs/protocol/README.md 挂钩**: 套件结构表加「API harness 协议」行; 转写流程节补 API 面一句话。
+- [x] **Step 2: 与 docs/sweep/protocol/README.md 挂钩**: 套件结构表加「API harness 协议」行; 转写流程节补 API 面一句话。
 - [x] **Step 3: 闸门 + 提交**: 主题「API harness 协议规范」。
 
 ### Task 9: 语料 schema 扩展 (kind 判别 + api case)
 
-**文件**: `docs/protocol/conformance/corpus.schema.json`, `scripts/transcription/corpus.ts` (类型与手写校验)
+**文件**: `docs/sweep/protocol/conformance/corpus.schema.json`, `scripts/transcription/corpus.ts` (类型与手写校验)
 
 - [x] **Step 1: schema 扩展**: 顶层加 `kind: "cli" | "api"` (缺省 cli, 兼容既有 57 条); api case 定义: `fixture` / `setup` 与 cli 共用; 新增 `steps` (协议指令数组) 与 `expect` 的 `result` (exact / subset 两档) / `error` (`code` 必选, `name` 可选) / `events` (mustInclude / lastIs) / `fs` (复用 cli 断言族)。
 - [x] **Step 2: corpus.ts 同步**: 类型定义 + 手写校验 (schema 的物化子集) 支持 kind 判别与 api 字段; 报错文案给出可读定位。
@@ -203,7 +203,7 @@ bun scripts/ci.ts --conformance
 
 ### Task 12: 样例句跑通 + 变异自证抽样
 
-**文件**: 新建 `docs/protocol/conformance/corpus/` 下 4 条 api 语料 (id 初定: `api-scan-hits-sorted` / `api-config-corrupt-throws` / `api-sweep-plan-terminal-event` / `api-guard-reject-batch`)
+**文件**: 新建 `docs/sweep/protocol/conformance/corpus/` 下 4 条 api 语料 (id 初定: `api-scan-hits-sorted` / `api-config-corrupt-throws` / `api-sweep-plan-terminal-event` / `api-guard-reject-batch`)
 
 - [x] **Step 1: 写 4 条样例句**: 分别覆盖: 创建+方法调用+返回值子集断言 (含排序); 抛错 code 断言; 事件收集与末事件断言; 安全闸拒绝面 (整批零删除)。期望逐条由条款 + fixture 推演辩护 (specRefs 指向波 2 登记后的条款)。
 - [x] **Step 2: 双载体跑通**: `bun scripts/ci.ts --conformance` 全绿 (含新 4 条)。
@@ -226,7 +226,7 @@ bun scripts/ci.ts --conformance
 
 ### Task 14: 冻结面语料全批编写
 
-**文件**: `docs/protocol/conformance/corpus/api-*.json` (批量新增)
+**文件**: `docs/sweep/protocol/conformance/corpus/api-*.json` (批量新增)
 
 - [x] **Step 1-N: 分批编写**: 按 Task 13 清单逐条落语料; 每条: id = 文件名、specRefs 指向真实条款、期望推演辩护、fixture 尺寸最小化; 关键条款多分支 (正常 / 边界)。建议按条款族分批 (读侧 / 判定件 / 写侧 / 编排 / 配置), 每批写完即双载体跑一遍增量验证。
 - [x] **Step 末: 全量验证**: `bun scripts/ci.ts --conformance` 双载体全绿 (CLI 57 + api 全批)。
@@ -247,7 +247,7 @@ bun scripts/ci.ts --conformance
 
 ### Task 17: 实施提示词更新
 
-**文件**: `docs/protocol/prompts/transcribe-rust.md`, `docs/protocol/prompts/common-discipline.md`
+**文件**: `docs/sweep/protocol/prompts/transcribe-rust.md`, `docs/sweep/protocol/prompts/common-discipline.md`
 
 - [x] **Step 1**: transcribe-rust.md 补 API 面: Rust 实现需同时提供 (a) CLI 可执行 (b) 按协议实现的 API harness; 交付物含两面的 conformance 报告。
 - [x] **Step 2**: common-discipline.md 同步「双面验收」纪律 (未覆盖处停手报缺口不变)。

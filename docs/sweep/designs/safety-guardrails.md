@@ -2,7 +2,7 @@
 
 > 定位: 面向想深挖的用户与未来维护者的参考文档, 全量沉淀这套工具的安全防护保障点与内部账目。
 > 与 CLI 包 README 的关系: CLI 包 README 的安全防护节从本文裁剪而来 (挑出分量重的条目, 写成面向用户的功能细节); 本文是全量版。
-> 权威: 行为语义的权威在各级设计文档 (仓库级 `docs/designs/` 与包级 `docs/`) 与 `docs/protocol/behavior-contract.md` 的编号条款; 本文是面向读者的整理视图, 依据按写作时的实现实读核证。
+> 权威: 行为语义的权威在各级设计文档 (仓库级 `docs/designs/` 与包级 `docs/`) 与 `docs/sweep/protocol/behavior-contract.md` 的编号条款; 本文是面向读者的整理视图, 依据按写作时的实现实读核证。
 > 路径约定: 下文「依据」中的 `src/xxx.ts` 为简写。归属 CLI 包 (`packages/sweep-node-modules-cli/src/`) 的是 `cli.ts` / `render.ts` / `help.ts` / `init.ts`; 其余 (`guard.ts` / `scan-parallel.ts` / `delete.ts` / `config.ts` / `size-du.ts` / `size.ts` / `size-js.ts` / `skip.ts` / `classify.ts` / `types.ts` / `scan.ts` / `runtime.ts` / `display.ts` / `sweep.ts`) 归 API 包 (`packages/sweep-node-modules/src/`)。
 
 ## 目录
@@ -32,9 +32,9 @@
 **依据怎么读**: 依据给到的粒度是「文件 + 函数 / 契约条款」级, 不写行号, 行号随代码漂移, 写进文档即过期。名词对照:
 
 - 实现: 两包 `src/` 下的模块文件 (归属见上「路径约定」); 启动器在 CLI 包 `bin/`; 发布脚本在 CLI 包 `scripts/`, 转写套件在仓库根 `scripts/transcription/`。
-- 契约: `docs/protocol/behavior-contract.md` 的编号条款 (BC / OF / EC 三族); 语料名指 `docs/protocol/conformance/corpus/` 下的金样本用例。
+- 契约: `docs/sweep/protocol/behavior-contract.md` 的编号条款 (BC / OF / EC 三族); 语料名指 `docs/sweep/protocol/conformance/corpus/` 下的金样本用例。
 - 设计文档: 分册 (`deletion-guard.md` / `install-tree-hardening.md` / `scan-and-size.md` / `config-and-initialization.md` / `architecture-overview.md` 在 `docs/designs/`; `cli-surface.md` 在 CLI 包 `docs/`); 平台与发布的决策在 `docs/adrs/` 与 API 包 `docs/adrs/`。
-- 覆盖表: 条款与语料的对照见 `docs/protocol/conformance/coverage.md`。
+- 覆盖表: 条款与语料的对照见 `docs/sweep/protocol/conformance/coverage.md`。
 
 **分组不是分类学**: A 到 F 六组按「防的是哪一类错」划分, 同一条防线可能从多组视角被提到; 条目编号 (A1 到 F22) 在本文内唯一, 供引用与挑选。
 
@@ -488,13 +488,13 @@
 一份只讲承诺、不讲账的清单, 不值得信任。这 14 类账目同样是这套保障的一部分。
 
 1. **金样本语料与覆盖表**: 82 条金样本语料 (57 条 cli 面 + 25 条 api 面) 在双载体 (bun / node) 上全量全绿, 覆盖表登记「条款 × 语料」的覆盖关系与逐条豁免理由 (不可黑盒项写明理由)。
-   - 依据: `docs/protocol/conformance/coverage.md` 全篇。
+   - 依据: `docs/sweep/protocol/conformance/coverage.md` 全篇。
    - 不进 README 的理由: 开发侧验收资产, 用户无从操作或验证。
 2. **变异自证**: 故意往实现里注入缺陷 (剪枝谓词取反、退出码吞掉、排序缺失等六个 mutant), 看语料抓不抓得住, 抓不住的语料不算数; 现行抓取数为 44 / 15 / 6 / 6 / 7 / 31 (2026-09-30 重测; 排序缺失一项目随调度波动, 判据取不少于 2)。
    - 依据: `coverage.md` 的「变异自证」一节。
    - 不进 README 的理由: 属「测试体系有多狠」这一类账目, 面向维护者。
 3. **转写契约套件**: 为未来以 Rust / C 等语言重写准备的机械验收路径 (编号契约 + 金样本语料 + 确定性验收器), 被测命令只是参数, 语言中立。
-   - 依据: ADR 0008; `docs/protocol/README.md`。
+   - 依据: ADR 0008; `docs/sweep/protocol/README.md`。
    - 不进 README 的理由: 对 npm 使用者无直接价值。
 4. **工程闸门与依赖锁定**: lefthook 提交钩子 (pre-commit 增量 / pre-push 全量: 六步含 conformance 双 target)、oxlint、prettier、tsc, 与 devDependencies 无范围符号的精确锁定; 装钩子收窄到本包仓库 (被作为依赖安装时不写宿主仓库的 `.git/hooks`)。
    - 依据: ADR 0005; `.oxlintrc.json` / `lefthook.yml`; 守卫脚本 `scripts/install-git-hooks.mjs`。
@@ -524,7 +524,7 @@
     - 依据: `coverage.md` 的「未覆盖条款」; `src/skip.ts` 的注释。
     - 不进 README 的理由: 测试体系内部账目。
 13. **契约体系的三向维护纪律**: 契约条款、金样本语料、设计文档三者同批演进; 语料只增不改既有期望, 改期望须先过「三向定责」(修语料 / 修契约 / 修实现) 并写明依据。
-    - 依据: `docs/protocol/README.md` 的「维护规则」。
+    - 依据: `docs/sweep/protocol/README.md` 的「维护规则」。
     - 不进 README 的理由: 内部流程。
 14. **实现结构细节**: 有界并发的实现结构 (显式栈 / 在飞计数 / pump) 与去重键编码业务语义等数据结构选择。
     - 依据: `architecture-overview.md` 的「数据结构」一节。

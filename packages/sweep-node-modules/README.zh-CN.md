@@ -672,4 +672,4 @@ const outcome = await removeBatch(targets, { roots, staleTargets });
 
 - [工程技术文档总索引](../../docs/README.md)
 - [可编程 API 面设计](docs/designs/api-surface.md): 本页背后的权威导出面、错误码与行为契约
-- [安全防护保障](../../docs/safety-guardrails.md): 全量版 (含已知残余风险的诚实账)
+- [安全防护保障](../../docs/sweep/designs/safety-guardrails.md): 全量版 (含已知残余风险的诚实账)
