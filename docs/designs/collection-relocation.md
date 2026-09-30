@@ -26,7 +26,7 @@
 1. 本仓先全绿 (阶段 A 完成标准) 再动改名;
 2. GitHub 端: 仓库改名 `sweep-node-modules` → `clis`;
 3. 仓内同步 (一次性): 根 `package.json` (name 字段与仓库引用), 两包 `package.json` 的 `repository` / `homepage` / `bugs`, 根与两包 README 的徽章与仓库链接, 两个 workflow 内的仓库引用 (如有), issue 模板, `.vscode/launch.json`, `.gitignorerc.json`, git remote;
-4. npm 侧同步 (仓库外, 必做): 重建两包的 Trusted Publisher 登记 (改名不会自动跟改, 不同步则发布链在 npm 认证处失败, 见上方「依据」段); 自动化入口 `scripts/npm-trust-guard.ts` (`check` 只读对账 / `fix` 自动 revoke + 重建, 需 npm 登录态与交互式终端); CI 侧 Release 的 verify job 已挂 `npm-trust` 预检, 改名后第一次走发布链即当场点名;
+4. npm 侧同步 (仓库外, 必做): 重建两包的 Trusted Publisher 登记 (改名不会自动跟改, 不同步则发布链在 npm 认证处失败, 见上方「依据」段); 自动化入口 `scripts/npm-trust-guard.ts` (`check` 只读对账 / `fix` 自动 revoke + 重建, 需 npm 登录态与交互式终端); CI 侧 Release 的 `release` job (人工批准后) 已挂 `npm-trust` 预检, 改名后的第一次发布在此当场点名 (预检须与发布同 job: 换证核对的 environment 声明来自 job 的 environment, 无 environment 的 job 换证会被 npm 以误导性的 404 拒绝);
 5. 文档自称更新 (docs 里所有「sweep-node-modules」的自称, 都改为「集合仓 + 包」的说法): 允许分批慢慢改, 不阻塞改名 (旧称不算错误, 只是说法过时);
 6. 生成器包落地 (create-clis: 包骨架 + 快照 build + 契约实现, 见[生成器包](scaffold-package.md))。
 
@@ -38,14 +38,14 @@
 
 ## 验证清单 (两包发布链零受损)
 
-| 检查                              | 方式                                               | 时机                           |
-| --------------------------------- | -------------------------------------------------- | ------------------------------ |
-| 全链全绿 (含双载体 conformance)   | `bun run ci`                                       | 阶段 A 完成 / 改名后本地       |
-| 发布链判定不变                    | semrel dry-run (本地预演)                          | 改名前                         |
-| CI 与 Release workflow 照常       | GitHub Actions                                     | 改名推送后                     |
-| 发布产物与 provenance 指向新仓    | npm 上                                             | 改名后**下一次真实发布**时核验 |
-| npm 侧 Trusted Publisher 登记一致 | 本地 `check` (或 Release verify 的 npm-trust 预检) | 改名后                         |
-| CHANGELOG 历史链接仍能打开        | 抽查旧链接 (重定向兜底)                            | 改名后                         |
+| 检查                              | 方式                                                                 | 时机                           |
+| --------------------------------- | -------------------------------------------------------------------- | ------------------------------ |
+| 全链全绿 (含双载体 conformance)   | `bun run ci`                                                         | 阶段 A 完成 / 改名后本地       |
+| 发布链判定不变                    | semrel dry-run (本地预演)                                            | 改名前                         |
+| CI 与 Release workflow 照常       | GitHub Actions                                                       | 改名推送后                     |
+| 发布产物与 provenance 指向新仓    | npm 上                                                               | 改名后**下一次真实发布**时核验 |
+| npm 侧 Trusted Publisher 登记一致 | 本地 `check` (或 Release 的 `release` job 获批后的 `npm-trust` 预检) | 改名后                         |
+| CHANGELOG 历史链接仍能打开        | 抽查旧链接 (重定向兜底)                                              | 改名后                         |
 
 ## 回滚
 

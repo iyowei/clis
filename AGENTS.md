@@ -24,5 +24,5 @@ This block is written and re-added by `turbo` before repository-scoped commands 
 ## 结构事实
 
 - 包怎么分类、怎么发布见 [包分类与发布协议](docs/designs/package-classification.md); 包之间的依赖方向见 [依赖方向纪律](docs/designs/dependency-direction.md);
-- 工程闸门链只有一份步骤清单, 就是 `scripts/ci.ts` (本地全链、pre-push、CI、Release verify 跑的是同一套; 其中 Release 的 verify job 多一步发布凭据预检, 即 `npm-trust` 步, 见[开发指南](docs/development.md)「发布」章);
+- 工程闸门链只有一份步骤清单, 就是 `scripts/ci.ts` (本地全链、pre-push、CI、Release verify 跑的是同一套; 其中 Release 的 `release` job 在获批后多一步发布凭据预检, 即 `npm-trust` 步, 见[开发指南](docs/development.md)「发布」章);
 - 提交信息与发布链的约定见 [CONTRIBUTING.md](CONTRIBUTING.md)。

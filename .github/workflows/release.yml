@@ -16,9 +16,6 @@ jobs:
   verify:
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    permissions:
-      contents: read
-      id-token: write # npm Trusted Publisher 预检的 OIDC 换证
     steps:
       - uses: actions/checkout@v7
       - uses: oven-sh/setup-bun@v2
@@ -26,9 +23,6 @@ jobs:
         with:
           node-version: 24
       - run: bun install --frozen-lockfile
-      # 发布凭据预检 (发布特有, 经 ci.ts 单源调用): OIDC 换证即与 npm 侧 Trusted Publisher
-      # 登记的全量核对, 仓库改名导致的失配在此当场点名, 不再拖到 release job 的误导性报错
-      - run: bun run ci -- --only npm-trust
       # 验证组 (步骤集合的单一事实来源在 scripts/ci.ts, 与 CI verify 同集合)
       - run: bun run ci -- --verify
 
@@ -54,6 +48,10 @@ jobs:
           node-version: 24 # 自带 npm 11.x: OIDC 与 provenance 所需
           # 不设 registry-url: 它会生成带 NODE_AUTH_TOKEN 的 .npmrc, 压掉 OIDC 通道
       - run: bun install --frozen-lockfile
+      # 发布凭据预检 (发布特有, 经 ci.ts 单源调用): OIDC 换证即与 npm 侧 Trusted Publisher
+      # 登记的全量核对 (含 environment 声明), 失配在发布前当场点名。必须放本 job: environment
+      # 声明来自 job 的 environment, 无 environment 的 job 换证会被 npm 以误导性的 404 拒绝
+      - run: bun run ci -- --only npm-trust
       - name: Release (multi-semantic-release, OIDC)
         # 启动器用 bunx (与本地 dryrun 同链; 实测 --no-install 只经本地 devDep 启动);
         # 「发布到 npm」的环节由 semrel 的 npm 插件内部 spawn 的 npm 本体承担 —— OIDC Trusted
