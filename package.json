@@ -26,6 +26,7 @@
     "lint:refs": "bun scripts/lint-doc-references.ts",
     "lint:examples": "bun scripts/lint-doc-examples.ts",
     "lint:coverage": "bun scripts/transcription/validate-coverage.ts",
+    "lint:backups": "bun scripts/lint-stray-backups.ts",
     "bench": "bun packages/sweep-node-modules/bench/run.ts",
     "conformance": "bun scripts/transcription/run-conformance.ts",
     "ci": "bun scripts/ci.ts"
