@@ -24,7 +24,7 @@
     "format": "prettier --write .",
     "test": "turbo run test",
     "bench": "bun packages/sweep-node-modules/bench/run.ts",
-    "conformance": "bun packages/sweep-node-modules-cli/scripts/transcription/run-conformance.ts",
+    "conformance": "bun scripts/transcription/run-conformance.ts",
     "ci": "bun scripts/ci.ts"
   },
   "devDependencies": {

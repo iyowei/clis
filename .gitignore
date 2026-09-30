@@ -401,7 +401,7 @@ package-lock.json
 packages/sweep-node-modules/bench/results/
 
 
-packages/sweep-node-modules-cli/scripts/transcription/mutants/gen-*/
+scripts/transcription/mutants/gen-*/
 
 
 .turbo/

@@ -28,7 +28,7 @@ const step = (label: string, command: string, args: string[]): void => {
 const conformance = (): void => {
   for (const runtime of ['bun', 'node']) {
     step(`conformance (${runtime})`, 'bun', [
-      'packages/sweep-node-modules-cli/scripts/transcription/run-conformance.ts',
+      'scripts/transcription/run-conformance.ts',
       '--target',
       `${runtime} packages/sweep-node-modules-cli/src/cli.ts`,
     ]);

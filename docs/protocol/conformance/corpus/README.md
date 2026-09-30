@@ -23,9 +23,11 @@
 
 ## 运行
 
+自仓库根执行:
+
 ```bash
-bun scripts/transcription/run-conformance.ts --target "bun src/cli.ts"                  # bun 载体全量
-bun scripts/transcription/run-conformance.ts --target "node src/cli.ts"                 # node 载体全量
-bun scripts/transcription/run-conformance.ts --target "bun src/cli.ts" --filter scan-   # 按 id 子串筛选
-bun scripts/transcription/run-conformance.ts --target "bun scripts/transcription/mutants/gen-<id>/src/cli.ts"   # 变异自证 (预期有失败)
+bun scripts/transcription/run-conformance.ts --target "bun packages/sweep-node-modules-cli/src/cli.ts"                  # bun 载体全量
+bun scripts/transcription/run-conformance.ts --target "node packages/sweep-node-modules-cli/src/cli.ts"                 # node 载体全量
+bun scripts/transcription/run-conformance.ts --target "bun packages/sweep-node-modules-cli/src/cli.ts" --filter scan-   # 按 id 子串筛选
+bun scripts/transcription/run-conformance.ts --target "bun scripts/transcription/mutants/gen-<id>/packages/sweep-node-modules-cli/src/cli.ts"   # 变异自证 (预期有失败)
 ```

@@ -32,5 +32,8 @@
     "forceConsistentCasingInFileNames": true,
 
     "types": ["bun"]
-  }
+  },
+  // 变异生成器的产物 (scripts/transcription/mutants/gen-*/src/*.ts) 由 make-mutants.ts 生成,
+  // 是派生件而非源码; 不排除则从根跑 tsc 会把它们收进编译范围并变红 (实测命中)
+  "exclude": ["scripts/transcription/mutants"]
 }
