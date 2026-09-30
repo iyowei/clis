@@ -4,15 +4,15 @@
  */
 import { afterAll, describe, expect, test } from 'bun:test';
 
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
-import { homedir } from 'node:os';
+import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 
+import { makeTmpRoot } from './tmp-root.ts';
 import { listWorkspacePackages, resolveCliAndApi } from './workspace.ts';
 
 const roots: string[] = [];
 function makeRoot(files: Record<string, unknown>): string {
-  const root = mkdtempSync(join(homedir(), 'tmp', 'workspace-'));
+  const root = makeTmpRoot('workspace-');
   roots.push(root);
   for (const [rel, content] of Object.entries(files)) {
     const abs = join(root, rel);

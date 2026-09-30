@@ -4,10 +4,10 @@
  */
 import { afterAll, describe, expect, test } from 'bun:test';
 
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
-import { homedir } from 'node:os';
+import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 
+import { makeTmpRoot } from './lib/tmp-root.ts';
 import {
   collectAdrNumbers,
   collectSectionNumbers,
@@ -19,7 +19,7 @@ import {
 /** 临时根 (跟随套件惯例落 ~/tmp; 一测一根, 结束后整体清理) */
 const roots: string[] = [];
 function makeRoot(files: Record<string, string>): string {
-  const root = mkdtempSync(join(homedir(), 'tmp', 'doc-refs-'));
+  const root = makeTmpRoot('doc-refs-');
   roots.push(root);
   for (const [rel, content] of Object.entries(files)) {
     const abs = join(root, rel);

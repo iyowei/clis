@@ -18,10 +18,10 @@
  * 退出码: 0 全绿; 1 存在断裂。
  */
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
-import { homedir } from 'node:os';
+import { readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
+import { makeTmpRoot } from './lib/tmp-root.ts';
 import { REPO_ROOT, walkFiles } from './lint-doc-shared.ts';
 
 const CLI_ENTRY = 'packages/sweep-node-modules-cli/src/cli.ts';
@@ -149,7 +149,7 @@ export function checkTsExamples(root: string = REPO_ROOT): {
   if (blocks.length === 0) return { real: [], fragments: [] };
 
   // 临时工程: extends 仓库根 tsconfig (paths 直连单源), typeRoots 指回仓内 @types
-  const tmp = mkdtempSync(join(homedir(), 'tmp', 'doc-examples-'));
+  const tmp = makeTmpRoot('doc-examples-');
   try {
     for (const [index, block] of blocks.entries()) {
       writeFileSync(join(tmp, `block-${index}.ts`), `${block.content}\n`);

@@ -3,15 +3,15 @@
  */
 import { afterAll, describe, expect, test } from 'bun:test';
 
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
-import { homedir } from 'node:os';
+import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 
+import { makeTmpRoot } from './lib/tmp-root.ts';
 import { findStrayBackups } from './lint-stray-backups.ts';
 
 const roots: string[] = [];
 function makeRoot(files: string[]): string {
-  const root = mkdtempSync(join(homedir(), 'tmp', 'stray-'));
+  const root = makeTmpRoot('stray-');
   roots.push(root);
   for (const rel of files) {
     const abs = join(root, rel);
