@@ -1,6 +1,6 @@
 /**
- * 工作区坐标派生单测: 临时根上验证派生规则 (CLI = 带 bin; API = CLI devDeps 引的仓内包)
- * 与两类异常路径。
+ * 工作区坐标派生单测: 临时根上验证派生规则 (CLI = 带 bin 且引用仓内无 bin 包;
+ * API = 被它引用的无 bin 包) 与两类异常路径。
  */
 import { afterAll, describe, expect, test } from 'bun:test';
 
@@ -43,12 +43,32 @@ describe('resolveCliAndApi', () => {
     expect(api.dir).toBe('packages/tool');
   });
 
+  test('仓内出现第二个带 bin 包时, 主产品两包仍唯一确定', () => {
+    const root = makeRoot({
+      'package.json': { workspaces: ['packages/*'] },
+      'packages/tool/package.json': {
+        name: 'tool',
+        bin: { tool: 'bin/tool.mjs' },
+        devDependencies: { lib: '1.0.0' },
+      },
+      'packages/lib/package.json': { name: 'lib' },
+      // 第二个带 bin 包 (不依赖仓内包): 旧判据 (find bin !== undefined) 会因目录序歧义
+      'packages/create-x/package.json': {
+        name: 'create-x',
+        bin: { 'create-x': 'bin.mjs' },
+      },
+    });
+    const { cli, api } = resolveCliAndApi(root);
+    expect(cli.name).toBe('tool');
+    expect(api.name).toBe('lib');
+  });
+
   test('无 bin 包时报错', () => {
     const root = makeRoot({
       'package.json': { workspaces: ['packages/*'] },
       'packages/only-lib/package.json': { name: '@x/only-lib' },
     });
-    expect(() => resolveCliAndApi(root)).toThrow(/未找到带 bin 的 CLI 包/);
+    expect(() => resolveCliAndApi(root)).toThrow(/未找到主 CLI 包/);
   });
 
   test('cli 未依赖任何仓内包时报错', () => {
@@ -60,7 +80,7 @@ describe('resolveCliAndApi', () => {
         devDependencies: { lodash: '4.0.0' },
       },
     });
-    expect(() => resolveCliAndApi(root)).toThrow(/所依赖的仓内 API 包/);
+    expect(() => resolveCliAndApi(root)).toThrow(/未找到主 CLI 包/);
   });
 
   test('不支持的 workspaces 形态显式报错', () => {

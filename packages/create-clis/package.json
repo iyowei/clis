@@ -1,0 +1,44 @@
+{
+  "name": "create-clis",
+  "version": "0.0.0",
+  "description": "Scaffold a standalone clis collection repository from the clis skeleton snapshot: capability tiers, generic vocabulary, green CI out of the box. clis 集合仓生成器。",
+  "keywords": [
+    "cli",
+    "create",
+    "scaffold",
+    "generator",
+    "boilerplate",
+    "template",
+    "starter",
+    "init",
+    "monorepo",
+    "workspace",
+    "bun",
+    "node"
+  ],
+  "author": "iTonyYo (https://github.com/iTonyYo)",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/iyowei/clis.git"
+  },
+  "homepage": "https://github.com/iyowei/clis#readme",
+  "bugs": {
+    "url": "https://github.com/iyowei/clis/issues"
+  },
+  "type": "module",
+  "bin": {
+    "create-clis": "bin/create-clis.mjs"
+  },
+  "engines": {
+    "node": ">=22.18.0"
+  },
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "bun test"
+  }
+}
