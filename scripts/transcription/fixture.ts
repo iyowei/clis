@@ -1,7 +1,8 @@
 /**
  * 转写契约套件 · 现场层 (fixture 建树 / setup 预置 / 最小 env / 执行 / 清理)。
  *
- * 职责: 把语料声明的 fixture 物化成真实目录树, 以最小白名单 env 启动被测命令, 跑完回收现场。
+ * 职责: 把语料声明的 fixture 物化成真实目录树, 以最小白名单 env 启动被测进程 (cli case 起被测
+ * 可执行; api case 起 harness 并按步骤指令喂 stdin), 跑完回收现场。
  * 建树与体积口径语义与 src/fixtures.ts 同构 (被测的既有测试口径即验收口径)。
  */
 import { spawnSync } from 'node:child_process';

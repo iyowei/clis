@@ -238,6 +238,9 @@ function validateSteps(steps: unknown, problems: string[]): void {
         `steps[${index}].call 须恰为创建步 (export) 或方法步 (on + method)`,
       );
     }
+    if (hasExport && step.collectEvents === true) {
+      problems.push(`steps[${index}]: 创建步不支持 collectEvents (仅方法步)`);
+    }
     if (
       step.as !== undefined &&
       (typeof step.as !== 'string' || step.as === '')

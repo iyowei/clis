@@ -16,7 +16,7 @@
  * 输出形状 (stdout):
  *   { "ok": true, "value": <末步返回值>, "events": [ ... ]? }
  *   { "ok": false, "error": { "name", "code"?, "message", "details"? } }
- * (任一步骤声明过 collectEvents 即附 events 字段, 可为空数组。)
+ * (方法步声明过 collectEvents 即附 events 字段, 可为空数组; 创建步声明该字段按指令错误处理。)
  *
  * 变量与探针: 字符串内的 $FIXTURE 由验收器 (runner) 在派发前替换; 参数中形如
  * { "$probe": "<名>" } 的对象整体替换为下方探针注册表的值。collectEvents 为 true 时,
@@ -65,7 +65,7 @@ const isPlainObject = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value);
 
 /**
- * 递归解析参数值: 恰为 { "$probe": "<名>" } 形态的对象替换为探针实现; 数组与普通对象递归
+ * 递归解析参数值: 含 $probe 键的对象整体替换为探针实现 (对象其余键不参与); 数组与普通对象递归
  * 下钻; 其余值原样。探针名不在注册表即抛 HarnessError (指令缺陷, 不静默透传)。
  */
 function resolveProbes(value: unknown): unknown {
@@ -134,6 +134,11 @@ async function runInstruction(instruction: unknown): Promise<{
     let returned: unknown;
 
     if (typeof call.export === 'string') {
+      if (step.collectEvents === true) {
+        throw new HarnessError(
+          `steps[${index}]: 创建步不支持 collectEvents (仅方法步)`,
+        );
+      }
       const fn = (api as Record<string, unknown>)[call.export];
       if (typeof fn !== 'function') {
         throw new HarnessError(
@@ -195,7 +200,12 @@ try {
   if (outcome.collected) output.events = outcome.events;
   process.stdout.write(`${JSON.stringify(output)}\n`);
 } catch (error) {
-  const failure = error as Error & { code?: unknown; details?: unknown };
+  // 抛出物未必是 Error (字符串 / undefined 等): 包装后 name / message 恒有, 协议声明的
+  // 必有字段不失守 (JSON.stringify 会丢弃 undefined 值, 否则 error 成空对象)。
+  const failure: Error & { code?: unknown; details?: unknown } =
+    error instanceof Error
+      ? (error as Error & { code?: unknown; details?: unknown })
+      : new Error(String(error));
   const errorOut: Record<string, unknown> = {
     name: failure.name !== '' ? failure.name : 'Error',
     message: failure.message,

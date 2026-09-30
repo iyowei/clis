@@ -5,10 +5,12 @@
  * 清理现场 → 汇总报告, 任一条失败即非零退出。纯程序、零 AI、零第三方依赖 (bun / node 直跑)。
  *
  * 模块划分 (同目录, 本文件只留 CLI 解析 / 编排 / 帮助):
- * - corpus.ts   语料类型、$FIXTURE 变量替换契约、目录加载与手写校验;
- * - fixture.ts  fixture 建树 / setup 预置 / 最小 env / 执行 / 清理;
- * - compare.ts  逐项比对 (退出码 / stdout 与 stderr 的子串含与禁含 / fs 终态);
- * - report.ts   报告数据结构与人读 / JSON 渲染。
+ * - corpus.ts   语料类型、$FIXTURE 变量替换契约、目录加载;
+ * - validate.ts 语料手写校验 (schema 的物化子集, 见文件头);
+ * - fixture.ts  fixture 建树 / setup 预置 / 最小 env / 执行 / 清理 (cli 与 api 两类 case);
+ * - compare.ts  逐项比对 (cli: 退出码 / stdout 与 stderr 的子串含与禁含 / fs 终态; api: 返回值 / 抛错 / 事件);
+ * - report.ts   报告数据结构与人读 / JSON 渲染;
+ * - api-harness.ts 参考 API harness (独立入口; 协议见 docs/protocol/conformance/api-harness-protocol.md)。
  *
  * 语料权威: docs/protocol/conformance/corpus.schema.json (字段语义以 schema 为准; 手写校验是
  * schema 的物化子集, 只为尽早给出可读报错, 不复刻 schema 的全部约束)。
@@ -329,4 +331,13 @@ async function main(): Promise<number> {
   return reports.some((report) => report.status === 'fail') ? 1 : 0;
 }
 
-process.exitCode = await main();
+try {
+  process.exitCode = await main();
+} catch (error) {
+  // 未预期异常兜底归入「环境错误」退出码 (头注释的 2), 冒泡成默认的退 1 + 栈会把
+  // runner 自身故障伪装成「存在失败用例」, 误导对被测实现的判定。
+  process.stderr.write(
+    `验收器未预期错误: ${error instanceof Error ? (error.stack ?? error.message) : String(error)}\n`,
+  );
+  process.exitCode = 2;
+}

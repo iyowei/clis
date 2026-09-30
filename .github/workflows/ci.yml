@@ -50,6 +50,6 @@ jobs:
       - name: Build
         run: bunx turbo run build
       - name: Conformance (bun)
-        run: bun packages/sweep-node-modules-cli/scripts/transcription/run-conformance.ts --target "bun packages/sweep-node-modules-cli/src/cli.ts"
+        run: bun scripts/transcription/run-conformance.ts --target "bun packages/sweep-node-modules-cli/src/cli.ts" --api-target "bun scripts/transcription/api-harness.ts"
       - name: Conformance (node)
-        run: bun packages/sweep-node-modules-cli/scripts/transcription/run-conformance.ts --target "node packages/sweep-node-modules-cli/src/cli.ts"
+        run: bun scripts/transcription/run-conformance.ts --target "node packages/sweep-node-modules-cli/src/cli.ts" --api-target "node scripts/transcription/api-harness.ts"

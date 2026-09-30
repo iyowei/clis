@@ -1,8 +1,9 @@
 /**
  * 转写契约套件 · 比对层。
  *
- * 职责: 拿一条语料的 expect 面逐项量被测进程的实际结果 (退出码 / stdout 逐字节 /
- * stdout 与 stderr 的子串含与禁含 / 文件系统终态), 产出失败清单。本层只判不修: 不触碰现场, 不改被测行为。
+ * 职责: 拿一条语料的 expect 面逐项量被测进程的实际结果 (cli case: 退出码 / stdout 逐字节 /
+ * stdout 与 stderr 的子串含与禁含 / 文件系统终态; api case: 返回值深比较与子集包含 / 错误名与码 /
+ * 事件集与末事件), 产出失败清单。本层只判不修: 不触碰现场, 不改被测行为。
  */
 import { lstat, readdir } from 'node:fs/promises';
 import { join } from 'node:path';

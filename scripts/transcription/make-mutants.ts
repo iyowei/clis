@@ -13,6 +13,8 @@
  *
  * 产物结构: mutants/gen-<id>/packages/{sweep-node-modules,sweep-node-modules-cli}/src/*.ts (注入后的实现)
  * + mutants/gen-<id>/scripts/transcription/api-harness.ts (套件参考 harness 的副本, 指向副本源码)
+ * + mutants/gen-<id>/tsconfig.json (空文件: 切断对仓库根 tsconfig paths 的继承, 防包名 import 被劫持回真单源)
+ * + mutants/gen-<id>/packages/sweep-node-modules/package.json (改写为源码导出式; cli 侧照抄真包, 副本自足可跑)
  * + mutants/gen-<id>/mutant.json (注入记录)。
  * 运行某 mutant (cli 面): bun scripts/transcription/mutants/gen-<id>/packages/sweep-node-modules-cli/src/cli.ts
  * 运行某 mutant (api 面): --api-target "bun scripts/transcription/mutants/gen-<id>/scripts/transcription/api-harness.ts"
@@ -254,10 +256,11 @@ async function locatePatchTarget(
  * 步骤 1：重建目录并复制两包源码 + package.json
  *   gen-exit-swallowed/packages/sweep-node-modules/src/  = api 源文件全量副本
  *   gen-exit-swallowed/packages/sweep-node-modules-cli/src/  = cli 源文件全量副本
+ *   gen-exit-swallowed/tsconfig.json  = {} (断对仓库根 paths 的继承)
  *   gen-exit-swallowed/node_modules/@iyowei/sweep-node-modules -> ../../packages/sweep-node-modules (符号链接)
  *
  * 步骤 2：逐补丁校验锚点唯一后替换 (目标文件按名在两包副本中定位)
- *   锚点出现 1 次 → 替换并记录 anchorLine (第 370 行)
+ *   锚点出现 1 次 → 替换并记录 anchorLine (第 649 行)
  *
  * Output（数据契约）
  *   return 已注入的实现目录 + 注入记录 (写盘 mutant.json)
@@ -292,9 +295,28 @@ async function makeMutant(mutant: MutantSpec): Promise<AppliedPatch[]> {
     join(outDir, 'scripts', 'transcription', 'api-harness.ts'),
     await readFile(join(HERE, 'api-harness.ts')),
   );
+  // 空 tsconfig 就近切断对仓库根 tsconfig 的 paths 继承: 否则 bun 会把副本 cli.ts 的包名
+  // import ('@iyowei/sweep-node-modules') 解析到真 API 单源 (paths 优先于 node_modules 链接),
+  // 变异自证静默失效 (2026-09-30 实测: 缺此文件时 bun 载体对注入副本零抓取)。node 载体不读
+  // paths 可免此劫持, 但受「node_modules 下 .ts 拒绝类型剥离、副本无 dist」限制, 故变异自证
+  // 的运行时以 bun 载体为准。
+  await writeFile(join(outDir, 'tsconfig.json'), '{}\n');
+  // 副本 API 的 package.json 改写为源码导出: bun 直跑副本 .ts, 不经真包的 exports→dist
+  // (副本不含构建产物, 照抄真包 exports 会让 cli 副本的包名 import 解析失败, 2026-09-30 实测)。
+  const apiPkg = JSON.parse(await readFile(API_PKG_JSON, 'utf8')) as {
+    name?: unknown;
+  };
   await writeFile(
     join(outDir, 'packages', 'sweep-node-modules', 'package.json'),
-    await readFile(API_PKG_JSON),
+    `${JSON.stringify(
+      {
+        name: typeof apiPkg.name === 'string' ? apiPkg.name : API_PKG_NAME,
+        type: 'module',
+        exports: { '.': './src/index.ts' },
+      },
+      null,
+      2,
+    )}\n`,
   );
   await writeFile(
     join(outDir, 'packages', 'sweep-node-modules-cli', 'package.json'),

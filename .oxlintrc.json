@@ -43,5 +43,9 @@
     "setTimeout": "readonly",
     "clearTimeout": "readonly"
   },
-  "ignorePatterns": ["dist/**", "node_modules/**"]
+  "ignorePatterns": [
+    "dist/**",
+    "node_modules/**",
+    "scripts/transcription/mutants/**"
+  ]
 }
