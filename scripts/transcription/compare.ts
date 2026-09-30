@@ -71,7 +71,7 @@ export async function checkFs(
  * ### 数据追踪示例
  * ```text
  * Input（真实 Payload）
- *   expect = { exitCode: 0, stdoutExact: '▍ SWEEP-NM  预览 · 1 个根: $FIXTURE/zone\n…', fs: [{ path: 'zone/a/node_modules', state: 'exists' }] }
+ *   expect = { exitCode: 0, stdoutExact: '▍ <CLI 显示名>  预览 · 1 个根: $FIXTURE/zone\n…', fs: [{ path: 'zone/a/node_modules', state: 'exists' }] }
  *   exec = { status: 0, stdout: '…与期望一致…', stderr: '', timedOut: false }
  *
  * 步骤 1：短路项检查

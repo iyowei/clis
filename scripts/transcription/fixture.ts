@@ -29,7 +29,8 @@ const DEFAULT_BYTES_PER_FILE = 256;
 const BAIT_FILE_BYTES = 64;
 
 /**
- * 最小环境白名单 (不继承宿主环境: 防宿主语义变量如 SWEEP_NM_CONFIG 泄漏进断言面, 保可移植)。
+ * 最小环境白名单 (不继承宿主环境: 防宿主语义变量泄漏进断言面, 保可移植; 被测工具自己的配置环境
+ * 变量形如 `<TOOL>_CONFIG`, 随宿主带进来会改掉断言面实际生效的配置)。
  * - PATH / TMPDIR 族: 运行基础 (被测 spawn 子进程、取临时目录时用);
  * - HOME / USERPROFILE: 家目录, 由本运行器改写指向 fixture 内的 home (见 buildEnv);
  * - SystemRoot / PATHEXT / ComSpec: Windows 下子进程运行基础;
