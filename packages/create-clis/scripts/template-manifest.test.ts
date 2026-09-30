@@ -16,19 +16,23 @@ import { join, relative } from 'node:path';
 import { REPO_ROOT, TEMPLATE_MANIFEST } from './template-manifest.ts';
 
 /**
- * 原项目可识别词汇 (分类判据口径, 与 T3 替换引擎的形态面同步):
- * 原包名 (含 `-cli` 变体前缀) / 原 scope / 原 bin 名 / 原 owner (repoUrl 形态由 owner 覆盖) /
- * 作者名形态 (LICENSE 与 package.json author, spec 词汇表 `{owner}` 行的位置约定) /
- * 产品短名 (产品区路径 `docs/sweep/`、备份目录约定等) / 仓库名 (根包名与裸 slug `iyowei/clis`)。
+ * 原项目可识别词汇 (分类判据口径): 一律为无歧义复合形态 ——
+ * 原包名 (含 `-cli` 变体前缀) / 原 scope / 原 bin 名 / 裸仓库 slug / 原 owner
+ * (repoUrl 形态由 owner 覆盖) / 作者名形态 (LICENSE 与 package.json author,
+ * spec 词汇表 `{owner}` 行的位置约定)。
+ *
+ * 收窄边界 (二轮裁定): 裸词 `sweep` / `clis` 不入词面 —— 子串匹配会误伤 `sweepStale`
+ * (动词义标识符, 替换后连字符入词成语法错误) 与 `create-clis` (生成器包名, 替换后
+ * 指向生成物里不存在的包); 产品义只认 `sweep-node-modules` / `sweep-nm` / `@iyowei` /
+ * `iyowei/clis` 这类复合面, 落不进复合面的按条目 note 移交。
  */
 const VOCABULARY = [
   'sweep-node-modules',
   '@iyowei',
   'sweep-nm',
+  'iyowei/clis',
   'iyowei',
   'iTonyYo',
-  'sweep',
-  'clis',
 ] as const;
 
 /** 走查跳过目录: 依赖 / 版本控制 / 构建缓存 / 生成物 / 变异副本 (口径同 root scripts/lint-doc-shared.ts) */
@@ -147,6 +151,32 @@ describe('TEMPLATE_MANIFEST 词汇口径', () => {
         entry.disposition === 'generalize' && !containsVocabulary(entry.path),
     ).map((entry) => entry.path);
     expect(empty, '不含词汇的文件应标 snapshot').toEqual([]);
+  });
+
+  test('词面收窄边界: 子串误伤形态不判词, 复合形态可判证', () => {
+    // 裸 clis 误伤 create-clis (生成器包名); 裸 sweep 误伤动词义标识符与英文句子
+    for (const falsePositive of [
+      'create-clis',
+      'sweepStale',
+      'to sweep node_modules',
+    ]) {
+      expect(
+        VOCABULARY.some((term) => falsePositive.includes(term)),
+        `${falsePositive} 不应命中判词面`,
+      ).toBe(false);
+    }
+    for (const hit of [
+      '@iyowei/sweep-node-modules',
+      'sweep-node-modules-cli',
+      'sweep-nm',
+      'iyowei/clis',
+      'iTonyYo',
+    ]) {
+      expect(
+        VOCABULARY.some((term) => hit.includes(term)),
+        `${hit} 应命中判词面`,
+      ).toBe(true);
+    }
   });
 
   test('全仓覆盖: 含原项目词汇的文件都被清单捕获', () => {

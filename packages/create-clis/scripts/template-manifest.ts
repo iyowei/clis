@@ -4,9 +4,9 @@
  * 快照只取登记在案的仓库文件, 四类处置:
  * - snapshot:   机制 / 配置文件, 与项目名和领域无关, 原样进模板;
  * - generalize: 机制文件但含原项目可识别形态 (包名 / scope / bin 名 / owner / 仓库地址 /
- *               作者名 / 仓库名 / 产品短名), 构建期替换为模板变量后进模板;
+ *               作者名), 构建期替换为模板变量后进模板;
  * - reset:      槽位文件, 模板侧是重新编写的骨架 (README / CHANGELOG / docs 骨架 /
- *               最小示例包), 现内容不复用, note 记录换成什么;
+ *               最小示例包 / 包专属发布自证适配层), 现内容不复用, note 记录换成什么;
  * - exclude:    本仓领域内容与历史 (sweep 产品区 / 领域包实现 / ADR 记录 / 生成器自身),
  *               不进模板, note 记录排除依据。
  *
@@ -15,6 +15,12 @@
  * - snapshot 条目不得含原项目词汇; generalize 条目必须含 (构建期零残留自检以此为前提);
  * - 含原项目词汇的仓内文件必须被清单捕获 (generalize, 或落在 reset / exclude 条目内);
  * - 未登记的文件不进模板: 新增文件须先在此分类 (测试兜底)。
+ *
+ * 词面收窄 (二轮裁定): 裸词 `sweep` / `clis` 不入词面 —— 子串误伤实证: `sweepStale`
+ * 会被改名成含连字符的语法错误标识符, `create-clis` 会被写成生成物里不存在的包名。
+ * 产品义一律走无歧义复合形态 (`sweep-node-modules` / `sweep-nm` / `@iyowei` / `iyowei/clis`);
+ * 只有裸词形态、落不进复合面的 (产品区路径 `docs/sweep/`、产物名 `dist/sweep.d.ts` 等)
+ * 按文件性质回 snapshot (原样保留 + note 移交) 或 reset (包专属适配层骨架重写)。
  *
  * 消费方: Task 3 替换引擎 (词汇面) 与 Task 4 构建链 (按处置产出 assets/template/)。
  */
@@ -64,10 +70,40 @@ export const TEMPLATE_MANIFEST: readonly ManifestEntry[] = [
   { path: 'scripts/lib/workspace.ts', disposition: 'snapshot' },
   { path: 'scripts/lib/workspace.test.ts', disposition: 'snapshot' },
   { path: 'scripts/lint-doc-shared.ts', disposition: 'snapshot' },
+  {
+    path: 'scripts/lint-stray-backups.ts',
+    disposition: 'snapshot',
+    note: '补救提示含备份目录约定 ~/tmp/sweep_backups/ (产品短名, 落不进复合面); 裸词替换退出后原样进模板, 如需更名移交 T4/T8',
+  },
   { path: 'scripts/lint-stray-backups.test.ts', disposition: 'snapshot' },
   { path: 'scripts/transcription/compare.ts', disposition: 'snapshot' },
+  {
+    path: 'scripts/transcription/corpus.ts',
+    disposition: 'snapshot',
+    note: '注释与示例含产品区路径 (docs/sweep/...): 产品义但落不进复合面; 原样进模板, 路径同步移交 T4/T8',
+  },
   { path: 'scripts/transcription/fixture.ts', disposition: 'snapshot' },
+  {
+    path: 'scripts/transcription/make-mutants.ts',
+    disposition: 'snapshot',
+    note: '函数名 sweepStale 为动词义 (裸词替换会破语法), 注释另含产品区路径; 原样进模板, 注释路径同步移交 T4/T8',
+  },
   { path: 'scripts/transcription/report.ts', disposition: 'snapshot' },
+  {
+    path: 'scripts/transcription/validate.ts',
+    disposition: 'snapshot',
+    note: '注释引用产品区路径 (docs/sweep/...): 产品义但落不进复合面; 原样进模板, 路径同步移交 T4/T8',
+  },
+  {
+    path: 'scripts/transcription/validate-coverage.ts',
+    disposition: 'snapshot',
+    note: '缺省契约 / 覆盖表 / 语料常量为功能面产品区路径 (docs/sweep/...), 落不进复合面; 增强档自填内容时同步 (移交 T4/T8)',
+  },
+  {
+    path: 'scripts/transcription/validate-coverage.test.ts',
+    disposition: 'snapshot',
+    note: '夹具含产品区路径 (docs/sweep/...): 产品义但落不进复合面; 原样进模板, 路径同步移交 T4/T8',
+  },
   {
     path: 'packages/sweep-node-modules/tsconfig.json',
     disposition: 'snapshot',
@@ -81,12 +117,27 @@ export const TEMPLATE_MANIFEST: readonly ManifestEntry[] = [
     disposition: 'snapshot',
   },
   {
+    path: 'packages/sweep-node-modules/scripts/verify-release.test.ts',
+    disposition: 'snapshot',
+    note: '判定链测试为通用面 (profile 经 import 注入); 夹具含领域产物名 codes.d.ts 与普通词临时前缀 sweep-verify-, 不依赖替换',
+  },
+  {
     path: 'packages/sweep-node-modules-cli/tsconfig.json',
     disposition: 'snapshot',
   },
   {
+    path: 'packages/sweep-node-modules-cli/scripts/release.fixtures.ts',
+    disposition: 'snapshot',
+    note: '夹具虚构实验室身份 (sweep-lab) 为普通词形; 不依赖替换, 原样进模板',
+  },
+  {
     path: 'packages/sweep-node-modules-cli/scripts/verify-release.ts',
     disposition: 'snapshot',
+  },
+  {
+    path: 'packages/sweep-node-modules-cli/scripts/write-dist-manifest.test.ts',
+    disposition: 'snapshot',
+    note: '夹具临时目录前缀 (sweep-lab-*) 为普通词形; 不依赖替换, 原样进模板',
   },
   {
     path: 'packages/sweep-node-modules-cli/scripts/write-dist-manifest.ts',
@@ -100,7 +151,7 @@ export const TEMPLATE_MANIFEST: readonly ManifestEntry[] = [
   {
     path: 'package.json',
     disposition: 'generalize',
-    note: '含 bench 脚本路径与 multi-release 登记 (create-clis 为生成器本仓条目); 根包名 clis 不在词汇表, 泛化不改写',
+    note: '含 bench 脚本路径与 multi-release 登记; 根包名 clis 属仓库名形态 (裸词不入词面, 不产生 create-clis 子串误改写; 具体改写与 create-clis 最终形态归 T4 构建链兜底)',
   },
   {
     path: 'tsconfig.json',
@@ -160,37 +211,7 @@ export const TEMPLATE_MANIFEST: readonly ManifestEntry[] = [
   {
     path: 'scripts/transcription/run-conformance.ts',
     disposition: 'generalize',
-    note: '用法示例含 CLI 包路径; 缺省语料目录泛化后指向新项目产品区 (内容自填)',
-  },
-  {
-    path: 'scripts/lint-stray-backups.ts',
-    disposition: 'generalize',
-    note: '补救提示中的备份目录约定含产品短名 (~/tmp/sweep_backups/), 泛化后随项目名',
-  },
-  {
-    path: 'scripts/transcription/corpus.ts',
-    disposition: 'generalize',
-    note: '注释与示例含产品区路径 (docs/sweep/...), 泛化后指向新项目产品区',
-  },
-  {
-    path: 'scripts/transcription/make-mutants.ts',
-    disposition: 'generalize',
-    note: '注释含产品区路径; 本地函数名 sweepStale 含产品短名, 泛化后随项目名更名',
-  },
-  {
-    path: 'scripts/transcription/validate.ts',
-    disposition: 'generalize',
-    note: '注释引用产品区路径 (docs/sweep/...), 泛化后指向新项目产品区',
-  },
-  {
-    path: 'scripts/transcription/validate-coverage.ts',
-    disposition: 'generalize',
-    note: '缺省契约 / 覆盖表 / 语料路径为功能面 (含产品短名), 泛化后指向新项目产品区',
-  },
-  {
-    path: 'scripts/transcription/validate-coverage.test.ts',
-    disposition: 'generalize',
-    note: '夹具含产品区路径 (docs/sweep/...), 泛化后指向新项目产品区',
+    note: '用法示例含 CLI 包路径 (复合面); 缺省语料目录为产品区裸词路径, 不随替换, 增强档自填内容时同步',
   },
   {
     path: 'packages/sweep-node-modules/package.json',
@@ -199,32 +220,12 @@ export const TEMPLATE_MANIFEST: readonly ManifestEntry[] = [
   },
   { path: 'packages/sweep-node-modules/LICENSE', disposition: 'generalize' },
   {
-    path: 'packages/sweep-node-modules/scripts/verify-release.ts',
-    disposition: 'generalize',
-    note: '发行面包白名单为功能面 (dist/sweep.d.ts 等含产品短名), 泛化后按示例包命名落位',
-  },
-  {
-    path: 'packages/sweep-node-modules/scripts/verify-release.test.ts',
-    disposition: 'generalize',
-    note: '夹具临时目录前缀含产品短名, 泛化后随项目名',
-  },
-  {
     path: 'packages/sweep-node-modules-cli/package.json',
     disposition: 'generalize',
   },
   {
     path: 'packages/sweep-node-modules-cli/LICENSE',
     disposition: 'generalize',
-  },
-  {
-    path: 'packages/sweep-node-modules-cli/scripts/release.fixtures.ts',
-    disposition: 'generalize',
-    note: '夹具 git 身份 (sweep-lab) 含产品短名, 泛化后随项目名',
-  },
-  {
-    path: 'packages/sweep-node-modules-cli/scripts/write-dist-manifest.test.ts',
-    disposition: 'generalize',
-    note: '夹具临时目录前缀含产品短名, 泛化后随项目名',
   },
   {
     path: 'packages/sweep-node-modules-cli/bin/sweep-nm',
@@ -319,6 +320,11 @@ export const TEMPLATE_MANIFEST: readonly ManifestEntry[] = [
     path: 'packages/sweep-node-modules/src/',
     disposition: 'reset',
     note: '包源码槽: 换最小示例包骨架; 现实现为 sweep 领域代码与测试, 不复用',
+  },
+  {
+    path: 'packages/sweep-node-modules/scripts/verify-release.ts',
+    disposition: 'reset',
+    note: '包专属发布自证适配层: 发行面包白名单 (dist/sweep.d.ts 等) 全为领域产物名, 落不进复合面; 换示例包自己的 profile 骨架',
   },
   {
     path: 'packages/sweep-node-modules/docs/README.md',
