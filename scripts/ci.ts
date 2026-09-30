@@ -52,6 +52,12 @@ const STEPS: Readonly<Record<string, Step>> = {
     args: ['scripts/transcription/validate-coverage.ts'],
   },
   'lint:backups': { command: 'bun', args: ['scripts/lint-stray-backups.ts'] },
+  // 发布凭据预检 (OIDC 换证): 发布特有, 不进任何组——普通 CI job 与本机全链跑不到它,
+  // 仅 Release 的 verify job 经 `--only npm-trust` 调用; 非 OIDC 环境下手动跑时脚本自行跳过
+  'npm-trust': {
+    command: 'bun',
+    args: ['scripts/npm-trust-guard.ts', 'verify-oidc'],
+  },
   'conformance:bun': {
     command: 'bun',
     args: [

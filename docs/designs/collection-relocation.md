@@ -19,15 +19,16 @@
 
 ## 阶段 B: 改名与组织
 
-**依据 (为什么不影响现有两包的发布链)**: 发布链按包各自独立 (multi-release per-package), 跟仓库名无关 (npm 包名 ≠ 仓库名); 仓库改名只涉及一次性的元数据同步, CHANGELOG 里的历史链接是快照, 靠 GitHub 的重定向兜底, 不重写历史。
+**依据 (改名对发布链的影响面)**: 发布链按包各自独立 (multi-release per-package), 包名与版本判定跟仓库名无关 (npm 包名 ≠ 仓库名); 但 npm 侧的 Trusted Publisher 登记与仓库名强相关: 换证时 npm 拿 GitHub OIDC 令牌与登记逐字段核对 (repository / workflow 文件名 / environment), 改名不会自动跟改, 已存登记不支持就地修改, 只能 revoke 后重建。2026-09-30 改名后, 两包登记未同步, 发布链每轮在 npm 认证处失败, 报的是误导性的 `ENONPMTOKEN`; 事故全貌与防线见[开发指南](../development.md)「发布」章。仓库改名只涉及一次性的元数据同步 (仓内引用 + npm 侧登记), CHANGELOG 里的历史链接是快照, 靠 GitHub 的重定向兜底, 不重写历史。
 
 执行序:
 
 1. 本仓先全绿 (阶段 A 完成标准) 再动改名;
 2. GitHub 端: 仓库改名 `sweep-node-modules` → `clis`;
 3. 仓内同步 (一次性): 根 `package.json` (name 字段与仓库引用), 两包 `package.json` 的 `repository` / `homepage` / `bugs`, 根与两包 README 的徽章与仓库链接, 两个 workflow 内的仓库引用 (如有), issue 模板, `.vscode/launch.json`, `.gitignorerc.json`, git remote;
-4. 文档自称更新 (docs 里所有「sweep-node-modules」的自称, 都改为「集合仓 + 包」的说法): 允许分批慢慢改, 不阻塞改名 (旧称不算错误, 只是说法过时);
-5. 生成器包落地 (create-clis: 包骨架 + 快照 build + 契约实现, 见[生成器包](scaffold-package.md))。
+4. npm 侧同步 (仓库外, 必做): 重建两包的 Trusted Publisher 登记 (改名不会自动跟改, 不同步则发布链在 npm 认证处失败, 见上方「依据」段); 自动化入口 `scripts/npm-trust-guard.ts` (`check` 只读对账 / `fix` 自动 revoke + 重建, 需 npm 登录态与交互式终端); CI 侧 Release 的 verify job 已挂 `npm-trust` 预检, 改名后第一次走发布链即当场点名;
+5. 文档自称更新 (docs 里所有「sweep-node-modules」的自称, 都改为「集合仓 + 包」的说法): 允许分批慢慢改, 不阻塞改名 (旧称不算错误, 只是说法过时);
+6. 生成器包落地 (create-clis: 包骨架 + 快照 build + 契约实现, 见[生成器包](scaffold-package.md))。
 
 ## 阶段 C: 生成器闭环
 
@@ -37,13 +38,14 @@
 
 ## 验证清单 (两包发布链零受损)
 
-| 检查                            | 方式                      | 时机                           |
-| ------------------------------- | ------------------------- | ------------------------------ |
-| 全链全绿 (含双载体 conformance) | `bun run ci`              | 阶段 A 完成 / 改名后本地       |
-| 发布链判定不变                  | semrel dry-run (本地预演) | 改名前                         |
-| CI 与 Release workflow 照常     | GitHub Actions            | 改名推送后                     |
-| 发布产物与 provenance 指向新仓  | npm 上                    | 改名后**下一次真实发布**时核验 |
-| CHANGELOG 历史链接仍能打开      | 抽查旧链接 (重定向兜底)   | 改名后                         |
+| 检查                              | 方式                                               | 时机                           |
+| --------------------------------- | -------------------------------------------------- | ------------------------------ |
+| 全链全绿 (含双载体 conformance)   | `bun run ci`                                       | 阶段 A 完成 / 改名后本地       |
+| 发布链判定不变                    | semrel dry-run (本地预演)                          | 改名前                         |
+| CI 与 Release workflow 照常       | GitHub Actions                                     | 改名推送后                     |
+| 发布产物与 provenance 指向新仓    | npm 上                                             | 改名后**下一次真实发布**时核验 |
+| npm 侧 Trusted Publisher 登记一致 | 本地 `check` (或 Release verify 的 npm-trust 预检) | 改名后                         |
+| CHANGELOG 历史链接仍能打开        | 抽查旧链接 (重定向兜底)                            | 改名后                         |
 
 ## 回滚
 
@@ -53,6 +55,7 @@
 
 ## 修订记录
 
-| 日期       | 修订                                               |
-| ---------- | -------------------------------------------------- |
-| 2026-09-30 | 初稿: 三阶段、改名要同步的位置、验证清单与回滚策略 |
+| 日期       | 修订                                                 |
+| ---------- | ---------------------------------------------------- |
+| 2026-09-30 | 初稿: 三阶段、改名要同步的位置、验证清单与回滚策略   |
+| 2026-10-01 | 修正「跟仓库名无关」的依据 + 补 npm 侧登记同步与核对 |
