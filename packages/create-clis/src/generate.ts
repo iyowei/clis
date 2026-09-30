@@ -202,8 +202,14 @@ async function formatTree(root: string): Promise<void> {
 /**
  * 二道自检: 生成物全树扫描, 路径与内容都不得残留模板占位形态 (替换完整性) 与原项目词汇
  * (替换方向正确性)。快照构建侧已保证模板干净, 这一步是替换面的第二道防线。
+ * 原词汇判据排除与用户词汇取值重合的形态 —— 二者同名是合法配置 (如用户 owner 与本仓 owner
+ * 同名), 生成物出现同名值是预期结果, 不得误报。
  */
-function assertNoResidual(targetDir: string, original: Vocabulary): void {
+function assertNoResidual(
+  targetDir: string,
+  vocabulary: Vocabulary,
+  original: Vocabulary,
+): void {
   const leftovers: string[] = [];
   for (const rel of listTemplateFiles(targetDir)) {
     const text = readFileSync(join(targetDir, rel), 'utf8');
@@ -213,7 +219,10 @@ function assertNoResidual(targetDir: string, original: Vocabulary): void {
     ) {
       leftovers.push(`${rel} (模板占位形态残留)`);
     }
-    if (containsResidual(rel, original) || containsResidual(text, original)) {
+    if (
+      containsResidual(rel, original, vocabulary) ||
+      containsResidual(text, original, vocabulary)
+    ) {
       leftovers.push(`${rel} (原项目词汇残留)`);
     }
   }
@@ -279,7 +288,7 @@ export async function generateProject(
   pruneTemplate(targetDir, removeRulesFor(tier));
   substituteVocabulary(targetDir, vocabulary);
   await formatTree(targetDir);
-  assertNoResidual(targetDir, original);
+  assertNoResidual(targetDir, vocabulary, original);
 
   const executed = await runHooks(options.hooks ?? {}, targetDir);
   return { executed };

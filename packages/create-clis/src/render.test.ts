@@ -243,6 +243,24 @@ describe('containsResidual 残留检测', () => {
     ).toBe(false);
     expect(containsResidual('# 新项目\n', ORIGINAL)).toBe(false);
   });
+
+  test('传入目标词汇时排除重合形态 (用户词汇与源词汇同名不误报)', () => {
+    // owner 同为本仓 owner: 生成物里出现 iyowei 是预期结果, 不算残留
+    const sameOwner: Vocabulary = {
+      name: 'my-tool',
+      scope: '@me',
+      binName: 'mt',
+      owner: 'iyowei',
+      repoUrl: 'https://github.com/iyowei/my-tool',
+    };
+    expect(containsResidual('author: iyowei', ORIGINAL, sameOwner)).toBe(false);
+    // 不传排除面时维持全量判据 (构建自检面)
+    expect(containsResidual('author: iyowei', ORIGINAL)).toBe(true);
+    // 与目标词汇无关的原形态照常判残留
+    expect(
+      containsResidual('残留 sweep-node-modules', ORIGINAL, sameOwner),
+    ).toBe(true);
+  });
 });
 
 describe('行为级单源: 清单 generalize 面实扫零残留', () => {

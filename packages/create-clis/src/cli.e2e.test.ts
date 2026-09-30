@@ -12,6 +12,7 @@ import { afterAll, afterEach, describe, expect, test } from 'bun:test';
 
 import { spawnSync } from 'node:child_process';
 import {
+  cpSync,
   existsSync,
   mkdirSync,
   readFileSync,
@@ -469,6 +470,35 @@ describe('generateProject hooks 调度', () => {
     await expect(failing).rejects.toThrow('boom');
     expect(calls).toEqual(['git', 'install', 'install-only']);
     expect(existsSync(join(third.target, 'package.json'))).toBe(true);
+  });
+});
+
+/** 二道自检 (模块面): 失败分支与重合豁免 */
+describe('generateProject 二道自检', () => {
+  test('变量与原项目词汇取值重合 (owner 同为本仓 owner): 不误报残留', async () => {
+    const { target } = makeCase('overlap');
+    const overlap: Vocabulary = {
+      ...HOOK_VOCABULARY,
+      owner: ORIGINAL.owner,
+      repoUrl: `https://github.com/${ORIGINAL.owner}/hook-tool`,
+    };
+    await expect(runGenerate(target, { vocabulary: overlap })).resolves.toEqual(
+      { executed: [] },
+    );
+    expect(existsSync(join(target, 'package.json'))).toBe(true);
+  });
+
+  test('模板残留原词汇: 抛错且保留半成品 (写入后失败)', async () => {
+    const { target } = makeCase('residual');
+    // 改坏模板: 塞入生成期不替换的原词汇形态, 制造二道自检的失败输入
+    const broken = join(dirname(target), 'template-broken');
+    cpSync(TEMPLATE_DIR, broken, { recursive: true });
+    writeFileSync(join(broken, 'scripts/leftover.txt'), 'sweep-node-modules\n');
+
+    const failure = runGenerate(target, { templateDir: broken });
+    await expect(failure).rejects.toThrow('二道自检未过');
+    // 半成品保留: 失败发生在写入之后, 产物与触发残留的文件都在
+    expect(existsSync(join(target, 'scripts/leftover.txt'))).toBe(true);
   });
 });
 

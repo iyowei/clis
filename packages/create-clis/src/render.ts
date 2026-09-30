@@ -176,13 +176,25 @@ export function renderTemplate(
 
 /**
  * 残留检测: content 里是否仍含原词汇的任一形态 (构建自检与生成二道防线的共用判据)。
- * 判据只看源形态集合, 与目标值无关, 故以 original 自身作目标词汇建表取源形态。
+ * 判据以 original 自身作目标词汇建表取源形态。
+ *
+ * 传入 target 时排除与目标词汇形态重合的源形态: 目标词汇与源词汇取值重合是合法配置
+ * (如用户 owner 与本仓 owner 同名, 生成物里出现同名值是预期结果), 重合形态不算残留,
+ * 防二道自检误报; 不传时维持「源形态全量」判据 (构建自检面)。
  */
 export function containsResidual(
   content: string,
   original: Vocabulary,
+  target?: Vocabulary,
 ): boolean {
-  return buildForms(original, original).some((form) =>
-    content.includes(form.from),
+  const forms = buildForms(original, original);
+  if (target === undefined) {
+    return forms.some((form) => content.includes(form.from));
+  }
+  const targetForms = new Set(
+    buildForms(target, target).map((form) => form.from),
+  );
+  return forms.some(
+    (form) => !targetForms.has(form.from) && content.includes(form.from),
   );
 }
