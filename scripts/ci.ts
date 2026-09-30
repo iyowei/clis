@@ -1,7 +1,7 @@
 /**
  * 本地 CI 预演 (单一入口): 与 .github/workflows/ 的 verify + conformance 两个 job 同集合 ——
  * build → typecheck → test → lint → format-check → lint:refs →
- * lint:examples → conformance (bun + node 双 target)。
+ * lint:examples → lint:coverage → conformance (bun + node 双 target)。
  *
  * 由来 (2026-09-29 CI 实翻): conformance 的 node target 直跑 CLI 源码时按 package.json 的
  * exports 解析到 API 包的 dist, 而 node 不读 tsconfig paths (bun 独有) —— 缺构建产物时
@@ -49,6 +49,7 @@ if (process.argv.includes('--conformance')) {
   step('format-check', 'bunx', ['prettier', '--check', '.']);
   step('lint:refs', 'bun', ['run', 'lint:refs']);
   step('lint:examples', 'bun', ['run', 'lint:examples']);
+  step('lint:coverage', 'bun', ['run', 'lint:coverage']);
   conformance();
 }
 process.stdout.write('\nCI 预演全绿 ✓\n');
