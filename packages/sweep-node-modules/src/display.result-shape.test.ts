@@ -1,6 +1,6 @@
 /**
  * 展示辅助的结果形态契约: formatBytes / sanitizeLine / sanitizeOutputLine。
- * 依据 docs/designs/api-surface.md §2.6; 从公开面入口 (index.ts) 导入,
+ * 依据 packages/sweep-node-modules/docs/designs/api-surface.md §2.6; 从公开面入口 (index.ts) 导入,
  * 按真实调用方的方式消费。不可见字符一律经 String.fromCodePoint 构造,
  * 避免源码里出现真实控制字符 (不可见即不可审)。
  */

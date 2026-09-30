@@ -1,7 +1,7 @@
 # API harness 协议 (api harness protocol)
 
 > 用途: 定义「被测 API 的黑盒可执行化」契约: api 用例 (语料 `kind: "api"`) 经此协议驱动任意语言的实现做行为等价验收。与 CLI 面「被测命令是参数」完全同构: harness 只是一个可执行命令, 验收器 (`run-conformance.ts`) 零改动即可验收新语言的实现。
-> 权威: 字段语义以 [`corpus.schema.json`](corpus.schema.json) 为准; 本文件是协议面 (指令 / 输出 / 探针 / 实现者契约) 的规范正文; 决策依据见 [ADR 0008](../../adrs/0008-transcription-kit.md) 与「转写双面覆盖」设计。
+> 权威: 字段语义以 [`corpus.schema.json`](corpus.schema.json) 为准; 本文件是协议面 (指令 / 输出 / 探针 / 实现者契约) 的规范正文; 决策依据见 [ADR 0008](../../../packages/sweep-node-modules/docs/adrs/0008-transcription-kit.md) 与「转写双面覆盖」设计。
 > 参考实现: `scripts/transcription/api-harness.ts` (TypeScript); 被测方亦可自写等价 harness, 唯一的约束是本协议。
 
 ## 1. 定位与调用形态
@@ -56,7 +56,7 @@
 }
 ```
 
-- 「失败」涵盖被测 API 抛出的任何错误与指令缺陷两类; 其中 `code` 与 `details` 为可选字段 (被测错误不带判别码时省略), 语料以 `error.code` 断言时匹配的是 `code` 字段 (判别码体系见「可编程 API 面」(docs/designs/api-surface.md) §3.2 的 code 表)。
+- 「失败」涵盖被测 API 抛出的任何错误与指令缺陷两类; 其中 `code` 与 `details` 为可选字段 (被测错误不带判别码时省略), 语料以 `error.code` 断言时匹配的是 `code` 字段 (判别码体系见「可编程 API 面」(packages/sweep-node-modules/docs/designs/api-surface.md) §3.2 的 code 表)。
 - **方法步**声明过 `collectEvents` 即附 `"events": [...]` 字段 (可为空数组); 创建步不支持该字段, 声明即报错。
 - **序列化约束**: `value` 须为 JSON 无损的落盘 / 审计域数据 (域类型序列化承诺见「可编程 API 面」§5.1); 查询辅助类返回值 (如 `ReadonlyMap`) 不属语料断言面。
 - **退出码**: 正常路径恒为 0 (成功与失败都以 JSON 表达); 仅当 harness 自身无法产出 JSON (如 stdin 非法导致进程崩溃) 才以非零退出 + stderr 诊断; 此时验收器以 `kind: harness` 的失败记录, 不炸全局。

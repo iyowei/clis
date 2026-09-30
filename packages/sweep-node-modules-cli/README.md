@@ -10,14 +10,14 @@
 
 A workspace-level cleaner for `node_modules`: scan several root directories in one pass, list every `node_modules` directory across your projects along with its size, and bulk-delete them after you confirm, reclaiming disk space. The CLI is a thin shell over the API package it is built on, [`@iyowei/sweep-node-modules`](https://www.npmjs.com/package/@iyowei/sweep-node-modules). For programmatic use from your own scripts and tools, reach for that package (its usage is documented there).
 
-> Where this sits: single-project cleaners handle "go into one project and clean its own artifacts"; this tool handles "stand at the workspace level and clean many projects in one pass". The two layers coexist; see [ADR 0001](../../docs/adrs/0001-workspace-level-cleaner.md).
+> Where this sits: single-project cleaners handle "go into one project and clean its own artifacts"; this tool handles "stand at the workspace level and clean many projects in one pass". The two layers coexist; see [ADR 0001](../sweep-node-modules/docs/adrs/0001-workspace-level-cleaner.md).
 
 ## Requirements
 
 - **Dual runtime** for the actual work: bun when available, node otherwise (identical behavior; bun starts faster).
 - Modern runtime APIs only: any recent bun; for node, a version that runs TypeScript natively (the same version floor applies to the source install and the package install; version snapshot and test records in [ADR 0006](../../docs/adrs/0006-dual-runtime-bun-first.md)).
 - Zero third-party runtime dependencies (built-in runtime capabilities only).
-- Runs on macOS and Linux today; Windows launchers are shipped but not yet verified on a real Windows machine (see the evidence gap in [ADR 0007](../../docs/adrs/0007-platform-portability.md)).
+- Runs on macOS and Linux today; Windows launchers are shipped but not yet verified on a real Windows machine (see the evidence gap in [ADR 0007](../sweep-node-modules/docs/adrs/0007-platform-portability.md)).
 
 ## Installation
 

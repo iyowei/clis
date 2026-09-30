@@ -1,7 +1,7 @@
 /**
  * 库抛出的唯一错误类型与判别工具。
  *
- * 契约基准: docs/designs/api-surface.md §3.6。
+ * 契约基准: packages/sweep-node-modules/docs/designs/api-surface.md §3.6。
  * 两条通道的划分 (§3.1): 能列出结果的失败走返回值 (拒绝 / 失败 / 中止 / 未测到 / 跳过);
  * 无法开始或无法继续的失败 (配置 / 参数 / 取消) 才抛 SweepError。
  * 本类是全仓「以 createXxx() 工厂交出实例、不导出类」惯例的唯一例外:

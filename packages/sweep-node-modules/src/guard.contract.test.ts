@@ -3,7 +3,7 @@
  * 字符串级判定走 posix / win32 纯样本 (不依赖真实文件系统); 真实语义 (符号链接、
  * 目录包含性、根锚点链) 由 fixtures 真实目录样本覆盖; 设备边界 (st_dev 比对) 另成
  * 一册 (guard.device.contract.test.ts), 判定不同源、注入面也不同。
- * 设计: docs/designs/deletion-guard.md; 可移植性: docs/adrs/0007-platform-portability.md。
+ * 设计: docs/designs/deletion-guard.md; 可移植性: packages/sweep-node-modules/docs/adrs/0007-platform-portability.md。
  */
 import { afterEach, describe, expect, test } from 'bun:test';
 

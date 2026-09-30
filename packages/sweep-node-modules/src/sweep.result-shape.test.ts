@@ -1,7 +1,7 @@
 /**
  * 编排层的结果形态契约: createSweeper 的 plan / run 产物 (SweepPlan / SweepReport)
  * 与结果缝合层 (isSuccessOutcome / summarizeReport)。
- * 依据 docs/designs/api-surface.md §2.7 / §7.7 / §7.8; 从公开面入口 (index.ts) 导入,
+ * 依据 packages/sweep-node-modules/docs/designs/api-surface.md §2.7 / §7.7 / §7.8; 从公开面入口 (index.ts) 导入,
  * 按真实调用方的方式构造与消费。
  */
 import { afterEach, describe, expect, test } from 'bun:test';

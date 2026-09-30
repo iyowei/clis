@@ -7,7 +7,7 @@
  * 探针经 `DeviceProbe` 注入, 缺省实现 `fsDeviceProbe`), 见 BC-41 与 docs/designs/deletion-guard.md「设备边界」。
  * 分层: 字符串级判定是可注入 path 风格的纯函数 (posix / win32 语义可在任意平台测试),
  * lstat / realpath / stat 等 IO 集中于 `validateTargets`、`firstSymlinkOnTarget` 与 `fsDeviceProbe` 三处; 是否整批拒绝由调用方定夺。
- * 设计: docs/designs/deletion-guard.md; 可移植性: docs/adrs/0007-platform-portability.md。
+ * 设计: docs/designs/deletion-guard.md; 可移植性: packages/sweep-node-modules/docs/adrs/0007-platform-portability.md。
  */
 import { lstat, realpath, stat } from 'node:fs/promises';
 import { homedir } from 'node:os';

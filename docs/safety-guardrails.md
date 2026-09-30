@@ -2,7 +2,7 @@
 
 > 定位: 面向想深挖的用户与未来维护者的参考文档, 全量沉淀这套工具的安全防护保障点与内部账目。
 > 与 CLI 包 README 的关系: CLI 包 README 的安全防护节从本文裁剪而来 (挑出分量重的条目, 写成面向用户的功能细节); 本文是全量版。
-> 权威: 行为语义的权威在 `docs/designs/` 的设计文档与 `docs/protocol/behavior-contract.md` 的编号条款; 本文是面向读者的整理视图, 依据按写作时的实现实读核证。
+> 权威: 行为语义的权威在各级设计文档 (仓库级 `docs/designs/` 与包级 `docs/`) 与 `docs/protocol/behavior-contract.md` 的编号条款; 本文是面向读者的整理视图, 依据按写作时的实现实读核证。
 > 路径约定: 下文「依据」中的 `src/xxx.ts` 为简写。归属 CLI 包 (`packages/sweep-node-modules-cli/src/`) 的是 `cli.ts` / `render.ts` / `help.ts` / `init.ts`; 其余 (`guard.ts` / `scan-parallel.ts` / `delete.ts` / `config.ts` / `size-du.ts` / `size.ts` / `size-js.ts` / `skip.ts` / `classify.ts` / `types.ts` / `scan.ts` / `runtime.ts` / `display.ts` / `sweep.ts`) 归 API 包 (`packages/sweep-node-modules/src/`)。
 
 ## 目录
@@ -33,7 +33,7 @@
 
 - 实现: 两包 `src/` 下的模块文件 (归属见上「路径约定」); 启动器在 CLI 包 `bin/`; 发布脚本在 CLI 包 `scripts/`, 转写套件在仓库根 `scripts/transcription/`。
 - 契约: `docs/protocol/behavior-contract.md` 的编号条款 (BC / OF / EC 三族); 语料名指 `docs/protocol/conformance/corpus/` 下的金样本用例。
-- 设计文档: `docs/designs/` 下的分册 (`deletion-guard.md` / `install-tree-hardening.md` / `cli-surface.md` / `scan-and-size.md` / `config-and-initialization.md` / `architecture-overview.md`); 平台与发布的决策在 `docs/adrs/`。
+- 设计文档: 分册 (`deletion-guard.md` / `install-tree-hardening.md` / `scan-and-size.md` / `config-and-initialization.md` / `architecture-overview.md` 在 `docs/designs/`; `cli-surface.md` 在 CLI 包 `docs/`); 平台与发布的决策在 `docs/adrs/` 与 API 包 `docs/adrs/`。
 - 覆盖表: 条款与语料的对照见 `docs/protocol/conformance/coverage.md`。
 
 **分组不是分类学**: A 到 F 六组按「防的是哪一类错」划分, 同一条防线可能从多组视角被提到; 条目编号 (A1 到 F22) 在本文内唯一, 供引用与挑选。

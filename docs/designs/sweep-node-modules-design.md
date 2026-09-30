@@ -8,26 +8,26 @@
 
 ## 修订记录
 
-| 日期       | 修订                                                                                                                                                                                                                                                                                                                  |
-| ---------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 2026-09-23 | 初稿: 立项设计, 含命令面、配置规格、扫描与安全闸、代码结构、测试策略、明确不做清单                                                                                                                                                                                                                                    |
-| 2026-09-23 | 补记: 配置初始化模型 (`sweep-nm init` 子命令 + 首次自动向导), 见 [ADR 0004](../adrs/0004-config-initialization-wizard.md)                                                                                                                                                                                             |
-| 2026-09-23 | 补记: 工程闸门 (oxlint / prettier / lefthook), 见 [ADR 0005](../adrs/0005-engineering-gates-and-hooks.md)                                                                                                                                                                                                             |
-| 2026-09-23 | 补记: 双运行时 (Bun 优先 / Node 回退) 与性能要点, 见 [ADR 0006](../adrs/0006-dual-runtime-bun-first.md)                                                                                                                                                                                                               |
-| 2026-09-23 | 拆分: 单篇设计拆为总纲 + 四份分册; 分册后续修订各自在文件内补「修订记录」                                                                                                                                                                                                                                             |
-| 2026-09-23 | 分册索引收为指针行; 设计索引权威归 [designs/README.md](README.md) (含推荐阅读顺序)                                                                                                                                                                                                                                    |
-| 2026-09-23 | 补记: 三平台 (Windows / macOS / Linux) 可移植性与配置定位, 见 [ADR 0007](../adrs/0007-platform-portability.md); CLI 输出规格升级为色块视觉规范                                                                                                                                                                        |
-| 2026-09-23 | 实现落地回写: 模块表补 delete / 门面 / bench / scripts; 测试策略补实现覆盖指针; 关联 [ADR 0008](../adrs/0008-transcription-kit.md) 转写契约套件                                                                                                                                                                       |
-| 2026-09-23 | 分发形态: 编译产物 + 单文件打包发布到 npm (`@iyowei/sweep-node-modules`); 「明确不做」清单移除 npm 发布项                                                                                                                                                                                                             |
-| 2026-09-23 | 代码树补 npm 分发入口 `bin/sweep-nm.mjs`; 实测规模改为指代验收命令的实时输出 (不写死条数)                                                                                                                                                                                                                             |
-| 2026-09-23 | 分发形态回写: 代码树补 `dist/cli.js` 与三入口差异 (见 [ADR 0009](../adrs/0009-npm-distribution-form.md)); 导出面补 `runtimeLabel`                                                                                                                                                                                     |
-| 2026-09-26 | 发行面补产物自证: 构建产出 `dist/manifest.json` 清单, 新增 `scripts/verify-release.ts` 发布前置闸门, npm 启动器使用产物前对账清单 (见 [ADR 0009](../adrs/0009-npm-distribution-form.md) 补记); 代码树同步                                                                                                             |
-| 2026-09-26 | 发行面白名单: 发布闸门加发行面包内文件对账 (防仓库根 README 类备份被静默收进包); 启动器补 schemaVersion 校验与拒收指引宿主分流; 代码树同步                                                                                                                                                                            |
-| 2026-09-27 | 设备边界 (安全审计 C6): 目标与所属根不同文件系统即逐条跳过 (两形态 on-path / target-itself 的解除路径各按事实), 新立契约 BC-41 / OF-15; 代码树补 `src/skip.ts` 与 `guard.ts` 的设备比对 (见 [删除安全闸](deletion-guard.md)「设备边界」)                                                                              |
-| 2026-09-27 | rm 阶段 ENOENT 分桶 (安全审计 C8): 删除层增目标本体复核, 代码树补 delete.node-smoke.ts                                                                                                                                                                                                                                |
-| 2026-09-27 | 运行时解析防劫持 (安全审计 C10): 三入口挑运行时排除当前工作目录 (win32 的裸名搜索序含 cwd), npm 入口在 win32 下先按 PATH 解析绝对路径再执行, cmd 入口改用 for 的 PATH 展开修饰符, du 探针补 win32 平台守卫; 新立契约 EC-08 (见 [ADR 0007](../adrs/0007-platform-portability.md) 决策第 4 条补记)                      |
-| 2026-09-27 | 工程闸门形态收窄: 装钩子改经守卫脚本 `scripts/install-git-hooks.mjs` (只在本包自身仓库), lefthook 不列依赖; 钩子执行链经 `lefthook.yml` 的 `lefthook:` (bunx 取 pin 版) 与 `assert_lefthook_installed` 兜底 (无全局 lefthook 照跑, 失败响亮) (见 [ADR 0005](../adrs/0005-engineering-gates-and-hooks.md) 决策第 1 条) |
-| 2026-09-27 | 发行面白名单随双语 README 同步: 仓库根新增 `README.zh-CN.md` (英文主版的中文对照, 经 npm 强制收录通道进包), 包清单 6 项变 7 项, `PACK_FILES_EXPECTED` 随同步 (见 [ADR 0009](../adrs/0009-npm-distribution-form.md) 补记第 5 条)                                                                                       |
+| 日期       | 修订                                                                                                                                                                                                                                                                                                                                 |
+| ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| 2026-09-23 | 初稿: 立项设计, 含命令面、配置规格、扫描与安全闸、代码结构、测试策略、明确不做清单                                                                                                                                                                                                                                                   |
+| 2026-09-23 | 补记: 配置初始化模型 (`sweep-nm init` 子命令 + 首次自动向导), 见 [ADR 0004](../../packages/sweep-node-modules/docs/adrs/0004-config-initialization-wizard.md)                                                                                                                                                                        |
+| 2026-09-23 | 补记: 工程闸门 (oxlint / prettier / lefthook), 见 [ADR 0005](../adrs/0005-engineering-gates-and-hooks.md)                                                                                                                                                                                                                            |
+| 2026-09-23 | 补记: 双运行时 (Bun 优先 / Node 回退) 与性能要点, 见 [ADR 0006](../adrs/0006-dual-runtime-bun-first.md)                                                                                                                                                                                                                              |
+| 2026-09-23 | 拆分: 单篇设计拆为总纲 + 四份分册; 分册后续修订各自在文件内补「修订记录」                                                                                                                                                                                                                                                            |
+| 2026-09-23 | 分册索引收为指针行; 设计索引权威归 [designs/README.md](README.md) (含推荐阅读顺序)                                                                                                                                                                                                                                                   |
+| 2026-09-23 | 补记: 三平台 (Windows / macOS / Linux) 可移植性与配置定位, 见 [ADR 0007](../../packages/sweep-node-modules/docs/adrs/0007-platform-portability.md); CLI 输出规格升级为色块视觉规范                                                                                                                                                   |
+| 2026-09-23 | 实现落地回写: 模块表补 delete / 门面 / bench / scripts; 测试策略补实现覆盖指针; 关联 [ADR 0008](../../packages/sweep-node-modules/docs/adrs/0008-transcription-kit.md) 转写契约套件                                                                                                                                                  |
+| 2026-09-23 | 分发形态: 编译产物 + 单文件打包发布到 npm (`@iyowei/sweep-node-modules`); 「明确不做」清单移除 npm 发布项                                                                                                                                                                                                                            |
+| 2026-09-23 | 代码树补 npm 分发入口 `bin/sweep-nm.mjs`; 实测规模改为指代验收命令的实时输出 (不写死条数)                                                                                                                                                                                                                                            |
+| 2026-09-23 | 分发形态回写: 代码树补 `dist/cli.js` 与三入口差异 (见 [ADR 0009](../adrs/0009-npm-distribution-form.md)); 导出面补 `runtimeLabel`                                                                                                                                                                                                    |
+| 2026-09-26 | 发行面补产物自证: 构建产出 `dist/manifest.json` 清单, 新增 `scripts/verify-release.ts` 发布前置闸门, npm 启动器使用产物前对账清单 (见 [ADR 0009](../adrs/0009-npm-distribution-form.md) 补记); 代码树同步                                                                                                                            |
+| 2026-09-26 | 发行面白名单: 发布闸门加发行面包内文件对账 (防仓库根 README 类备份被静默收进包); 启动器补 schemaVersion 校验与拒收指引宿主分流; 代码树同步                                                                                                                                                                                           |
+| 2026-09-27 | 设备边界 (安全审计 C6): 目标与所属根不同文件系统即逐条跳过 (两形态 on-path / target-itself 的解除路径各按事实), 新立契约 BC-41 / OF-15; 代码树补 `src/skip.ts` 与 `guard.ts` 的设备比对 (见 [删除安全闸](deletion-guard.md)「设备边界」)                                                                                             |
+| 2026-09-27 | rm 阶段 ENOENT 分桶 (安全审计 C8): 删除层增目标本体复核, 代码树补 delete.node-smoke.ts                                                                                                                                                                                                                                               |
+| 2026-09-27 | 运行时解析防劫持 (安全审计 C10): 三入口挑运行时排除当前工作目录 (win32 的裸名搜索序含 cwd), npm 入口在 win32 下先按 PATH 解析绝对路径再执行, cmd 入口改用 for 的 PATH 展开修饰符, du 探针补 win32 平台守卫; 新立契约 EC-08 (见 [ADR 0007](../../packages/sweep-node-modules/docs/adrs/0007-platform-portability.md) 决策第 4 条补记) |
+| 2026-09-27 | 工程闸门形态收窄: 装钩子改经守卫脚本 `scripts/install-git-hooks.mjs` (只在本包自身仓库), lefthook 不列依赖; 钩子执行链经 `lefthook.yml` 的 `lefthook:` (bunx 取 pin 版) 与 `assert_lefthook_installed` 兜底 (无全局 lefthook 照跑, 失败响亮) (见 [ADR 0005](../adrs/0005-engineering-gates-and-hooks.md) 决策第 1 条)                |
+| 2026-09-27 | 发行面白名单随双语 README 同步: 仓库根新增 `README.zh-CN.md` (英文主版的中文对照, 经 npm 强制收录通道进包), 包清单 6 项变 7 项, `PACK_FILES_EXPECTED` 随同步 (见 [ADR 0009](../adrs/0009-npm-distribution-form.md) 补记第 5 条)                                                                                                      |
 
 ## 分册索引
 
@@ -35,14 +35,14 @@
 
 ## 一、定位与成功标准
 
-工作区级 `node_modules` 清理工具: 一次扫描多个根目录, 跨项目列出各处 `node_modules` 与体积, 确认后批量删除。与单项目清理工具分层共存, 见 [ADR 0001](../adrs/0001-workspace-level-cleaner.md)。
+工作区级 `node_modules` 清理工具: 一次扫描多个根目录, 跨项目列出各处 `node_modules` 与体积, 确认后批量删除。与单项目清理工具分层共存, 见 [ADR 0001](../../packages/sweep-node-modules/docs/adrs/0001-workspace-level-cleaner.md)。
 
 成功标准 (按个人小工具档位):
 
 - **正确**: 扫描不漏不重, 删除只命中目标;
 - **失败响亮**: 任何失败以非零退出码与汇总清单呈现, 不静默吞掉;
 - **易改**: 零依赖、小模块、纯逻辑与 IO 分离;
-- **可移植**: Windows / macOS / Linux 三平台可用, 见 [ADR 0007](../adrs/0007-platform-portability.md);
+- **可移植**: Windows / macOS / Linux 三平台可用, 见 [ADR 0007](../../packages/sweep-node-modules/docs/adrs/0007-platform-portability.md);
 - **够用就停**: 见「明确不做清单」, 不预建投机能力。
 
 ## 二、代码结构与运行时基座
@@ -119,13 +119,13 @@ scripts/install-git-hooks.mjs / install-git-hooks.test.ts  # prepare 的装钩�
 
 ## 关联引用
 
-- [ADR 0001: 工作区级清理工具定位](../adrs/0001-workspace-level-cleaner.md)
-- [ADR 0002: 固定配置与预览执行模型](../adrs/0002-fixed-config-and-preview-execution.md)
-- [ADR 0003: 零运行时依赖](../adrs/0003-zero-runtime-deps.md)
-- [ADR 0004: 配置初始化向导](../adrs/0004-config-initialization-wizard.md)
+- [ADR 0001: 工作区级清理工具定位](../../packages/sweep-node-modules/docs/adrs/0001-workspace-level-cleaner.md)
+- [ADR 0002: 固定配置与预览执行模型](../../packages/sweep-node-modules/docs/adrs/0002-fixed-config-and-preview-execution.md)
+- [ADR 0003: 零运行时依赖](../../packages/sweep-node-modules/docs/adrs/0003-zero-runtime-deps.md)
+- [ADR 0004: 配置初始化向导](../../packages/sweep-node-modules/docs/adrs/0004-config-initialization-wizard.md)
 - [ADR 0005: 工程闸门与提交钩子](../adrs/0005-engineering-gates-and-hooks.md)
 - [ADR 0006: 双运行时支持与 Bun 优先的 API 策略](../adrs/0006-dual-runtime-bun-first.md)
-- [ADR 0007: 三平台可移植性与配置定位](../adrs/0007-platform-portability.md)
-- [ADR 0008: 转写契约套件](../adrs/0008-transcription-kit.md)
+- [ADR 0007: 三平台可移植性与配置定位](../../packages/sweep-node-modules/docs/adrs/0007-platform-portability.md)
+- [ADR 0008: 转写契约套件](../../packages/sweep-node-modules/docs/adrs/0008-transcription-kit.md)
 - [ADR 0009: npm 分发形态](../adrs/0009-npm-distribution-form.md)
 - 工程闸门操作细节以仓库根 `lefthook.yml`、`.oxlintrc.json`、`.prettierrc` 为准; 文档体系与命名约定见 [docs/README](../README.md)。

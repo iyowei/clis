@@ -8,3 +8,20 @@ Read `docs/README.md` inside that installed package first, then read the relevan
 
 This block is written and re-added by `turbo` before repository-scoped commands when an AI agent is detected. In the Turborepo source repository, its template is defined in `crates/turborepo-cli/src/cli/agent_guidance.rs`. Removing the managed block while updates are enabled means a later qualifying invocation will add it again. Set `"agentGuidance": false` in the root `turbo.json` or `turbo.jsonc` to opt out; this does not remove an existing block. Keep the block committed with your work to avoid an uncommitted change on the next agent invocation.
 <!-- END:turborepo-agent-rules -->
+
+# 仓库导航 (供 AI Agent 与人类读者)
+
+> 本仓定位为 CLI 工具集合仓 (仓库名 `iyowei/clis`; 边界与结构见 [集合仓定位](docs/designs/collection-positioning.md))。本节说明**文档关联关系的读取路径**, 规则正文见 [文档分层协议](docs/designs/docs-layering.md)。
+
+## 文档分层与读取路径
+
+- **仓库级文档**在 `docs/`: 先读 [文档总索引](docs/README.md); 设计文档入口为 [设计文档索引](docs/designs/README.md) (分「仓库级设计」与「产品设计」两组);
+- **包级文档**在各包 `packages/<pkg>/docs/`, 入口固定为包内 `docs/README.md` (该包文档清单 + 包级 ADR + 回链仓库级);
+- **ADR 编号跨两级全局唯一**: 仓库级在 `docs/adrs/`, 包级在各包 `docs/adrs/`; 总索引 [docs/adrs/README.md](docs/adrs/README.md) 列全部编号 (包级行外链到包内);
+- **读取顺序**: 仓库级索引 → 顺外链进包 → 包内文档; 从包回到仓库级同样有回链 (双向织链)。
+
+## 结构事实
+
+- 包协议: 类属与发布见 [包分类与发布协议](docs/designs/package-classification.md), 依赖方向纪律见 [依赖方向纪律](docs/designs/dependency-direction.md);
+- 工程闸门链单源为 `scripts/ci.ts` (本地全链 / pre-push / CI / Release verify 同集合);
+- 提交信息与发布链约定见 [CONTRIBUTING.md](CONTRIBUTING.md)。

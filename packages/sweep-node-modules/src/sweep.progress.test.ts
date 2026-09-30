@@ -1,7 +1,7 @@
 /**
  * 编排层的进度与取消契约: phase 事件推进 (SweepPhase 全序) / 原语事件透传 /
  * 终结事件收尾 / signal 在各阶段的表现。
- * 依据 docs/designs/api-surface.md §4; 从公开面入口 (index.ts) 导入。
+ * 依据 packages/sweep-node-modules/docs/designs/api-surface.md §4; 从公开面入口 (index.ts) 导入。
  */
 import { afterEach, describe, expect, test } from 'bun:test';
 

@@ -1,6 +1,6 @@
 /**
  * 结果缝合层 (纯函数, 零 IO): 成功侧判据与计数摘要。
- * 契约基准: docs/designs/api-surface.md §2.7 与 §7.8。
+ * 契约基准: packages/sweep-node-modules/docs/designs/api-surface.md §2.7 与 §7.8。
  *
  * 存在价值是「随版本新增 EntryOutcome.kind 时不会静默漏判」: 手写的
  * `every(kind !== 'x' && kind !== 'y')` 在库里新增一种成功侧 kind 后会把新 kind

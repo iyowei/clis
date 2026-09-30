@@ -2,7 +2,7 @@
  * 清单渲染 (纯函数, 零 IO): 入参决定全部输出; 颜色由调用方按 TTY / NO_COLOR 判定后传入;
  * 路径风味由调用方注入 (缺省平台原生), 保证同一份实现在 posix / win32 语义下均可测。
  * 视觉规范: 紧凑式 + 色块 (设计: cli-surface.md「输出规格」)。
- * 可移植性: docs/adrs/0007-platform-portability.md。
+ * 可移植性: packages/sweep-node-modules/docs/adrs/0007-platform-portability.md。
  */
 import {
   type PathStyle,

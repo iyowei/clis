@@ -30,8 +30,8 @@ Programmable API to sweep `node_modules` across workspace roots: scan, measure, 
 ## Requirements
 
 - **Dual runtime**: bun first, node fallback (identical behavior; bun starts faster). Node floor: `>= 22.18.0` (this package's `engines` field).
-- Zero third-party runtime dependencies: built-in runtime capabilities only (see [ADR 0003](../../docs/adrs/0003-zero-runtime-deps.md)).
-- Windows, macOS, and Linux (see [ADR 0007](../../docs/adrs/0007-platform-portability.md)).
+- Zero third-party runtime dependencies: built-in runtime capabilities only (see [ADR 0003](docs/adrs/0003-zero-runtime-deps.md)).
+- Windows, macOS, and Linux (see [ADR 0007](docs/adrs/0007-platform-portability.md)).
 - Written in TypeScript; type declarations ship with the package.
 
 ## Installation
@@ -592,7 +592,7 @@ In packaged or multi-instance environments (where two copies of the library can 
 
 ### Code families
 
-Domain codes by family (the full trigger table per code lives in the [API surface design](../../docs/designs/api-surface.md)):
+Domain codes by family (the full trigger table per code lives in the [API surface design](docs/api-surface.md)):
 
 ```text
 Guard (validateTargets → rejected[].code)
@@ -671,5 +671,5 @@ Environment setup, common commands, dual-runtime verification, and commit hooks:
 ## Documentation
 
 - [Engineering documentation index](../../docs/README.md)
-- [API surface design](../../docs/designs/api-surface.md): the authoritative export surface, error codes, and behavior contracts behind this page
+- [API surface design](docs/api-surface.md): the authoritative export surface, error codes, and behavior contracts behind this page
 - [Safety guardrails](../../docs/safety-guardrails.md), the full account (in Chinese)

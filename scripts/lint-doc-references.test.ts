@@ -127,7 +127,7 @@ describe('§章节引用', () => {
     const line = '见「可编程 API 面」§3.4 的';
     expect(
       resolveSectionTarget(line, line.indexOf('§'), 'docs', new Map()),
-    ).toBe('docs/designs/api-surface.md');
+    ).toBe('packages/sweep-node-modules/docs/designs/api-surface.md');
   });
 });
 
@@ -142,5 +142,17 @@ describe('ADR 编号', () => {
     expect(issues).toHaveLength(1);
     expect(issues[0]!.file).toBe('docs/a.md');
     expect(issues[0]!.reference).toBe('ADR 0099');
+  });
+
+  test('两级查找面: 包级 ADR (packages/*/docs/adrs) 同样被收集与校验', () => {
+    const root = makeRoot({
+      'docs/a.md': '见 ADR 0021 与 ADR 0022。\n',
+      'packages/x/docs/adrs/0021-in-package.md': '# ADR 0021: 包级\n',
+    });
+    // 夹具自带 docs/adrs/0001-first.md, 与包级 0021 一并被收集
+    expect([...collectAdrNumbers(root)]).toEqual(['0001', '0021']);
+    const issues = findAllIssues(root).filter((f) => f.kind === 'adr');
+    expect(issues).toHaveLength(1);
+    expect(issues[0]!.reference).toBe('ADR 0022');
   });
 });

@@ -14,7 +14,7 @@ rem found): 只搜 PATH, 不搜当前目录, 也不派生任何子进程; 解析
 rem 的命令不再触发搜索序。候选扩展名取 .com / .exe: 扩展名相对序 (.com 先于 .exe) 与 libuv 一致;
 rem 搜索粒度则不同 —— 本实现扩展名优先 (.com 扫完全部 PATH 目录再试 .exe), npm 启动器
 rem (bin/sweep-nm.mjs, 走 Node 的 libuv 搜索) 目录优先 (逐目录内先 .com 再 .exe); 仅当多个 PATH 目录
-rem 分别存在不同扩展名的 bun / node 时, 三入口可能选中不同二进制 (登记见 docs/adrs/0007-platform-portability.md)。
+rem 分别存在不同扩展名的 bun / node 时, 三入口可能选中不同二进制 (登记见 packages/sweep-node-modules/docs/adrs/0007-platform-portability.md)。
 setlocal
 set "ROOT=%~dp0.."
 set "ENTRY=%ROOT%\src\cli.ts"

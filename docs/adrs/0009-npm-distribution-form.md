@@ -5,7 +5,7 @@
 > **决策者**: 沈委
 > **标签**: [工程]
 > **影响范围**: [全项目]
-> **取代关系**: 本 ADR 局部取代 [ADR 0003](0003-zero-runtime-deps.md) 决策条第 2 条「零构建」与 [ADR 0006](0006-dual-runtime-bun-first.md) 对「构建产物分发」的弃用判断。判断反转的理由: 当时弃用的是「为运行而构建」(与源码直跑互斥, 且彼时分发形态未定), 现在只加「为分发而构建」, 开发运行路径未变; 两处按「已接受的决定不原地改写」保留原文, 仅在决策条内加修订指引。
+> **取代关系**: 本 ADR 局部取代 [ADR 0003](../../packages/sweep-node-modules/docs/adrs/0003-zero-runtime-deps.md) 决策条第 2 条「零构建」与 [ADR 0006](0006-dual-runtime-bun-first.md) 对「构建产物分发」的弃用判断。判断反转的理由: 当时弃用的是「为运行而构建」(与源码直跑互斥, 且彼时分发形态未定), 现在只加「为分发而构建」, 开发运行路径未变; 两处按「已接受的决定不原地改写」保留原文, 仅在决策条内加修订指引。
 
 ## 上下文与问题陈述 (Context & Problem)
 
@@ -31,9 +31,9 @@
 
 ## 决策结论与选择原因 (Decision & Why)
 
-1. **开发态仍源码直跑**: 仓库内 `bun src/cli.ts` / `node src/cli.ts` 与 sh / cmd 启动器一切照旧, 不要求先构建再运行 ([ADR 0003](0003-zero-runtime-deps.md)「零构建」在开发运行路径继续成立)。
+1. **开发态仍源码直跑**: 仓库内 `bun src/cli.ts` / `node src/cli.ts` 与 sh / cmd 启动器一切照旧, 不要求先构建再运行 ([ADR 0003](../../packages/sweep-node-modules/docs/adrs/0003-zero-runtime-deps.md)「零构建」在开发运行路径继续成立)。
 2. **仅 npm 分发态产出单文件编译产物**: `bun build src/cli.ts --target=node --outfile=dist/cli.js` (package.json 的 `build` 脚本), 发布前由 `prepublishOnly` 触发; `dist/` 是派生件不入库 (`.gitignore` 忽略), package.json 的 `files` 只列 `bin/sweep-nm.mjs` 与 `dist`。补记 (2026-09-26): `build` 现为两步 (上述 `bun build` + 写产物自证清单 `dist/manifest.json`), `prepublishOnly` 变为「构建 + 发布前置闸门」; 清单随 `files` 的 `dist` 目录进包, 详见下方补记。
-3. **npm 入口为 `bin/sweep-nm.mjs`**: package.json 的 `bin` 目标 (命令名仍是 `sweep-nm`); 挑选运行时 (Bun 优先, Node 回退) 后, 按「优先跑 `dist/cli.js`, 无产物则回退 `src/cli.ts`」选入口, 一条选择逻辑同时服务包态与仓库开发态 (包内只有产物, 开发态通常无产物)。它与 sh / cmd 启动器职责同逻辑, 差异在宿主与这条入口选择 (见 [ADR 0007](0007-platform-portability.md))。补记 (2026-09-26): 「优先跑 `dist/cli.js`」现附产物自证前置 (先与随附清单对账摘要, 不符即拒收并给指引), 详见下方补记。
+3. **npm 入口为 `bin/sweep-nm.mjs`**: package.json 的 `bin` 目标 (命令名仍是 `sweep-nm`); 挑选运行时 (Bun 优先, Node 回退) 后, 按「优先跑 `dist/cli.js`, 无产物则回退 `src/cli.ts`」选入口, 一条选择逻辑同时服务包态与仓库开发态 (包内只有产物, 开发态通常无产物)。它与 sh / cmd 启动器职责同逻辑, 差异在宿主与这条入口选择 (见 [ADR 0007](../../packages/sweep-node-modules/docs/adrs/0007-platform-portability.md))。补记 (2026-09-26): 「优先跑 `dist/cli.js`」现附产物自证前置 (先与随附清单对账摘要, 不符即拒收并给指引), 详见下方补记。
 4. **node 下限两条获取方式同限**: 源码方式需类型剥离默认启用的版本, 编译产物方式跑的是 JS、本身不需要该能力, 但两种获取方式取同一数值下限 `>= 22.18.0`, 不因获取方式放宽 (依据与版本快照见 [ADR 0006](0006-dual-runtime-bun-first.md)「版本要求」)。
 
 选择原因: 以最小代价解掉「只装 node 的机器在 npm 通道不可用」这一冲突, 只为分发加一条构建命令, 开发运行路径与单源码原则都不动; 分发产物是单文件 JS, 无平台分叉、无运行时捆绑。
@@ -85,7 +85,7 @@
 
 **关联引用**
 
-- 被局部取代的两处判断见 [ADR 0003](0003-zero-runtime-deps.md) 与 [ADR 0006](0006-dual-runtime-bun-first.md); 入口分轨见 [ADR 0007](0007-platform-portability.md)。
+- 被局部取代的两处判断见 [ADR 0003](../../packages/sweep-node-modules/docs/adrs/0003-zero-runtime-deps.md) 与 [ADR 0006](0006-dual-runtime-bun-first.md); 入口分轨见 [ADR 0007](../../packages/sweep-node-modules/docs/adrs/0007-platform-portability.md)。
 - 代码树与模块结构见 [设计总纲](../designs/sweep-node-modules-design.md); 文档命名约定见 [docs/README](../README.md)。
 
 > **修订指引 (2026-09-30)**: 本文包名与路径为包名翻转前的坐标: CLI 发行物现为 `@iyowei/sweep-node-modules-cli` (落 `packages/sweep-node-modules-cli/`, 含 `bin/` 与 `scripts/`); 同名包 `@iyowei/sweep-node-modules` 现为 API 包 (见 [ADR 0010](0010-dual-package-monorepo.md))。

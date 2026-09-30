@@ -1,5 +1,5 @@
 /**
- * API 包入口。导出面分两部分, 均以 docs/designs/api-surface.md 为契约基准:
+ * API 包入口。导出面分两部分, 均以 packages/sweep-node-modules/docs/designs/api-surface.md 为契约基准:
  * - 公开面新增: 错误模型 (SweepError / code 体系) 与域类型 (编排层 / 跳过集册 / 诊断),
  *   按设计文档 §3 / §5 / §7 落地;
  * - 现状能力搬运: 原语层函数与既有类型, 随实现工序逐刀对齐设计 (编排层 createSweeper

@@ -10,14 +10,14 @@
 
 工作区级 `node_modules` 清理工具: 一次扫描多个根目录, 跨项目列出各处 `node_modules` 与体积, 确认后批量删除, 回收磁盘空间。本 CLI 是 API 包 [`@iyowei/sweep-node-modules`](https://www.npmjs.com/package/@iyowei/sweep-node-modules) 之上的一层薄壳。要在你自己的脚本与工具里做程序化调用, 请用该包 (用法见该包文档)。
 
-> 分层说明: 单项目清理工具管「进入某个项目, 清它自己的产物」; 本工具管「站在工作区层面, 一次清理很多个项目」。两者分层共存, 见 [ADR 0001](../../docs/adrs/0001-workspace-level-cleaner.md)。
+> 分层说明: 单项目清理工具管「进入某个项目, 清它自己的产物」; 本工具管「站在工作区层面, 一次清理很多个项目」。两者分层共存, 见 [ADR 0001](../sweep-node-modules/docs/adrs/0001-workspace-level-cleaner.md)。
 
 ## 要求
 
 - 业务逻辑**双运行时**: 有 bun 走 bun, 否则 node (功能一致, bun 启动更快)。
 - 取最新一代运行时 API: bun 任意近期版本; node 需原生支持 TypeScript 直跑的版本 (源码方式与包方式取同一版本下限; 版本快照与实测记录见 [ADR 0006](../../docs/adrs/0006-dual-runtime-bun-first.md))。
 - 零第三方运行时依赖 (只用运行时内置能力)。
-- 平台: 当前实际验证于 macOS 与 Linux; Windows 启动器已随包分发, 但未经真机验证 (证据缺口见 [ADR 0007](../../docs/adrs/0007-platform-portability.md))。
+- 平台: 当前实际验证于 macOS 与 Linux; Windows 启动器已随包分发, 但未经真机验证 (证据缺口见 [ADR 0007](../sweep-node-modules/docs/adrs/0007-platform-portability.md))。
 
 ## 安装
 

@@ -1,6 +1,6 @@
 /**
  * 帮助页文案: 命令面速查 + 关键口径 (零 IO 的静态文本拼装)。
- * 独立于 cli 编排: 命令面 (docs/designs/cli-surface.md) 是这里唯一的事实来源,
+ * 独立于 cli 编排: 命令面 (packages/sweep-node-modules-cli/docs/designs/cli-surface.md) 是这里唯一的事实来源,
  * 新增旗标时此文件与规格、语料 `cli-help` 三处同批更新 (见 behavior-contract.md BC-30)。
  */
 import { resolveConfigPath } from '@iyowei/sweep-node-modules';

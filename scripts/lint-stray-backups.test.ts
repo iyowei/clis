@@ -43,9 +43,11 @@ describe('findStrayBackups', () => {
   });
 
   test('嵌套深处的备份同样被抓', () => {
-    const root = makeRoot(['docs/adrs/0001-x.md.20260101_000000.modified']);
+    const root = makeRoot([
+      'docs/nested/deep/note.md.20260101_000000.modified',
+    ]);
     expect(findStrayBackups(root)).toEqual([
-      'docs/adrs/0001-x.md.20260101_000000.modified',
+      'docs/nested/deep/note.md.20260101_000000.modified',
     ]);
   });
 });

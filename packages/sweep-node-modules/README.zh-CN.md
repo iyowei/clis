@@ -30,8 +30,8 @@
 ## 要求
 
 - **双运行时**: 有 bun 走 bun, 否则 node (功能一致, bun 启动更快); node 版本下限 `>= 22.18.0` (本包 `engines` 字段)。
-- 零第三方运行时依赖: 只用运行时内置能力 (见 [ADR 0003](../../docs/adrs/0003-zero-runtime-deps.md))。
-- 平台: Windows / macOS / Linux 三平台均可运行 (见 [ADR 0007](../../docs/adrs/0007-platform-portability.md))。
+- 零第三方运行时依赖: 只用运行时内置能力 (见 [ADR 0003](docs/adrs/0003-zero-runtime-deps.md))。
+- 平台: Windows / macOS / Linux 三平台均可运行 (见 [ADR 0007](docs/adrs/0007-platform-portability.md))。
 - 源码为 TypeScript; 类型声明随包分发。
 
 ## 安装
@@ -592,7 +592,7 @@ const outcome = await removeBatch(targets, { roots, staleTargets });
 
 ### code 家族
 
-域内 code 按家族列出 (每个 code 的完整触发表见 [可编程 API 面设计](../../docs/designs/api-surface.md)):
+域内 code 按家族列出 (每个 code 的完整触发表见 [可编程 API 面设计](docs/api-surface.md)):
 
 ```text
 安全闸 (validateTargets → rejected[].code)
@@ -671,5 +671,5 @@ const outcome = await removeBatch(targets, { roots, staleTargets });
 ## 文档
 
 - [工程技术文档总索引](../../docs/README.md)
-- [可编程 API 面设计](../../docs/designs/api-surface.md): 本页背后的权威导出面、错误码与行为契约
+- [可编程 API 面设计](docs/api-surface.md): 本页背后的权威导出面、错误码与行为契约
 - [安全防护保障](../../docs/safety-guardrails.md): 全量版 (含已知残余风险的诚实账)

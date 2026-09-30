@@ -1,7 +1,7 @@
 /**
  * 判别值与枚举的类型集: 错误码 / 告警码 / 跳过原因 / 体积口径 / 编排阶段。
  *
- * 契约基准: docs/designs/api-surface.md §3.2 与 §7.3。
+ * 契约基准: packages/sweep-node-modules/docs/designs/api-surface.md §3.2 与 §7.3。
  * 命名规则: `<域>_<判定>`, 全大写蛇形; 域取自模块 (SCAN / SIZE / GUARD / REMOVE / CONFIG / REVIEW; 另有无域项 INVALID_ARGUMENT 与 CANCELLED)。
  * 硬纪律: **code 一经发布即冻结, 只增不改** (废弃走文档标注, 不回收取值);
  * 且同一个 code 不得合并「处置方向相反」的语义 (调用方必须能不读 message 就决定下一步)。

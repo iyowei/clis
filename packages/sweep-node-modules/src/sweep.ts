@@ -1,6 +1,6 @@
 /**
  * 编排层: createSweeper 的只读面 (plan) 与执行面 (run)。
- * 契约基准: docs/designs/api-surface.md §2.7 / §4 / §7.7 / §7.8。
+ * 契约基准: packages/sweep-node-modules/docs/designs/api-surface.md §2.7 / §4 / §7.7 / §7.8。
  *
  * CLI 的处理链 (扫描 → 体积 → 类别 → 设备 → 批次 → 安全闸 → 删除 → 报告) 以本模块为
  * 单一事实来源, CLI 包退化为「组装 SweepOptions → 调 plan / run → 渲染」的薄壳。

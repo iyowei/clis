@@ -1,6 +1,6 @@
 /**
  * 跳过集册的结果形态契约: 编码判定 (skipReasonOf) / 候选构造 (toSkipCandidates) /
- * 码话合一集册 (SkipBook.entries)。依据 docs/designs/api-surface.md §2.5 与 §7.6。
+ * 码话合一集册 (SkipBook.entries)。依据 packages/sweep-node-modules/docs/designs/api-surface.md §2.5 与 §7.6。
  */
 import { describe, expect, test } from 'bun:test';
 

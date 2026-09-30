@@ -1,7 +1,7 @@
 # 转写契约套件 (transcription kit)
 
 > 用途: 在 TS 参考实现之外, 提供一套「精准转写工具包」: 未来以 Rust / C / 任意语言重写时, 以语言中立契约 + 金样本语料 + 确定性验收器保证等价实现可被机械验收; AI 只承担「按契约实施」的角色, 且被验收器兜底。
-> 权威: 行为语义的出处是 `docs/designs/` 设计文档; 本目录是其面向「转写与验收」的编号化视图。
+> 权威: 行为语义的出处是各级设计文档 (仓库级 `docs/designs/` 与包级 `docs/`); 本目录是其面向「转写与验收」的编号化视图。
 
 ## 套件结构
 
@@ -18,7 +18,7 @@
 
 ## 用本套件转写一门新语言
 
-1. 通读 [`behavior-contract.md`](behavior-contract.md) 与 `docs/designs/` 对应分册 (行为权威);
+1. 通读 [`behavior-contract.md`](behavior-contract.md) 与对应设计分册 (仓库级 `docs/designs/` 与包级 `docs/`; 行为权威);
 2. 按 [`prompts/common-discipline.md`](prompts/common-discipline.md) + 目标语言模板 ([`prompts/transcribe-rust.md`](prompts/transcribe-rust.md) 为范例) 实施;
    交付物 = 条款→代码映射表 + 缺口清单 + conformance 原始报告;
 3. 以验收器对抗你的实现 (被测命令即你的可执行入口, 如绝对路径形态的 `/path/to/sweep-nm-rs`):

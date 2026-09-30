@@ -2,7 +2,7 @@
  * 入口编排: 参数解析 → 配置定位, 子命令分流 (`init` 向导 / `config` 报告) 或装载
  * (缺失按交互与否分流) → 清理流程 (处理链全在 API 包 createSweeper: 预览走 plan,
  * `--yes` 走 run; 本层只做选项组装、告警透传、渲染与退出码)。
- * 权威: docs/designs/cli-surface.md (命令面 / 退出码) 与 config-and-initialization.md。
+ * 权威: packages/sweep-node-modules-cli/docs/designs/cli-surface.md (命令面 / 退出码) 与 config-and-initialization.md。
  */
 import { lstat, mkdir, writeFile } from 'node:fs/promises';
 import { homedir } from 'node:os';

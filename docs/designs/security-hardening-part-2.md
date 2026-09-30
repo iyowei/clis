@@ -7,7 +7,7 @@
 > **前篇**: [删除加固](install-tree-hardening.md)
 >
 > 用途: 讲清安全审计第二批 (第 3~11 条) 的来龙去脉: 问题怎么形成、为什么严重、怎么修的; 面向未来的维护者, 以及第一次读这个仓库的技术读者。
-> 范围: 条款与旗标语义的权威在 [删除安全闸](deletion-guard.md)、[配置与初始化](config-and-initialization.md)、[命令面与输出](cli-surface.md)、[扫描与体积](scan-and-size.md); 本文不复述条款, 只讲它们为什么长成现在这样。
+> 范围: 条款与旗标语义的权威在 [删除安全闸](deletion-guard.md)、[配置与初始化](config-and-initialization.md)、[命令面与输出](../../packages/sweep-node-modules-cli/docs/designs/cli-surface.md)、[扫描与体积](scan-and-size.md); 本文不复述条款, 只讲它们为什么长成现在这样。
 > 权威: 行为与决策的权威在 `docs/designs/` 各分册与 `docs/adrs/`; 本文属解释性归纳。
 
 ## 修订记录
@@ -134,7 +134,7 @@
 
 Windows 上的裸名执行, 把处境变成了入口: `CreateProcessW` 的搜索序把当前目录排在 PATH 之前 (微软官方文档: 搜索序第 2 位即 the current directory for the parent process); Node 走的 libuv 同样先试 cwd 再扫 PATH, 且只试 `.com` / `.exe` 两个扩展名 (微软官方文档与 libuv 源码双证)。于是: 在被扫目录里放一个 `bun.exe` (或 `bun.com`), 启动器喊「bun」时, 先应声的就是它。像喊一个名字, 先应声的是房间里站着的人, 而不是通讯录上的那位; 而被扫的目录, 恰恰是一间外人能进出的房间。
 
-修法是三个入口的运行时解析统一排除当前目录 (依据见 [ADR 0007](../adrs/0007-platform-portability.md) 决策第 4 条补记): npm 入口 (`.mjs`) 在 win32 下先按 PATH 解析绝对路径再执行 (空条目与相对条目跳过, 两者在 Windows 上都意为当前目录); cmd 入口改用 `for` 的 PATH 展开修饰符, 只搜 PATH; sh 入口的 `command -v` 与 `exec` 本就只按 PATH。
+修法是三个入口的运行时解析统一排除当前目录 (依据见 [ADR 0007](../../packages/sweep-node-modules/docs/adrs/0007-platform-portability.md) 决策第 4 条补记): npm 入口 (`.mjs`) 在 win32 下先按 PATH 解析绝对路径再执行 (空条目与相对条目跳过, 两者在 Windows 上都意为当前目录); cmd 入口改用 `for` 的 PATH 展开修饰符, 只搜 PATH; sh 入口的 `command -v` 与 `exec` 本就只按 PATH。
 
 同一次审计还带出一处同型修复: 体积统计的 `du` 探针是 POSIX 绝对路径 (`/usr/bin/du`), 在 win32 上会被解析成「当前盘根」下的 `usr\bin\du`, 该盘存在同名外来程序时即被 spawn。守卫落在探针处: win32 一律返回「无 `du`」, 走纯实现基线, 与「du 快路径仅 unix」的既有口径对齐。
 

@@ -11,7 +11,8 @@
  * - §引用: 只校验「目标明确」的形态: § 前 30 字符窗口内出现 `x.md` 文件名或已知文档别名时,
  *   校验目标文档的节号存在性; 裸 `§N` (无目标线索) 一律跳过 —— 跨文档裸引用与泛称
  *   「设计文档 §7」无法机械定目标, 回落「本文档」的口径实测全为误报 (2026-09-30)。
- * - ADR 编号: `ADR 0005` / `ADR-0005` 形态须有对应 `docs/adrs/00XX-*.md`; 行内含
+ * - ADR 编号: `ADR 0005` / `ADR-0005` 形态须有对应两级 `adrs/` 下的 `00XX-*.md` (仓库级
+ *   `docs/adrs/` 或包级 `docs/adrs/`); 行内含
  *   「不存在 / 未创建 / 待创建 / 历史」字样时豁免 (文档正在陈述它不存在, 是真话)。
  *
  * 节号引擎: 收集标题 `## N.` / `### N.M` / `#### N.M.K` 的编号; `§N.M` 的命中规则为编号集合
@@ -36,7 +37,7 @@ export interface RefFinding {
 
 /** 文档别名表: 直角引号里的文档「别称」到仓库相对路径; 实测出现即增补 */
 export const DOC_ALIASES: Readonly<Record<string, string>> = {
-  '可编程 API 面': 'docs/designs/api-surface.md',
+  '可编程 API 面': 'packages/sweep-node-modules/docs/designs/api-surface.md',
   行为契约: 'docs/protocol/behavior-contract.md',
   覆盖表: 'docs/protocol/conformance/coverage.md',
   安全防护: 'docs/safety-guardrails.md',
@@ -216,14 +217,24 @@ export function findSectionIssues(
   return findings;
 }
 
-/** 收集仓内真实存在的 ADR 编号 (四位), 来源为 docs/adrs/00XX-*.md */
+/** 收集仓内真实存在的 ADR 编号 (四位): 两级查找面 (docs/adrs 与各包的 docs/adrs; 分层规则见 docs/designs/docs-layering.md) */
 export function collectAdrNumbers(root: string): Set<string> {
-  const dir = join(root, 'docs', 'adrs');
   const numbers = new Set<string>();
-  if (!existsSync(dir)) return numbers;
-  for (const name of readdirSync(dir)) {
-    const m = name.match(/^(\d{4})-/);
-    if (m) numbers.add(m[1]!);
+  const dirs = [join(root, 'docs', 'adrs')];
+  const packagesDir = join(root, 'packages');
+  if (existsSync(packagesDir)) {
+    for (const entry of readdirSync(packagesDir, { withFileTypes: true })) {
+      if (entry.isDirectory()) {
+        dirs.push(join(packagesDir, entry.name, 'docs', 'adrs'));
+      }
+    }
+  }
+  for (const dir of dirs) {
+    if (!existsSync(dir)) continue;
+    for (const name of readdirSync(dir)) {
+      const m = name.match(/^(\d{4})-/);
+      if (m) numbers.add(m[1]!);
+    }
   }
   return numbers;
 }

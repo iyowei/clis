@@ -4,7 +4,14 @@
 > 适用对象: 本项目维护者与 AI Agent
 > 范围说明: 本索引收录工程技术文档 (决策 / 设计 / 协议 / 开发); 新增文档必须登记 (adrs/ 与 designs/ 与 protocol/ 下登记于各自目录的 README, 其余登记于本索引), 严禁产生散落的孤岛文档。
 >
+> 分层说明: 文档分仓库级与包级两级 (判据与外链标准位见 [文档分层协议](designs/docs-layering.md) 与 [ADR 0011](adrs/0011-docs-and-adr-layering.md)); 包级入口固定为各 `packages/*/docs/README.md`。
+>
 > 命名约定: `designs/` 下文件名不带日期, 文档修订在内容内以「修订记录」登记日期; ADR 按编号顺序追加, 已接受的决定不原地改写。
+
+## 成员包
+
+**sweep-node-modules (API + CLI 双包)**
+[API 包文档入口](../packages/sweep-node-modules/docs/README.md) (可编程 API 面与包级 ADR) / [CLI 包文档入口](../packages/sweep-node-modules-cli/docs/README.md) (命令面与输出)。
 
 ## 决策与模版
 
@@ -28,7 +35,7 @@
 
 **转写契约套件**
 [转写契约套件 (transcription kit)](protocol/README.md)
-面向未来多语言精准转写的工具包: 编号行为契约、金样本语料、确定性验收器、变异自证与实施提示词; 见 [ADR 0008](adrs/0008-transcription-kit.md)。
+面向未来多语言精准转写的工具包: 编号行为契约、金样本语料、确定性验收器、变异自证与实施提示词; 见 [ADR 0008](../packages/sweep-node-modules/docs/adrs/0008-transcription-kit.md)。
 
 ## 开发
 

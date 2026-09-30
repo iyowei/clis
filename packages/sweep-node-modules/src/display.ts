@@ -1,6 +1,6 @@
 /**
  * 展示辅助 (纯函数, 零 IO, 无打印): 人类可读体积与输出面净化。
- * 契约基准: docs/designs/api-surface.md §2.6; OF-14 的「唯一实现」义务落此 ——
+ * 契约基准: packages/sweep-node-modules/docs/designs/api-surface.md §2.6; OF-14 的「唯一实现」义务落此 ——
  * 全输出面 (CLI 清单 / 诊断 stderr / config 报告 / 向导 / 帮助 / 内嵌方) 共用同一实现,
  * 各面一律经此, 严禁另写一份。本模块自 CLI 包 render.ts 上移 (逻辑逐字未动),
  * render.ts 转出转发以保持既有消费方写法不变。

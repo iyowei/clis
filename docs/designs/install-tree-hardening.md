@@ -29,7 +29,7 @@
 
 要弄清这次加固动了什么, 得先回到这个工具的删除模型。
 
-模型写在 [ADR 0002](../adrs/0002-fixed-config-and-preview-execution.md) 里: 判定用固定配置, 执行用「预览默认, `--yes` 才删」。它的合法性论证落在一句话上: 排除名单漏维护的后果, 是「被清项目的 `node_modules` 需要重装」(可恢复, 非数据损失)。
+模型写在 [ADR 0002](../../packages/sweep-node-modules/docs/adrs/0002-fixed-config-and-preview-execution.md) 里: 判定用固定配置, 执行用「预览默认, `--yes` 才删」。它的合法性论证落在一句话上: 排除名单漏维护的后果, 是「被清项目的 `node_modules` 需要重装」(可恢复, 非数据损失)。
 
 这句话是整个删除动作的地基。翻译成操作层的话: 删一个项目依赖, 相当于扔掉一份复印件; 原件 (项目里的 `package.json` 与锁文件) 还在原地, 一句 `npm install` 就能再印一份。删除之所以可以大胆, 是因为删掉的从来不是唯一的那一份。
 

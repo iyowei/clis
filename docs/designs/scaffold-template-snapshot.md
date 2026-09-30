@@ -12,12 +12,12 @@
 
 快照按**显式清单**取文件, 不整仓复制。清单分四类处置:
 
-| 类       | 内容                                                                                                                                                                                                                                       | 处置                                                        |
-| -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------- |
-| 直接快照 | 配置件 (oxlint / prettier / editorconfig / gitattributes / gitignorerc / nvmrc / npmrc / bunfig / turbo / tsconfig) / workflows / 通用脚本 (ci / install-git-hooks / safe-install / 闸门族) / docs 骨架 / CONTRIBUTING、SECURITY、行为准则 | 原样进模板                                                  |
-| 泛化替换 | 含项目名的骨架文件 (实测 15 个, 热点: make-mutants / tsconfig / run-conformance / issue 模板 / package.json / 各 workflow 命令)                                                                                                            | 按词汇表替换后进模板                                        |
-| 重置     | 根 README / 包 README / CHANGELOG / docs 领域内容 / 包源码                                                                                                                                                                                 | 换模板化骨架 (空文档 / 最小示例包) 后进模板                 |
-| 排除     | 领域内容: 现有包的 src 与测试、conformance 语料与契约条款、safety-guardrails 等领域文档、历史 ADR                                                                                                                                          | 不进模板 (强装置档的**机制**文件保留, **内容**由新项目自填) |
+| 类       | 内容                                                                                                                                                                                                                                       | 处置                                                                                         |
+| -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------- |
+| 直接快照 | 配置件 (oxlint / prettier / editorconfig / gitattributes / gitignorerc / nvmrc / npmrc / bunfig / turbo / tsconfig) / workflows / 通用脚本 (ci / install-git-hooks / safe-install / 闸门族) / docs 骨架 / CONTRIBUTING、SECURITY、行为准则 | 原样进模板                                                                                   |
+| 泛化替换 | 含项目名的骨架文件 (实测 15 个, 热点: make-mutants / tsconfig / run-conformance / issue 模板 / package.json / 各 workflow 命令)                                                                                                            | 按词汇表替换后进模板                                                                         |
+| 重置     | 根 README / 包 README / CHANGELOG / docs 领域内容 / 包源码                                                                                                                                                                                 | 换模板化骨架 (空文档 / 最小示例包; docs 骨架按[文档分层协议](docs-layering.md)物化) 后进模板 |
+| 排除     | 领域内容: 现有包的 src 与测试、conformance 语料与契约条款、safety-guardrails 等领域文档、历史 ADR                                                                                                                                          | 不进模板 (强装置档的**机制**文件保留, **内容**由新项目自填)                                  |
 
 清单是本机制的唯一登记点: 本仓新增骨架文件时, 只需判断其类属并往清单加一行。
 
