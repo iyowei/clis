@@ -192,7 +192,7 @@ describe('renderTemplate 词汇形态', () => {
     expect(containsResidual('name = {{NAME}}', placeholder)).toBe(true);
     expect(containsResidual('name = my-tool', placeholder)).toBe(false);
     // 裸 slug 组合形态 (构建期 targetSlug 写出, 如 npm-trust-guard 的仓库名): 生成期源地址
-    // ({{REPO_URL}}) 不可解析 slug, 按 owner/name 组合形态回退注册, 替换与残留检测均覆盖
+    // ({{REPO_URL}}) 不可解析 slug, 按 owner/name 组合注册该整体形态; 残留检测同样覆盖
     expect(
       renderTemplate(
         '仓库 {{OWNER}}/{{NAME}} 与 {{SCOPE}}/{{NAME}}-cli',
@@ -201,6 +201,16 @@ describe('renderTemplate 词汇形态', () => {
       ),
     ).toBe('仓库 me/my-tool 与 @me/my-tool-cli');
     expect(containsResidual('仓库 {{OWNER}}/{{NAME}}', placeholder)).toBe(true);
+    // 判别用例 (repoUrl 路径段 ≠ owner/name, 如用户用别处托管): 整体形态注册与 targetSlug
+    // 定义对齐 —— 裸 slug 取仓库地址的路径段; 不注册整体形态时会被 {{OWNER}} / {{NAME}}
+    // 两个单形态组合替换误落 owner/name, 此断言即钉住该差异
+    const split: Vocabulary = {
+      ...TARGET,
+      repoUrl: 'https://gitlab.com/team/proj',
+    };
+    expect(renderTemplate('仓库 {{OWNER}}/{{NAME}}', split, placeholder)).toBe(
+      '仓库 team/proj',
+    );
   });
 
   test('占位符拼写不与 JS 模板字面量插值撞车 (三代拼写回归)', () => {
