@@ -66,9 +66,9 @@
 
 决策 5 与「闸门重落位」落地时定下的三条细则 (均经实测, 非文档推断; 实现见 `packages/sweep-node-modules/scripts/` 与根 `tsconfig.json`):
 
-1. **开发态 / 发布态解析分离**: API 包 `exports` 只写发布态 (dist); monorepo 开发态由根 tsconfig 的 `paths` 直指单源 src。`paths` 优先于 node_modules 解析在 bun 运行时 / tsc / bun build 三处实测成立 (覆盖 tsconfig extends 继承与 node_modules 同名包并存两个场景), CLI 消费方零改动、开发态零构建; bun 官方文档 (Module resolution 页) 明载支持 `compilerOptions.paths` 重映射且解析序先于 node_modules, 与本仓实测互证。**node 不在其列** (2026-09-29 CI 实翻): node 不解析 tsconfig paths, 直跑仓库内消费方源码 (如 `node packages/sweep-node-modules-cli/src/cli.ts`) 时按 exports 解析到 dist, **需先构建**——CI 的 conformance job 因此带 Build 前置, 本地预演入口为 `bun run ci` (pre-push 钩子按同集合执行; bun 直跑无此需要)。
+1. **开发态 / 发布态解析分离**: API 包 `exports` 只写发布态 (dist); monorepo 开发态由根 tsconfig 的 `paths` 直指单源 src。`paths` 优先于 node_modules 解析在 bun 运行时 / tsc / bun build 三处实测成立 (覆盖 tsconfig extends 继承与 node_modules 同名包并存两个场景), CLI 消费方零改动、开发态零构建; bun 官方文档 (Module resolution 页) 明载支持 `compilerOptions.paths` 重映射且解析序先于 node_modules, 与本仓实测互证。**node 不在其列** (2026-09-29 CI 实翻): node 不解析 tsconfig paths, 直跑仓库内消费方源码 (如 `node packages/sweep-node-modules-cli/src/cli.ts`) 时按 exports 解析到 dist, **需先构建**: CI 的 conformance job 因此带 Build 前置, 本地预演入口为 `bun run ci` (pre-push 钩子按同集合执行; bun 直跑无此需要)。
 2. **`.d.ts` 需产物层后处理**: `tsc --emitDeclarationOnly` 会把源码的相对 specifier (`'./x.ts'`) 原样写进声明, 消费方 TS 无法解析; `rewriteRelativeImportExtensions` 在 typescript 7.0.2 的 declaration emit 下实测未生效, 故由构建脚本统一改写为 `.js` (确定性、幂等)。
-3. **闸门在双包各自重落位**: 结构与判定同源 (干净检出 + 产物自证 + 清单自洽 + 发行面白名单), 配置各包私有; CLI 特有的 launcher 自证不适用于 API 包, API 包另加 d.ts specifier 复查。另: npm 的 `publishConfig` 不支持覆盖 `exports` (npm pack 实测); `"bun"` 条件导出方案亦排除——官方行为为命中缺失目标不回退 default 直接报错 (修复 PR oven-sh/bun#36637 未合并), 发布包内不得出现指向 src 的 bun 条件。
+3. **闸门在双包各自重落位**: 结构与判定同源 (干净检出 + 产物自证 + 清单自洽 + 发行面白名单), 配置各包私有; CLI 特有的 launcher 自证不适用于 API 包, API 包另加 d.ts specifier 复查。另: npm 的 `publishConfig` 不支持覆盖 `exports` (npm pack 实测); `"bun"` 条件导出方案亦排除: 官方行为为命中缺失目标不回退 default 直接报错 (修复 PR oven-sh/bun#36637 未合并), 发布包内不得出现指向 src 的 bun 条件。
 
 ## 验证方式与关联引用 (Validation & References)
 
