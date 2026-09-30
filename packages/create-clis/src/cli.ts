@@ -11,6 +11,7 @@ import { resolve } from 'node:path';
 
 import {
   type GenerateHooks,
+  TargetRejectedError,
   createGitInitHook,
   createInstallHook,
   generateProject,
@@ -140,7 +141,9 @@ async function main(): Promise<number> {
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     process.stderr.write(`生成失败: ${message}\n`);
-    if (existsSync(targetDir)) {
+    // 目标拒绝发生在写入之前 (目标目录是用户自己的, 未被动过), 只有写入后的失败才有半成品;
+    // 不得把拒绝路径的既有目录谎报为半成品 (如实指出原则)
+    if (!(error instanceof TargetRejectedError) && existsSync(targetDir)) {
       process.stderr.write(
         `半成品目录已保留: ${targetDir} (未自动清理, 可自行查看或删除)\n`,
       );

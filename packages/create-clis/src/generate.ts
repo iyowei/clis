@@ -2,7 +2,8 @@
  * 生成主流程: 复制模板快照 → 按档裁剪 → 代入变量 → 格式化收口 → 二道自检 → 收尾。
  *
  * 顺序与失败语义以 docs/designs/scaffold-contract.md 为权威: 目标目录已存在且非空直接拒绝
- * (不覆盖); 任一步失败即抛错, 已产生的半成品目录保留不清理 (由调用方如实指出, 用户可自行查看)。
+ * (不覆盖, 该路径抛 TargetRejectedError —— 生成尚未写入, 目标目录未被动过); 写入开始后任一步
+ * 失败即抛错, 已产生的半成品目录保留不清理 (由调用方如实指出, 用户可自行查看)。
  * 收尾动作经 hooks 注入 (git init / 依赖安装), 未提供的 hook 视为不执行 —— 调用方据此把
  * --no-git / --no-install 折算成 hook 的存在与否, 执行过的动作由返回值如实带回。
  *
@@ -68,6 +69,13 @@ export interface GenerateResult {
   executed: string[];
 }
 
+/**
+ * 目标目录不可用 (已存在且非空 / 是文件): 生成尚未开始写入, 目标目录未被动过。
+ * 调用方据此区分「拒绝类失败」与「写入后失败」: 前者不得向用户谎报半成品
+ * (那是用户自己的目录), 只有后者才提示半成品保留。
+ */
+export class TargetRejectedError extends Error {}
+
 /** prettier 插件绝对路径: 收口不依赖产物目录的 node_modules (此刻尚未安装依赖) */
 const PRETTIER_PLUGIN = createRequire(import.meta.url).resolve(
   '@trivago/prettier-plugin-sort-imports',
@@ -77,10 +85,10 @@ const PRETTIER_PLUGIN = createRequire(import.meta.url).resolve(
 function assertTargetAvailable(targetDir: string): void {
   if (!existsSync(targetDir)) return;
   if (!statSync(targetDir).isDirectory()) {
-    throw new Error(`目标路径已存在且不是目录: ${targetDir}`);
+    throw new TargetRejectedError(`目标路径已存在且不是目录: ${targetDir}`);
   }
   if (readdirSync(targetDir).length > 0) {
-    throw new Error(
+    throw new TargetRejectedError(
       `目标目录已存在且非空: ${targetDir} (不覆盖已有目录; 请换一个目录或先清空)`,
     );
   }

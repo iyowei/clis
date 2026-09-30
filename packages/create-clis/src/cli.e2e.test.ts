@@ -263,6 +263,8 @@ function defineWiringCases(runner: string, available: boolean): void {
         );
         expect(result.status, `应退非零: ${result.stderr}`).not.toBe(0);
         expect(result.stderr).toContain('非空');
+        // 拒绝发生在写入之前: 不得把用户自己的目录谎报为半成品
+        expect(result.stderr).not.toContain('半成品');
         expect(readFileSync(join(target, 'keep.txt'), 'utf8')).toBe(
           'keep-me\n',
         );
