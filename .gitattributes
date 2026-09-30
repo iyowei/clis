@@ -1,0 +1,18 @@
+# 文本文件入库与检出态统一 LF (跨平台一致性在 git 层兜底; .editorconfig 的
+# end_of_line 只约束编辑器)
+* text=auto eol=lf
+
+# 二进制: 不做行尾转换与文本 diff
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.pdf binary
+*.woff binary
+*.woff2 binary
+*.ttf binary
+
+# 生成物: 折叠展示, 不计入语言统计
+bun.lock linguist-generated=true
+packages/*/CHANGELOG.md linguist-generated=true

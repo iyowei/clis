@@ -6,6 +6,9 @@
     "**/.DS_Store": true,
     "**/Thumbs.db": true,
     "**/*.modified": true,
-    "**/*.deleted": true
+    "**/*.deleted": true,
+    "**/dist": true,
+    "**/node_modules": true,
+    "**/.turbo": true
   }
 }
