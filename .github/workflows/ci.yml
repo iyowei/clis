@@ -20,25 +20,9 @@ jobs:
           node-version: 24
       - name: Install
         run: bun install --frozen-lockfile
-      # build 先于 test: 发行面白名单用例需要 dist 在场才会执行 (缺席为设计内 skip)
-      - name: Build
-        run: bunx turbo run build
-      - name: Typecheck
-        run: bun run typecheck
-      - name: Test
-        run: bun run test
-      - name: Lint
-        run: bunx oxlint
-      - name: Format check
-        run: bunx prettier --check .
-      - name: Doc references
-        run: bun run lint:refs
-      - name: Doc examples
-        run: bun run lint:examples
-      - name: Corpus ledger
-        run: bun run lint:coverage
-      - name: Stray backups
-        run: bun run lint:backups
+      # 验证组 (步骤集合的单一事实来源在 scripts/ci.ts, 与本地全链 / Release verify 同集合)
+      - name: Verify (ci.ts --verify)
+        run: bun run ci -- --verify
 
   # 转写验收 (逐字节金样本) 的语料为 macOS 文件系统口径录制 (du 磁盘占用含块分配差异:
   # 同一 fixture 在 APFS 计 8 KB, 在 ext4 因目录节点再计 4 KB → 12 KB), 故在 macOS runner
@@ -53,11 +37,6 @@ jobs:
         with:
           node-version: 24
       - run: bun install --frozen-lockfile
-      # node target 直跑 CLI 源码时按 exports 解析 @iyowei/sweep-node-modules → dist;
-      # node 不读 tsconfig paths (bun 独有), 故 dist 必须先行构建 (bun target 无此需要)
-      - name: Build
-        run: bunx turbo run build
-      - name: Conformance (bun)
-        run: bun scripts/transcription/run-conformance.ts --target "bun packages/sweep-node-modules-cli/src/cli.ts" --api-target "bun scripts/transcription/api-harness.ts"
-      - name: Conformance (node)
-        run: bun scripts/transcription/run-conformance.ts --target "node packages/sweep-node-modules-cli/src/cli.ts" --api-target "node scripts/transcription/api-harness.ts"
+      # 验收组 (含 build: node target 需 dist 前置, 理由见 scripts/ci.ts 的组注释)
+      - name: Conformance (ci.ts --conformance)
+        run: bun run ci -- --conformance

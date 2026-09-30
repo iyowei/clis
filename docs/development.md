@@ -82,7 +82,7 @@ bun run conformance -- --target "node packages/sweep-node-modules-cli/src/cli.ts
 由 lefthook 把关 (操作级细节以仓库根 `lefthook.yml` 为准):
 
 - **pre-commit** (增量): prettier 重暂存 + oxlint 扫暂存文件; 类型检查例外, 跑全项目 `tsc --noEmit`
-- **pre-push** (全量): typecheck / build / test (含 scripts 测试) / oxlint / prettier `--check` / 文档与仓库卫生四闸门 (引用 `lint:refs` / 示例 `lint:examples` / 台账 `lint:coverage` / 散落备份 `lint:backups`) / conformance 双 target, 逐项与 `bun scripts/ci.ts` 同集合
+- **pre-push** (全量): 单条调用 `bun scripts/ci.ts` (全链 = 验证组 + 验收组); 步骤集合的单一事实来源在 `scripts/ci.ts`, 与 CI 的两个 job 及 Release 的 verify job 同集合 (`bun scripts/ci.ts --help` 可查看步骤与分组)
 
 提交信息按 Conventional Commits 前缀 (`feat` / `fix` / `chore` / `test` 等), 并守单一主题原则: 一个提交只含一个完整逻辑变更, 跨主题须拆分。仓库目前没有 commit-msg 钩子强制该约定, 靠自觉。
 

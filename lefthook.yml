@@ -49,37 +49,7 @@ pre-commit:
 pre-push:
   parallel: false
   commands:
-    type-check:
-      run: bun run typecheck
-
-    # build 先于 conformance: node target 直跑 CLI 源码按 exports 解析到 API 包 dist,
-    # 而 node 不读 tsconfig paths (bun 独有), 无产物即全数 ERR_MODULE_NOT_FOUND
-    # (2026-09-29 CI 实翻: conformance job 缺 Build 前置, 本地 pre-push 亦缺此步)
-    build:
-      run: bun run build
-
-    test:
-      run: bun run test
-
-    oxlint:
-      run: bunx oxlint
-
-    prettier:
-      run: bunx prettier --check '**/*.{ts,tsx,mts,mjs,md,mdx,json,yaml,yml}'
-
-    # 文档与仓库卫生闸门 (与 ci.ts 预演同集合): 引用 / 示例 / 台账 / 散落物
-    lint-refs:
-      run: bun run lint:refs
-
-    lint-examples:
-      run: bun run lint:examples
-
-    lint-coverage:
-      run: bun run lint:coverage
-
-    lint-backups:
-      run: bun run lint:backups
-
-    # 双 target (bun + node): 与 CI 的 conformance job 同集合; 复用预演脚本的同一实现
-    conformance:
-      run: bun scripts/ci.ts --conformance
+    # 全量预演 (验证组 + 验收组): 步骤集合的单一事实来源在 scripts/ci.ts,
+    # 与 CI 的两个 job 及 Release 的 verify job 同集合, 此处不再逐项枚举
+    ci:
+      run: bun run ci

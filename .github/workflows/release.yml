@@ -23,15 +23,8 @@ jobs:
         with:
           node-version: 24
       - run: bun install --frozen-lockfile
-      - run: bunx turbo run build
-      - run: bun run typecheck
-      - run: bun run test
-      - run: bunx oxlint
-      - run: bunx prettier --check .
-      - run: bun run lint:refs
-      - run: bun run lint:examples
-      - run: bun run lint:coverage
-      - run: bun run lint:backups
+      # 验证组 (步骤集合的单一事实来源在 scripts/ci.ts, 与 CI verify 同集合)
+      - run: bun run ci -- --verify
 
   # 人工批准闸门 (environment: release, 配 required reviewers): 批准后才进入发布。
   # OIDC 发布: 不设任何 npm token; id-token: write 供 Trusted Publishing 换取短寿命凭据。

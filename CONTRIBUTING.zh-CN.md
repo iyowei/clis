@@ -37,7 +37,7 @@ turbo 跨两个包编排构建、类型检查与测试任务。代码把 bun 与
 bun install
 ```
 
-钩子在代码进门时把关 (pre-commit: 全项目类型检查, 外加对暂存文件跑 prettier 与 oxlint), 推送前重跑全量检查 (pre-push: typecheck / build / test / oxlint / 格式检查 / 文档与仓库卫生四闸门 (`lint:refs` / `lint:examples` / `lint:coverage` / `lint:backups`) / 双载体 conformance)。机器上没有 lefthook 时, 钩子链回退到经 bunx 取用的 pin 版。配置见 [lefthook.yml](lefthook.yml)。
+钩子在代码进门时把关 (pre-commit: 全项目类型检查, 外加对暂存文件跑 prettier 与 oxlint), 推送前重跑全量检查 (pre-push 单条调用 `bun scripts/ci.ts`: 闸门清单的单一事实来源, 覆盖文档与仓库卫生四闸门与双载体 conformance)。机器上没有 lefthook 时, 钩子链回退到经 bunx 取用的 pin 版。配置见 [lefthook.yml](lefthook.yml)。
 
 仓库的 `.gitignore` 由 fast-gitignore (`fgi`) 从 `.gitignorerc.json` 生成, 不要手改: 新增忽略规则写进该配置的 `custom` 数组, 再在仓库根重跑 `fgi` (它读取预设、全量覆盖重新生成 `.gitignore`)。
 
