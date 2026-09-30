@@ -561,7 +561,7 @@ const outcome = await removeBatch(targets, { roots, staleTargets });
 #### `sanitizeOutputLine(text): string`
 
 - `text` `string`
-- Returns: `string`: 即 `sanitizeLine`, 差别只有一处: 保留每行的行首缩进 (工具自带的分级手段); 行内其余空白照常折叠。
+- Returns: `string`: 即 `sanitizeLine`, 差别只有一处: 保留入参整体开头的缩进 (逐行调用一次即得每行缩进; 工具自带的分级手段); 行内其余空白照常折叠。
 
 `sanitizeLine` / `sanitizeOutputLine` 是全输出面共用的唯一实现。外部数据 (路径、名字) 进任何输出面前先过它们; CLI 就是这么做的, 也不要再写第二份。
 
@@ -586,7 +586,7 @@ const outcome = await removeBatch(targets, { roots, staleTargets });
 ### `isSweepError(value): value is SweepError`
 
 - `value` `unknown`
-- Returns: `value is SweepError`: 按形状判别 (Error 形状 + `name` + 已知 `code`), 不是类判别。
+- Returns: `value is SweepError`: 按形状判别 (`name` 为 `SweepError` + 已知 `code`; 不要求 Error 形状本身), 不是类判别。
 
 打包或多实例环境 (同一进程里可能并存两份库) 里, `instanceof SweepError` 会给出假阴; 跨实例场景一律用它。未预期的内部异常不作包装, 原样冒泡。
 

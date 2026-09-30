@@ -92,7 +92,7 @@ sweep-nm
 # once the list checks out, delete for real
 sweep-nm --yes
 
-# also delete "suspected install trees" (package manager / version manager / editor extension trees and like shapes; skipped by default)
+# also delete "suspected install trees" (package manager / version manager / editor trees, hidden home-dir dirs, system-data-root names; skipped by default)
 sweep-nm --yes --force
 
 # add exclusions on the fly (repeatable)
@@ -106,9 +106,16 @@ sweep-nm config
 
 # init wizard: generate a config file interactively
 sweep-nm init
+
+# full option list (also -h)
+sweep-nm --help
 ```
 
 The end of the header line reports the runtime actually in use for this run (e.g. `bun 1.4.2`); it appears on interactive terminals only, keeping non-TTY output noise-free.
+
+## Exit codes
+
+`0` means success (preview and empty results included); `1` means anything else (deletion failure / batch abort / unattempted targets / broken or missing config / bad arguments / a run refused for lack of a config).
 
 ## Configuration
 

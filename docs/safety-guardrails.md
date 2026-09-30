@@ -3,7 +3,7 @@
 > 定位: 面向想深挖的用户与未来维护者的参考文档, 全量沉淀这套工具的安全防护保障点与内部账目。
 > 与 CLI 包 README 的关系: CLI 包 README 的安全防护节从本文裁剪而来 (挑出分量重的条目, 写成面向用户的功能细节); 本文是全量版。
 > 权威: 行为语义的权威在 `docs/designs/` 的设计文档与 `docs/protocol/behavior-contract.md` 的编号条款; 本文是面向读者的整理视图, 依据按写作时的实现实读核证。
-> 路径约定: 下文「依据」中的 `src/xxx.ts` 为简写。归属 CLI 包 (`packages/sweep-node-modules-cli/src/`) 的是 `cli.ts` / `render.ts` / `help.ts` / `init.ts`; 其余 (`guard.ts` / `scan-parallel.ts` / `delete.ts` / `config.ts` / `size-du.ts` / `size.ts` / `size-js.ts` / `skip.ts` / `classify.ts` / `types.ts` / `scan.ts` / `runtime.ts` / `display.ts`) 归 API 包 (`packages/sweep-node-modules/src/`)。
+> 路径约定: 下文「依据」中的 `src/xxx.ts` 为简写。归属 CLI 包 (`packages/sweep-node-modules-cli/src/`) 的是 `cli.ts` / `render.ts` / `help.ts` / `init.ts`; 其余 (`guard.ts` / `scan-parallel.ts` / `delete.ts` / `config.ts` / `size-du.ts` / `size.ts` / `size-js.ts` / `skip.ts` / `classify.ts` / `types.ts` / `scan.ts` / `runtime.ts` / `display.ts` / `sweep.ts`) 归 API 包 (`packages/sweep-node-modules/src/`)。
 
 ## 目录
 
@@ -373,7 +373,7 @@
 
 **E16. 跨设备行的呈现: 行尾按形态标注 + 执行侧跳过说明 + 末行说明行 (非 TTY 也出现)**
 
-- 依据: 契约 OF-15; `src/skip.ts` (跳过类文案与批次排除的单源); `src/cli.ts` 的 `toEntries`; `src/render.ts` 的 trailer 通道; e2e `src/cli.cross-device.e2e.test.ts`。
+- 依据: 契约 OF-15; `src/skip.ts` (跳过类文案与批次排除的单源); `src/cli.ts` 的 `toRenderEntry`; `src/render.ts` 的 trailer 通道; e2e `src/cli.cross-device.e2e.test.ts`。
 - 边界: 路径照常剥 `node_modules` 后缀 (与疑似安装树行的保后缀规则不同, 类别提示落在行尾标注上)。
 
 ## F. 韧性、输入健壮与分发
@@ -487,10 +487,10 @@
 
 一份只讲承诺、不讲账的清单, 不值得信任。这 14 类账目同样是这套保障的一部分。
 
-1. **金样本语料与覆盖表**: 57 条黑盒金样本语料在双载体 (bun / node) 上全量全绿, 覆盖表登记「条款 × 语料」的覆盖关系与逐条豁免理由 (不可黑盒项写明理由)。
+1. **金样本语料与覆盖表**: 82 条金样本语料 (57 条 cli 面 + 25 条 api 面) 在双载体 (bun / node) 上全量全绿, 覆盖表登记「条款 × 语料」的覆盖关系与逐条豁免理由 (不可黑盒项写明理由)。
    - 依据: `docs/protocol/conformance/coverage.md` 全篇。
    - 不进 README 的理由: 开发侧验收资产, 用户无从操作或验证。
-2. **变异自证**: 故意往实现里注入缺陷 (剪枝谓词取反、退出码吞掉、排序缺失等六个 mutant), 看语料抓不抓得住, 抓不住的语料不算数; 现行抓取数为 34 / 15 / 波动 / 5 / 7 / 31 (排序缺失一项目随调度波动, 判据取不少于 2)。
+2. **变异自证**: 故意往实现里注入缺陷 (剪枝谓词取反、退出码吞掉、排序缺失等六个 mutant), 看语料抓不抓得住, 抓不住的语料不算数; 现行抓取数为 44 / 15 / 6 / 6 / 7 / 31 (2026-09-30 重测; 排序缺失一项目随调度波动, 判据取不少于 2)。
    - 依据: `coverage.md` 的「变异自证」一节。
    - 不进 README 的理由: 属「测试体系有多狠」这一类账目, 面向维护者。
 3. **转写契约套件**: 为未来以 Rust / C 等语言重写准备的机械验收路径 (编号契约 + 金样本语料 + 确定性验收器), 被测命令只是参数, 语言中立。

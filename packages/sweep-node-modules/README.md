@@ -561,7 +561,7 @@ In the `ok` case, `Config` carries `roots` (required) / `exclude` / `include`: a
 #### `sanitizeOutputLine(text): string`
 
 - `text` `string`
-- Returns: `string`: `sanitizeLine` except that leading indentation is kept on each line (the tool's own hierarchy device); inner whitespace folds as usual.
+- Returns: `string`: `sanitizeLine` except that the indentation at the very start of the input is kept (call it once per line to preserve per-line indentation, the tool's own hierarchy device); inner whitespace folds as usual.
 
 `sanitizeLine` / `sanitizeOutputLine` are the single shared implementation of output sanitization. Run external data (paths, names) through these before it reaches any output surface; the CLI does, and no second implementation should exist.
 
@@ -586,7 +586,7 @@ One rule decides the channel: **failures that can be listed are returned; failur
 ### `isSweepError(value): value is SweepError`
 
 - `value` `unknown`
-- Returns: `value is SweepError`: a shape-based check (an `Error` shape plus `name` and a known `code`), not a class check.
+- Returns: `value is SweepError`: a shape-based check (a `name` of `SweepError` plus a known `code`; the `Error` shape itself is not required), not a class check.
 
 In packaged or multi-instance environments (where two copies of the library can coexist in one process), `instanceof SweepError` gives false negatives; use the shape-based guard there. Unexpected internal exceptions are not wrapped: they bubble unchanged.
 
