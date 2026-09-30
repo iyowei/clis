@@ -4,6 +4,7 @@
  *
  * 最后一条是本任务的验收核心: 原词汇的实际形态由实扫暴露 (不止 spec 词汇表五行), 替换面以
  * 实扫零残留为准, 而非纸面词汇表对齐; 该用例同时用独立字面清单复核, 防引擎自身判定盲区。
+ * 替换面按二轮裁定收窄为无歧义复合形态 (裸 `sweep` / `clis` 退出, 口径见 render.ts 头注)。
  */
 import { describe, expect, test } from 'bun:test';
 
@@ -13,7 +14,7 @@ import { join } from 'node:path';
 import { REPO_ROOT, TEMPLATE_MANIFEST } from '../scripts/template-manifest.ts';
 import { type Vocabulary, containsResidual, renderTemplate } from './render.ts';
 
-/** 本仓原词汇: 五基线 + 两个实测扩展形态 (author = LICENSE / author 字段的展示名, product = 产品短名) */
+/** 本仓原词汇: 五基线 + 扩展形态 author (LICENSE / author 字段的展示名); 裸词形态不入替换面 */
 const ORIGINAL: Vocabulary = {
   name: 'sweep-node-modules',
   scope: '@iyowei',
@@ -21,10 +22,9 @@ const ORIGINAL: Vocabulary = {
   owner: 'iyowei',
   repoUrl: 'https://github.com/iyowei/clis',
   author: 'iTonyYo',
-  product: 'sweep',
 };
 
-/** 目标词汇 (用户变量): 仓库名与产品短名缺省回退 name */
+/** 目标词汇 (用户变量): slug 由 repoUrl 派生, 作者名缺省回退 owner */
 const TARGET: Vocabulary = {
   name: 'my-tool',
   scope: '@me',
@@ -99,25 +99,33 @@ describe('renderTemplate 词汇形态', () => {
     );
   });
 
-  test('实测扩展形态: 作者署名 / 裸 slug / 仓库名 / 产品短名', () => {
+  test('实测扩展形态: 作者署名 / 裸 slug (无歧义复合面)', () => {
     expect(
       renderTemplate('iTonyYo (https://github.com/iTonyYo)', TARGET, ORIGINAL),
     ).toBe('me (https://github.com/me)');
     expect(renderTemplate('--repo iyowei/clis', TARGET, ORIGINAL)).toBe(
       '--repo me/my-tool',
     );
-    // 仓库名形态含 create-clis (根 package.json 的 multi-release 登记): 随仓库名一并泛化,
-    // 该登记项在生成物里悬空 (指向不存在的生成器包), 去留由 T4/T8 决定
-    expect(
-      renderTemplate('"name": "clis" 与 create-clis', TARGET, ORIGINAL),
-    ).toBe('"name": "my-tool" 与 create-my-tool');
+  });
+
+  test('词面收窄边界: 裸词形态 (sweep / clis) 不在替换面, 原样保留', () => {
+    // 裸 clis 误伤 create-clis (生成器包名) 与根包名; 裸 sweep 误伤动词义标识符 / 英文句子 / 产品区路径
+    expect(renderTemplate('create-clis', TARGET, ORIGINAL)).toBe('create-clis');
+    expect(renderTemplate('sweepStale', TARGET, ORIGINAL)).toBe('sweepStale');
     expect(
       renderTemplate(
-        'docs/sweep/protocol/conformance/corpus',
+        'Programmable API to sweep node_modules',
         TARGET,
         ORIGINAL,
       ),
-    ).toBe('docs/my-tool/protocol/conformance/corpus');
+    ).toBe('Programmable API to sweep node_modules');
+    expect(
+      renderTemplate(
+        '"name": "clis" 与 docs/sweep/protocol/conformance/corpus',
+        TARGET,
+        ORIGINAL,
+      ),
+    ).toBe('"name": "clis" 与 docs/sweep/protocol/conformance/corpus');
   });
 
   test('仓库地址后缀形态随整段地址一并替换', () => {
@@ -163,14 +171,14 @@ describe('renderTemplate 词汇形态', () => {
       owner: '{owner}',
       repoUrl: '{repoUrl}',
     };
-    // 构建期方向: 原词汇落为占位符 (slug / 仓库名 / 产品短名 / 作者名按缺省回退派生)
+    // 构建期方向: 原词汇落为占位符 (slug 由 repoUrl 派生, 作者名回退 owner; 裸词与产品区路径不在替换面)
     expect(
       renderTemplate(
-        'iyowei/clis 与 clis 与 docs/sweep/ 与 iTonyYo',
+        'iyowei/clis 与 sweep-nm 与 iTonyYo',
         placeholder,
         ORIGINAL,
       ),
-    ).toBe('{owner}/{name} 与 {name} 与 docs/{name}/ 与 {owner}');
+    ).toBe('{owner}/{name} 与 {binName} 与 {owner}');
     // 生成期方向: 占位符是「原词汇」, 替换与残留检测对称适用
     expect(renderTemplate('name = {name}', TARGET, placeholder)).toBe(
       'name = my-tool',
@@ -188,14 +196,23 @@ describe('renderTemplate 词汇形态', () => {
 describe('containsResidual 残留检测', () => {
   test('命中任一原词汇形态即判残留', () => {
     expect(containsResidual('sweep-node-modules', ORIGINAL)).toBe(true);
-    expect(containsResidual('见 docs/sweep/ 产品区', ORIGINAL)).toBe(true);
+    expect(containsResidual('@iyowei/sweep-node-modules-cli', ORIGINAL)).toBe(
+      true,
+    );
     expect(containsResidual('仓库 iyowei/clis', ORIGINAL)).toBe(true);
-    expect(containsResidual('create-clis', ORIGINAL)).toBe(true);
+    expect(containsResidual('Copyright (c) 2026 iTonyYo', ORIGINAL)).toBe(true);
+  });
+
+  test('词面收窄边界: 裸词子串形态不判残留', () => {
+    // 与 T2 清单「词面收窄边界」用例同口径: create-clis / sweepStale / 动词义 sweep 均不判词
+    expect(containsResidual('create-clis', ORIGINAL)).toBe(false);
+    expect(containsResidual('sweepStale', ORIGINAL)).toBe(false);
+    expect(containsResidual('见 docs/sweep/ 产品区', ORIGINAL)).toBe(false);
   });
 
   test('替换后与干净内容均不判残留', () => {
     expect(
-      containsResidual('my-tool 与 @me/my-tool 与 docs/my-tool/', ORIGINAL),
+      containsResidual('my-tool 与 @me/my-tool 与 docs/sweep/', ORIGINAL),
     ).toBe(false);
     expect(containsResidual('# 新项目\n', ORIGINAL)).toBe(false);
   });
@@ -203,17 +220,17 @@ describe('containsResidual 残留检测', () => {
 
 describe('行为级单源: 清单 generalize 面实扫零残留', () => {
   /**
-   * 独立残留清单 (字面量, 不依赖引擎的形态推导, 防同源盲区):
-   * 原包名 (含 -cli 变体) / 原 scope / 原 bin 名 / 原 owner (含作者名形态) / 原仓库名与产品短名。
+   * 独立残留清单 (字面量, 不依赖引擎的形态推导, 防同源盲区): 与 T2 清单的词面口径同源 ——
+   * 6 个无歧义复合形态 (原包名含 -cli 变体前缀 / 原 scope / 原 bin 名 / 裸仓库 slug / 原 owner /
+   * 作者名); 裸词 sweep / clis 不入词面, 不参与判定。
    */
   const RESIDUAL_LITERALS = [
     'sweep-node-modules',
     '@iyowei',
     'sweep-nm',
+    'iyowei/clis',
     'iyowei',
     'iTonyYo',
-    'clis',
-    'sweep',
   ] as const;
 
   const generalizeEntries = TEMPLATE_MANIFEST.filter(

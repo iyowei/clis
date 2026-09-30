@@ -11,14 +11,18 @@
  *   `{owner}` / `{repoUrl}`;
  * - 实测扩展形态 (实扫 generalize 文件面暴露): 作者署名 author (owner 的展示名, 见于 LICENSE 与
  *   package.json author, 如 iTonyYo) / 裸 slug (无 scheme 的 `{owner}/{repoName}`, 如 npm 命令
- *   的 `--repo iyowei/clis`) / 仓库名 repoName (根包名与文档标题, 从 repoUrl 末段解析) / 产品短名
- *   product (产品区与语料路径前缀, 如 docs/sweep/)。
+ *   的 `--repo iyowei/clis`)。
+ *
+ * 裸词收窄 (二轮裁定, 与 template-manifest 的词面口径同源): 裸 `sweep` / `clis` 不入替换面 ——
+ * 子串匹配会把动词义标识符 `sweepStale` 写成含连字符的错误标识符, 把生成器包名 `create-clis`
+ * 写成生成物里不存在的包; 产品义只认复合形态, 落不进复合面的 (产品区路径 `docs/sweep/` 等)
+ * 由清单按条目 note 移交 snapshot / reset 处置, 引擎不代劳。
  *
  * 替换语义: 单遍从左到右扫描, 每个位置取最长匹配形态, 命中即整体替换并跳过该段; 已写出的目标
  * 文本不参与后续匹配 (目标值里含源形态也不会被二次替换)。
  */
 
-/** 词汇: spec 词汇表五基线变量 + 两个实测扩展形态 (可选, 缺省回退见各字段说明) */
+/** 词汇: spec 词汇表五基线变量 + 实测扩展形态 author (可选, 缺省回退见字段说明) */
 export interface Vocabulary {
   /** 项目名: 包名 / 目录名 / 文档标题 (如 sweep-node-modules) */
   name: string;
@@ -32,8 +36,6 @@ export interface Vocabulary {
   repoUrl: string;
   /** 作者署名 (owner 的展示名形态, 见于 LICENSE / package.json author, 如 iTonyYo); 缺省回退 owner */
   author?: string;
-  /** 产品短名 (产品区与语料路径前缀, 如 sweep 出现于 docs/sweep/); 缺省回退 name */
-  product?: string;
 }
 
 /** 一条替换对照: from 为源形态, to 为目标值 */
@@ -48,12 +50,10 @@ function packageName(scope: string, name: string): string {
 }
 
 /**
- * 解析仓库地址的 slug 与仓库名 (路径末段);
+ * 解析仓库地址的 slug (路径段, 如 iyowei/clis);
  * 非 URL 形态 (如构建期的模板占位符 `{repoUrl}`) 返回 undefined, 相应形态自动跳过。
  */
-function parseRepoUrl(
-  repoUrl: string,
-): { slug: string; name: string } | undefined {
+function parseRepoSlug(repoUrl: string): string | undefined {
   const matched = /^[a-z][a-z0-9+.-]*:\/\/[^/]+\/(.+)$/i.exec(repoUrl.trim());
   if (matched === null) return undefined;
   const segments = (matched[1] ?? '')
@@ -61,9 +61,7 @@ function parseRepoUrl(
     .replace(/\/+$/, '')
     .split('/')
     .filter((segment) => segment.length > 0);
-  const name = segments.at(-1);
-  if (name === undefined) return undefined;
-  return { slug: segments.join('/'), name };
+  return segments.length > 0 ? segments.join('/') : undefined;
 }
 
 /**
@@ -72,8 +70,7 @@ function parseRepoUrl(
  * **执行步骤**：
  * 1. 仓库地址整段 (带 `.git` / `#readme` / `/issues` 等后缀时由剩余文本承接) 与裸 slug;
  * 2. 包坐标 (含 `-cli` 薄壳包, 先于裸 name 注册);
- * 3. 裸 name; 4. bin 名; 5. 作者署名 (回退 owner) 与 owner;
- * 6. 仓库名 (从 repoUrl 解析, 与 name 同值时不重复) 与产品短名 (回退 name)。
+ * 3. 裸 name; 4. bin 名; 5. 作者署名 (回退 owner) 与 owner。
  */
 function buildForms(target: Vocabulary, source: Vocabulary): Form[] {
   const forms: Form[] = [];
@@ -84,13 +81,12 @@ function buildForms(target: Vocabulary, source: Vocabulary): Form[] {
     forms.push({ from, to });
   };
 
-  const sourceRepo = parseRepoUrl(source.repoUrl);
-  const targetRepo = parseRepoUrl(target.repoUrl);
-  const targetSlug = targetRepo?.slug ?? packageName(target.owner, target.name);
-  const targetRepoName = targetRepo?.name ?? target.name;
+  const sourceSlug = parseRepoSlug(source.repoUrl);
+  const targetSlug =
+    parseRepoSlug(target.repoUrl) ?? packageName(target.owner, target.name);
 
   add(source.repoUrl, target.repoUrl);
-  if (sourceRepo !== undefined) add(sourceRepo.slug, targetSlug);
+  if (sourceSlug !== undefined) add(sourceSlug, targetSlug);
   add(
     packageName(source.scope, `${source.name}-cli`),
     packageName(target.scope, `${target.name}-cli`),
@@ -105,12 +101,6 @@ function buildForms(target: Vocabulary, source: Vocabulary): Form[] {
   if (source.author !== undefined)
     add(source.author, target.author ?? target.owner);
   add(source.owner, target.owner);
-  if (sourceRepo !== undefined && sourceRepo.name !== source.name) {
-    add(sourceRepo.name, targetRepoName);
-  }
-  const sourceProduct = source.product ?? source.name;
-  if (sourceProduct !== source.name)
-    add(sourceProduct, target.product ?? target.name);
 
   return forms.sort((left, right) => right.from.length - left.from.length);
 }
@@ -121,23 +111,23 @@ function buildForms(target: Vocabulary, source: Vocabulary): Form[] {
  * ### 数据追踪示例
  * ```text
  * Input（真实 Payload）
- *   content = '@iyowei/sweep-node-modules 与 sweep-nm 与 docs/sweep/ 与 https://github.com/iyowei/clis'
+ *   content = '@iyowei/sweep-node-modules 与 sweep-nm 与 iTonyYo 与 https://github.com/iyowei/clis 与 docs/sweep/'
  *   v = { name: 'my-tool', scope: '@me', binName: 'mt', owner: 'me', repoUrl: 'https://github.com/me/my-tool' }
- *   original = { name: 'sweep-node-modules', scope: '@iyowei', binName: 'sweep-nm', owner: 'iyowei', repoUrl: 'https://github.com/iyowei/clis', author: 'iTonyYo', product: 'sweep' }
+ *   original = { name: 'sweep-node-modules', scope: '@iyowei', binName: 'sweep-nm', owner: 'iyowei', repoUrl: 'https://github.com/iyowei/clis', author: 'iTonyYo' }
  *
  * 步骤 1：建形态表 (长形态在前)
  *   forms = [
  *     'https://github.com/iyowei/clis' → 'https://github.com/me/my-tool',
  *     '@iyowei/sweep-node-modules' → '@me/my-tool', 'sweep-node-modules' → 'my-tool',
- *     'sweep-nm' → 'mt', 'iyowei' → 'me', 'clis' → 'my-tool', 'sweep' → 'my-tool', ...
+ *     'iyowei/clis' → 'me/my-tool', 'sweep-nm' → 'mt', 'iTonyYo' → 'me', 'iyowei' → 'me', ...
  *   ]
  *
  * 步骤 2：单遍扫描, 每个位置取最长匹配整体替换 (已写出的目标文本不参与后续匹配)
- *   '@iyowei/sweep-node-modules' 命中包坐标形态; 'sweep-nm' 命中 bin 形态;
- *   'docs/sweep/' 的 sweep 命中产品形态; 整段地址命中地址形态
+ *   '@iyowei/sweep-node-modules' 命中包坐标形态; 'sweep-nm' 命中 bin 形态; 'iTonyYo' 命中作者形态;
+ *   整段地址命中地址形态; 'docs/sweep/' 的 sweep 是裸词形态, 不在替换面, 原样保留
  *
  * Output（数据契约）
- *   return '@me/my-tool 与 mt 与 docs/my-tool/ 与 https://github.com/me/my-tool'
+ *   return '@me/my-tool 与 mt 与 me 与 https://github.com/me/my-tool 与 docs/sweep/'
  * ```
  */
 export function renderTemplate(
