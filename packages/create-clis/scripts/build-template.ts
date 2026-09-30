@@ -38,11 +38,15 @@ import {
   containsResidual,
   renderTemplate,
 } from '../src/render.ts';
+import { ORIGINAL } from '../src/template-snapshot.ts';
 import {
   type ManifestEntry,
   REPO_ROOT,
   TEMPLATE_MANIFEST,
 } from './template-manifest.ts';
+
+// 原项目词汇的唯一事实来源在 src/template-snapshot.ts (生成期同用), 此处重导出保持既有导入面
+export { ORIGINAL };
 
 /** 生成器包根 (scripts/ 的上一级) */
 export const PACKAGE_ROOT = resolve(
@@ -62,16 +66,6 @@ export const DEFAULT_TEMPLATE_DIR = join(PACKAGE_ROOT, 'assets', 'template');
 
 /** 资产清单文件名 (落 outDir 同级; 与 dist 侧清单同用 schemaVersion 记形状版本) */
 export const ASSET_MANIFEST_FILE = 'manifest.json';
-
-/** 本仓 (模板来源) 的原项目词汇: author 是 owner 的展示名形态 (LICENSE / package.json author), 缺它会漏替换与漏自检 */
-export const ORIGINAL: Vocabulary = {
-  name: 'sweep-node-modules',
-  scope: '@iyowei',
-  binName: 'sweep-nm',
-  owner: 'iyowei',
-  repoUrl: 'https://github.com/iyowei/clis',
-  author: 'iTonyYo',
-};
 
 /** assets/manifest.json 的内容契约 (Task 8 动态白名单的输入) */
 export interface AssetManifest {

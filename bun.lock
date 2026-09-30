@@ -23,6 +23,10 @@
       "bin": {
         "create-clis": "bin/create-clis.mjs",
       },
+      "dependencies": {
+        "@trivago/prettier-plugin-sort-imports": "6.0.2",
+        "prettier": "3.9.9",
+      },
     },
     "packages/sweep-node-modules": {
       "name": "@iyowei/sweep-node-modules",
