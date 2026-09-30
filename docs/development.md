@@ -48,7 +48,7 @@ bun run build
 # 发布前置闸门 (干净检出 + 产物自证 + 发行面白名单; API 包另加 d.ts specifier 复查; 在各自包目录跑, 发布前自动跑, 也可手动复核)
 cd packages/sweep-node-modules-cli && bun run verify:release
 
-# 干净重装 (清掉 dist / bun.lock / node_modules 后重新 bun install; 只清不建, 跑测试或推送前先 bun run build 重建产物)
+# 干净重装 (清掉 CLI 包 dist / bun.lock / node_modules 后重新 bun install; API 包 dist 不在清理面; 只清不建, 跑测试或推送前先 bun run build 重建产物)
 bun run safe-install
 ```
 
@@ -67,7 +67,7 @@ bun run safe-install
 `bun packages/sweep-node-modules-cli/src/cli.ts` 与 `node packages/sweep-node-modules-cli/src/cli.ts` 均可直接运行。**双运行时是项目的硬约束**, 改动须在两个载体上都验证, 而两个验证通道的行为不同:
 
 - **单测**已参数化: e2e 用例按 `bun` / `node` 各注册一遍, 跑一次 `bun run test` 即覆盖两侧, 且它在 pre-push 闸门内。**前提是机器上两个运行时都装了**: 缺哪一侧, 那一侧的用例会静默 skip, 整体仍显示全绿 (该 skip 是有意设计, 机制落点见 `packages/sweep-node-modules-cli/src/cli.e2e.test.ts` 的 `RUNNERS` 与逐载体注册循环; 同类说明另见 `packages/sweep-node-modules/src/runtime.test.ts` 文件头), 故 bun-only 机器上闸门不构成 node 侧的把关;
-- **转写验收不参数化**: `--target` 一次只收一个载体, 且**不在本地钩子内** (CI 的 conformance job 会对两载体各跑一遍兜底): 改动了输出面就必须手动跑两遍, 都全通过才算数:
+- **转写验收不参数化**: `--target` 一次只收一个载体; **pre-push 与 CI 的 conformance 步均对两载体各跑一遍** (见 `scripts/ci.ts` 的双 target 循环), 无需再手动双跑; 需要手工单跑时, 对两载体各跑一遍, 都全通过才算数:
 
 ```shell
 # bun 载体
@@ -82,7 +82,7 @@ bun run conformance -- --target "node packages/sweep-node-modules-cli/src/cli.ts
 由 lefthook 把关 (操作级细节以仓库根 `lefthook.yml` 为准):
 
 - **pre-commit** (增量): prettier 重暂存 + oxlint 扫暂存文件; 类型检查例外, 跑全项目 `tsc --noEmit`
-- **pre-push** (全量只读): typecheck / test / oxlint / prettier `--check`
+- **pre-push** (全量): typecheck / build / test / oxlint / prettier `--check` / conformance 双 target (经 `bun scripts/ci.ts`)
 
 提交信息按 Conventional Commits 前缀 (`feat` / `fix` / `chore` / `test` 等), 并守单一主题原则: 一个提交只含一个完整逻辑变更, 跨主题须拆分。仓库目前没有 commit-msg 钩子强制该约定, 靠自觉。
 

@@ -68,7 +68,7 @@
 
 > npm 会把仓库根的 `README*` / `LICENSE*` 无条件收进发行包, 且没有任何配置可以排除。
 
-这不是经验之谈: npm 官方 `files` 节原文写着 "Certain files are always included, regardless of settings", 实现侧同证 (npm-packlist 里对包根 README / LICENSE 的硬编码规则, 独立于 `files` 与 `.npmignore`)。于是落在仓库根的一份 README 备份, 会被静默发出去。治前实测: 包清单 8 项, 含两份 README 备份; 治后 6 项。打包规则里写着「这几样永远随车」, 不设例外通道; 对策只能是: 把不该上车的移出仓库 (备份落 `~/tmp`), 再让白名单断言常驻钉住复发。
+这不是经验之谈: npm 官方 `files` 节原文写着 "Certain files are always included, regardless of settings", 实现侧同证 (npm-packlist 里对包根 README / LICENSE 的硬编码规则, 独立于 `files` 与 `.npmignore`)。于是落在仓库根的一份 README 备份, 会被静默发出去。治前实测: 包清单 8 项, 含两份 README 备份; 治后 6 项 (当轮快照; 后在白名单增补 `README.zh-CN.md` 一项, 现为 7 项 — 以 `release-artifact.ts` 的 `PACK_FILES_EXPECTED` 实时内容为准)。打包规则里写着「这几样永远随车」, 不设例外通道; 对策只能是: 把不该上车的移出仓库 (备份落 `~/tmp`), 再让白名单断言常驻钉住复发。
 
 闸门的触发面也查过, 边界如实: `npm publish` 与 `bun publish` 都在闸门内 (`bun publish` 的结论来自官方测试与源码核证, 不是凭印象); 已知残留口是 `npm pack` 与 `npm publish <tarball>`, 打好的包再发布, 不经它。不补 `prepack` 兜底的理由: `npm pack --dry-run` 是常用的只读查看动作, 挂上闸门会让它在脏树 / 未构建时硬失败, 代价大于收益; 该残留口的补偿是白名单断言已在闸门内覆盖同一风险面。本节的闸门与自证设计, 完整规格见 [ADR 0009](../adrs/0009-npm-distribution-form.md) 补记。
 

@@ -17,7 +17,8 @@ const root = fileURLToPath(new URL('..', import.meta.url));
  * 本仓的可再生面: 构建产物、锁文件与依赖树本身
  * (与 buffett `clean` 的 `dist` / `bunlock` / `modules` 任务对应; 树小, 连树清才修得掉
  * bun install 只对齐、修不了的深脏: 被改过的包内容、平台错配残留等)。
- * 构建产物随双包结构落在 CLI 包内 (packages/sweep-node-modules-cli/dist);
+ * 构建产物: CLI 包产物 (packages/sweep-node-modules-cli/dist) 在本脚本清理面内;
+ * API 包产物 (packages/sweep-node-modules/dist) 不在清理面, 重建经 `bun run build`;
  * 依赖树走 hoisted linker (bunfig.toml), 集中在一处, 清根即够。
  */
 for (const target of [

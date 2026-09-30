@@ -1,5 +1,5 @@
 /**
- * Node 侧删除层直跑冒烟: `node src/delete.node-smoke.ts` (Node ≥ 22.6 类型剥离直跑 TS)。
+ * Node 侧删除层直跑冒烟: `node packages/sweep-node-modules/src/delete.node-smoke.ts` (Node ≥ 22.6 类型剥离直跑 TS)。
  * 钉住 rm 阶段 ENOENT 的分桶行为 (双运行时语义分叉, 本机实测 2026-09-27):
  *   ① 顶层缺失 (父链完好、目标从未存在): rm 抛 ENOENT, 复核确认已消失 → missing (成功侧);
  *   ② 正常删除 → removed;

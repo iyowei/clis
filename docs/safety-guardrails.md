@@ -3,7 +3,7 @@
 > 定位: 面向想深挖的用户与未来维护者的参考文档, 全量沉淀这套工具的安全防护保障点与内部账目。
 > 与 CLI 包 README 的关系: CLI 包 README 的安全防护节从本文裁剪而来 (挑出分量重的条目, 写成面向用户的功能细节); 本文是全量版。
 > 权威: 行为语义的权威在 `docs/designs/` 的设计文档与 `docs/protocol/behavior-contract.md` 的编号条款; 本文是面向读者的整理视图, 依据按写作时的实现实读核证。
-> 路径约定: 下文「依据」中的 `src/xxx.ts` 为简写。归属 CLI 包 (`packages/sweep-node-modules-cli/src/`) 的是 `cli.ts` / `render.ts` / `help.ts` / `init.ts`; 其余 (`guard.ts` / `scan-parallel.ts` / `delete.ts` / `config.ts` / `size-du.ts` / `size.ts` / `size-js.ts` / `skip.ts` / `classify.ts` / `types.ts` / `scan.ts` / `runtime.ts`) 归 API 包 (`packages/sweep-node-modules/src/`)。
+> 路径约定: 下文「依据」中的 `src/xxx.ts` 为简写。归属 CLI 包 (`packages/sweep-node-modules-cli/src/`) 的是 `cli.ts` / `render.ts` / `help.ts` / `init.ts`; 其余 (`guard.ts` / `scan-parallel.ts` / `delete.ts` / `config.ts` / `size-du.ts` / `size.ts` / `size-js.ts` / `skip.ts` / `classify.ts` / `types.ts` / `scan.ts` / `runtime.ts` / `display.ts`) 归 API 包 (`packages/sweep-node-modules/src/`)。
 
 ## 目录
 
@@ -31,7 +31,7 @@
 
 **依据怎么读**: 依据给到的粒度是「文件 + 函数 / 契约条款」级, 不写行号, 行号随代码漂移, 写进文档即过期。名词对照:
 
-- 实现: `src/` 下的模块文件; 启动器在 `bin/`; 发布与转写脚本在 `scripts/`。
+- 实现: 两包 `src/` 下的模块文件 (归属见上「路径约定」); 启动器在 CLI 包 `bin/`; 发布脚本在 CLI 包 `scripts/`, 转写套件在仓库根 `scripts/transcription/`。
 - 契约: `docs/protocol/behavior-contract.md` 的编号条款 (BC / OF / EC 三族); 语料名指 `docs/protocol/conformance/corpus/` 下的金样本用例。
 - 设计文档: `docs/designs/` 下的分册 (`deletion-guard.md` / `install-tree-hardening.md` / `cli-surface.md` / `scan-and-size.md` / `config-and-initialization.md` / `architecture-overview.md`); 平台与发布的决策在 `docs/adrs/`。
 - 覆盖表: 条款与语料的对照见 `docs/protocol/conformance/coverage.md`。
@@ -82,7 +82,7 @@
 
 **A9. 疑似安装树默认不进删除批 (删了装不回来的那类, 先拦下)**
 
-- 依据: `src/classify.ts` 的 `classifyTarget` (三级形态判定) 与 `src/cli.ts` 的批次构造; 契约 BC-37 / BC-38; 语料 `delete-suspect-install-tree-skip`。
+- 依据: `src/classify.ts` 的 `classifyTarget` (三级形态判定) 与 `src/skip.ts` 的 `skipReasonOf` / `deletionBatch` (批次构造); 契约 BC-37 / BC-38; 语料 `delete-suspect-install-tree-skip`。
 - 边界: 判定只看路径形态; 已知误判面 (monorepo 里名为 `lib` / `extensions` 的包) 登记在 `deletion-guard.md` 的「语义闸」。
 
 **A10. 缺省排除名单: 包管理器 / 版本管理器 / 编辑器扩展 / 系统数据根共 20 个名字, 挨着就不扫**
@@ -97,7 +97,7 @@
 
 **A12. 体积测不到的目标一律不删 (宁可留着, 不猜)**
 
-- 依据: `src/cli.ts` 的批次过滤 (只收体积已测到的条目); 契约 BC-15; 语料 `size-unmeasured-blocks-delete`。
+- 依据: `src/sweep.ts` 的批次构造 (只收体积已测到的条目); 契约 BC-15; 语料 `size-unmeasured-blocks-delete`。
 - 边界: 预览模式测不到只影响显示 (`?`), 退 0。
 
 **A13. 根自身就叫 `node_modules` 时, 不会把根当目标**
@@ -181,7 +181,7 @@
 
 **B10. 删除复核与目标同源拼写 (归属不明的目标一律不删)**
 
-- 依据: `src/delete.ts` 的 `TrustRoot` (配置拼写与 realpath 归一在类型上强制配对) 与 `isUnder`; `src/cli.ts` 的 `trustRoots`; 测试 `src/delete.contract.test.ts`。
+- 依据: `src/delete.ts` 的 `TrustRoot` (配置拼写与 realpath 归一在类型上强制配对)、`isUnder` 与 `toTrustRoots` (原 `cli.ts` 私有 `trustRoots` 的提升形态); 测试 `src/delete.contract.test.ts`。
 
 ## C. 防注入与伪造
 
@@ -191,12 +191,12 @@
 
 **C1. 一切外部数据进输出前都会被净化: 剥控制字节 + 折叠换行**
 
-- 依据: `src/render.ts` 的 `sanitizeLine` (剥 C0 含 ESC / DEL / C1 / bidi / 零宽 / BOM, 剩余空白折成单空格); 契约 OF-14; 语料 `scan-unreadable-dir-control-bytes` / `scan-unmatched-name-control-bytes` / `cli-unknown-arg-control-bytes`。
+- 依据: `src/display.ts` 的 `sanitizeLine` (剥 C0 含 ESC / DEL / C1 / bidi / 零宽 / BOM, 剩余空白折成单空格); 契约 OF-14; 语料 `scan-unreadable-dir-control-bytes` / `scan-unmatched-name-control-bytes` / `cli-unknown-arg-control-bytes`。
 - 边界: 向导的落盘回显块是刻意排除项 (见 E10 与 G 节)。
 
 **C2. 净化的两个目的: 防终端控制序列注入与防换行劈出伪造的可信输出**
 
-- 依据: `src/render.ts` 的净化注释; `src/cli.ts` 的 `warn`; `cli-surface.md` 的输出规格 (换行折叠的现场: 非 TTY 下 stderr 常被 tee 与 CI 原样落盘, 劈行在日后回放时同样生效)。
+- 依据: `src/display.ts` 的净化注释; `src/cli.ts` 的 `warn`; `cli-surface.md` 的输出规格 (换行折叠的现场: 非 TTY 下 stderr 常被 tee 与 CI 原样落盘, 劈行在日后回放时同样生效)。
 
 **C3. 覆盖面是全输出面单源: 清单显示名与路径、stderr 告警与错误、`config` 报告路径、向导路径回显、`--help` 默认配置位置行**
 
@@ -299,7 +299,7 @@
 
 **D13. 「没删」和「删失败」分开展示, 不混为一谈**
 
-- 依据: `src/cli.ts` 的 `fallbackOf` 三分 (整批中止 / 跳过项 / 体积未测到); 契约 BC-38; 契约 OF-13。
+- 依据: `src/cli.ts` 的 `outcomeResult` 三分 (整批中止 / 跳过项 / 体积未测到); 契约 BC-38; 契约 OF-13。
 
 ## E. 透明披露
 
@@ -356,12 +356,12 @@
 
 **E12. 顶栏如实标注本次实际运行时 (`bun 1.4.2` 或 node)**
 
-- 依据: `src/runtime.ts` 的 `runtimeLabel` (取运行时自报字段, 直接跑与经启动器跑都报真身); `src/cli.ts`; `src/render.ts`。
+- 依据: `src/cli.ts` 的运行时标签 (自取 `process.versions`, 直接跑与经启动器跑都报真身); `src/render.ts` 的顶栏渲染。
 - 边界: 仅真终端显示。
 
 **E13. 执行汇总给释放量, 且 0 B 与「未提供」可区分**
 
-- 依据: `src/cli.ts` 的释放量累计 (按成功侧条目计); `src/render.ts` 的 `footExecute`; 测试 `src/render.test.ts`。
+- 依据: `src/sweep.ts` 的释放量累计 (按成功侧条目计); `src/render.ts` 的 `footExecute`; 测试 `src/render.test.ts`。
 
 **E14. 空结果明确提示「未发现 node_modules」且退 0**
 
@@ -387,7 +387,7 @@
 
 **F2. 扫描与体积的局部错误不致命: 不可读目录告警跳过; 根预检失败按病因分流且不中断其余根**
 
-- 依据: 契约 BC-07 / BC-08; `src/scan-parallel.ts` 的 `describeRootFailure`; `src/size-js.ts` 的子树降级; 语料 `scan-root-eacces-warn` / `scan-root-is-file-warn` / `scan-root-missing-warn` / `scan-unreadable-dir-warn`。
+- 依据: 契约 BC-07 / BC-08; `src/scan-parallel.ts` 的 `rootFailureWarning`; `src/size-js.ts` 的子树降级; 语料 `scan-root-eacces-warn` / `scan-root-is-file-warn` / `scan-root-missing-warn` / `scan-unreadable-dir-warn`。
 
 **F3. 输出确定性: 并发扫描的清单按 target 升序 (与完成次序解耦)**
 
@@ -427,12 +427,12 @@
 
 **F11. 发布闸门: 干净检出 + 本提交构建的产物 + 清单自洽 + 发行面包白名单相符, 四者齐备才放行发布**
 
-- 依据: `scripts/verify-release.ts` 与 `scripts/release-artifact.ts` 的 `judgeRelease` (四项按序短路); `package.json` 的 `prepublishOnly`; ADR 0009 补记。
+- 依据: CLI 包 `scripts/verify-release.ts` 与 `scripts/release-artifact.ts` 的 `judgeRelease` (四项按序短路); `package.json` 的 `prepublishOnly`; ADR 0009 补记。
 - 边界: 面向发布者, 对安装者是间接价值; 已知残留口见 G 节。
 
 **F12. 发行面包白名单: 防止仓库根的 README / LICENSE 类文件 (如备份) 被 npm 静默收进包**
 
-- 依据: `scripts/release-artifact.ts` 的 `PACK_FILES_EXPECTED` 与 `judgePackFiles` (集合相等才算过); ADR 0009 补记。
+- 依据: CLI 包 `scripts/release-artifact.ts` 的 `PACK_FILES_EXPECTED` 与 `judgePackFiles` (集合相等才算过); ADR 0009 补记。
 
 **F13. 配置损坏拒绝且报错具体: JSON 解析失败 / 空文件 / 字段类型错, 报错含路径与逐字段病因, 退 1, 不降级为默认**
 
@@ -474,7 +474,7 @@
 
 **F21. 长文与异常输入不劈碎输出结构: 净化把任意输入压成单行 (注记与失败原因并置时仍保持单行)**
 
-- 依据: `src/render.ts` 的空白折叠; 测试 `src/robustness.render.test.ts`。
+- 依据: `src/display.ts` 的空白折叠; 测试 `src/robustness.render.test.ts`。
 
 **F22. `rm` 阶段 ENOENT 先复核目标本体再分桶 (不以错误码定论, 目标仍在不得报成功)**
 
@@ -496,22 +496,22 @@
 3. **转写契约套件**: 为未来以 Rust / C 等语言重写准备的机械验收路径 (编号契约 + 金样本语料 + 确定性验收器), 被测命令只是参数, 语言中立。
    - 依据: ADR 0008; `docs/protocol/README.md`。
    - 不进 README 的理由: 对 npm 使用者无直接价值。
-4. **工程闸门与依赖锁定**: lefthook 提交钩子 (pre-commit 增量 / pre-push 全量只读)、oxlint、prettier、tsc, 与 devDependencies 无范围符号的精确锁定; 装钩子收窄到本包仓库 (被作为依赖安装时不写宿主仓库的 `.git/hooks`)。
+4. **工程闸门与依赖锁定**: lefthook 提交钩子 (pre-commit 增量 / pre-push 全量: 六步含 conformance 双 target)、oxlint、prettier、tsc, 与 devDependencies 无范围符号的精确锁定; 装钩子收窄到本包仓库 (被作为依赖安装时不写宿主仓库的 `.git/hooks`)。
    - 依据: ADR 0005; `.oxlintrc.json` / `lefthook.yml`; 守卫脚本 `scripts/install-git-hooks.mjs`。
    - 不进 README 的理由: 仓库内开发设施, 写进用户面会让保障清单失焦。
 5. **候选制与程序设计范式**: 同一能力多份实现竞争、由基准数据裁定 (3 个扫描候选、2 个体积候选), 门面只暴露胜出者; 分层、依赖注入、判别联合等范式与它们的代价账单。
    - 依据: `architecture-overview.md`; `src/scan.ts` 与 `src/size.ts` 的门面。
    - 不进 README 的理由: 内部架构决策, 不改变用户可观察行为。
 6. **不可复现的性能数字**: 并发上限 32 的取值依据 (拐点扫描)、扫描约 4.8 倍提速、`du` 快路径约 11 倍比值。实测现场 (约 3.8 万目录的真实工作区) 现已不存在, 数字不可复现。
-   - 依据: `src/scan-parallel.ts` 的常量注释; `scan-and-size.md` 的「实现裁定」。
+   - 依据: ADR 0007 与 `architecture-overview.md` 的性能要点。
    - 不进 README 的理由: 最多说「快」不报数, 报数即不可核验。
 7. **残余风险登记**: 安全复核与删除之间仍有微秒级窗口、同型真目录换位不可识别、持续振荡可低成本触发整批中止 (fail-safe 方向) 等负面事实。属诚实账而非保障点, 精确措辞另立小节 (见下「已知残余风险」)。
    - 依据: `deletion-guard.md` 的「残余风险」。
    - 不进 README 的理由: 负面事实且用户无法据以行动, 写进用户面须另设段落精确措辞。
 8. **Windows 面未经真机验证**: `bin/sweep-nm.cmd` 启动器与 npm 的 cmd-shim 路径均未经 Windows 真机实跑, 属既有证据缺口。
-   - 依据: `bin/sweep-nm.cmd` 的文件头标注; ADR 0007 决策第 4 条。
+   - 依据: CLI 包 `bin/sweep-nm.cmd` 的文件头标注; ADR 0007 决策第 4 条。
    - 不进 README 的理由: 写进用户面就是对未验形态作承诺; 本文档内亦按「未经真机验证」如实标注。
-9. **本仓无 CI 的质量账**: 提交闸门只覆盖本机已装的运行时 (缺 node 时 node 侧用例静默跳过而整体仍全绿), 转写验收不在任何闸门内, 须手动双跑。
+9. **提交闸门的质量账**: 提交闸门只覆盖本机已装的运行时 (缺 node 时 node 侧用例静默跳过而整体仍全绿); 转写验收现由 pre-push 与 CI 自动双跑 (conformance 双 target), 不再依赖手动。
    - 依据: ADR 0005 的「权衡妥协」; `docs/development.md` 的「运行时双跑」。
    - 不进 README 的理由: 维护者视角的质量账目。
 10. **发布闸门残留口**: 闸门挂在 `prepublishOnly`, 只在从仓库目录发布时触发; `npm pack` 与 `npm publish <tarball>` (对打好的包再发布) 不经闸门。

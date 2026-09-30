@@ -290,7 +290,7 @@ export function validateCase(data: unknown): string[] {
     )
   ) {
     problems.push(
-      'specRefs 须为非空数组, 元素为条款编号形态 (如 BC-3 / OF-1 / EC-12)',
+      'specRefs 须为非空数组, 元素为条款编号形态 (如 BC-03 / OF-01 / EC-02)',
     );
   }
   validateFixture(record.fixture, problems);

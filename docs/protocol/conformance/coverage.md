@@ -228,7 +228,7 @@
 | 初始化向导视觉面          | TTY 专属面 (需 pty)   | 向导的顶栏 / 中性块前缀 / 压暗提示段只在真终端存在 (入口即要求 TTY, 非 TTY 下 `init` 报错退出, 无降级形态); 语料运行器无 pty 通道, e2e 侧伪终端冒烟覆盖流程 (不逐字节断言视觉); 向导内容与三态出口由 `init.test.ts` / `init.smoke.test.ts` 模块级钉死; 不编条款号, 见 `behavior-contract.md`「TTY 专属输出面」注                                                                                                                                                                                                                                                                                    |
 | BC-40                     | TTY 专属面 (需 pty)   | 「`init` 落盘前拒符号链接配置路径并重问该问」只在真终端可触达 (入口即要求 TTY, 见 BC-29), 语料运行器无 pty 通道; 判定本体 `guard.ts` 的 `firstSymlinkOnTarget` 由 `guard.contract.test.ts` 的真实文件系统用例钉死 (目标自身 / 祖先链 / 悬空链接 / 全链真身), 向导侧的拒绝、重问回路与「链接目标逐字未动」由 `init.test.ts` 与 `init.smoke.ts` 的 `symlink-config` 场景 (双载体) 钉死; 权威出处见 `config-and-initialization.md`「配置初始化模型」                                                                                                                                                   |
 | BC-41 / OF-15             | 不可黑盒 (需真实挂载) | 跨设备场景需要真实挂载点: `st_dev` 由内核给出、造不了假, fixture schema 无挂载通道, 黑盒运行器也无权 (且不宜) 做宿主级挂载 (macOS 需 `hdiutil`、Linux 需 root), 与套件「确定性、零 AI、语言中立」的定位相斥。判定本体由 `guard.device.contract.test.ts` 的注入探针用例钉死 (两形态分辨 / 归属取最具体根 / 探针语义与调用次数 / 不可核验不判 / win32 折叠 / 真实文件系统同卷对照), 端到端接线由 `cli.cross-device.e2e.test.ts` 在 macOS (hdiutil 可用时) 的真实挂载现场钉死: 该组在非 macOS 宿主整组跳过, 属平台性豁免而非未测; 挂载点屏障与子挂载点残留面的实测另见 `deletion-guard.md`「残余风险」 |
-| OF-14 向导回显子句        | TTY 专属面 (需 pty)   | 向导的五处外部路径回显 (覆盖确认里的配置路径 / 不存在的根 / 符号链接根 / 第一问 hint 的默认值 / 写入回执路径) 只在真终端可触达 (入口即要求 TTY), 语料运行器无 pty 通道; 净化本体是同一纯函数 (render.ts 的 sanitizeLine, 由 robustness.render.test.ts 的纯函数断言钉死), 向导侧的调用由 init.test.ts 的模块级用例钉死 (控制字节样本经回显行剥除; hint 处的取值恒为 `~`, 其上游无可达控制字节输入, 该调用只保坐标一致, 故无独立可观测断言); 条款其余子句 (诊断面 / `config` 报告面 / 帮助面 / notice 面) 已由三条语料与 `cli.sanitize.e2e.test.ts` 的 notice / 帮助两用例覆盖                        |
+| OF-14 向导回显子句        | TTY 专属面 (需 pty)   | 向导的五处外部路径回显 (覆盖确认里的配置路径 / 不存在的根 / 符号链接根 / 第一问 hint 的默认值 / 写入回执路径) 只在真终端可触达 (入口即要求 TTY), 语料运行器无 pty 通道; 净化本体是同一纯函数 (display.ts 的 sanitizeLine, 由 robustness.render.test.ts 的纯函数断言钉死), 向导侧的调用由 init.test.ts 的模块级用例钉死 (控制字节样本经回显行剥除; hint 处的取值恒为 `~`, 其上游无可达控制字节输入, 该调用只保坐标一致, 故无独立可观测断言); 条款其余子句 (诊断面 / `config` 报告面 / 帮助面 / notice 面) 已由三条语料与 `cli.sanitize.e2e.test.ts` 的 notice / 帮助两用例覆盖                       |
 
 ## 三、变异自证 (语料抓缺陷能力)
 
@@ -304,7 +304,7 @@ inject mutant (经 `make-mutants.ts` 从冻结源复制 + 单行级补丁生成)
 > 伪行整体降级 / 重复整体降级 / 注入假 du 的 measure 端到端三条: 集合外路径整批落 unmeasured 且告警可归因、重复同降级、形态正常零告警), 引用形态样本逐字取自 GNU du 9.12 + pty 实测;
 > `size.contract.test.ts` 增 2 条 (探针 du 与注入 gdu 的怪名 target 逐字保真, 后者无 gdu 宿主整条跳过) 并修正原 `[证据缺口]` 注释。**既有期望一律未动** (只增不改)。
 > ⑤ 本轮无新增语料, 登记为「形态不可黑盒 / 断言面退化」类豁免: 终端引用形态本就不在黑盒运行器的可达面内 (它走管道, 无 pty 通道, 与「未覆盖条款」各 TTY 行同源);
-> 而怪名 target 的保真面即便造得出来, 其逐字节期望也会与显示层净化 (render.ts `sanitizeLine` 剥 C0 控制字节并标注「名字已净化显示」) 交互, 断言退化为「负向断言 + fs 断言」,
+> 而怪名 target 的保真面即便造得出来, 其逐字节期望也会与显示层净化 (display.ts `sanitizeLine` 剥 C0 控制字节并标注「名字已净化显示」) 交互, 断言退化为「负向断言 + fs 断言」,
 > 增量价值低于 ④ 的模块级用例组 (后者还能注入引用形态样本与 GNU du 实测), 故不硬造语料, 替代护栏即 ④。
 > ⑥ 变异自证**已在本轮重跑** (2026-09-27): 重建六个 mutant (锚点全部命中; `size-du.ts` 锚点随本轮文件头增行由 76 位移至 80, 锚点文本未动) 并对全量语料 (57 条) 各跑一遍,
 > 六项抓取数 34 / 15 / 5 / 5 / 7 / 31, 与第三节数字表逐项一致, 表维持不变 (`sort-missing` 本轮实测 5, 落在其波动区间内)。

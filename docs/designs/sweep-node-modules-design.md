@@ -87,6 +87,7 @@ scripts/install-git-hooks.mjs / install-git-hooks.test.ts  # prepare 的装钩�
 - `readTextFile(path)` / `writeTextFile(path, text)`: 文本读写 (Bun 走 `Bun.file` / `Bun.write`, Node 走 `node:fs/promises`);
 - `runtimeLabel`: 运行时自述 (形如 `bun 1.4.2`, 取运行时在 `process.versions` 自报的字段, 直接跑与经启动器跑都报真身), 供顶栏如实展示本次执行环境 (分册: 命令面与输出);
 - 其余能力 (目录遍历、删除等) 一律直接走 `node:` 兼容 API, 不设分支。
+- **现状补记 (2026-09-29 实测)**: 上述三件在生产链路已无消费方: Bun 与 Node 在 `node:` 兼容 API 上行为已一致 (spawn 直走 `node:child_process`), 顶栏的运行时自述由 CLI 一行自取, API 不导出 runtime 面; `runtime.ts` 现仅存自测。
 
 ## 三、测试策略
 
@@ -102,7 +103,7 @@ scripts/install-git-hooks.mjs / install-git-hooks.test.ts  # prepare 的装钩�
 | 失败路径 | 删除安全闸   | 注入不可删目标, 退出码非零且汇总呈现                                                   |
 | 初始化   | 配置与初始化 | 非 TTY + 无配置走 cwd 回退不阻塞; 配置生成纯逻辑 (答案 → 配置对象); 已存在时默认不覆盖 |
 
-测试文件按语义命名 (如 `scan.contract.test.ts`, `guard.contract.test.ts`); 向导的 TTY 交互不做端到端自动化 (管道冒烟见 `init.smoke.test.ts`), 由「答案到配置对象再到落盘决策」的纯逻辑单测覆盖。
+测试文件按语义命名 (如 `scan.contract.test.ts`, `guard.contract.test.ts`); 向导的 TTY 交互以伪终端冒烟覆盖 (见 `init.smoke.test.ts` 与 `cli.e2e.test.ts` 的 pty 用例), 纯逻辑另由「答案到配置对象再到落盘决策」的单测覆盖。
 
 实现落地后实测覆盖远超本表: 用例与语料规模以 `bun test` 与 `bun run conformance -- --target "bun packages/sweep-node-modules-cli/src/cli.ts"` 的实时输出为准 (后者不参数化, 需对两个载体各跑一遍; 含压测长跑、伪终端冒烟、双载体 e2e); 明细见各 `*.test.ts` 与 [转写契约套件](../protocol/README.md) 的覆盖表。
 

@@ -1,5 +1,5 @@
 /**
- * Node 侧直跑冒烟: `node src/runtime.node-smoke.ts` (Node ≥ 22.6 类型剥离直跑 TS)。
+ * Node 侧直跑冒烟: `node packages/sweep-node-modules/src/runtime.node-smoke.ts` (Node ≥ 22.6 类型剥离直跑 TS)。
  * 断言: isBun 为 false; 读写往返与 spawnCapture (正常 / 非零退出码 / 命令不存在) 全通。
  * 全通 exit 0; 有失败项则逐条打印后 exit 1 (失败响亮, 不在首个失败处中断以便一次看清)。
  * 命令路径为 POSIX (/bin/*), 只在类 Unix 环境可跑, 本机 macOS 实测。

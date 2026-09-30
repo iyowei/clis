@@ -18,7 +18,7 @@
 
 ## Checklist
 
-- [ ] I agree to follow this project's [Code of Conduct](CODE_OF_CONDUCT.md).
+- [ ] I agree to follow this project's [Code of Conduct](/CODE_OF_CONDUCT.md).
 - [ ] `bun test` passes, with both bun and node installed so neither runtime pass is skipped.
 - [ ] `bun run typecheck` and `bun run lint` are clean, and the code is formatted (`bun run format`).
 - [ ] If the CLI output surface changed, the conformance suite passed on both `bun` and `node`.

@@ -60,3 +60,5 @@
 
 - 双运行时与入口基线见 [ADR 0006](0006-dual-runtime-bun-first.md); npm 分发入口与编译产物见 [ADR 0009](0009-npm-distribution-form.md)。
 - 视觉规范见 [命令面与输出](../designs/cli-surface.md); 配置定位落点见 [配置与初始化](../designs/config-and-initialization.md)。
+
+> **修订指引 (2026-09-30)**: 本文 `bin/sweep-nm*` 与 `size-du.ts` 等路径为单包时代坐标: 启动器现落 CLI 包 `packages/sweep-node-modules-cli/bin/`, `size-du.ts` 等模块落 API 包 `packages/sweep-node-modules/src/` (见 [ADR 0010](0010-dual-package-monorepo.md))。

@@ -17,7 +17,7 @@ A workspace-level cleaner for `node_modules`: scan several root directories in o
 - **Dual runtime** for the actual work: bun when available, node otherwise (identical behavior; bun starts faster).
 - Modern runtime APIs only: any recent bun; for node, a version that runs TypeScript natively (the same version floor applies to the source install and the package install; version snapshot and test records in [ADR 0006](../../docs/adrs/0006-dual-runtime-bun-first.md)).
 - Zero third-party runtime dependencies (built-in runtime capabilities only).
-- Runs on Windows, macOS, and Linux (see [ADR 0007](../../docs/adrs/0007-platform-portability.md)).
+- Runs on macOS and Linux today; Windows launchers are shipped but not yet verified on a real Windows machine (see the evidence gap in [ADR 0007](../../docs/adrs/0007-platform-portability.md)).
 
 ## Installation
 
@@ -80,7 +80,7 @@ $bin = "$env:USERPROFILE\tools\sweep-node-modules\packages\sweep-node-modules-cl
 
 > Or skip the command line: add the `bin` directory to your user `Path` under System Properties → Environment Variables.
 
-- **Requires**: bun or node, either works (the launcher is a shell / cmd script run by the OS; it does not depend on node); **node-only environments**: run one build first (`bun install && bun run build`) — node does not read the repo's path mappings, so an uncovered checkout cannot resolve the API package's artifacts
+- **Requires**: bun or node, either works (the launcher is a shell / cmd script run by the OS; it does not depend on node); **node-only runtime**: the checkout must be built first, and building needs bun (`bun install && bun run build`) — node does not read the repo's path mappings, so an uncovered checkout cannot resolve the API package's artifacts
 - The most direct entry point; afterwards just run `sweep-nm` (on Windows via `packages\sweep-node-modules-cli\bin\sweep-nm.cmd`)
 
 ## Usage
@@ -92,7 +92,7 @@ sweep-nm
 # once the list checks out, delete for real
 sweep-nm --yes
 
-# also delete "suspected install trees" (package manager / version manager / editor extension trees; skipped by default)
+# also delete "suspected install trees" (package manager / version manager / editor extension trees and like shapes; skipped by default)
 sweep-nm --yes --force
 
 # add exclusions on the fly (repeatable)
@@ -116,10 +116,7 @@ The config file lives at a platform-appropriate path: `%APPDATA%\sweep-node-modu
 
 ```json
 {
-  "roots": [
-    "/Users/iyowei/workspace/development",
-    "/Users/iyowei/self/development"
-  ],
+  "roots": ["/Users/you/workspace", "/Users/you/projects"],
   "exclude": ["my-kits"],
   "include": []
 }
@@ -127,7 +124,7 @@ The config file lives at a platform-appropriate path: `%APPDATA%\sweep-node-modu
 
 - `roots`: the scan roots, any number of them; duplicate or nested roots are deduplicated by real path. **The delete side requires real paths**: no symlink may sit on a root or any of its ancestors (system links such as `/tmp` and `/var` included); if one is hit, `--yes` rejects the whole batch and tells you to rewrite the path in real form (e.g. `/private/tmp/x`), which clears it. Scanning is not subject to this: a root that is itself a symlink still gets scanned.
 - `exclude`: the exclusion list; a name match at any directory level between a root and a `node_modules` skips it (more exclusions, less deletion: the safe direction). **Omit this field and a built-in default list applies** (package manager / version manager install trees, editor extension directories, system and application data roots; the list and its rationale are in the [design doc](../../docs/designs/config-and-initialization.md), section "Default exclusions"). These names never warn when they match nothing, since they vary by platform. Write the field explicitly (an empty array counts) and your own list takes over completely.
-- **Suspected install trees stay out of the delete batch by default**: targets that look like install trees (e.g. `~/.bun/install/global/node_modules`, `<version dir>/lib/node_modules`, editor extension directories) are flagged in the list as `疑似安装树: <reason>` (suspected install tree, plus the reason) and keep their `node_modules` suffix; `--yes` does not delete them (reported as a failure, with an explanation of the skip). Cleaning them takes an explicit `--force`, which releases only this batch of targets and relaxes no deletion guard.
+- **Suspected install trees stay out of the delete batch by default**: targets that look like install trees (e.g. `~/.bun/install/global/node_modules`, `<version dir>/lib/node_modules`, editor extension directories, any `node_modules` under a hidden directory in the home dir, or under a system-data-root name such as `Library` / `.local` / `.config` / `.cache`) are flagged in the list as `疑似安装树: <reason>` (suspected install tree, plus the reason) and keep their `node_modules` suffix; `--yes` does not delete them (reported as a failure, with an explanation of the skip). Cleaning them takes an explicit `--force`, which releases only this batch of targets and relaxes no deletion guard.
 - **Cross-device targets stay out of the delete batch by default**: when a target and its owning root are not on the same filesystem (a cloud drive, network share, or container volume is mounted under the root and the entry lands on that volume), it is likewise not deleted; the list line notes the form at its end, `跨设备: 根与目标之间有挂载点` (a mount point lies between root and target) or `跨设备: 目标本体即挂载点` (the target itself is the mount point). For the first form, add that mount point as its own root and it cleans as usual; for the second, unmount the volume first; `--force` does not release this category.
 - `include`: the inclusion list (a whitelist); only matches are included, matched the same way as `exclude`. Omitted or empty means no filtering (more inclusions, more deletion); when a name matches both lists, `exclude` wins. A misspelled name would leave the result empty, so unmatched names warn on stderr.
 - `node_modules` and `.git` are always stripped from either list: the former is the tool's very target (under `exclude` it would rule out the only thing this tool does, under `include` it can never match), the latter is a directory the scan always skips. If stripping leaves `include` empty, that means no filtering, not "scan only `node_modules`".
@@ -143,9 +140,9 @@ Deletion is the only irreversible action this tool performs, and a whole discipl
 
 **Nothing happens by default.** Preview is the default mode, and deletion requires an explicit `--yes`. With no config file, `--yes` is hard-rejected and nothing is deleted. On the run right after the wizard writes a config, preview is forced even if `--yes` was passed. `--force` releases only suspected install trees; it relaxes no deletion guard.
 
-**What gets deleted is decided by both name and location.** Only directories named exactly `node_modules` are eligible, and only under the roots you declared; whether a target sits under a root is judged by path hierarchy rather than string prefixes, so `..` traversal and lookalike paths are rejected outright. Targets whose size cannot be measured are never deleted: keep rather than guess. Two categories are held back by default: suspected install trees (reinstalling them is painful or impossible; released only by an explicit `--force`) and cross-device targets that live on a different filesystem (`--force` does not release these either). A built-in default exclusion list (install-tree and system-data-root names from package managers, version managers, and editors) keeps the scan away from those trees.
+**What gets deleted is decided by both name and location.** Only directories named exactly `node_modules` are eligible, and only under the roots you declared; whether a target sits under a root is judged by path hierarchy rather than string prefixes, so `..` traversal and lookalike paths are rejected outright. Targets whose size cannot be measured are never deleted: keep rather than guess. Two categories are held back by default: suspected install trees (reinstalling them is painful or impossible; released only by an explicit `--force`) and cross-device targets that live on a different filesystem (`--force` does not release these either). A built-in default exclusion list (install-tree and system-data-root names from package managers, version managers, and editors, plus data-root names such as `Library` / `.local` / `.config` / `.cache` / `.claude`) keeps the scan away from those trees.
 
-**One failure stops the whole batch, and every path is re-checked first.** If a single target fails a check, the entire batch is abandoned with zero deletions, rather than letting the rest through; right before removal, the path from the root down to the target's parent is re-verified component by component, and a swap mid-way stops the batch. If a configured root, or any of its ancestors, has been swapped for a symlink, the delete batch is rejected with rewrite instructions; system links such as `/tmp` and `/var` count too, and rewriting to the real path clears it.
+**One failure stops the whole batch, and every path is re-checked first.** If a single target fails the pre-flight check, the entire batch is abandoned with zero deletions, rather than letting the rest through; right before removal, the path from the root down to the target's parent is re-verified component by component; a mid-way swap then stops the batch from dispatching further deletions (targets already dispatched run to completion and are reported as they are). If a configured root, or any of its ancestors, has been swapped for a symlink, the delete batch is rejected with rewrite instructions; system links such as `/tmp` and `/var` count too, and rewriting to the real path clears it.
 
 **Symlinks: the threshold follows reversibility.** For the same config, the read-only scan follows a symlinked root and still lists results, the irreversible delete rejects the batch, and `init` refuses to write a single byte through a link. The split is deliberate: a link's origin cannot be judged, so the irreversible step does not get the benefit of the doubt.
 

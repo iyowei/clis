@@ -100,7 +100,7 @@ CLI 包是编排层的薄壳: 解析 → 调用 → 渲染 → 确认。业务�
 
 ### `createSweeper(options): Sweeper`
 
-构造编排器: 整条链收在一个对象之后。工厂不做任何 IO, 第二个实例不花什么成本。
+构造编排器: 整条链收在一个对象之后。第二个实例不花什么成本 (工厂不做扫描 / 删除级 IO)。
 
 - `options` `SweepOptions`:
   - `roots` `string[]` (必填, 非空): 扫描根, 绝对路径。
@@ -139,8 +139,8 @@ const sweeper = createSweeper({
   - `signal?` `AbortSignal`: 取消信号, 传给各层。
 - Returns: `Promise<SweepPlan>`:
   - `roots` / `exclude` / `include` / `policy`: 本次生效的输入, 回显供审计 (名单已过 `mergeNames`)。
-  - `basis?` `SizeBasis`: 本次运行的体积口径, 有目标被测到时给出 (与逐条 `entry.basis` 同值)。
-  - `entries` `SweepEntry[]`: 每个命中一条: `target` / `project` / `root` / `bytes?` / `basis?` / `kind` / `kindReason?` / `crossDevice?` / `unmeasuredCode?` / `unmeasuredReason?` / `inBatch`, 未进批者另带 `skipReason` 与 `skipNote` (码与话随条目携带, 复核表不必按 target 去 join)。
+  - `basis?` `SizeBasis`: 本次运行的体积口径, 计划存在条目时即给出 (全未测到的一轮也会给出, 此时可能与逐条 `entry.basis` 不同值)。
+  - `entries` `SweepEntry[]`: 每个测量时仍在的命中一条 (已消失的命中不产生条目, 见 `SizeResult` 的 `gone`): `target` / `project` / `root` / `bytes?` / `basis?` / `kind` / `kindReason?` / `crossDevice?` / `unmeasuredCode?` / `unmeasuredReason?` / `inBatch`, 未进批者另带 `skipReason` 与 `skipNote` (码与话随条目携带, 复核表不必按 target 去 join)。
   - `batch` `string[]`: 将进入删除的目标清单, 保清单顺序。
   - `skipped` `SkippedTarget[]`: 全部批次外目标, 各带 `reason` 与 `note`。
   - `warnings` `SweepWarning[]`: 扫描与体积的非致命告警 (`{ code, message, path?, errno? }`); `code` 为 `SweepWarningCode`, 即 `ScanWarningCode` 与 `SizeWarningCode` 的并集。
@@ -160,7 +160,7 @@ const plan = await sweeper.plan({ onProgress, signal });
 - Returns: `Promise<SweepReport>`:
   - `status` `SweepRunStatus`: `'executed'` | `'rejected'` (整批拒绝) | `'nothing-to-do'` (空批)。
   - `plan` `SweepPlan`: 本次执行实际依据的实时计划; 与先前 `plan()` 不一致时以它为准, 差异另由 `drift` 给出。
-  - `validation?` `ValidationResult` / `removal?` `RemovalResult`: 安全闸结果与删除分桶 (`removed` / `missing` / `failed` / `aborted`); 未执行删除时缺省。
+  - `validation?` `ValidationResult`: 进入安全闸后即给出 (整批拒绝也有, 伴随零删除)。`removal?` `RemovalResult`: 删除分桶 (`removed` / `missing` / `failed` / `aborted`); 未执行删除时缺省。
   - `entries` `SweepOutcomeEntry[]`: 与 `plan.entries` 同序同长, 每条为条目加 `outcome`。
   - `stale` `string[]`: 按 `staleTargets: 'missing'` 摘出的已消失目标。
   - `drift?` `SweepDrift`: `{ added, removed }`, 提供了 `expectedBatch` 时给出。
@@ -270,7 +270,7 @@ const scan = await createScanner().scan({
   - `basis` `SizeBasis`: `'disk-usage'` (`du` 快路径, 报磁盘占用) 或 `'logical-bytes'` (纯实现, 报逻辑字节); 一次调用恒一口径, 调用前后都可读, 不要猜它。win32 恒为 `logical-bytes`。
   - `warnings` `SweepWarning[]`: 非致命体积告警 (`code` 为 `SizeWarningCode`)。
   - `unmeasured` `UnmeasuredEntry[]`: 存在但测不到的目标 (`{ target, code, reason }`, `code` 为 `UnmeasuredCode`), 按 `target` 升序。
-  - `gone` `string[]`: 测量时已不存在, 保输入顺序。
+  - `gone` `string[]`: 测量时已不存在, 按 target 升序 (三桶同此口径)。
 
 入参每个目标恒落在且仅落在一个桶, 无第四类: `entries` (测到了)、`unmeasured` (存在但测不到)、`gone` (测量时已不存在)。这条完备性恒等式是契约, 不必再造 `'unknown'` 兜底分支。
 
@@ -633,8 +633,8 @@ const outcome = await removeBatch(targets, { roots, staleTargets });
 事件种类: `phase` (逐阶段 start / done, 阶段取 `SweepPhase` 全集: `scan` · `measure` · `classify` · `device` · `plan` · `validate` · `remove`), 原语事件 (`hit` · `measured` · `unmeasured` · `skipped` · `removed` · `failed` · `aborted` · `warning`), 以及终结事件: `plan()` 的流恒以 `plan-done` (携带完整计划) 收尾, `run()` 的流恒以 `done` (携带运行状态) 收尾。终结事件之后不再有任何事件; 取消时流以抛错收场, 终结事件不出现。
 
 - 回调同步调用, 库不 await 其返回值; 回调抛错原样冒泡, 中断本次调用 (不吞错)。
-- 事件高频且**不承诺顺序** (并发完成序); 结果承诺有序 (hits 升序、分桶保输入顺序)。
-- 不得在回调里再次调用同一个 `Sweeper` 实例, 也不要在一个实例上并发跑两次调用 (重入未定义); 工厂零 IO, 需要并发就建第二个实例。
+- 事件高频且**不承诺顺序** (并发完成序); 结果承诺有序 (hits 与体积三桶按 target 升序; 删除分桶与 `stale` 保输入顺序)。
+- 不得在回调里再次调用同一个 `Sweeper` 实例, 也不要在一个实例上并发跑两次调用 (重入未定义); 工厂不做扫描 / 删除级 IO (体积工厂只探测一次 `du`), 需要并发就建第二个实例。
 - 取消检查落在条目之间与阶段边界; 取消以 `SweepError('CANCELLED')` 抛错。删除阶段绝不中断单条 `rm` 中途 (那只会新造半删状态): 取消落在条目之间, 错误里带 `details.partial` 给出已出桶的部分结果; 其余阶段只带 `details.phase`, 不返回部分结果。
 
 库不提供 `watch()` 异步迭代入口: CLI 直接消费回调, 那是常态; 编辑器一类需要 `for await` 的宿主, 参考实现 (约 20 行) 写在设计文档里。
@@ -652,9 +652,9 @@ const outcome = await removeBatch(targets, { roots, staleTargets });
 
 ## 数据形态与稳定性
 
-- 域数据一律普通对象与数组: `JSON.stringify` 无损 (无类实例、无 `Map` / `Set`、无函数)。包内唯一的类是 `SweepError`。
+- **落盘 / 审计域**数据一律普通对象与数组: `JSON.stringify` 无损 (无类实例、无 `Map` / `Set`、无函数)。查询辅助 (`SkipBook.hints`、`crossDeviceIndex()`) 返回 `ReadonlyMap`, 属查询面、不属落盘域。包内唯一的类是 `SweepError`。
 - 与时间无关: 域数据不带时间戳 (唯一的时钟读数是进度事件里的 `elapsedMs`)。今天写进 JSONL 审计的形状, 明天读回来仍是决策输入。
-- 结果确定: `hits` 按 target 升序、分桶保输入顺序、扫描按真实路径去重; 事件顺序明确不承诺。
+- 结果确定: `hits` 与体积三桶按 target 升序, 删除分桶与 `stale` 保输入顺序, 扫描按真实路径去重; 事件顺序明确不承诺。
 - 导入零副作用; 零 stdout / stderr 写入; 不做 TTY 探测 (交互向导是 CLI 专属面)。
 
 | 分级                   | 内容                                                                                | 承诺                       |

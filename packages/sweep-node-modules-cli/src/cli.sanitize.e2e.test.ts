@@ -1,6 +1,6 @@
 /**
  * 输出面净化的端到端契约: 诊断 (stderr) 与报告 (stdout) 各类出口对低信任输入 (argv / 配置路径 /
- * 回退态 cwd / HOME) 的控制字节剥除与换行折叠。净化语义单源在 render.ts 的
+ * 回退态 cwd / HOME) 的控制字节剥除与换行折叠。净化语义单源在 display.ts 的
  * sanitizeLine / sanitizeOutputLine, 条款见 behavior-contract.md OF-14; 清单面与告警面的黑盒面
  * 另由 robustness.render.test.ts 与 conformance 的 *-control-bytes 三条语料覆盖。
  * 与 cli.e2e.test.ts / cli.config.e2e.test.ts 分文件承载 (max-lines 门禁, 见 ADR 0005);

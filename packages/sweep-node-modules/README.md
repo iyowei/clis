@@ -100,7 +100,7 @@ The CLI package is a thin shell over the orchestration layer: parse → call →
 
 ### `createSweeper(options): Sweeper`
 
-Creates the orchestrator: the whole chain behind one object. Factories do no IO, so a second instance costs nothing.
+Creates the orchestrator: the whole chain behind one object. A second instance costs next to nothing (factories do no scan- or delete-level IO).
 
 - `options` `SweepOptions`:
   - `roots` `string[]` (required, non-empty): scan roots, absolute paths.
@@ -139,8 +139,8 @@ The read-only pass: scan + measure + classify + device check + batch constructio
   - `signal?` `AbortSignal`: cancellation signal, passed to each layer.
 - Returns: `Promise<SweepPlan>`:
   - `roots` / `exclude` / `include` / `policy`: the effective inputs, echoed for audit (the names have already been through `mergeNames`).
-  - `basis?` `SizeBasis`: the size basis of this run, when anything was measured (same value as every `entry.basis`).
-  - `entries` `SweepEntry[]`: one entry per hit: `target` / `project` / `root` / `bytes?` / `basis?` / `kind` / `kindReason?` / `crossDevice?` / `unmeasuredCode?` / `unmeasuredReason?` / `inBatch`, plus `skipReason` and `skipNote` when out of the batch (the code and the human note travel on the entry, so a review table needs no join).
+  - `basis?` `SizeBasis`: the size basis of this run, present whenever the plan has any entries (it may differ from the per-entry bases when nothing was measured).
+  - `entries` `SweepEntry[]`: one entry per hit that still exists at measure time (a hit gone by then produces no entry; see `gone` in `SizeResult`): `target` / `project` / `root` / `bytes?` / `basis?` / `kind` / `kindReason?` / `crossDevice?` / `unmeasuredCode?` / `unmeasuredReason?` / `inBatch`, plus `skipReason` and `skipNote` when out of the batch (the code and the human note travel on the entry, so a review table needs no join).
   - `batch` `string[]`: the targets that would be deleted, in list order.
   - `skipped` `SkippedTarget[]`: every out-of-batch target with its `reason` and `note`.
   - `warnings` `SweepWarning[]`: non-fatal scan / size warnings (`{ code, message, path?, errno? }`); `code` is a `SweepWarningCode`, the union of `ScanWarningCode` and `SizeWarningCode`.
@@ -160,7 +160,7 @@ Runs the read-only pass first (an old plan is never replayed: every fact is re-d
 - Returns: `Promise<SweepReport>`:
   - `status` `SweepRunStatus`: `'executed'` | `'rejected'` (whole batch) | `'nothing-to-do'` (empty batch).
   - `plan` `SweepPlan`: the live plan this run actually used. If it differs from an earlier `plan()`, this one wins, and the delta is in `drift`.
-  - `validation?` `ValidationResult` / `removal?` `RemovalResult`: the guard result and the removal buckets (`removed` / `missing` / `failed` / `aborted`); absent when nothing was executed.
+  - `validation?` `ValidationResult`: present once the run entered the guard (a whole-batch rejection has it, with zero deletions). `removal?` `RemovalResult`: the removal buckets (`removed` / `missing` / `failed` / `aborted`); absent when no removal was executed.
   - `entries` `SweepOutcomeEntry[]`: one per plan entry, same order (the entry plus `outcome`).
   - `stale` `string[]`: targets pulled out by `staleTargets: 'missing'`.
   - `drift?` `SweepDrift`: `{ added, removed }`, present when `expectedBatch` was given.
@@ -270,7 +270,7 @@ const scan = await createScanner().scan({
   - `basis` `SizeBasis`: `'disk-usage'` (the `du` fast path reports what the disk actually holds) or `'logical-bytes'` (the pure implementation reports logical bytes). One call, one basis; read it instead of guessing, before or after the call. Windows always measures `logical-bytes`.
   - `warnings` `SweepWarning[]`: non-fatal size warnings (`code` is a `SizeWarningCode`).
   - `unmeasured` `UnmeasuredEntry[]`: exists but cannot be measured (`{ target, code, reason }`, with `code` an `UnmeasuredCode`), ascending by `target`.
-  - `gone` `string[]`: no longer exists at measure time, input order kept.
+  - `gone` `string[]`: no longer exists at measure time, ascending by `target` (all three buckets order this way).
 
 Every input target lands in exactly one bucket, and there is no fourth case: `entries` (measured), `unmeasured` (exists but cannot be measured), `gone` (no longer exists at measure time). That identity is a contract, so no `'unknown'` fallback branch is needed.
 
@@ -633,8 +633,8 @@ Pass `onProgress` and / or `signal` to `plan` / `run`, or to any primitive that 
 Event kinds: `phase` (start / done per pipeline phase, `SweepPhase`: `scan` · `measure` · `classify` · `device` · `plan` · `validate` · `remove`), the primitive events (`hit` · `measured` · `unmeasured` · `skipped` · `removed` · `failed` · `aborted` · `warning`), and a terminal event: a `plan()` stream always ends with `plan-done` (carrying the full plan), a `run()` stream always ends with `done` (carrying the run status). Nothing follows a terminal event; on cancellation the stream ends with a throw instead.
 
 - Callbacks run synchronously and are not awaited; a throwing callback bubbles and aborts the call (no swallowing).
-- Events are high-frequency and not order-bound (concurrent completion order); results are order-bound (hits ascending, buckets keep input order).
-- Do not call the same `Sweeper` instance from inside a callback, and do not run two calls on one instance at once (reentrancy is undefined). Factories do no IO, so a second instance costs nothing.
+- Events are high-frequency and not order-bound (concurrent completion order); results are order-bound (hits and the three size buckets ascending by `target`; removal buckets and `stale` keep input order).
+- Do not call the same `Sweeper` instance from inside a callback, and do not run two calls on one instance at once (reentrancy is undefined). Factories do no scan- or delete-level IO (a size factory probes for `du` once), so a second instance costs next to nothing.
 - Cancellation is checked between items and at phase boundaries; the call rejects with `SweepError('CANCELLED')`. Removal never interrupts a single `rm` midway (that would only manufacture a new half-deleted state): cancellation lands between targets, and the error carries `details.partial` with what was already done. Other phases carry `details.phase` and no partial results.
 
 The library has no `watch()` async iterator: the CLI consumes callbacks directly, and that is the common case. The design doc carries a ~20-line bridge reference for editor-style hosts that want a `for await` loop.
@@ -652,9 +652,9 @@ The library has no `watch()` async iterator: the CLI consumes callbacks directly
 
 ## Data shapes and stability
 
-- All domain data is plain objects and arrays: `JSON.stringify` is lossless (no classes, no `Map` / `Set`, no functions). The one class in the package is `SweepError`.
+- All **persisted / audit** domain data is plain objects and arrays: `JSON.stringify` is lossless (no classes, no `Map` / `Set`, no functions). Query helpers (`SkipBook.hints`, `crossDeviceIndex()`) return `ReadonlyMap`; they are lookup surfaces, not audit data. The one class in the package is `SweepError`.
 - Time-free by design: no timestamps on domain data (the only clock reading is `elapsedMs` on progress events). A shape written into today's JSONL audit reads back as tomorrow's decision input.
-- Deterministic results: `hits` ascending by target, buckets keep input order, scan dedupes by real path. Event order is explicitly not promised.
+- Deterministic results: `hits` and the three size buckets ascending by target; removal buckets and `stale` keep input order; scan dedupes by real path. Event order is explicitly not promised.
 - No side effects at import; no stdout / stderr writes; no TTY probing (the interactive wizard is a CLI-only surface).
 
 | Tier                      | What                                                                                                   | The promise                                  |

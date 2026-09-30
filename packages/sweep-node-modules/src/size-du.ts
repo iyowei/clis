@@ -3,7 +3,7 @@
  * 探针: 绝对路径 /usr/bin/du 与 /bin/du, 均缺失时本候选标记不可用, measure 返回空结果 + 告警;
  * win32 一律不可用 (平台守卫见 findDu: 该绝对路径在 Windows 上会被解析为当前盘根, 属执行链劫持面)。
  * 口径: 磁盘占用 (按块取整, 恒 ≥ 逻辑字节), 与 js 候选的差异由基准环节记录裁定。
- * du 的英文 stderr 一律转成自家中文告警, 不得原样透传; 输入 target 存在但不可测时结构化记入 unmeasured。
+ * du 的英文 stderr: 可识别短语转成自家中文告警, 未知短语与未归因行保留原文; 输入 target 存在但不可测时结构化记入 unmeasured。
  * 防注入: `--` 终止选项解析; 含控制字符 (换行 / 回车) 的 target 前置拒绝; stdout 路径集合与输入不符即整体降级。
  * 输出形态 (已核实, 2026-09-27): du 仅在 stdout 为终端时按 shell-escape 引用文件名 (GNU 手册 du 节点
  * 「When standard output is a terminal, file names are quoted using the shell-escape style」; 源码侧

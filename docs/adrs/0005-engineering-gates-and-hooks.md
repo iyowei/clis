@@ -33,6 +33,7 @@
    - **另登记 (2026-09-27)**: 守卫脚本在 win32 上以 `shell: true` 裸名执行 `git` / `lefthook` / `bunx` (Node 在 Windows 上执行 `.cmd` / `.bat` 须经 shell 解析), 该解析面含当前工作目录 (官方 path 文档: the current directory is always searched before the directories specified in the command path); 其执行现场是本包自身或包副本目录 (开发工具链面), 不在 [ADR 0007](0007-platform-portability.md) 决策第 4 条所立 EC-08 的三入口解析防御面内。
 2. **Lint 用 oxlint, 格式用 prettier** (配 `@trivago/prettier-plugin-sort-imports` 的 import 排序); `.oxlintrc.json` 继承既有项目的严档规则集 (max-depth / max-lines / import 族 / unicorn 族等)。
 3. **分层门禁**: pre-commit 增量 (prettier `--write` 后自动重暂存 + oxlint 只扫暂存文件; type-check 例外, 不传 `{staged_files}` 全项目 `tsc --noEmit`); pre-push 全量只读 (typecheck / test / oxlint / prettier `--check`, 不设 `stage_fixed`)。
+   > **修订指引 (2026-09-30)**: pre-push 现为六步 (typecheck / build / test / oxlint / prettier `--check` / conformance 双 target), 由 `bun scripts/ci.ts` 统一承载; 其中 `build` 会写产物, 原「全量只读」定性仅对检查类步骤成立。
 4. **`.editorconfig`** 与两个参考项目一致: 2 空格 / LF / UTF-8 / 去行尾空格 / 文件末换行, `*.md` 例外不去尾空格。
 5. **依赖版本精确锁定**: 全部 devDependencies 无 `^` / `~` 范围符号, 安装后从 `node_modules` 回读实装版本校准 (见配置治理规范)。
 
@@ -51,6 +52,7 @@
 - **开发机取 lefthook 的通道变了** (原经 devDependencies 自动落到 `node_modules/.bin`): 现取 PATH 上的全局安装, 无则经 `bunx` 兜底 (需 bun 且首次联网); 两者都不可用时 `bun install` 照常完成, 但没有 git 钩子 (脚本给一行提示), 需手动补装。
 - 继承既有项目的严档规则集 (max-lines 450 / max-depth 4 等), 实现代码须按此规模切分。
 - **闸门只覆盖本机已装的运行时** (本仓无 CI): pre-push 跑的 `bun test` 中, e2e 用例按运行时可用性 skip: 缺 node 时 node 侧静默跳过而整体仍全绿; 转写验收不在任何闸门内, 亦须手动双跑。故 bun-only 机器上 node 侧回归无本地履行路径, 此为显式接受 (补 CI 或他法等真实需要出现时再议)。
+  > **修订指引 (2026-09-30)**: 「本仓无 CI」与「转写验收不在任何闸门内」均已不成立: CI 已接入, conformance 双 target 入 CI 与 pre-push 自动执行 (见 `scripts/ci.ts`); 「补 CI」的再议条件已兑现。
 
 ## 验证方式与关联引用 (Validation & References)
 

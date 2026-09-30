@@ -36,7 +36,7 @@ turbo 跨两个包编排构建、类型检查与测试任务。代码把 bun 与
 bun install
 ```
 
-钩子在代码进门时把关 (pre-commit: 全项目类型检查, 外加对暂存文件跑 prettier 与 oxlint), 推送前重跑全量只读检查 (pre-push: typecheck / test / oxlint / 格式检查)。机器上没有 lefthook 时, 钩子链回退到经 bunx 取用的 pin 版。配置见 [lefthook.yml](lefthook.yml)。
+钩子在代码进门时把关 (pre-commit: 全项目类型检查, 外加对暂存文件跑 prettier 与 oxlint), 推送前重跑全量检查 (pre-push: typecheck / build / test / oxlint / 格式检查 / 双载体 conformance)。机器上没有 lefthook 时, 钩子链回退到经 bunx 取用的 pin 版。配置见 [lefthook.yml](lefthook.yml)。
 
 仓库的 `.gitignore` 由 fast-gitignore (`fgi`) 从 `.gitignorerc.json` 生成, 不要手改: 新增忽略规则写进该配置的 `custom` 数组, 再在仓库根重跑 `fgi` (它读取预设、全量覆盖重新生成 `.gitignore`)。
 
@@ -60,7 +60,7 @@ bun test
 # 基准测试
 bun run bench
 
-# 打包单文件 CLI 产物与其清单
+# 打包两个包: 单文件 CLI 产物与其清单, 以及 API 包的 bundle 与类型声明
 bun run build
 ```
 
@@ -71,7 +71,7 @@ bun run build
 bun 与 node 上的行为必须一致: 只在其中一个上跑通的改动, 不算完成。注意两点:
 
 - `bun test` 为每个运行时各注册一遍 e2e 用例, 但只对机器上装了的运行时注册; 缺的一侧静默跳过。想真正覆盖两侧, 两个运行时都装上。
-- 转写契约套件拿 CLI 输出与字节级金样本比对, 且不在本地钩子链内。CI 会在两个运行时上跑它; 改动触及 CLI 输出时, 本地也要对两个载体各跑一遍:
+- 转写契约套件拿 CLI 输出与字节级金样本比对, 由 pre-push 钩子与 CI 自动执行, 且都在两个运行时上各跑一遍; 需要手工跑时, 对两个载体各跑一遍:
 
 ```shell
 # 在 bun 运行时上跑转写验收

@@ -9,6 +9,7 @@
 > 范围: 本文只管「API 面长什么样」(导出面 / 错误模型 / 进度与取消 / 域类型 / 缺口处置 / 调用示例); 命令面与字节级输出规格见 [命令面与输出](cli-surface.md), 配置模型见 [配置与初始化](config-and-initialization.md), 删除安全语义与安全闸见 [删除安全闸](deletion-guard.md), 扫描与体积算法见 [扫描与体积](scan-and-size.md)。
 > 事实基准: 实读仓库 (2026-09-29) 的 `src/` 全部模块、[行为契约](../protocol/behavior-contract.md)、`docs/designs/` 四份分册与 [ADR 0002](../adrs/0002-fixed-config-and-preview-execution.md) / [0003](../adrs/0003-zero-runtime-deps.md) / [0006](../adrs/0006-dual-runtime-bun-first.md) / [0009](../adrs/0009-npm-distribution-form.md) / [0010](../adrs/0010-dual-package-monorepo.md); 需求侧输入为使用方场景清单 (7 场景 + 9 条跨场景观察); 验证侧输入为使用方体验报告与五份调用代码 (外部材料, 逐条处置见 §12)。
 > 标注约定: 「实读」= 仓库现状; 「设计」= 本文的推演; 每条落点标注「复用」「新增」「改动」三档之一 (复用 = 现有函数原样升为导出面, 逻辑不动; 改动 = 现有形状或签名需变; 新增 = 今天不存在的东西)。
+> 时点说明: 标注「实读」的代码事实均为**单包时代 (2026-09-29 拆分前)** 的实读, 用于推导设计; 落地后的现坐标 (双包) 见 [ADR 0010](../adrs/0010-dual-package-monorepo.md) 与 [设计总纲](sweep-node-modules-design.md) 结构一节。
 > 反馈处置: 体验报告逐条处置见文末 §12 (57 条: 采纳 49 / 部分采纳 7 / 驳回 1)。
 
 ## 修订记录
@@ -50,7 +51,7 @@
 
 ### 1.3 本期窗口的特殊性 (实读, 决定了形状可以定死)
 
-- API 包今天**不存在程序化入口**: `package.json` 只有 `bin` 与 `files`, 无 `main` / `exports` / `types` (实读)。7 个场景今天要么 shell 调 CLI 再从文本抠数字, 要么根本用不上。
+- API 包当时**不存在程序化入口**: `package.json` 只有 `bin` 与 `files`, 无 `main` / `exports` / `types` (单包时代实读)。7 个场景当时要么 shell 调 CLI 再从文本抠数字, 要么根本用不上。
 - 结论: **本期是唯一可以自由定数据形状的窗口**。一旦发布, §5 的域类型与 §3 的 code 表按「只增不改」冻结; 因此本次把形状一次定到位, 不留「先发字符串版再发对象版」或「先发一个粗 code 再拆细」的二段式破坏。
 - 本次修订全部落在这一窗口内: 拆 code、加字段、改 `Map` 为数组这类动作, 一旦发布就都属破坏性变更, 故必须在本批做完。
 
@@ -60,7 +61,7 @@
 
 ### 2.1 包边界: 谁进 API 包, 谁留 CLI 包
 
-| 现有模块 (实读)                                               | 归属            | 处理                                                                                               |
+| 模块 (单包时代实读)                                           | 归属            | 处理                                                                                               |
 | ------------------------------------------------------------- | --------------- | -------------------------------------------------------------------------------------------------- |
 | `src/scan.ts` + `scan-parallel.ts` (+ 落选候选)               | API 包          | 复用 (门面一行导出不变)                                                                            |
 | `src/size.ts` + `size-du.ts` + `size-js.ts`                   | API 包          | 改动 (`SizeResult` 加 `basis` 与 `gone`)                                                           |
@@ -603,19 +604,19 @@ export function mergeNames(configNames: string[], cliNames: string[]): string[];
 ```ts
 /**
  * 人类可读体积: 逐级 1024 (B / KB / MB / GB / TB), 保留 1 位小数、整数省略小数尾。
- * 与 CLI 清单同一实现 (复用现有 render.ts 的 formatBytes)。
+ * 与 CLI 清单同一实现 (自 CLI `render.ts` 上移至 API 包 `display.ts`)。
  */
 export function formatBytes(bytes: number): string;
 
 /**
- * 单行净化 (复用现有 render.ts 的 sanitizeLine): 剥离控制类字符 (C0 含 ESC / DEL /
+ * 单行净化 (自 CLI `render.ts` 上移至 API 包 `display.ts`): 剥离控制类字符 (C0 含 ESC / DEL /
  * C1 / bidi 控制 / 零宽 / BOM) 并把剩余空白 (含换行) 折成单空格、两端去空白。
  * 用途: 把**外部数据** (路径、他人给的字符串) 放进任何单行输出之前。
  */
 export function sanitizeLine(text: string): string;
 
 /**
- * 多行块净化 (复用现有 render.ts 的 sanitizeOutputLine): 是 sanitizeLine 的薄包装,
+ * 多行块净化 (自 CLI `render.ts` 上移至 API 包 `display.ts`): 是 sanitizeLine 的薄包装,
  * 差别只有一处 —— **保留每行的行首缩进** (自带的分级排版手段), 行内其余空白照常折叠。
  * 用途: 逐行写出多行诊断 (告警清单、块状日志), 缩进不丢。
  * 与 sanitizeLine 的选择: 整块多行输出用本函数; 单行字段 (路径、名字) 用 sanitizeLine。
@@ -894,8 +895,8 @@ const readOnly = true;
 | 别名                | 定义                                                 | 取值表                   |
 | ------------------- | ---------------------------------------------------- | ------------------------ |
 | `ScanWarningCode`   | 扫描段告警码                                         | §3.2 扫描告警表 (5 个)   |
-| `SizeWarningCode`   | 体积段告警码                                         | §3.2 体积告警表 (4 个)   |
-| `SweepWarningCode`  | `ScanWarningCode \| SizeWarningCode` (并集, 回答 G6) | 同上两表之和 (9 个)      |
+| `SizeWarningCode`   | 体积段告警码                                         | §3.2 体积告警表 (5 个)   |
+| `SweepWarningCode`  | `ScanWarningCode \| SizeWarningCode` (并集, 回答 G6) | 同上两表之和 (10 个)     |
 | `UnmeasuredCode`    | 未测到原因码                                         | §3.2 未测到表 (6 个)     |
 | `GuardCode`         | 安全闸拒绝码                                         | §3.2 拒绝表 (10 个)      |
 | `RemoveFailureCode` | 删除失败码                                           | §3.2 失败表 (4 个)       |
@@ -919,7 +920,7 @@ const readOnly = true;
 | -------------- | -------------------------------------------------------------- | ---------------------------------------------------------------------------------- | ------------------------------------------------------------------------------- |
 | 域内可预期失败 | 安全闸拒绝、删除失败、整批中止、体积测不到、保守默认跳过       | **返回值** (`rejected` / `failed` / `aborted` / `unmeasured` / `gone` / `skipped`) | 它们是「本次运行的结果」, 调用方要的正是这份结果; 抛错会把结果丢掉              |
 | 参数错误       | 空 `roots`、非字符串数组                                       | **同步 throw** (`createSweeper` 等同步入口) / **rejected promise** (其余异步入口)  | 无法开始, 没有结果可言; 同步入口同步抛, 便于尽早失败 (写死时机)                 |
-| 配置错误       | 配置读取失败 / JSON 损坏 / 形状不符 / 显式来源指向的文件不存在 | **抛 `SweepError`**                                                                | 现状即抛 `Error` (实读 `config.ts`), 只把类型与 code 补上                       |
+| 配置错误       | 配置读取失败 / JSON 损坏 / 形状不符 / 显式来源指向的文件不存在 | **抛 `SweepError`**                                                                | 错误类型与 code 体系见 §3.6                                                     |
 | 取消           | 任一层的 `signal` 被 abort                                     | **抛 `SweepError`** (`CANCELLED`)                                                  | 语义是「本次未完成」, 不是「本次结果是空」; 删除阶段另附已完成的分桶, 见 §4.3   |
 | 未预期异常     | 库内部的真异常 (如 `scan-parallel` 暂存的非预期失败)           | **原样冒泡**                                                                       | 保持现状的失败响亮 (实读 `scan-parallel.ts` 的 `failures` 暂存位), 不包装、不吞 |
 
@@ -940,7 +941,8 @@ export type SizeWarningCode =
   | 'SIZE_DU_OUTPUT_MISMATCH'
   | 'SIZE_DU_LINE_UNATTRIBUTED'
   | 'SIZE_SUBPATH_FAILED'
-  | 'SIZE_TARGET_VANISHED';
+  | 'SIZE_TARGET_VANISHED'
+  | 'SIZE_DU_UNAVAILABLE';
 /** 并集别名: 后续新增告警域时随之扩展 */
 export type SweepWarningCode = ScanWarningCode | SizeWarningCode;
 export type UnmeasuredCode =
@@ -1222,10 +1224,12 @@ export type SweepProgressEvent =
 | 扫描   | `Scanner.scan`           | `hit`: 每命中一处 (并发完成序, 不承诺顺序)                                     | 每个遍历任务开始前 (协作池内), 与阶段边界      |
 | 体积   | `Sizer.measure`          | `measured` / `unmeasured` / `gone`: 每目标一条 (du 批量路径在解析完成后逐条发) | 逐目标之间; du 批量路径在调用前后各一次        |
 | 类别   | `classifyTarget`         | 无 (纯函数、零 IO, 不需要进度)                                                 | 不适用                                         |
-| 设备   | `findCrossDeviceTargets` | 无 (逐条 st_dev 比对, 开销远低于体积)                                          | 逐目标之间                                     |
+| 设备   | `findCrossDeviceTargets` | 无 (逐条 st_dev 比对, 开销远低于体积)                                          | 不适用 (无 signal 入参; 逐条比对为快操作)      |
 | 安全闸 | `validateTargets`        | 无 (逐条 realpath, 快)                                                         | 逐目标之间                                     |
 | 删除   | `removeTargets`          | `removed` / `missing` / `failed` / `aborted`: 每条出桶即发                     | **仅条目之间**, 绝不在单条 `rm` 中途 (见 §4.3) |
 | 编排   | `Sweeper.plan` / `run`   | `phase` 阶段边界 + 上述原语事件透传 + `plan-done` / `done`                     | 透传到各层, 并在阶段切换处补一次               |
+
+原语层的 `gone` 事件在编排层被过滤, 不入 `SweepProgressEvent` (消失目标由 `plan` / `report` 的结构化桶呈现; 实现见 `sweep.ts`)。
 
 粒度选择依据: 场景 3 的面板要「每命中一处 / 每测到一批」, 场景 1 要「扫描完成 / 体积完成 / 进入删除」的阶段划分与一条整轮收尾 (由 `done` 满足), 场景 2 与 4 只要求可选打点。上表同时满足三类。
 
@@ -1274,7 +1278,7 @@ export type SweepProgressEvent =
 
 三条可序列化承诺 (设计, 供场景 1 / 2 / 4 依赖):
 
-1. 全部域类型是普通对象与数组, `JSON.stringify` 无损 (无类实例、无 `Map`、无 `Set`、无函数)。**修正说明**: 初稿把 `findCrossDeviceTargets` 的 `Map` 返回列为例外, 体验报告 4-4 证实该例外会直接吃掉审计里的一整列 (对 `Map` 调 `JSON.stringify` 得到空对象), 故改为返回数组并另给 `crossDeviceIndex()` 供查询, 例外取消。
+1. **落盘 / 审计域**类型是普通对象与数组, `JSON.stringify` 无损 (无类实例、无 `Map`、无 `Set`、无函数)。**查询辅助例外**: `SkipBook.hints` 与 `crossDeviceIndex()` 的返回值以 `ReadonlyMap` 呈现 (供程序化检索, 不属落盘域, 不参与本承诺)。**修正说明**: 初稿把 `findCrossDeviceTargets` 的 `Map` 返回列为例外, 体验报告 4-4 证实该例外会直接吃掉审计里的一整列 (对 `Map` 调 `JSON.stringify` 得到空对象), 故改为返回数组并另给 `crossDeviceIndex()` 供查询, 例外取消。
 2. 时间无关: 域类型不带时间戳 (库不打时间, 时间由调用方在写入审计时自加); 唯一的例外是进度事件里的 `elapsedMs` (运行期观测值, 不落盘)。
 3. 可跨会话复用: 形状不含运行时句柄, 今天写进 JSONL 的形状, 明天读回来仍能作为决策输入 (场景 4 的隔日执行)。
 
@@ -1891,7 +1895,7 @@ async function refreshPanel(sweeper: Sweeper, controller: AbortController) {
 | Q3             | `warnings` 从 `string[]` 变结构化对象, 是本期一次做掉还是分两版?                                                                            | **已定夺**                                  | 一次做掉 (§1.3 的窗口期论证); 拆码也落在同一窗口                                                                                                                                                                                                                                                                                                                                                                                         |
 | Q4             | 编排层的进度事件是否也给「精简形态」(只留阶段事件)?                                                                                         | **已定夺**                                  | 全给, 由调用方按 `kind` 自己筛; 终结事件 (`plan-done` / `done`) 保证流可判尾                                                                                                                                                                                                                                                                                                                                                             |
 | Q5             | 是否提供 `./readonly` 子路径导出 (只读面), 还是单入口 + `sideEffects: false` 足够?                                                          | **已定夺**                                  | 单入口 + 声明 `sideEffects: false` 足够 (模块零副作用已是事实); 子路径作为可选优化后置                                                                                                                                                                                                                                                                                                                                                   |
-| Q6             | 类型声明的产出通道: 包态 (编译产物) 的 `.d.ts` 从哪来? 今天只有 `bin/sweep-nm.d.mts` 这种手写投影先例 (实读)                                | **已定夺** (依 ADR 0010 决策 5)             | ADR 0010 定 `bun build` 出 JS + `tsc --emitDeclarationOnly` 出 `.d.ts`; 手写投影 (实读先例) 不作为 API 包方案, 它只服务 launcher 单测。该命令在本仓的实际可用性未实测, 仍留在 §10 证据缺口                                                                                                                                                                                                                                               |
+| Q6             | 类型声明的产出通道: 包态 (编译产物) 的 `.d.ts` 从哪来? 今天只有 `bin/sweep-nm.d.mts` 这种手写投影先例 (实读)                                | **已定夺** (依 ADR 0010 决策 5)             | ADR 0010 定 `bun build` 出 JS + `tsc --emitDeclarationOnly` 出 `.d.ts`; 手写投影 (实读先例) 不作为 API 包方案, 它只服务 launcher 单测。该通道已在本仓实测落地 (`packages/sweep-node-modules/scripts/build.ts` 与 `tsconfig.build.json`; 见修订记录 2026-09-29 行)                                                                                                                                                                        |
 | Q7             | 是否提供异步迭代入口 (`watch()`)?                                                                                                           | **已定夺**                                  | 不新增 API; 改由文档给完整参考实现 (§8.6, 约 20 行), 并更正初稿的「三行」估价: 体验报告实测约 50 行, 终结事件到位后降至约 20 行。再出现第二个迭代型宿主时复议                                                                                                                                                                                                                                                                            |
 | Q8             | `SweepPolicy` 是否再加字段 (跨设备显式化 / home 防线开关)?                                                                                  | **已定夺**                                  | 不加: 跨设备不可放行是安全底线; `home` 的关闭由 `SweepOptions.home = null` 表达; 新增的 `staleTargets` 刻意**不放进** `SweepPolicy`, 因为它是执行期的容忍度 (不许影响只读的 `plan()`)                                                                                                                                                                                                                                                    |
 | Q9             | `findCrossDeviceTargets` 的返回形态 (Map 还是数组)?                                                                                         | **已定夺**                                  | 改返回 `CrossDeviceEntry[]` (可序列化, 保输入顺序), 另给 `crossDeviceIndex()`; 初稿的「Map 例外」取消 (回答体验报告 4-4)                                                                                                                                                                                                                                                                                                                 |
@@ -1912,10 +1916,10 @@ async function refreshPanel(sweeper: Sweeper, controller: AbortController) {
 
 ## 10. [证据缺口] 清单
 
-| 缺口                                             | 缺失依据                                                                    | 影响                                                                                       |
-| ------------------------------------------------ | --------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ |
-| 编辑器宿主对高频同步回调的实际容忍度             | 未实测 (无编辑器宿主环境); 体验报告只做了「写代码」层面的验证, 未做真机压测 | 只影响 §4.4 的节流建议与 §8.6 的背压实现细节, 不影响事件形态                               |
-| `not-expected` 与 `drift` 在真机交互流程下的手感 | 未跑过真实调用 (库未实现), 体验验证只到「照签名写代码」这一层               | 收窄 Q2 的定夺粒度: 若真机上 `expectedBatch` 的摩擦大于收益, 复议为「只报 drift 不设上界」 |
+| 缺口                                             | 缺失依据                                                                                 | 影响                                                                                       |
+| ------------------------------------------------ | ---------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ |
+| 编辑器宿主对高频同步回调的实际容忍度             | 未实测 (无编辑器宿主环境); 体验报告只做了「写代码」层面的验证, 未做真机压测              | 只影响 §4.4 的节流建议与 §8.6 的背压实现细节, 不影响事件形态                               |
+| `not-expected` 与 `drift` 在真机交互流程下的手感 | 库已实现, 真机交互手感 (非预期流的实际摩擦) 仍未实测; 体验验证只到「照签名写代码」这一层 | 收窄 Q2 的定夺粒度: 若真机上 `expectedBatch` 的摩擦大于收益, 复议为「只报 drift 不设上界」 |
 
 ---
 

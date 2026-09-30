@@ -62,6 +62,8 @@
 2. 启动器经软链实跑, 运行时挑选正确; PATH 无 bun 时回退 Node;
 3. `bunx tsc --noEmit` (含 `erasableSyntaxOnly`) 通过。
 
+> **修订指引 (2026-09-30)**: 本文路径为单包时代坐标 (现落 `packages/sweep-node-modules{,-cli}`); 决策 2 的适配层生产消费方已消解 (Bun 与 Node 在 `node:` 兼容 API 上行为已一致, 实测), `runtime.ts` 现仅存自测; 「转写验收须手动双跑」的权衡已不成立 (conformance 双 target 已入 CI 与 pre-push)。见 [ADR 0010](0010-dual-package-monorepo.md)。
+
 **关联引用**
 
 - 安装形态与运行时要求的被修订方见 [ADR 0003](0003-zero-runtime-deps.md); npm 分发形态 (编译产物与入口) 见 [ADR 0009](0009-npm-distribution-form.md)。

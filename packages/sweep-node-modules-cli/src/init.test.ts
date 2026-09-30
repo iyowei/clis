@@ -1,6 +1,6 @@
 /**
  * 初始化向导测试: fake IO 脚本化答案, 钉死交互流与落盘契约。
- * 权威: sweep-node-modules 设计文档「配置初始化模型」与 ADR 0004。
+ * 权威: config-and-initialization.md「配置初始化模型」与 ADR 0004。
  * 交互壳 createReadlineIO 属薄壳, 由 init.smoke.test.ts 双载体回归覆盖。
  */
 import { describe, expect, test } from 'bun:test';

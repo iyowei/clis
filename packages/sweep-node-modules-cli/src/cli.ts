@@ -629,7 +629,7 @@ async function main(): Promise<number> {
     }
 
     // 向导刚写入配置的这一轮强制预览: 用户尚未见过任何清单, 带 --yes 也不得直删
-    // (设计: config-and-initialization.md「生成后继续本次预览」)
+    // (设计: config-and-initialization.md「向导写入轮强制预览」)
     const freshConfig = resolved.source === 'wizard';
     if (freshConfig && options.yes) {
       notice('首次配置已生成; 本轮先预览, 复核后可再运行 --yes 执行');

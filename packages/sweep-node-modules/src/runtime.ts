@@ -49,7 +49,7 @@ export interface SpawnResult {
  * 命令不存在 (ENOENT) 时抛出含命令名的错误; 退出码非零原样返回, 不抛错。
  * stderr 直通 (inherit) 而非捕获: 既避免管道缓冲填满导致子进程阻塞, 又让错误原样可见。
  * 裸名与解析面: win32 上传入裸名会先搜当前工作目录 (CreateProcessW 与 libuv 的搜索序皆然,
- * 见 bin/sweep-nm.mjs 文件头与行为契约 EC-08), 调用方须先自行解析为绝对路径再传入;
+ * 见 CLI 包 `bin/sweep-nm.mjs` 文件头与行为契约 EC-08), 调用方须先自行解析为绝对路径再传入;
  * POSIX 侧 execvp 只搜 PATH, 裸名照常安全。
  */
 export async function spawnCapture(

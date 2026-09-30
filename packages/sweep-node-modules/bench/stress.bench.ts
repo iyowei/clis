@@ -9,7 +9,7 @@
  *
  * 规模元数据 (命中数 / 深链实际层数 / 句柄前后值) 随样本一并存档, 供跨轮比较。
  * fixture 统一由 src/fixtures.ts 生成并在收尾清理; 样本追加存档 bench/results/stress.jsonl。
- * 用法: bun bench/stress.bench.ts [--label r3]
+ * 用法: bun packages/sweep-node-modules/bench/stress.bench.ts [--label r3]
  */
 import { readdirSync } from 'node:fs';
 import { appendFile, mkdir, writeFile } from 'node:fs/promises';
@@ -408,7 +408,7 @@ function formatSample(sample: StressSample): string {
   ].join(' ');
 }
 
-// 直接执行 (bun bench/stress.bench.ts) 时跑全量; 被 bench/run.ts 导入时只导出 runStressBench
+// 直接执行 (bun packages/sweep-node-modules/bench/stress.bench.ts) 时跑全量; 被 bench/run.ts 导入时只导出 runStressBench
 if (process.argv[1] === join(import.meta.dir, 'stress.bench.ts')) {
   const labelIndex = process.argv.indexOf('--label');
   const label =

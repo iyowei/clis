@@ -2,7 +2,7 @@
  * 基准编排: 依次跑 扫描 / 体积 / 真实工作区 / 压测 四组基准, 汇总打印并追加 JSONL 存档。
  *
  * 收敛记账: 每轮跑完看 results/bench.jsonl 前后对比, **连续 3 轮无收益即收口**。
- * 用法: bun bench/run.ts [--label r1]
+ * 用法: bun packages/sweep-node-modules/bench/run.ts [--label r1] (等价入口: 仓库根 `bun run bench`)
  */
 import { appendFile, mkdir } from 'node:fs/promises';
 import { join } from 'node:path';

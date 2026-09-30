@@ -53,6 +53,8 @@
 1. 静态核验: 扫描 `src` / `bench` / `scripts` 下全部 import 源 (即 tsconfig 的 include 全域), 只允许 `bun:` / `node:` 前缀与相对路径, 出现第三方包名即违规;
 2. 双运行时直跑: `bun src/cli.ts` 与 `node src/cli.ts` 输出一致 (与 [ADR 0006](0006-dual-runtime-bun-first.md) 共用同一口径)。
 
+> **修订指引 (2026-09-30)**: 本节路径为单包时代坐标; 双包化后源码落 `packages/sweep-node-modules{,-cli}/src`, 直跑入口为 `bun packages/sweep-node-modules-cli/src/cli.ts` (见 [ADR 0010](0010-dual-package-monorepo.md))。
+
 **关联引用**
 
 - 双运行时与安装形态见 [ADR 0006](0006-dual-runtime-bun-first.md)。
