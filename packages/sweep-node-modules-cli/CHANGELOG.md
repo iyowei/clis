@@ -1,3 +1,20 @@
+# @iyowei/sweep-node-modules-cli [0.3.0](https://github.com/iyowei/sweep-node-modules/compare/@iyowei/sweep-node-modules-cli@0.2.1...@iyowei/sweep-node-modules-cli@0.3.0) (2026-09-30)
+
+
+### Bug Fixes
+
+* 收紧启动器 POSIX 分支的 PATH 解析防御 ([cec3c9c](https://github.com/iyowei/sweep-node-modules/commit/cec3c9c85cee66dcc3253f31b4c4751bfa2aa9d5))
+
+
+### Features
+
+* 帮助页登记 -h 别名 ([1ca2fb0](https://github.com/iyowei/sweep-node-modules/commit/1ca2fb0bdba4c5f61797197523f133cf777356e3))
+
+
+### Dependencies
+
+* **@iyowei/sweep-node-modules:** upgraded to 0.5.1
+
 ## @iyowei/sweep-node-modules-cli [0.2.1](https://github.com/iyowei/sweep-node-modules/compare/@iyowei/sweep-node-modules-cli@0.2.0...@iyowei/sweep-node-modules-cli@0.2.1) (2026-09-29)
 
 
