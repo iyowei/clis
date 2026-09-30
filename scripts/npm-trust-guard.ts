@@ -8,7 +8,8 @@
  *
  * - CI (`verify-oidc`): 用 GitHub OIDC 对每包试一次 token exchange。这一步本身就是 npm 拿
  *   OIDC 令牌与登记表 (repository / workflow file / environment) 逐字段核对的过程: 换到
- *   凭证即全对, 被拒即失配。零密钥, 走的是发布链同一条 OIDC 通道。
+ *   凭证即全对, 被拒即失配。零密钥, 走的是发布链同一条 OIDC 通道。核对面 = 仓内可发布包
+ *   (非 private 且不在根 package.json 的 multi-release.ignorePackages 名单内, 与发布链同源)。
  * - 本地 (`check` / `fix`): 经 `npm trust list` 对账; fix 删旧建新 (npm 侧已存配置不支持
  *   就地修改, 只能 revoke + 重建)。需要 npm 登录态与交互式终端; npm 对这类敏感操作逐步
  *   要求网页一次性认证, 且认证只对当次调用有效, 一次 fix 可能要在浏览器确认多轮。
@@ -24,6 +25,8 @@
  * 退出码: 0 通过 (或环境不适用); 1 失配或失败。
  */
 import { spawn } from 'node:child_process';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 
 import { readGitText } from './lib/release-verify.ts';
 import {
@@ -207,10 +210,38 @@ function runNpmCaptured(
   });
 }
 
-/** 可发布的 workspace 包 (private 包无发布面, 不参与核对) */
+/**
+ * 读根 package.json 的 multi-release.ignorePackages (发布链的包豁免名单, 与
+ * multi-semantic-release 同字段同源)。缺字段时返回 undefined, 由 filterPublishable 按空名单兜底。
+ */
+function readIgnorePackages(): unknown {
+  const manifest = JSON.parse(
+    readFileSync(join(REPO_ROOT, 'package.json'), 'utf8'),
+  ) as { 'multi-release'?: { ignorePackages?: unknown } };
+  return manifest['multi-release']?.ignorePackages;
+}
+
+/**
+ * 预检核对面 (纯函数): 可发布 (非 private) 且不在发布链豁免名单内的包。
+ * 核对面与发布链 (multi-semantic-release) 的「可发布包」定义保持单源一致: mrs 按
+ * multi-release.ignorePackages 排除的包 (如首发前 npm 侧尚无 Trusted Publisher 登记、无法预配的
+ * 新包), 预检也不应要求其有 npm 侧登记。名单缺失或非数组时视为空名单, 不误伤任何包。
+ */
+export function filterPublishable(
+  packages: readonly WorkspacePackage[],
+  ignoreList: unknown,
+): WorkspacePackage[] {
+  const ignored = new Set(Array.isArray(ignoreList) ? ignoreList : []);
+  return packages.filter(
+    (pkg) => pkg.manifest.private !== true && !ignored.has(pkg.name),
+  );
+}
+
+/** 可发布的 workspace 包 (预检核对面, 见 filterPublishable) */
 function publishablePackages(): WorkspacePackage[] {
-  return listWorkspacePackages(REPO_ROOT).filter(
-    (pkg) => pkg.manifest.private !== true,
+  return filterPublishable(
+    listWorkspacePackages(REPO_ROOT),
+    readIgnorePackages(),
   );
 }
 

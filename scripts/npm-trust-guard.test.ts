@@ -1,12 +1,15 @@
 /**
- * 发布凭据闸门单测: 纯函数层 (远端 URL 派生 / npm trust 输出解析 / 登记对账 / OIDC 环境判定)。
+ * 发布凭据闸门单测: 纯函数层 (远端 URL 派生 / npm trust 输出解析 / 登记对账 / OIDC 环境判定 /
+ * 预检核对面过滤)。
  */
 import { describe, expect, test } from 'bun:test';
 
+import type { WorkspacePackage } from './lib/workspace.ts';
 import {
   classifyOidcEnv,
   deriveRepoFromRemoteUrl,
   diffTrust,
+  filterPublishable,
   parseTrustListOutput,
   ptyWrapArgs,
 } from './npm-trust-guard.ts';
@@ -208,5 +211,37 @@ describe('ptyWrapArgs', () => {
       command: 'npm.cmd',
       args: ['trust', 'list'],
     });
+  });
+});
+
+describe('filterPublishable', () => {
+  /** 最小 WorkspacePackage 夹具 (过滤只看 manifest.private 与包名) */
+  const pkg = (name: string, isPrivate = false): WorkspacePackage => ({
+    name,
+    dir: `packages/${name}`,
+    manifest: isPrivate ? { name, private: true } : { name },
+  });
+
+  test('命中 ignorePackages 的包被排除 (核对面与发布链豁免单源)', () => {
+    const packages = [pkg('@x/api'), pkg('@x/cli'), pkg('create-clis')];
+    expect(
+      filterPublishable(packages, ['create-clis']).map((item) => item.name),
+    ).toEqual(['@x/api', '@x/cli']);
+  });
+
+  test('private 包照旧排除 (过滤升级不丢既有语义)', () => {
+    const packages = [pkg('@x/api'), pkg('@x/private-lib', true)];
+    expect(filterPublishable(packages, []).map((item) => item.name)).toEqual([
+      '@x/api',
+    ]);
+  });
+
+  test('名单缺失或非数组形态视为空名单, 不误伤可发布包', () => {
+    const packages = [pkg('@x/api'), pkg('create-clis')];
+    for (const ignoreList of [undefined, null, 'create-clis', 42, {}]) {
+      expect(
+        filterPublishable(packages, ignoreList).map((item) => item.name),
+      ).toEqual(['@x/api', 'create-clis']);
+    }
   });
 });
