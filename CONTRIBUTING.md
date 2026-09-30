@@ -30,6 +30,7 @@ Prerequisites: bun and node.
 
 - bun is the development toolchain and package manager; the repository pins its version through `packageManager`.
 - node, >= 22.18.0, is required as well. The test suite runs against both runtimes, and a runtime that is not installed is skipped silently, so a one-runtime setup leaves half of that suite unexercised.
+- A few housekeeping files ride along: `.nvmrc` pins the node major for version managers, `.mailmap` canonicalizes commit identities, `.gitattributes` enforces LF line endings in the repository, and `.vscode/` carries the shared editor setup (launch configurations, tasks, and recommended extensions).
 
 ```shell
 # Install dependencies; in a clone this also installs the git hooks (lefthook)
