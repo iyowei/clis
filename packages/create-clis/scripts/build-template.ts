@@ -10,8 +10,10 @@
  *               已是占位形态, 原样搬运); 目录条目整棵搬运;
  * - exclude:    跳过, 不进模板。
  *
- * 产出面: outDir 的目录结构即新项目根 (生成期由 Task 7 按档裁剪并代入用户词汇); 同级
- * manifest.json 列出全部产出文件 (相对 outDir, 排序稳定), 是 Task 8 发行面白名单的输入。
+ * 产出面: outDir 的目录结构即新项目根 (生成期由 Task 7 按档裁剪并代入用户词汇; 唯一例外是
+ * npm 面包机制剔除的真实名, 如 .gitignore / .npmrc, 以载体名 `_` 前缀落位, 生成期还原,
+ * 见 src/template-snapshot.ts 的 ASSET_CARRIERS); 同级 manifest.json 列出全部产出文件
+ * (相对 outDir, 排序稳定, 载体名形态), 是 Task 8 发行面白名单的输入。
  *
  * 自检口径 (词面 = 6 个无歧义复合形态, 裸词 sweep / clis 原样保留属既定裁定):
  * - 清单完整性: 每条非 exclude 条目都要产出文件 (源文件 / 骨架缺失、产出路径撞车均即抛错);
@@ -38,7 +40,7 @@ import {
   containsResidual,
   renderTemplate,
 } from '../src/render.ts';
-import { ORIGINAL } from '../src/template-snapshot.ts';
+import { ORIGINAL, toCarrierPath } from '../src/template-snapshot.ts';
 import {
   type ManifestEntry,
   REPO_ROOT,
@@ -143,12 +145,15 @@ export function buildTemplate(
   // 1. 逐条处置: 计划产出 (输出相对路径 → 字节), 路径一并泛化; 撞车即抛
   const planned = new Map<string, Buffer>();
   const claim = (file: string, bytes: Buffer, source: string): void => {
-    if (planned.has(file)) {
+    // 落包改名收口 (所有产出路径的唯一咽喉): npm 面包机制按文件名硬性剔除 .gitignore / .npmrc,
+    // 一律换成载体名随包, 生成期还原 (见 src/template-snapshot.ts 的 ASSET_CARRIERS 与 TD-05)
+    const shipped = toCarrierPath(file);
+    if (planned.has(shipped)) {
       throw new Error(
-        `模板产出路径重复: ${file} (来源 ${source}); 两条清单条目映射到同一路径`,
+        `模板产出路径重复: ${shipped} (来源 ${source}); 两条清单条目映射到同一路径`,
       );
     }
-    planned.set(file, bytes);
+    planned.set(shipped, bytes);
   };
 
   for (const entry of manifest) {

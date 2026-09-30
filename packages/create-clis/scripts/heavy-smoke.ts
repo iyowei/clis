@@ -11,7 +11,10 @@
  * - 只认构建产物: 经 bin/create-clis.mjs 启动 (运行时挑选 + 产物自证对账一并被走到), 与用户经
  *   npm 安装后的入口形态一致; 产物缺失即拒绝 (先跑 build), 不做源码回退;
  * - 只认包内资产: 模板资产现场重建进包内 assets/ (与 build 的第一步同源同参), 于是本脚本可独立
- *   跑, 也意味着冒烟对象恒是「将随包发售的那份资产」;
+ *   跑, 冒烟对象即「包内资产目录」这一份; 它与发行面包的一致性由 verify:release 的白名单对账
+ *   兜住 (npm 面包机制按文件名硬性剔除 .gitignore / .npmrc, 资产以载体名随包并在生成期还原,
+ *   见 release-artifact.ts 的 NPM_UNSHIPPABLE_BASENAMES 与 template-snapshot.ts 的 ASSET_CARRIERS),
+ *   本脚本自身不读 tarball;
  * - core 档: 最小装备档, 生成与 ci 都最快; 收尾走默认 (依赖安装 hook 真跑), 但 --no-git (产物
  *   ci 链不依赖 git, git init 收尾另有端到端用例覆盖);
  * - 失败即拒: 任一步非零退出即视为冒烟失败 (退出码 1), 临时现场保留并打印路径供诊断, 不静默清理。
@@ -136,6 +139,18 @@ const main = (): number => {
     GENERATE_TIMEOUT_MS,
   );
   if (!generated) return fail(workDir, '生成步 (含依赖安装)');
+
+  // 3.5 载体还原断言 (TD-05 的发行侧证据): npm 面包机制剔除的真实名发不进包, 模板以载体名随包
+  // (见 src/template-snapshot.ts 的 ASSET_CARRIERS), 还原步骤若回归, 生成物 ci 依然全绿
+  // (lint / prettier 都不看这两个名字), 只有显式断言抓得住
+  for (const real of ['.gitignore', '.npmrc']) {
+    if (!existsSync(join(target, real))) {
+      process.stderr.write(
+        `heavy-smoke: 生成物缺 ${real} (载体还原步骤回归? 见 generate.ts 的 restoreCarrierNames)\n`,
+      );
+      return fail(workDir, '生成物载体还原断言');
+    }
+  }
 
   // 4. 生成物自证: 跑它自己的完整闸门链
   process.stdout.write('\n=== heavy-smoke: 生成物 bun run ci ===\n');

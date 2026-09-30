@@ -24,6 +24,7 @@ import {
   containsResidual,
   renderTemplate,
 } from '../src/render.ts';
+import { toCarrierPath } from '../src/template-snapshot.ts';
 import { ORIGINAL, buildTemplate } from './build-template.ts';
 import {
   type ManifestEntry,
@@ -315,6 +316,19 @@ describe('真实清单集成: 全量产出', () => {
     }
   });
 
+  test('npm 面包机制剔除的真实名以载体名落位 (TD-05 的载体面)', () => {
+    const { outDir, files } = buildReal();
+
+    expect(files).toContain('_gitignore');
+    expect(files).toContain('_npmrc');
+    expect(existsSync(join(outDir, '.gitignore'))).toBe(false);
+    expect(existsSync(join(outDir, '.npmrc'))).toBe(false);
+    // 载体只改名不改内容 (.npmrc 是 snapshot 条目: 逐字节等于仓库根原件; 生成期还原的就是它)
+    expect(readFileSync(join(outDir, '_npmrc'), 'utf8')).toBe(
+      readFileSync(join(REPO_ROOT, '.npmrc'), 'utf8'),
+    );
+  });
+
   test('排除面不进模板: 产品区 / 锁文件 / 生成器自身', () => {
     const { files } = buildReal();
     const excluded = files.filter(
@@ -329,13 +343,11 @@ describe('真实清单集成: 全量产出', () => {
 
   test('清单完整性: 非 exclude 条目逐条落位 (真实清单全量对账)', () => {
     const { files } = buildReal();
-    // 逐条按同一替换面推导期望产出路径: 文件条目须精确命中, 目录条目须有后代命中
+    // 逐条按同一替换面 + 同一落包改名推导期望产出路径: 文件条目须精确命中, 目录条目须有后代命中
     for (const entry of TEMPLATE_MANIFEST) {
       if (entry.disposition === 'exclude') continue;
-      const expected = renderTemplate(
-        entry.path,
-        TEMPLATE_VOCABULARY,
-        ORIGINAL,
+      const expected = toCarrierPath(
+        renderTemplate(entry.path, TEMPLATE_VOCABULARY, ORIGINAL),
       );
       const hit = entry.path.endsWith('/')
         ? files.some((file) => file.startsWith(expected))

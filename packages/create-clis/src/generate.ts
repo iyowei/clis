@@ -1,5 +1,5 @@
 /**
- * 生成主流程: 复制模板快照 → 按档裁剪 → 代入变量 → 格式化收口 → 二道自检 → 收尾。
+ * 生成主流程: 复制模板快照 → 载体还原 → 按档裁剪 → 代入变量 → 格式化收口 → 二道自检 → 收尾。
  *
  * 顺序与失败语义以 docs/designs/scaffold-contract.md 为权威: 目标目录已存在且非空直接拒绝
  * (不覆盖, 该路径抛 TargetRejectedError —— 生成尚未写入, 目标目录未被动过); 写入开始后任一步
@@ -7,9 +7,16 @@
  * 收尾动作经 hooks 注入 (git init / 依赖安装), 未提供的 hook 视为不执行 —— 调用方据此把
  * --no-git / --no-install 折算成 hook 的存在与否, 执行过的动作由返回值如实带回。
  *
- * 与 spec 流程的两处差异 (登记待同步): ① 二道自检前置于收尾 (spec 列在收尾之后; 此处取
+ * 与 spec 流程的三处差异 (登记待同步): ① 二道自检前置于收尾 (spec 列在收尾之后; 此处取
  * 更稳的读法 —— 残留未清就不做 git init / 装依赖, 免坏产物被收尾动作固化); ② 多出
- * 「格式化收口」一步 (T4 / T5 移交, 见下)。
+ * 「格式化收口」一步 (T4 / T5 移交, 见下); ③ 多出「载体还原」一步 (T8 发行面修复, 见下)。
+ *
+ * 载体还原 (T8, TD-05 的修复面): 模板资产里 npm 面包机制剔除的真实名 (.gitignore / .npmrc)
+ * 以载体名随包 (见 template-snapshot.ts 的 ASSET_CARRIERS); 复制进产物目录后立刻还原成真实名,
+ * 使后续每一步 (裁剪 / 替换 / 格式化 / 自检) 与用户看到的产物都是真实项目形态。时序上取
+ * 「紧贴 cpSync」而非更晚: 还原是落包改名的逆变换, 越早还原, 管道其余环节越少感知载体名;
+ * 裁剪与替换的路径面本就不含这两个文件 (裁剪面是 transcription 目录与技术债册子; 替换面是
+ * 词汇形态), 故前移不改变它们的既有行为。
  *
  * 格式化收口 (T4 / T5 移交): 占位符替换与档位裁剪都会改变行宽与结构 (如单元素组数组),
  * 产物须回到 prettier 稳定态才过生成物自己的 format-check; 收口用生成器自带的 prettier
@@ -22,6 +29,7 @@ import {
   mkdirSync,
   readFileSync,
   readdirSync,
+  renameSync,
   rmSync,
   rmdirSync,
   statSync,
@@ -38,7 +46,11 @@ import {
   containsResidual,
   renderTemplate,
 } from './render.ts';
-import { listTemplateDirs, listTemplateFiles } from './template-snapshot.ts';
+import {
+  fromCarrierPath,
+  listTemplateDirs,
+  listTemplateFiles,
+} from './template-snapshot.ts';
 import { type Tier, pruneTemplate, removeRulesFor } from './tier.ts';
 
 /** 收尾动作: 由调用方注入真实实现, 未提供的动作不执行 */
@@ -138,6 +150,19 @@ function substituteVocabulary(targetDir: string, vocabulary: Vocabulary): void {
   )) {
     const full = join(targetDir, rel);
     if (existsSync(full) && readdirSync(full).length === 0) rmdirSync(full);
+  }
+}
+
+/**
+ * 载体还原: 把模板的落包载体名 (如 `_gitignore`) 改回 npm 面包机制剔除的真实名 (`.gitignore`);
+ * 非载体名原样不动。理由与时序见文件头「载体还原」; 只改名, 不动内容。
+ * 外部副作用：原地重命名 targetDir 内文件 (仅命中载体表的两类路径)。
+ */
+function restoreCarrierNames(targetDir: string): void {
+  for (const rel of listTemplateFiles(targetDir)) {
+    const restored = fromCarrierPath(rel);
+    if (restored === rel) continue;
+    renameSync(join(targetDir, rel), join(targetDir, restored));
   }
 }
 
@@ -262,10 +287,10 @@ async function runHooks(
  *               vocabulary: { name: 'my-tool', ..., binName: 'mt' }, tier: 'core',
  *               original: ORIGINAL, hooks: { gitInit: fn } }
  *
- * 步骤 1：目标可用性 → 复制快照 → 按档裁剪
+ * 步骤 1：目标可用性 → 复制快照 → 载体还原 → 按档裁剪
  *   '/work/my-tool' 不存在 ✓ (非空即抛错)
- *   targetDir 内出现 94 个模板文件; core 档删除 scripts/transcription/ 与 docs/designs/tech-debt.md
- *   并摘除 ci.ts 的 conformance 步骤声明
+ *   targetDir 内出现 94 个模板文件, 其中 _gitignore / _npmrc 还原为 .gitignore / .npmrc
+ *   core 档删除 scripts/transcription/ 与 docs/designs/tech-debt.md 并摘除 ci.ts 的 conformance 步骤声明
  *
  * 步骤 2：代入变量 → 格式化收口 → 二道自检
  *   packages/{{NAME}}/ → packages/my-tool/; 占位形态全数替换为用户词汇
@@ -285,6 +310,7 @@ export async function generateProject(
 
   assertTargetAvailable(targetDir);
   cpSync(templateDir, targetDir, { recursive: true });
+  restoreCarrierNames(targetDir);
   pruneTemplate(targetDir, removeRulesFor(tier));
   substituteVocabulary(targetDir, vocabulary);
   await formatTree(targetDir);

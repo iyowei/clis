@@ -49,8 +49,8 @@ describe('发行面白名单 · 动态合并 (固定项 + 资产清单)', () => 
     }
   });
 
-  test('npm 面包机制硬性剔除的资产文件不进入白名单 (平台事实, 两件)', async () => {
-    const temp = await makeTempDir('create-clis-whitelist-npmrc-');
+  test('资产以 npm 不可发名 (真实名) 随包 → 拒绝 (白名单无从建立, 处置指向载体约定)', async () => {
+    const temp = await makeTempDir('create-clis-whitelist-unshippable-');
     try {
       expect(NPM_UNSHIPPABLE_BASENAMES).toEqual(['.gitignore', '.npmrc']);
       await stageTemplateAssets(temp.root, {
@@ -61,8 +61,31 @@ describe('发行面白名单 · 动态合并 (固定项 + 资产清单)', () => 
 
       const expectation = readPackExpectation(temp.root);
 
+      expect(expectation.files).toBeNull();
+      expect(expectation.issue).toContain('.gitignore, .npmrc');
+      expect(expectation.issue).toContain('载体名');
+    } finally {
+      await temp.cleanup();
+    }
+  });
+
+  test('载体名形态的资产照常进入白名单 (构建期改名的包内形态)', async () => {
+    const temp = await makeTempDir('create-clis-whitelist-carrier-');
+    try {
+      await stageTemplateAssets(temp.root, {
+        'README.md': '模板\n',
+        _gitignore: 'node_modules/\n',
+        _npmrc: 'package-lock=false\n',
+      });
+
+      const expectation = readPackExpectation(temp.root);
+
       expect(expectation.issue).toBeNull();
-      expect(expectation.files).toEqual(STAGED_EXPECTED_PACK);
+      expect(expectation.files).toEqual([
+        ...STAGED_EXPECTED_PACK,
+        `${ASSET_DIR}/${ASSET_TEMPLATE_DIR}/_gitignore`,
+        `${ASSET_DIR}/${ASSET_TEMPLATE_DIR}/_npmrc`,
+      ]);
     } finally {
       await temp.cleanup();
     }

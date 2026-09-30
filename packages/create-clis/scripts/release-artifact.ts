@@ -54,11 +54,10 @@ export const ASSET_MANIFEST_SCHEMA_VERSION = 1;
  * npm 面包机制硬性剔除的文件名 (平台事实, 与包内容无关): npm-packlist 的固定规则按文件名在任何
  * 层级剔除 (npm 自带的 lib/index.js 里 defaults 表含 .gitignore 与 .npmrc, strict 表再含
  * .npmrc); 实测 `files` 字段也救不回, 显式列成文件条目同样被剔除。
- * 生成器模板内恰有这两份 (assets/template/.gitignore 与 assets/template/.npmrc), 故白名单期望
- * 按本清单扣除。扣除是如实记账, 不是放过: 这两份的内容确实发不到面包里, 即已发布版本的生成器
- * 生成出的项目缺这两份文件; 功能后果与处置方向 (随包改名的等价形态 + 生成期还原) 见任务报告与
- * docs/designs/tech-debt.md。一旦 npm 改了剔除规则 (这两份重新出现在面包内), 白名单对账会以
- * 「多出」报警, 本清单随之移除。
+ * 模板资产因而不得以这些真实名随包 (否则发售版生成器生成出的项目会缺它们, TD-05 的历史教训),
+ * 一律以载体名随包并在生成期还原 (见 src/template-snapshot.ts 的 ASSET_CARRIERS)。
+ * 本常量是那张表的**反面判据**: 资产清单里出现这些名字即白名单无从建立, 判定层直接拒绝
+ * (这类文件必然缺席面包, 对账恒缺一项; 拒绝的处置指引指向载体约定)。
  */
 export const NPM_UNSHIPPABLE_BASENAMES: readonly string[] = [
   '.gitignore',
@@ -137,26 +136,28 @@ export interface PackExpectation {
 
 /**
  * 读模板资产清单并展开成发行面包白名单期望: 固定项 + 资产清单自身 + 资产文件逐条加
- * `assets/template/` 前缀; npm 面包机制硬性剔除的文件 (NPM_UNSHIPPABLE_BASENAMES) 如实扣除。
- * 缺失 / 读不到 / 非 JSON / 形状不符一律落 issue (不猜结构, 交判定层拒绝), 不抛错。
+ * `assets/template/` 前缀。
+ * 缺失 / 读不到 / 非 JSON / 形状不符 / 含 npm 不可发名一律落 issue (不猜结构, 交判定层拒绝),
+ * 不抛错。
  * 外部副作用：只读 (读 assets/manifest.json)。
  *
  * ### 数据追踪示例
  * ```text
  * Input（真实 Payload）
  *   root = /repo/packages/create-clis
- *   assets/manifest.json = { schemaVersion: 1, files: ['.gitignore', 'README.md', 'scripts/ci.ts'] }
+ *   assets/manifest.json = { schemaVersion: 1, files: ['_gitignore', 'README.md', 'scripts/ci.ts'] }
  *
  * 步骤 1：读取与形状校验
  *   schemaVersion = 1 ✓; files 为非空字符串数组 ✓   *(缺失 / 损坏 / 异版本走 issue 分支)*
  *
- * 步骤 2：展开为面包内路径并扣除 npm 不可发项
- *   '.gitignore' (basename 命中 NPM_UNSHIPPABLE_BASENAMES) → 扣除
+ * 步骤 2：展开为面包内路径; 顺带拦住 npm 不可发名
+ *   '_gitignore' (载体名) ✓ 放行; 若出现 '.gitignore' 则走 issue 分支 (白名单无从建立)
  *   'README.md' → 'assets/template/README.md'; 'scripts/ci.ts' → 'assets/template/scripts/ci.ts'
  *
  * Output（数据契约）
  *   return { files: [<PACK_FILES_BASE 七项>, 'assets/manifest.json',
- *                    'assets/template/README.md', 'assets/template/scripts/ci.ts'], issue: null }
+ *                    'assets/template/_gitignore', 'assets/template/README.md',
+ *                    'assets/template/scripts/ci.ts'], issue: null }
  * ```
  */
 export const readPackExpectation = (root: string): PackExpectation => {
@@ -199,14 +200,23 @@ export const readPackExpectation = (root: string): PackExpectation => {
       issue: '模板资产清单 files 字段形状不符 (应为非空字符串数组)',
     };
   }
-  const shippable = (fields.files as string[]).filter(
-    (file) => !NPM_UNSHIPPABLE_BASENAMES.includes(basename(file)),
+  const assets = fields.files as string[];
+  const unshippable = assets.filter((file) =>
+    NPM_UNSHIPPABLE_BASENAMES.includes(basename(file)),
   );
+  if (unshippable.length > 0) {
+    return {
+      files: null,
+      issue:
+        `模板资产含 npm 面包机制硬性剔除的文件名 (发不到面包里): ${unshippable.join(', ')}; ` +
+        '资产须以载体名随包并在生成期还原 (见 src/template-snapshot.ts 的 ASSET_CARRIERS)',
+    };
+  }
   return {
     files: [
       ...PACK_FILES_BASE,
       `${ASSET_DIR}/${ASSET_MANIFEST_FILE}`,
-      ...shippable.map((file) => `${ASSET_DIR}/${ASSET_TEMPLATE_DIR}/${file}`),
+      ...assets.map((file) => `${ASSET_DIR}/${ASSET_TEMPLATE_DIR}/${file}`),
     ],
     issue: null,
   };

@@ -162,6 +162,7 @@ function expectNoForm(target: string, forms: readonly string[]): void {
 function expectCoreStructure(target: string): void {
   for (const file of [
     '.gitignore',
+    '.npmrc',
     '.prettierrc',
     'package.json',
     'scripts/ci.ts',
@@ -174,6 +175,9 @@ function expectCoreStructure(target: string): void {
   ]) {
     expect(existsSync(join(target, file)), `${file} 应存在`).toBe(true);
   }
+  // 载体还原 (TD-05 的生成侧半边): 随包载体名一个都不许漏进生成物 (单行 for 体为行数余量)
+  for (const carrier of ['_gitignore', '_npmrc'])
+    expect(existsSync(join(target, carrier)), carrier).toBe(false);
   expect(existsSync(join(target, 'scripts/transcription'))).toBe(false);
   expect(existsSync(join(target, 'docs/designs/tech-debt.md'))).toBe(false);
 }
