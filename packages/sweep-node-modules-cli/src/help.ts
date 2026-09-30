@@ -34,6 +34,7 @@ export function helpText(color: boolean): string {
     row('sweep-nm config', '查看实际生效的配置: 来源 + 路径 + 文件状态'),
     row('sweep-nm init', '初始化向导: 交互生成配置文件'),
     row('sweep-nm --help', '帮助'),
+    row('sweep-nm -h', '--help 的别名'),
     '',
     '说明:',
     '  --exclude 按目录名精确匹配 (区分大小写), 从根到命中点的任意一级命中即跳过',

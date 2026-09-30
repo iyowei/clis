@@ -34,6 +34,7 @@ sweep-nm --config <路径>    指定配置文件 (优先于 SWEEP_NM_CONFIG)
 sweep-nm config             查看实际生效的配置: 来源 + 路径 + 文件状态
 sweep-nm init               初始化向导: 交互式生成配置文件
 sweep-nm --help             帮助
+sweep-nm -h                 --help 的别名
 ```
 
 - `--force` 只放行「疑似安装树」(判定与理由见 [删除安全闸](deletion-guard.md)「语义闸」): 缺省情形下这类目标不进删除批 (安装树删后无法由项目级重装恢复), 加旗标才照常纳入; 它不影响安全闸的不变量, 也不改变预览的零副作用语义。
