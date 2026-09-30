@@ -185,7 +185,7 @@ const main = () => {
     // 处置指引按宿主分流: 仓库检出态 (有源码) 可走源码入口或重构建; 包态 (无源码) 只能重装本包
     const advice = existsSync(join(root, 'src', 'cli.ts'))
       ? '用源码入口跑 (bun src/cli.ts 或 node src/cli.ts), 或重新构建 (bun run build)'
-      : '重装本包换一份完好分发 (npm install -g @iyowei/sweep-node-modules); 重装无效则说明该版本包有缺陷, 需发布者重新构建后再发';
+      : '重装本包换一份完好分发 (npm install -g @iyowei/sweep-node-modules-cli); 重装无效则说明该版本包有缺陷, 需发布者重新构建后再发';
     process.stderr.write(
       `sweep-nm: ${problem}, 已拒绝执行该产物 (无法证明它与构建清单同源)。\n` +
         `  处置: ${advice}。\n`,

@@ -316,7 +316,7 @@ describe('runInit: 落盘前锚点检查 (写入侧)', () => {
   });
 
   test('配置路径的父目录某级是符号链接: 同样拒绝, 定位报的是该级', async () => {
-    const parent = '/Users/iyowei/.config/sweep-node-modules';
+    const parent = join(homedir(), '.config', 'sweep-node-modules');
     const { deps, writes, confirmCalls, prints } = makeDeps({
       targetLink: (path) => (path === CONFIG_PATH ? parent : null),
       asks: ['/root', '', ''],

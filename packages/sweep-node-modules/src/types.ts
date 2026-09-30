@@ -108,7 +108,7 @@ export interface SizeResult {
   /** 存在但无法测量的目标 (如权限不足), 按 target 升序 */
   unmeasured: UnmeasuredEntry[];
   /**
-   * 扫描命中、测量时已不存在 (BC-13) 的目标, 保输入顺序。
+   * 扫描命中、测量时已不存在 (BC-13) 的目标, 按 target 升序 (体积三桶同此口径)。
    * 「不存在」既不产生字节也不属「存在但测不到」, 故单列一桶, 与 warnings 里的
    * SIZE_TARGET_VANISHED 事件同源同判定 (事件供诊断, 本桶供划分)。
    * 划分完备性: entries ∪ unmeasured ∪ gone 恰好构成入参的全划分, 三者两两不相交。
@@ -317,7 +317,7 @@ export interface SweepPlan {
   include: string[];
   /** 本计划所用的安全策略 */
   policy: SweepPolicy;
-  /** 本次体积口径 (与逐条 entry.basis 同源同值; 无目标时缺省) */
+  /** 本次体积口径 (存在条目时给出; 全未测到时可与逐条 entry.basis 不同值; 无条目时缺省) */
   basis?: SizeBasis;
   /** 逐目标领域条目: 保扫描的 target 升序; 测量时已不存在的目标 (BC-13) 不产生条目 */
   entries: SweepEntry[];

@@ -296,7 +296,7 @@ interface RootAnchor {
  *          options.roots = ['/work/zone']  (全链为真目录)
  *   步骤 1  首项末段命中, 次项末段为 app 即拒; 首项 realpath 后仍在 zone 之下, 通过
  *   Output accepted = ['/work/zone/app/node_modules']
- *          rejected = [{ target: '/work/zone/app', reason: '路径末段不是 node_modules' }]
+ *          rejected = [{ target: '/work/zone/app', message: '路径末段不是 node_modules' }]
  *
  *   分支对照 (根被换位): options.roots = ['/w'], 而 /w 已被换成指向 /evil 的符号链接 →
  *          anchors = [{ configured: '/w', real: '/evil', link: '/w' }];

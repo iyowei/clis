@@ -132,7 +132,7 @@ export function createPruningScanner(): Scanner {
       }
 
       const hits = [...hitsByRealTarget.values()].sort(compareTarget);
-      // 名单统计为胜出候选 (parallel) 的增强契约, 历史候选不提供 (对撞测试只覆盖 hits 与告警条数)
+      // 名单统计为胜出候选 (parallel) 的增强契约, 历史候选恒为空数组 (对撞测试只覆盖 hits 与告警条数)
       return { hits, warnings, excludeMatches: [], includeMatches: [] };
     },
   };

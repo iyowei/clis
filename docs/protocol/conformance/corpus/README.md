@@ -7,7 +7,7 @@
 
 - 一个文件一条用例, 文件名必须为 `<id>.json` (与 case 的 `id` 字段一致); 字段语义见
   [`../corpus.schema.json`](../corpus.schema.json), 设计原则三条: fixture 声明式 / env 白名单 / expect 断言族 (按用例取舍)。
-- 每条 `specRefs` 非空且指向 `../behavior-contract.md` 契约里的真实条款 (形态如 `BC-03` / `OF-01` / `EC-02`);
+- 每条 `specRefs` 非空且指向 `../../behavior-contract.md` 契约里的真实条款 (形态如 `BC-03` / `OF-01` / `EC-02`);
   期望必须能由条款原文 + fixture 尺寸推演辩护, **严禁「跑一遍记下来」式捕获** (忠于规则不忠于实现)。
 - 字符串字段内用 `$FIXTURE` 引用 fixture 根 (realpath 形态绝对路径), 例: `"SWEEP_NM_CONFIG": "$FIXTURE/config.json"`。
   运行器会把被测进程的 `HOME` 指向 `$FIXTURE/home`:

@@ -34,6 +34,6 @@ console.log('[safe-install] 重新安装依赖 (bun install)…');
 const result = spawnSync('bun', ['install'], { cwd: root, stdio: 'inherit' });
 
 console.log(
-  '[safe-install] dist 已清; 跑测试 / 推送前先 bun run build 重建产物',
+  '[safe-install] CLI 包 dist 已清 (API 包 dist 不在清理面); 跑测试 / 推送前先 bun run build 重建产物',
 );
 process.exit(result.status ?? 1);

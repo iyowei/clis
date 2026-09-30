@@ -1,7 +1,7 @@
 /**
  * cli 端到端契约 (TDD 驱动件: 本文件先行, 驱动 src/cli.ts 的实现)。
  * 断言面与分册「命令面与输出」「配置与初始化」的规格一一对应; 同一批用例参数化跑 bun 与 node 两个载体 (双运行时)。
- * 向导的 TTY 交互以伪终端冒烟覆盖 (见 `init.smoke.test.ts` 与本文件的 pty 用例), 不做交互全流程回放。
+ * 向导的 TTY 交互以伪终端冒烟覆盖 (见本文件的 pty 用例; `init.smoke.test.ts` 走真实管道), 不做交互全流程回放。
  */
 import { afterEach, describe, expect, test } from 'bun:test';
 

@@ -6,7 +6,7 @@ import { describe, expect, test } from 'bun:test';
 
 import { SweepError, type SweepErrorCode, isSweepError } from './index.ts';
 
-/** SweepErrorCode 的全表 (与 codes.ts 的类型同步; 漏项会被本测试抓出) */
+/** SweepErrorCode 的全表 (与 codes.ts 的类型同步; 漏项需人工对齐, `satisfies` 只保成员合法) */
 const ALL_SWEEP_ERROR_CODES = [
   'CONFIG_READ_FAILED',
   'CONFIG_CORRUPT_JSON',

@@ -166,7 +166,7 @@ for (const scanner of candidates) {
         join(root, 'alpha'),
       ]);
 
-      // 名单反馈通道仅胜出门面 (parallel) 提供 (候选 A / B 无此字段, 见 types.ts):
+      // 名单反馈通道仅胜出门面 (parallel) 提供实际计数 (候选 A / B 恒为空数组, 见 types.ts):
       // 计数为 0 即被调用方译为「包含名未命中任何已扫描的目录」, 故 beta 必须计入 —— 它只是被
       // exclude 优先截走, 与「名字压根没匹配上」是两回事, 不得冒充后者误报。
       if (result.includeMatches.length > 0) {
@@ -280,7 +280,7 @@ for (const scanner of candidates) {
 }
 
 /**
- * 保命名单反馈为 parallel 侧新增契约 (候选 A / B 无此字段), 故不进上方全候选参数化循环。
+ * 保命名单反馈为 parallel 侧新增契约 (候选 A / B 恒为空数组), 故不进上方全候选参数化循环。
  */
 describe('scan 契约 [parallel] 保命名单反馈', () => {
   test('excludeMatches: 未命中名计 0 仍在列, 命中名计数正确, 顺序同输入', async () => {
@@ -327,7 +327,7 @@ describe('scan 契约 [parallel] 保命名单反馈', () => {
 });
 
 /**
- * 包含名单反馈同为 parallel 侧新增契约 (候选 A / B 无此字段): 名字写错时筛选直接为空,
+ * 包含名单反馈同为 parallel 侧新增契约 (候选 A / B 恒为空数组): 名字写错时筛选直接为空,
  * 比 exclude 写错更需在名单通道上留痕, 故与上方 exclude 反馈同一套统计口径。
  */
 describe('scan 契约 [parallel] 包含名单反馈', () => {
