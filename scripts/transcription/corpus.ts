@@ -2,11 +2,13 @@
  * 转写契约套件 · 语料层。
  *
  * 职责: 语料字段类型 (与 docs/protocol/conformance/corpus.schema.json 对应) + $FIXTURE 变量替换
- * 契约 + 目录加载与手写校验。字段语义以 schema 为准; 本模块的手写校验是 schema 的物化子集,
- * 只为尽早给出可读报错, 不复刻 schema 的全部约束。
+ * 契约 + 目录加载。字段语义以 schema 为准; 手写校验 (schema 的物化子集) 在 validate.ts, 只为尽早
+ * 给出可读报错, 不复刻 schema 的全部约束。
  */
 import { readFile, readdir } from 'node:fs/promises';
-import { isAbsolute, join } from 'node:path';
+import { join } from 'node:path';
+
+import { validateCase } from './validate.ts';
 
 // ---------------------------------------------------------------------------
 // 语料类型 (与 corpus.schema.json 对应)
@@ -62,14 +64,50 @@ export interface ExpectSpec {
   fs?: FsExpectation[];
 }
 
-export interface CorpusCase {
+/** cli 用例 (缺省形态): 经 --target 的被测命令做黑盒验收 */
+export interface CliCorpusCase {
   id: string;
+  kind?: 'cli';
   specRefs: string[];
   fixture: FixtureSpec;
   setup?: SetupStep[];
   run: RunSpec;
   expect: ExpectSpec;
 }
+
+/** api 用例的单步调用指令 (形状与执行语义见 docs/protocol/conformance/api-harness-protocol.md) */
+export interface ApiCallStep {
+  as?: string;
+  call: {
+    export?: string;
+    on?: string;
+    method?: string;
+    args?: unknown[];
+  };
+  collectEvents?: boolean;
+}
+
+/** api 用例的断言族: 末步返回值 / 抛错码 / 事件流 / fs (fs 与 cli 面共用) */
+export interface ApiExpectSpec {
+  result?: { exact?: unknown; subset?: unknown };
+  error?: { code: string; name?: string };
+  events?: { lastIs?: string; mustInclude?: string[] };
+  fs?: FsExpectation[];
+}
+
+/** api 用例: 经被测方按协议提供的 harness 可执行做黑盒验收 (--api-target) */
+export interface ApiCorpusCase {
+  id: string;
+  kind: 'api';
+  specRefs: string[];
+  fixture: FixtureSpec;
+  setup?: SetupStep[];
+  env?: Record<string, string>;
+  steps: ApiCallStep[];
+  expect: ApiExpectSpec;
+}
+
+export type CorpusCase = CliCorpusCase | ApiCorpusCase;
 
 // ---------------------------------------------------------------------------
 // 变量替换契约 ($FIXTURE)
@@ -82,222 +120,25 @@ export const FIXTURE_VAR = '$FIXTURE';
 export const applyVars = (text: string, root: string): string =>
   text.split(FIXTURE_VAR).join(root);
 
-// ---------------------------------------------------------------------------
-// 手写校验 (schema 的物化子集)
-// ---------------------------------------------------------------------------
-
-const asRecord = (value: unknown): Record<string, unknown> | null =>
-  typeof value === 'object' && value !== null && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : null;
-
-const ID_PATTERN = /^[a-z0-9]+(-[a-z0-9]+)*$/;
-const SPEC_REF_PATTERN = /^[A-Z]{2,4}-[0-9]+$/;
-
-/** 相对路径判定: 非空、非绝对 (含 win 盘符)、不含反斜杠与 '..' 段 */
-function isSafeRelPath(value: unknown): value is string {
-  if (typeof value !== 'string' || value === '') return false;
-  if (isAbsolute(value) || /^[a-zA-Z]:/.test(value)) return false;
-  if (value.includes('\\')) return false;
-  return !value.split('/').includes('..');
-}
-
-/** 校验单条 fixture.projects 项 (抽出以压平嵌套深度; 报错文案与顺序与内联时一致) */
-function validateProjectEntry(
-  item: unknown,
-  index: number,
-  problems: string[],
-): void {
-  const project = asRecord(item);
-  if (project === null || !isSafeRelPath(project.dir)) {
-    problems.push(`fixture.projects[${index}].dir 须为相对路径`);
-    return;
+/**
+ * 递归对任意 JSON 值里的字符串做 $FIXTURE 替换 (保结构)。
+ * 两处消费: api 用例的 steps 指令在派发给 harness 前替换; result 期望值在比对前替换。
+ * ({ "$probe": ... } 标记对象可安全穿过: 探针名不含 $FIXTURE。)
+ */
+export function replaceVarsDeep(value: unknown, root: string): unknown {
+  if (typeof value === 'string') return applyVars(value, root);
+  if (Array.isArray(value)) {
+    return value.map((item) => replaceVarsDeep(item, root));
   }
-  for (const key of ['files', 'bytesPerFile'] as const) {
-    const value = project[key];
-    if (
-      value !== undefined &&
-      (!Number.isInteger(value) || (value as number) < 0)
-    ) {
-      problems.push(`fixture.projects[${index}].${key} 须为非负整数`);
-    }
-  }
-}
-
-function validateFixture(fixture: unknown, problems: string[]): void {
-  const record = asRecord(fixture);
-  if (record === null) {
-    problems.push('fixture 缺失或不是对象');
-    return;
-  }
-  const projects = record.projects;
-  if (projects !== undefined) {
-    if (!Array.isArray(projects)) {
-      problems.push('fixture.projects 须为数组');
-    } else {
-      for (const [index, item] of projects.entries()) {
-        validateProjectEntry(item, index, problems);
-      }
-    }
-  }
-  const symlinks = record.symlinks;
-  if (symlinks !== undefined) {
-    if (!Array.isArray(symlinks)) {
-      problems.push('fixture.symlinks 须为数组');
-    } else {
-      for (const [index, item] of symlinks.entries()) {
-        const link = asRecord(item);
-        if (
-          link === null ||
-          !isSafeRelPath(link.at) ||
-          !isSafeRelPath(link.to)
-        ) {
-          problems.push(`fixture.symlinks[${index}] 的 at / to 须为相对路径`);
-        }
-      }
-    }
-  }
-  const unreadable = record.unreadable;
-  if (unreadable !== undefined) {
-    if (!Array.isArray(unreadable) || !unreadable.every(isSafeRelPath)) {
-      problems.push('fixture.unreadable 须为相对路径数组');
-    }
-  }
-  const readonly = record.readonly;
-  if (readonly !== undefined) {
-    if (!Array.isArray(readonly) || !readonly.every(isSafeRelPath)) {
-      problems.push('fixture.readonly 须为相对路径数组');
-    }
-  }
-}
-
-function validateSetup(setup: unknown, problems: string[]): void {
-  if (setup === undefined) return;
-  if (!Array.isArray(setup)) {
-    problems.push('setup 须为数组');
-    return;
-  }
-  for (const [index, item] of setup.entries()) {
-    const step = asRecord(item);
-    const write = step === null ? null : asRecord(step.write);
-    if (
-      write === null ||
-      !isSafeRelPath(write.path) ||
-      typeof write.text !== 'string'
-    ) {
-      problems.push(
-        `setup[${index}] 须为 { write: { path: 相对路径, text: 字符串 } }`,
-      );
-    }
-  }
-}
-
-function validateRun(run: unknown, problems: string[]): void {
-  const record = asRecord(run);
-  if (record === null) {
-    problems.push('run 缺失或不是对象');
-    return;
-  }
-  const argv = record.argv;
-  if (
-    argv !== undefined &&
-    (!Array.isArray(argv) || !argv.every((item) => typeof item === 'string'))
-  ) {
-    problems.push('run.argv 须为字符串数组');
-  }
-  const env = record.env;
-  if (env !== undefined) {
-    const envRecord = asRecord(env);
-    if (
-      envRecord === null ||
-      !Object.values(envRecord).every((item) => typeof item === 'string')
-    ) {
-      problems.push('run.env 须为字符串值对象');
-    }
-  }
-  if (record.cwd !== undefined && !isSafeRelPath(record.cwd)) {
-    problems.push('run.cwd 须为相对路径');
-  }
-}
-
-function validateExpect(expect: unknown, problems: string[]): void {
-  const record = asRecord(expect);
-  if (record === null) {
-    problems.push('expect 缺失或不是对象');
-    return;
-  }
-  if (!Number.isInteger(record.exitCode)) {
-    problems.push('expect.exitCode 须为整数 (必填)');
-  }
-  if (
-    record.stdoutExact !== undefined &&
-    typeof record.stdoutExact !== 'string'
-  ) {
-    problems.push('expect.stdoutExact 须为字符串');
-  }
-  for (const key of [
-    'stdoutContains',
-    'stdoutMustNotContain',
-    'stderrContains',
-    'stderrMustNotContain',
-  ] as const) {
-    const value = record[key];
-    if (
-      value !== undefined &&
-      (!Array.isArray(value) ||
-        !value.every((item) => typeof item === 'string'))
-    ) {
-      problems.push(`expect.${key} 须为字符串数组`);
-    }
-  }
-  const fs = record.fs;
-  if (fs !== undefined) {
-    if (!Array.isArray(fs)) {
-      problems.push('expect.fs 须为数组');
-    } else {
-      for (const [index, item] of fs.entries()) {
-        const entry = asRecord(item);
-        const state = entry === null ? undefined : entry.state;
-        if (
-          entry === null ||
-          !isSafeRelPath(entry.path) ||
-          !['gone', 'exists', 'empty'].includes(String(state))
-        ) {
-          problems.push(
-            `expect.fs[${index}] 须为 { path: 相对路径, state: gone|exists|empty }`,
-          );
-        }
-      }
-    }
-  }
-}
-
-/** 校验单条 case; 返回问题清单 (空数组即通过) */
-export function validateCase(data: unknown): string[] {
-  const problems: string[] = [];
-  const record = asRecord(data);
-  if (record === null) return ['case 顶层须为 JSON 对象'];
-
-  if (typeof record.id !== 'string' || !ID_PATTERN.test(record.id)) {
-    problems.push('id 缺失或不合 kebab-case 形态 (小写字母数字与 -)');
-  }
-  const refs = record.specRefs;
-  if (
-    !Array.isArray(refs) ||
-    refs.length === 0 ||
-    !refs.every(
-      (item) => typeof item === 'string' && SPEC_REF_PATTERN.test(item),
-    )
-  ) {
-    problems.push(
-      'specRefs 须为非空数组, 元素为条款编号形态 (如 BC-03 / OF-01 / EC-02)',
+  if (typeof value === 'object' && value !== null) {
+    return Object.fromEntries(
+      Object.entries(value).map(([key, item]) => [
+        key,
+        replaceVarsDeep(item, root),
+      ]),
     );
   }
-  validateFixture(record.fixture, problems);
-  validateSetup(record.setup, problems);
-  validateRun(record.run, problems);
-  validateExpect(record.expect, problems);
-  return problems;
+  return value;
 }
 
 /**

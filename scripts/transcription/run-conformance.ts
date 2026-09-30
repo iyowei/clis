@@ -13,7 +13,7 @@
  * 语料权威: docs/protocol/conformance/corpus.schema.json (字段语义以 schema 为准; 手写校验是
  * schema 的物化子集, 只为尽早给出可读报错, 不复刻 schema 的全部约束)。
  *
- * 用法: bun scripts/transcription/run-conformance.ts --target "bun packages/sweep-node-modules-cli/src/cli.ts" [--corpus <dir>] [--filter <id 子串>]
+ * 用法: bun scripts/transcription/run-conformance.ts --target "bun packages/sweep-node-modules-cli/src/cli.ts" [--api-target "bun scripts/transcription/api-harness.ts"] [--corpus <dir>] [--filter <id 子串>]
  *       [--timeout <ms>] [--json] [--keep] [--help]
  *
  * 退出码: 0 全部通过; 1 存在失败用例; 2 用法 / 语料 / 环境错误 (runner 自身问题, 非被测缺陷)。
@@ -24,7 +24,7 @@ import { homedir } from 'node:os';
 import { dirname, isAbsolute, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { compareCase } from './compare.ts';
+import { compareApiCase, compareCase } from './compare.ts';
 import { type CorpusCase, loadCorpus } from './corpus.ts';
 import {
   type ExecOutcome,
@@ -32,6 +32,7 @@ import {
   applySetup,
   buildFixture,
   cleanupFixture,
+  executeApiCase,
   executeCase,
 } from './fixture.ts';
 import {
@@ -56,9 +57,12 @@ const DEFAULT_CORPUS_DIR = join(
   'corpus',
 );
 const DEFAULT_TIMEOUT_MS = 15000;
+/** 默认 API harness: 随套件提供的参考 harness (import API 包单源; 见 api-harness.ts 文件头) */
+const DEFAULT_API_TARGET = `bun ${join(HERE, 'api-harness.ts')}`;
 
 interface CliOptions {
   target: string;
+  apiTarget: string;
   corpusDir: string;
   filter?: string;
   timeoutMs: number;
@@ -78,6 +82,7 @@ const HELP_TEXT = [
   '用法: bun scripts/transcription/run-conformance.ts --target "<被测命令>" [选项]',
   '',
   '  --target <cmd>    被测进程命令 (如 "bun packages/sweep-node-modules-cli/src/cli.ts", 或 PATH 中的 "sweep-nm" / 绝对路径形态); 按空白拆分, 不支持含空格的路径',
+  '  --api-target <cmd> API 用例的被测 harness 命令 (缺省: 随套件参考 harness, 即 "bun <仓库根>/scripts/transcription/api-harness.ts"); 拆分与绝对化规则同 --target',
   '  --corpus <dir>    语料目录 (默认: docs/protocol/conformance/corpus)',
   '  --filter <text>   只跑 id 含该子串的用例',
   '  --timeout <ms>    单条用例执行超时 (默认 15000), 到期即判失败 (超时守卫)',
@@ -105,6 +110,7 @@ const HELP_TEXT = [
  */
 function parseArgs(argv: string[]): ParseOutcome {
   let target: string | undefined;
+  let apiTarget = DEFAULT_API_TARGET;
   let corpusDir = DEFAULT_CORPUS_DIR;
   let filter: string | undefined;
   let timeoutMs = DEFAULT_TIMEOUT_MS;
@@ -128,6 +134,7 @@ function parseArgs(argv: string[]): ParseOutcome {
     }
     if (
       arg === '--target' ||
+      arg === '--api-target' ||
       arg === '--corpus' ||
       arg === '--filter' ||
       arg === '--timeout'
@@ -137,6 +144,7 @@ function parseArgs(argv: string[]): ParseOutcome {
         return { ok: false, message: `参数 ${arg} 缺少取值` };
       }
       if (arg === '--target') target = value;
+      if (arg === '--api-target') apiTarget = value;
       if (arg === '--corpus') corpusDir = value;
       if (arg === '--filter') filter = value;
       if (arg === '--timeout') {
@@ -160,6 +168,7 @@ function parseArgs(argv: string[]): ParseOutcome {
       ok: true,
       options: {
         target: target ?? '',
+        apiTarget,
         corpusDir,
         filter,
         timeoutMs,
@@ -175,7 +184,16 @@ function parseArgs(argv: string[]): ParseOutcome {
 
   return {
     ok: true,
-    options: { target, corpusDir, filter, timeoutMs, json, keep, help: false },
+    options: {
+      target,
+      apiTarget,
+      corpusDir,
+      filter,
+      timeoutMs,
+      json,
+      keep,
+      help: false,
+    },
   };
 }
 
@@ -220,8 +238,13 @@ async function runCase(
   try {
     await buildFixture(root, caseSpec.fixture);
     await applySetup(root, caseSpec.setup ?? []);
-    exec = executeCase(caseSpec, root, ctx);
-    failures = await compareCase(caseSpec.expect, exec, root);
+    if (caseSpec.kind === 'api') {
+      exec = executeApiCase(caseSpec, root, ctx);
+      failures = await compareApiCase(caseSpec.expect, exec, root);
+    } else {
+      exec = executeCase(caseSpec, root, ctx);
+      failures = await compareCase(caseSpec.expect, exec, root);
+    }
   } finally {
     if (ctx.keep) {
       process.stderr.write(`[keep] fixture 保留于: ${root}\n`);
@@ -262,6 +285,10 @@ async function main(): Promise<number> {
     options.target.trim().split(/\s+/),
     process.cwd(),
   );
+  const apiTargetArgv = absolutizeTargetArgv(
+    options.apiTarget.trim().split(/\s+/),
+    process.cwd(),
+  );
   let cases: CorpusCase[];
   try {
     cases = await loadCorpus(resolve(options.corpusDir));
@@ -285,6 +312,7 @@ async function main(): Promise<number> {
   await mkdir(workBase, { recursive: true });
   const ctx: RunContext = {
     targetArgv,
+    apiTargetArgv,
     timeoutMs: options.timeoutMs,
     keep: options.keep,
     workBase,

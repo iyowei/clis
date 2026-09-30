@@ -21,6 +21,7 @@
 - 体积数字依赖文件系统块大小 (本机 APFS 4096 块: 文件向上取整、目录不计); **跨平台复跑须按块口径重校准**,
   属已登记的已知风险。
 - 空语料 (无 `.json` 用例) 不是「全绿」: 验收器按 runner 级错误退出 (退 2 不假绿)。
+- api 用例 (`kind: "api"`) 的字段 (`steps` / `expect.result | error | events`) 见 [`../corpus.schema.json`](../corpus.schema.json) 与 [API harness 协议](../api-harness-protocol.md); `--api-target` 缺省为随套件参考 harness。
 
 ## 运行
 
@@ -30,5 +31,7 @@
 bun scripts/transcription/run-conformance.ts --target "bun packages/sweep-node-modules-cli/src/cli.ts"                  # bun 载体全量
 bun scripts/transcription/run-conformance.ts --target "node packages/sweep-node-modules-cli/src/cli.ts"                 # node 载体全量
 bun scripts/transcription/run-conformance.ts --target "bun packages/sweep-node-modules-cli/src/cli.ts" --filter scan-   # 按 id 子串筛选
+bun scripts/transcription/run-conformance.ts --target "bun packages/sweep-node-modules-cli/src/cli.ts" --api-target "bun scripts/transcription/api-harness.ts"   # 双面全量 (cli + api; api 用例经 harness 验收)
 bun scripts/transcription/run-conformance.ts --target "bun scripts/transcription/mutants/gen-<id>/packages/sweep-node-modules-cli/src/cli.ts"   # 变异自证 (预期有失败)
+bun scripts/transcription/run-conformance.ts --target "bun packages/sweep-node-modules-cli/src/cli.ts" --api-target "bun scripts/transcription/mutants/gen-<id>/scripts/transcription/api-harness.ts" --filter api-   # 变异自证 · api 面 (预期有失败)
 ```

@@ -2,15 +2,60 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "corpus.schema.json",
   "title": "转写契约套件 · 金样本语料 (conformance corpus case)",
-  "description": "每个 .json 文件承载一条用例, 文件名须为 <id>.json。三条设计原则: 其一, fixture 声明式 (工作区树由字段描述, 不写脚本, 由验收器解释执行); 其二, env 白名单 (被测进程只拿最小环境白名单, 不继承宿主环境, case 只声明增量, 保可移植); 其三, expect 断言族按用例取舍 (退出码 / stdout 逐字节 / stdout 与 stderr 的子串含与禁含 / 文件系统终态, 正反两面俱全)。字符串字段内可用 $FIXTURE 引用 fixture 根 (realpath 形态的绝对路径)。套件级语义与维护规则见 docs/protocol/README.md (决策依据见 ADR 0008), 验收器 scripts/transcription/corpus.ts 的手写校验为本 schema 的物化子集。",
+  "description": "每个 .json 文件承载一条用例, 文件名须为 <id>.json。三条设计原则: 其一, fixture 声明式 (工作区树由字段描述, 不写脚本, 由验收器解释执行); 其二, env 白名单 (被测进程只拿最小环境白名单, 不继承宿主环境, case 只声明增量, 保可移植); 其三, expect 断言族按用例取舍 (exitCode / stdout 逐字节 / stdout 与 stderr 的子串含与禁含 / 文件系统终态, 正反两面俱全)。字符串字段内可用 $FIXTURE 引用 fixture 根 (realpath 形态的绝对路径)。套件级语义与维护规则见 docs/protocol/README.md (决策依据见 ADR 0008), 验收器 scripts/transcription/corpus.ts 的手写校验为本 schema 的物化子集。两类用例以 kind 判别: cli (缺省; 跑 --target 的被测命令, 断言字符面) 与 api (经 harness 协议调用 API 包导出, 断言返回值 / 抛错 / 事件 / fs; 协议与 harness 形状见 docs/protocol/conformance/api-harness-protocol.md)。",
   "type": "object",
   "additionalProperties": false,
-  "required": ["id", "specRefs", "fixture", "run", "expect"],
+  "required": ["id", "specRefs", "fixture", "expect"],
+  "allOf": [
+    {
+      "if": {
+        "required": ["kind"],
+        "properties": { "kind": { "const": "api" } }
+      },
+      "then": {
+        "required": ["steps"],
+        "properties": {
+          "run": false,
+          "steps": { "minItems": 1 },
+          "expect": {
+            "properties": {
+              "exitCode": false,
+              "stdoutExact": false,
+              "stdoutContains": false,
+              "stdoutMustNotContain": false,
+              "stderrContains": false,
+              "stderrMustNotContain": false
+            }
+          }
+        }
+      },
+      "else": {
+        "required": ["run"],
+        "properties": {
+          "steps": false,
+          "env": false,
+          "expect": {
+            "required": ["exitCode"],
+            "properties": {
+              "result": false,
+              "error": false,
+              "events": false
+            }
+          }
+        }
+      }
+    }
+  ],
   "properties": {
     "id": {
       "type": "string",
       "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$",
       "description": "用例标识 (kebab-case, 全部小写); 须与文件名 <id>.json 一致"
+    },
+    "kind": {
+      "enum": ["cli", "api"],
+      "default": "cli",
+      "description": "用例形态: cli = 经 --target 的被测命令做黑盒验收 (缺省); api = 经被测方按协议提供的 API harness 做黑盒验收 (经 --api-target 指定, 缺省为参考 harness)"
     },
     "specRefs": {
       "type": "array",
@@ -116,7 +161,7 @@
     "run": {
       "type": "object",
       "additionalProperties": false,
-      "description": "执行声明: 被测命令由验收器的 --target 提供, 本对象只声明本次用例的增量",
+      "description": "执行声明 (仅 cli case): 被测命令由验收器的 --target 提供, 本对象只声明本次用例的增量",
       "properties": {
         "argv": {
           "type": "array",
@@ -137,40 +182,147 @@
         }
       }
     },
+    "env": {
+      "type": "object",
+      "additionalProperties": { "type": "string" },
+      "default": {},
+      "description": "环境增量 (仅 api case): 在最小环境白名单之上叠加给 harness 进程 (值内可用 $FIXTURE); cli case 用 run.env"
+    },
+    "steps": {
+      "type": "array",
+      "description": "调用指令 (仅 api case): 按序执行的会话步骤, 末步返回值为 result 断言的实测值; 形状与执行语义见 api-harness-protocol.md",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["call"],
+        "properties": {
+          "as": {
+            "type": "string",
+            "description": "把本步返回值存为句柄 (供后续方法步的 call.on 引用; 返回值须为对象)"
+          },
+          "call": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "export": {
+                "type": "string",
+                "description": "创建步: 调用的包顶层导出名 (与 on/method 互斥)"
+              },
+              "on": {
+                "type": "string",
+                "description": "方法步: 目标句柄名 (与 method 成对; 与 export 互斥)"
+              },
+              "method": {
+                "type": "string",
+                "description": "方法步: 调用的方法名"
+              },
+              "args": {
+                "type": "array",
+                "default": [],
+                "description": "调用实参 (JSON 值; 字符串内 $FIXTURE 由验收器替换; 形如 { \"$probe\": \"<名>\" } 的对象由 harness 替换为对应探针)"
+              }
+            },
+            "oneOf": [
+              {
+                "required": ["export"],
+                "not": {
+                  "anyOf": [{ "required": ["on"] }, { "required": ["method"] }]
+                }
+              },
+              {
+                "required": ["on", "method"],
+                "not": { "required": ["export"] }
+              }
+            ]
+          },
+          "collectEvents": {
+            "type": "boolean",
+            "default": false,
+            "description": "true 时把进度事件收集器以 onProgress 并入本次调用的末个参数 (末参为对象则合并其中, 否则追加 { onProgress }); 收集结果进输出 events"
+          }
+        }
+      }
+    },
     "expect": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["exitCode"],
-      "description": "断言族: 退出码 / stdout 逐字节 / stdout 子串 (含与禁含) / stderr 子串 (含与禁含) / 文件系统终态; 至少给 exitCode, 其余按用例取舍",
+      "description": "断言族 (按 kind 分流): cli 面 = exitCode / stdout 逐字节 / stdout 与 stderr 的子串含与禁含 / fs; api 面 = result (末步返回值) / error (抛错码) / events (事件流) / fs。fs 两面共用; 任一面内各断言并存时逐项独立判定",
       "properties": {
-        "exitCode": { "type": "integer", "description": "期望退出码" },
+        "exitCode": {
+          "type": "integer",
+          "description": "期望退出码 (仅 cli case)"
+        },
         "stdoutExact": {
           "type": "string",
-          "description": "stdout 逐字节期望 (非 TTY 路径 100% 确定, 是首选断言面); 与 stdoutContains 并存时两者都判"
+          "description": "stdout 逐字节期望 (非 TTY 路径 100% 确定, 是首选断言面); 与 stdoutContains 并存时两者都判 (仅 cli case)"
         },
         "stdoutContains": {
           "type": "array",
           "items": { "type": "string" },
-          "description": "stdout 子串断言 (逐项独立判定)"
+          "description": "stdout 子串断言 (逐项独立判定; 仅 cli case)"
         },
         "stdoutMustNotContain": {
           "type": "array",
           "items": { "type": "string" },
-          "description": "stdout 禁含子串断言 (逐项独立判定; 剪枝 / 排除 / 诱饵类用例的「不该出现」面)"
+          "description": "stdout 禁含子串断言 (逐项独立判定; 剪枝 / 排除 / 诱饵类用例的「不该出现」面; 仅 cli case)"
         },
         "stderrContains": {
           "type": "array",
           "items": { "type": "string" },
-          "description": "stderr 子串断言 (诊断与告警面)"
+          "description": "stderr 子串断言 (诊断与告警面; 仅 cli case)"
         },
         "stderrMustNotContain": {
           "type": "array",
           "items": { "type": "string" },
-          "description": "stderr 禁含子串断言 (逐项独立判定; 「正确行为是静默」类用例的「不该出现」面: 多出一条告警的缺陷形态, 正向断言原理上抓不住)"
+          "description": "stderr 禁含子串断言 (逐项独立判定; 「正确行为是静默」类用例的「不该出现」面: 多出一条告警的缺陷形态, 正向断言原理上抓不住; 仅 cli case)"
+        },
+        "result": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "末步返回值断言 (仅 api case): exact 深比较 (键序无关) 或 subset 递归子集包含; 期望须由条款 + fixture 尺寸推演辩护",
+          "properties": {
+            "exact": { "description": "深比较期望 (任意 JSON 值)" },
+            "subset": {
+              "description": "递归子集期望 (对象键子集包含; 数组等长逐项)"
+            }
+          },
+          "oneOf": [{ "required": ["exact"] }, { "required": ["subset"] }]
+        },
+        "error": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["code"],
+          "description": "抛错断言 (仅 api case): 会话任一步抛错时, 断言错误的判别码 (code 为机器判别值; name 可选, 供诊断)",
+          "properties": {
+            "code": {
+              "type": "string",
+              "description": "期望错误码 (如 CANCELLED / CONFIG_* 等 code 体系取值)"
+            },
+            "name": {
+              "type": "string",
+              "description": "可选: 期望错误类名 (如 SweepError)"
+            }
+          }
+        },
+        "events": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "事件流断言 (仅 api case): 事件序不承诺, 故按集合与末位判定",
+          "properties": {
+            "lastIs": {
+              "type": "string",
+              "description": "事件流末项的 kind 须为该值 (终结事件契约)"
+            },
+            "mustInclude": {
+              "type": "array",
+              "items": { "type": "string" },
+              "description": "事件流的 kind 集合须包含的项 (逐项判定, 不计数不定位)"
+            }
+          }
         },
         "fs": {
           "type": "array",
-          "description": "文件系统终态断言 (相对 fixture 根的路径)",
+          "description": "文件系统终态断言 (相对 fixture 根的路径; cli 与 api 两面共用)",
           "items": {
             "type": "object",
             "additionalProperties": false,

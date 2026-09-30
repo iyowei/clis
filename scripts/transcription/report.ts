@@ -8,8 +8,10 @@
 export interface FailureItem {
   /**
    * 断言类别 (枚举, 由 compare.ts 产出; 新增断言原语时须同步本行):
-   * timeout | spawn | exitCode | stdoutExact | stdoutContains | stderrContains
-   * | stdoutMustNotContain | stderrMustNotContain | fs
+   * 两面共用: timeout | spawn | fs;
+   * cli 面: exitCode | stdoutExact | stdoutContains | stderrContains
+   * | stdoutMustNotContain | stderrMustNotContain;
+   * api 面: harness | result | error | events
    */
   kind: string;
   /** 单行摘要 (面向人读) */

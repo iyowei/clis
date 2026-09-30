@@ -1,0 +1,28 @@
+{
+  "id": "api-scan-hits-sorted",
+  "kind": "api",
+  "specRefs": ["BC-01", "BC-04", "BC-06"],
+  "fixture": {
+    "projects": [{ "dir": "zone/b" }, { "dir": "zone/a" }]
+  },
+  "steps": [
+    { "as": "scanner", "call": { "export": "createScanner" } },
+    {
+      "call": {
+        "on": "scanner",
+        "method": "scan",
+        "args": [{ "roots": ["$FIXTURE/zone"], "exclude": [], "include": [] }]
+      }
+    }
+  ],
+  "expect": {
+    "result": {
+      "subset": {
+        "hits": [
+          { "target": "$FIXTURE/zone/a/node_modules" },
+          { "target": "$FIXTURE/zone/b/node_modules" }
+        ]
+      }
+    }
+  }
+}

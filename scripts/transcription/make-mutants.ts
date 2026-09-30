@@ -11,10 +11,12 @@
  *
  * 用法: bun scripts/transcription/make-mutants.ts [--help]
  *
- * 产物结构: mutants/gen-<id>/packages/{sweep-node-modules,sweep-node-modules-cli}/src/*.ts (注入后的实现) + mutants/gen-<id>/mutant.json
- * (注入记录)。
- * 运行某 mutant: bun scripts/transcription/mutants/gen-<id>/packages/sweep-node-modules-cli/src/cli.ts
- * (与 --target 配合喂给 run-conformance.ts)。
+ * 产物结构: mutants/gen-<id>/packages/{sweep-node-modules,sweep-node-modules-cli}/src/*.ts (注入后的实现)
+ * + mutants/gen-<id>/scripts/transcription/api-harness.ts (套件参考 harness 的副本, 指向副本源码)
+ * + mutants/gen-<id>/mutant.json (注入记录)。
+ * 运行某 mutant (cli 面): bun scripts/transcription/mutants/gen-<id>/packages/sweep-node-modules-cli/src/cli.ts
+ * 运行某 mutant (api 面): --api-target "bun scripts/transcription/mutants/gen-<id>/scripts/transcription/api-harness.ts"
+ * (两者均与 run-conformance.ts 配合)。
  */
 import {
   mkdir,
@@ -282,6 +284,14 @@ async function makeMutant(mutant: MutantSpec): Promise<AppliedPatch[]> {
       );
     }
   }
+  // 套件的 API 参考 harness 副本: 按仓库同相对结构放入, 使 api 面语料可直接以
+  // scripts/transcription/mutants/gen-<id>/scripts/transcription/api-harness.ts 为 --api-target
+  // (其相对 import 自动解析到本副本内的 API 源码)。
+  await mkdir(join(outDir, 'scripts', 'transcription'), { recursive: true });
+  await writeFile(
+    join(outDir, 'scripts', 'transcription', 'api-harness.ts'),
+    await readFile(join(HERE, 'api-harness.ts')),
+  );
   await writeFile(
     join(outDir, 'packages', 'sweep-node-modules', 'package.json'),
     await readFile(API_PKG_JSON),

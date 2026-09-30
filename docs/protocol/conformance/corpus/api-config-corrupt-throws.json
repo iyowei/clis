@@ -1,0 +1,13 @@
+{
+  "id": "api-config-corrupt-throws",
+  "kind": "api",
+  "specRefs": ["BC-19"],
+  "fixture": {},
+  "setup": [{ "write": { "path": "bad.json", "text": "{ not json" } }],
+  "steps": [
+    { "call": { "export": "loadConfig", "args": ["$FIXTURE/bad.json"] } }
+  ],
+  "expect": {
+    "error": { "code": "CONFIG_CORRUPT_JSON", "name": "SweepError" }
+  }
+}

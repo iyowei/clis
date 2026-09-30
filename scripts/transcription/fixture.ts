@@ -9,10 +9,12 @@ import { chmod, mkdir, rm, symlink, writeFile } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 
 import {
+  type ApiCorpusCase,
   type CorpusCase,
   type FixtureSpec,
   type SetupStep,
   applyVars,
+  replaceVarsDeep,
 } from './corpus.ts';
 
 /** fixture 内的家目录名 (被测进程的 HOME 指向此处, 见 buildEnv 注释) */
@@ -49,6 +51,8 @@ const BASE_ENV_KEYS = [
 export interface RunContext {
   /** 被测命令 argv (由 --target 拆分而来) */
   targetArgv: string[];
+  /** API harness 命令 argv (由 --api-target 拆分而来; api 用例用) */
+  apiTargetArgv: string[];
   timeoutMs: number;
   keep: boolean;
   /** fixture 根基座 (调用方保证已存在) */
@@ -218,6 +222,54 @@ export function executeCase(
     env,
     timeout: ctx.timeoutMs,
     // 超时后硬杀: 被测若死在 readline 等 stdin 上, SIGTERM 可能被吞
+    killSignal: 'SIGKILL',
+    encoding: 'utf8',
+  });
+
+  const error = result.error as (Error & { code?: string }) | undefined;
+  const timedOut =
+    error !== undefined &&
+    (error.code === 'ETIMEDOUT' || /ETIMEDOUT/.test(error.message));
+  return {
+    status: result.status,
+    stdout: result.stdout ?? '',
+    stderr: result.stderr ?? '',
+    timedOut,
+    spawnError: error !== undefined && !timedOut ? error.message : undefined,
+  };
+}
+
+/**
+ * 执行 api 用例的 harness 一次 (带超时守卫): 调用指令 JSON (steps 经 $FIXTURE 替换) 经 stdin
+ * 喂入, stdout 收结果 JSON。
+ * 外部副作用：启动子进程 (cwd 为 fixture 根, 环境为白名单 + case.env), 可能改动 fixture 文件系统。
+ */
+export function executeApiCase(
+  caseSpec: ApiCorpusCase,
+  root: string,
+  ctx: RunContext,
+): ExecOutcome {
+  const argv = ctx.apiTargetArgv;
+  const command = argv[0];
+  if (command === undefined) {
+    return {
+      status: null,
+      stdout: '',
+      stderr: '',
+      timedOut: false,
+      spawnError: 'API harness 命令为空 (--api-target 未给出可执行命令)',
+    };
+  }
+  const instruction = JSON.stringify(
+    replaceVarsDeep({ steps: caseSpec.steps }, root),
+  );
+  const env = buildEnv(root, caseSpec.env ?? {});
+
+  const result = spawnSync(command, argv.slice(1), {
+    cwd: root,
+    env,
+    input: instruction,
+    timeout: ctx.timeoutMs,
     killSignal: 'SIGKILL',
     encoding: 'utf8',
   });

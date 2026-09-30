@@ -24,13 +24,16 @@ const step = (label: string, command: string, args: string[]): void => {
   if (result.status !== 0) process.exit(result.status ?? 1);
 };
 
-/** conformance 双 target: bun 与 node 的解析链不同 (node 不读 tsconfig paths), 两者都要跑 */
+/** conformance 双 target: bun 与 node 的解析链不同 (node 不读 tsconfig paths), 两者都要跑;
+ *  api 面 harness 同样双载体 (以相对路径直连 API 单源, 无构建前置) */
 const conformance = (): void => {
   for (const runtime of ['bun', 'node']) {
     step(`conformance (${runtime})`, 'bun', [
       'scripts/transcription/run-conformance.ts',
       '--target',
       `${runtime} packages/sweep-node-modules-cli/src/cli.ts`,
+      '--api-target',
+      `${runtime} scripts/transcription/api-harness.ts`,
     ]);
   }
 };

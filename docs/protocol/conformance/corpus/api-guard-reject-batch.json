@@ -1,0 +1,26 @@
+{
+  "id": "api-guard-reject-batch",
+  "kind": "api",
+  "specRefs": ["BC-21", "BC-22", "EC-02"],
+  "fixture": {
+    "projects": [{ "dir": "zone/a" }, { "dir": "outside" }]
+  },
+  "steps": [
+    {
+      "call": {
+        "export": "removeBatch",
+        "args": [
+          ["$FIXTURE/zone/a/node_modules", "$FIXTURE/outside/node_modules"],
+          { "roots": ["$FIXTURE/zone"] }
+        ]
+      }
+    }
+  ],
+  "expect": {
+    "result": { "subset": { "status": "rejected" } },
+    "fs": [
+      { "path": "zone/a/node_modules", "state": "exists" },
+      { "path": "outside/node_modules", "state": "exists" }
+    ]
+  }
+}

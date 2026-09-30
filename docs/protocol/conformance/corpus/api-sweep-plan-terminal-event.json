@@ -1,0 +1,27 @@
+{
+  "id": "api-sweep-plan-terminal-event",
+  "kind": "api",
+  "specRefs": ["BC-44"],
+  "fixture": {
+    "projects": [{ "dir": "zone/a" }]
+  },
+  "steps": [
+    {
+      "as": "sweeper",
+      "call": {
+        "export": "createSweeper",
+        "args": [{ "roots": ["$FIXTURE/zone"] }]
+      }
+    },
+    {
+      "call": { "on": "sweeper", "method": "plan" },
+      "collectEvents": true
+    }
+  ],
+  "expect": {
+    "result": {
+      "subset": { "batch": ["$FIXTURE/zone/a/node_modules"] }
+    },
+    "events": { "lastIs": "plan-done", "mustInclude": ["plan-done"] }
+  }
+}

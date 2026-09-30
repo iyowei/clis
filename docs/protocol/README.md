@@ -5,26 +5,29 @@
 
 ## 套件结构
 
-| 件          | 位置                                                                                               | 说明                                                                                          |
-| ----------- | -------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------- |
-| 行为契约    | [`behavior-contract.md`](behavior-contract.md)                                                     | 编号条款 (BC-* / OF-* / EC-*), 语料 `specRefs` 的背书目标                                     |
-| 语料 schema | [`conformance/corpus.schema.json`](conformance/corpus.schema.json)                                 | 金样本字段语义的权威 (验收器的手写校验是其物化子集)                                           |
-| 金样本语料  | [`conformance/corpus/`](conformance/corpus/)                                                       | 每条期望必须能由条款 + fixture 尺寸推演辩护                                                   |
-| 覆盖表      | [`conformance/coverage.md`](conformance/coverage.md)                                               | 条款 × 语料覆盖 + 变异自证结果                                                                |
-| 验收器      | [`../../scripts/transcription/run-conformance.ts`](../../scripts/transcription/run-conformance.ts) | 确定性、零 AI、语言中立 (被测命令是参数)                                                      |
-| 变异生成器  | [`../../scripts/transcription/make-mutants.ts`](../../scripts/transcription/make-mutants.ts)       | 反向验收自证件 (语料抓不住 mutant 即语料盲区)                                                 |
-| 实施提示词  | [`prompts/`](prompts/)                                                                             | 辩证中正纪律: 角色 = 实施者; 未覆盖处停手报缺口; 只许等价不许「更优」; conformance 全绿才算完 |
+| 件               | 位置                                                                                               | 说明                                                                                                                                                      |
+| ---------------- | -------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 行为契约         | [`behavior-contract.md`](behavior-contract.md)                                                     | 编号条款 (BC-* / OF-* / EC-*), 语料 `specRefs` 的背书目标                                                                                                 |
+| 语料 schema      | [`conformance/corpus.schema.json`](conformance/corpus.schema.json)                                 | 金样本字段语义的权威 (验收器的手写校验是其物化子集)                                                                                                       |
+| 金样本语料       | [`conformance/corpus/`](conformance/corpus/)                                                       | 每条期望必须能由条款 + fixture 尺寸推演辩护                                                                                                               |
+| 覆盖表           | [`conformance/coverage.md`](conformance/coverage.md)                                               | 条款 × 语料覆盖 + 变异自证结果                                                                                                                            |
+| 验收器           | [`../../scripts/transcription/run-conformance.ts`](../../scripts/transcription/run-conformance.ts) | 确定性、零 AI、语言中立 (被测命令是参数)                                                                                                                  |
+| API harness 协议 | [`conformance/api-harness-protocol.md`](conformance/api-harness-protocol.md)                       | api 用例的调用协议 (指令 / 输出 / 探针 / 实现者契约); 参考实现 [`../../scripts/transcription/api-harness.ts`](../../scripts/transcription/api-harness.ts) |
+| 变异生成器       | [`../../scripts/transcription/make-mutants.ts`](../../scripts/transcription/make-mutants.ts)       | 反向验收自证件 (语料抓不住 mutant 即语料盲区)                                                                                                             |
+| 实施提示词       | [`prompts/`](prompts/)                                                                             | 辩证中正纪律: 角色 = 实施者; 未覆盖处停手报缺口; 只许等价不许「更优」; conformance 全绿才算完                                                             |
 
 ## 用本套件转写一门新语言
 
 1. 通读 [`behavior-contract.md`](behavior-contract.md) 与 `docs/designs/` 对应分册 (行为权威);
 2. 按 [`prompts/common-discipline.md`](prompts/common-discipline.md) + 目标语言模板 ([`prompts/transcribe-rust.md`](prompts/transcribe-rust.md) 为范例) 实施;
    交付物 = 条款→代码映射表 + 缺口清单 + conformance 原始报告;
-3. 以验收器对抗你的实现 (被测命令即你的可执行入口, 如 `./sweep-nm-rs`):
+3. 以验收器对抗你的实现 (被测命令即你的可执行入口, 如绝对路径形态的 `/path/to/sweep-nm-rs`):
 
    ```bash
    bun scripts/transcription/run-conformance.ts --target "<你的可执行命令>"
    ```
+
+   API 面 (实现同时提供库时): 按 [API harness 协议](conformance/api-harness-protocol.md) 提供 harness 可执行, 以 `--api-target "<你的 harness 命令>"` 一并验收;
 
    全绿且快照类逐字节一致, 才算等价;
 

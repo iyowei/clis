@@ -7,7 +7,13 @@
 import { lstat, readdir } from 'node:fs/promises';
 import { join } from 'node:path';
 
-import { type ExpectSpec, type FsExpectation, applyVars } from './corpus.ts';
+import {
+  type ApiExpectSpec,
+  type ExpectSpec,
+  type FsExpectation,
+  applyVars,
+  replaceVarsDeep,
+} from './corpus.ts';
 import type { ExecOutcome } from './fixture.ts';
 import { type FailureItem, clip } from './report.ts';
 
@@ -157,6 +163,251 @@ export async function compareCase(
         kind: 'stderrMustNotContain',
         message: `stderr 出现了禁含子串: "${clip(forbidden)}"`,
       });
+    }
+  }
+
+  for (const item of expect.fs ?? []) {
+    const problem = await checkFs(root, item);
+    if (problem !== null) failures.push({ kind: 'fs', message: problem });
+  }
+
+  return failures;
+}
+
+/** 对象判定 (JSON 语义: 非 null、非数组的对象) */
+const isPlainRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null && !Array.isArray(value);
+
+/** 深比较 (键序无关; 作用域为 JSON 域值: 对象 / 数组 / 原始值) */
+function deepEqual(left: unknown, right: unknown): boolean {
+  if (left === right) return true;
+  if (Array.isArray(left) || Array.isArray(right)) {
+    return (
+      Array.isArray(left) &&
+      Array.isArray(right) &&
+      left.length === right.length &&
+      left.every((item, index) => deepEqual(item, right[index]))
+    );
+  }
+  if (isPlainRecord(left) || isPlainRecord(right)) {
+    if (!isPlainRecord(left) || !isPlainRecord(right)) return false;
+    const leftKeys = Object.keys(left).sort();
+    const rightKeys = Object.keys(right).sort();
+    return (
+      leftKeys.length === rightKeys.length &&
+      leftKeys.every(
+        (key, index) =>
+          key === rightKeys[index] && deepEqual(left[key], right[key]),
+      )
+    );
+  }
+  return false;
+}
+
+/**
+ * 递归子集检查: 期望对象逐键存在且子集匹配, 期望数组等长逐项匹配, 原始值深比较。
+ * 返回首个差异说明 (通过为 null); pathHint 形如 `$.hits[0].target`。
+ */
+function subsetDiff(
+  expected: unknown,
+  actual: unknown,
+  pathHint: string,
+): string | null {
+  if (isPlainRecord(expected)) {
+    if (!isPlainRecord(actual)) {
+      return `${pathHint}: 期望对象, 实际 ${JSON.stringify(actual)}`;
+    }
+    for (const [key, value] of Object.entries(expected)) {
+      if (!(key in actual)) return `${pathHint}: 缺键 ${key}`;
+      const problem = subsetDiff(value, actual[key], `${pathHint}.${key}`);
+      if (problem !== null) return problem;
+    }
+    return null;
+  }
+  if (Array.isArray(expected)) {
+    if (!Array.isArray(actual)) return `${pathHint}: 期望数组, 实际非数组`;
+    if (expected.length !== actual.length) {
+      return `${pathHint}: 数组长度 期望 ${expected.length} 实际 ${actual.length}`;
+    }
+    for (const [index, item] of expected.entries()) {
+      const problem = subsetDiff(item, actual[index], `${pathHint}[${index}]`);
+      if (problem !== null) return problem;
+    }
+    return null;
+  }
+  if (!deepEqual(expected, actual)) {
+    return `${pathHint}: 期望 ${JSON.stringify(expected)}, 实际 ${JSON.stringify(actual)}`;
+  }
+  return null;
+}
+
+/** 事件流断言: 集合成员 (mustInclude) 与末位 (lastIs); 事件序不承诺, 故不按序比对 */
+function checkEvents(
+  expect: NonNullable<ApiExpectSpec['events']>,
+  raw: unknown,
+): FailureItem[] {
+  const failures: FailureItem[] = [];
+  if (!Array.isArray(raw)) {
+    failures.push({
+      kind: 'events',
+      message:
+        '期望事件断言, 但 harness 输出未附 events 数组 (步骤是否漏了 collectEvents?)',
+    });
+    return failures;
+  }
+  const kinds = raw.map((item) =>
+    isPlainRecord(item) ? item.kind : undefined,
+  );
+  if (expect.lastIs !== undefined) {
+    const last = kinds[kinds.length - 1];
+    if (last !== expect.lastIs) {
+      failures.push({
+        kind: 'events',
+        message: `末事件不符: 期望 ${expect.lastIs}, 实际 ${String(last)}`,
+        expected: expect.lastIs,
+        actual: typeof last === 'string' ? last : String(last),
+      });
+    }
+  }
+  for (const wanted of expect.mustInclude ?? []) {
+    if (!kinds.includes(wanted)) {
+      failures.push({ kind: 'events', message: `事件流缺少 kind: ${wanted}` });
+    }
+  }
+  return failures;
+}
+
+/**
+ * 逐项比对一条 api 用例的全部断言: 解析 harness 输出 JSON → result (exact / subset) /
+ * error (code / name) / events (lastIs / mustInclude) / fs。超时与执行级失败为短路项
+ * (与 cli 面同口径)。
+ *
+ * ### 数据追踪示例
+ * ```text
+ * Input（真实 Payload）
+ *   expect = { result: { subset: { hits: [{ target: '$FIXTURE/zone/a/node_modules' }] } } }
+ *   exec   = { status: 0, stdout: '{"ok":true,"value":{"hits":[{"target":"<realpath>/zone/a/node_modules", …}], …}}', stderr: '', timedOut: false }
+ *
+ * 步骤 1：形态校验
+ *   outcome = { ok: true, value: { … } }, 合法 (ok 为布尔且层次正确)
+ *
+ * 步骤 2：result.subset 递归比对 ($FIXTURE 已替换为 realpath)
+ *   $.hits[0].target 命中 → 其余相等 → failures = []
+ *
+ * Output（数据契约）
+ *   return [] 或 FailureItem[] (kind: harness | result | error | events | fs)
+ * ```
+ */
+export async function compareApiCase(
+  expect: ApiExpectSpec,
+  exec: ExecOutcome,
+  root: string,
+): Promise<FailureItem[]> {
+  const failures: FailureItem[] = [];
+
+  if (exec.timedOut) {
+    failures.push({
+      kind: 'timeout',
+      message: '执行超时 (超时守卫击中, 进程已被杀), 判失败',
+    });
+    return failures;
+  }
+  if (exec.spawnError !== undefined) {
+    failures.push({
+      kind: 'spawn',
+      message: `API harness 无法执行: ${exec.spawnError}`,
+    });
+    return failures;
+  }
+  if (exec.status !== 0) {
+    const stderrNote =
+      exec.stderr.trim() === '' ? '' : `; stderr: ${clip(exec.stderr.trim())}`;
+    failures.push({
+      kind: 'harness',
+      message: `harness 非零退出 (${String(exec.status)})${stderrNote}`,
+    });
+    return failures;
+  }
+  let outcome: unknown;
+  try {
+    outcome = JSON.parse(exec.stdout);
+  } catch {
+    failures.push({
+      kind: 'harness',
+      message: `harness stdout 不是合法 JSON: ${clip(exec.stdout.trim())}`,
+    });
+    return failures;
+  }
+  if (!isPlainRecord(outcome) || typeof outcome.ok !== 'boolean') {
+    failures.push({
+      kind: 'harness',
+      message: `harness 输出缺少 ok 布尔字段: ${clip(exec.stdout.trim())}`,
+    });
+    return failures;
+  }
+
+  if (outcome.ok === true) {
+    if (expect.error !== undefined) {
+      failures.push({
+        kind: 'error',
+        message: `期望抛错 (code=${expect.error.code}), 实际成功返回`,
+      });
+    }
+    if (expect.result !== undefined) {
+      if ('exact' in expect.result) {
+        const wanted = replaceVarsDeep(expect.result.exact, root);
+        if (!deepEqual(wanted, outcome.value)) {
+          failures.push({
+            kind: 'result',
+            message: 'result 与期望深比较不等',
+            expected: JSON.stringify(wanted, null, 2) ?? 'undefined',
+            actual: JSON.stringify(outcome.value, null, 2) ?? 'undefined',
+          });
+        }
+      } else {
+        const wanted = replaceVarsDeep(expect.result.subset, root);
+        const problem = subsetDiff(wanted, outcome.value, '$');
+        if (problem !== null) {
+          failures.push({
+            kind: 'result',
+            message: `result 子集不符: ${problem}`,
+          });
+        }
+      }
+    }
+    if (expect.events !== undefined) {
+      failures.push(...checkEvents(expect.events, outcome.events));
+    }
+  } else {
+    const error = isPlainRecord(outcome.error) ? outcome.error : null;
+    if (expect.result !== undefined) {
+      const code = typeof error?.code === 'string' ? error.code : '?';
+      const message = typeof error?.message === 'string' ? error.message : '';
+      failures.push({
+        kind: 'error',
+        message: `期望成功返回, 实际抛错: ${code} ${message}`.trim(),
+      });
+    }
+    if (expect.error !== undefined) {
+      const actualCode = error?.code;
+      if (actualCode !== expect.error.code) {
+        failures.push({
+          kind: 'error',
+          message: `错误码不符: 期望 ${expect.error.code}, 实际 ${String(actualCode)}`,
+          expected: expect.error.code,
+          actual:
+            typeof actualCode === 'string' ? actualCode : String(actualCode),
+        });
+      }
+      if (
+        expect.error.name !== undefined &&
+        error?.name !== expect.error.name
+      ) {
+        failures.push({
+          kind: 'error',
+          message: `错误类名不符: 期望 ${expect.error.name}, 实际 ${String(error?.name)}`,
+        });
+      }
     }
   }
 
