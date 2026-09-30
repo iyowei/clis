@@ -39,7 +39,7 @@ bun run bench
 # 转写一致性验收 (金样本语料见 docs/protocol/; target 为 CLI 包内源码路径)
 bun run conformance -- --target "bun packages/sweep-node-modules-cli/src/cli.ts"
 
-# 本地 CI 预演 (与 GitHub Actions 的 verify + conformance 两 job 同集合: build / 类型 / 测试 / lint / 格式 / conformance 双 target; 推前必跑, pre-push 钩子按同集合自动执行)
+# 本地 CI 预演 (与 GitHub Actions 的 verify + conformance 两 job 同集合: build / 类型 / 测试 / lint / 格式 / 文档与仓库卫生四闸门 / conformance 双 target; 推前必跑, pre-push 钩子按同集合自动执行)
 bun run ci
 
 # 打包两包发布产物: CLI 单文件 (dist/cli.js + 自证清单) 与 API 包 (dist/index.js + 类型声明 + 自证清单); 发布时由各自的 prepublishOnly 自动跑
@@ -54,7 +54,7 @@ bun run safe-install
 
 ## 发布
 
-主路径是 CI 自动链 (`.github/workflows/release.yml`): 推送到 `main` 后, `verify` job 先跑与 CI 同套的检查 (构建 / 类型 / 测试 / lint / 格式), 通过后 `release` job 停在 `environment: release` 的人工批准闸门外, 批准即由 Lido multi-semantic-release 执行发布; npm 侧走 OIDC Trusted Publishing, 不设 token、无 OTP, 自动带 provenance 签名, 完成后打 tag 并建 GitHub Release。版本语义按提交判定 (angular 预设): `feat` 提 minor, `fix` 提 patch。发布链覆盖双包: CLI 包持续演进, API 包自 2026-09-29 公开面收口 (`docs/designs/api-surface.md` §9 Q17) 起以同链发布 (根 `package.json` 的 `multi-release.ignorePackages` 已清空; API 包首发 0.5.0)。
+主路径是 CI 自动链 (`.github/workflows/release.yml`): 推送到 `main` 后, `verify` job 先跑与 CI 同套的检查 (构建 / 类型 / 测试 / lint / 格式 / 文档与仓库卫生四闸门), 通过后 `release` job 停在 `environment: release` 的人工批准闸门外, 批准即由 Lido multi-semantic-release 执行发布; npm 侧走 OIDC Trusted Publishing, 不设 token、无 OTP, 自动带 provenance 签名, 完成后打 tag 并建 GitHub Release。版本语义按提交判定 (angular 预设): `feat` 提 minor, `fix` 提 patch。发布链覆盖双包: CLI 包持续演进, API 包自 2026-09-29 公开面收口 (`docs/designs/api-surface.md` §9 Q17) 起以同链发布 (根 `package.json` 的 `multi-release.ignorePackages` 已清空; API 包首发 0.5.0)。
 
 发布动作统一过 `prepublishOnly` 闸门 (链上链下同一道, 两包各自): 构建 (`bun run build`; CLI 产出 `dist/cli.js` 与自证清单 `dist/manifest.json`, API 产出 `dist/index.js`、类型声明与自证清单) + 发布前置闸门 (`bun run verify:release`, 在各自包目录跑)。闸门按序短路, 任一命中即退 1 拒发: 工作树不干净 / 产物缺失 / 清单与提交或产物的对账不过 / 发行面包内文件与白名单 `PACK_FILES_EXPECTED` 不符 (该检查跑一次只读的 `npm pack --dry-run --json --ignore-scripts`, 需要 npm; API 包另查 d.ts 相对 specifier 无 `.ts` 残留)。手动发布 (`npm publish` / `bun publish`) 是链外的兜底通道, 走的是同一道闸门 (两者自行打包时都执行 `prepublishOnly`, 核验依据见 [ADR 0009](adrs/0009-npm-distribution-form.md) 补记第 4 条); 已知残留口: `npm pack` 与 `npm publish <tarball>` 不经闸门。
 
@@ -82,7 +82,7 @@ bun run conformance -- --target "node packages/sweep-node-modules-cli/src/cli.ts
 由 lefthook 把关 (操作级细节以仓库根 `lefthook.yml` 为准):
 
 - **pre-commit** (增量): prettier 重暂存 + oxlint 扫暂存文件; 类型检查例外, 跑全项目 `tsc --noEmit`
-- **pre-push** (全量): typecheck / build / test / oxlint / prettier `--check` / conformance 双 target (经 `bun scripts/ci.ts`)
+- **pre-push** (全量): typecheck / build / test (含 scripts 测试) / oxlint / prettier `--check` / 文档与仓库卫生四闸门 (引用 `lint:refs` / 示例 `lint:examples` / 台账 `lint:coverage` / 散落备份 `lint:backups`) / conformance 双 target, 逐项与 `bun scripts/ci.ts` 同集合
 
 提交信息按 Conventional Commits 前缀 (`feat` / `fix` / `chore` / `test` 等), 并守单一主题原则: 一个提交只含一个完整逻辑变更, 跨主题须拆分。仓库目前没有 commit-msg 钩子强制该约定, 靠自觉。
 
