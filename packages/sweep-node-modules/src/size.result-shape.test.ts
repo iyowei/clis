@@ -96,7 +96,7 @@ for (const candidate of candidates) {
         candidate.sizer.measure([join(root, 'alpha', 'node_modules')], {
           signal: controller.signal,
         }),
-      ).rejects.toThrow('体积统计在逐目标检查点被取消');
+      ).rejects.toThrow(/体积统计在.+被取消/);
     });
 
     it('进度事件: 每目标恰发一条 (measured / gone 按结果归类)', async () => {

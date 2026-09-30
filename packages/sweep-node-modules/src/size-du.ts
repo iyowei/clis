@@ -277,6 +277,12 @@ export function createDuSizer(bin: string | null = findDu()): Sizer {
       const failures = new Map<string, DuFailure>();
       let intact = true;
       if (safeTargets.length > 0) {
+        // 取消检查点 (du 批量调用前): 契约要求批量路径在调用前后各一次 (批量后见后处理循环)
+        if (options?.signal?.aborted) {
+          throw new SweepError('CANCELLED', '体积统计在批量统计前被取消', {
+            phase: 'measure',
+          });
+        }
         const { stdout, stderr } = await runDu(bin, safeTargets);
 
         // 集合一致性校验: 解析出的路径必须全部来自本次输入且无重复; 不符即视为输出行结构
