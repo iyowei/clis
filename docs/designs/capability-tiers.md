@@ -18,7 +18,7 @@
 - **提交与钩子链**: lefthook + `install-git-hooks` (没装 lefthook 时降级) + `safe-install`;
 - **闸门链单源**: `scripts/ci.ts` 是唯一的步骤清单 (workflows / hooks / 文档都以它为准);
 - **通用闸门**: 引用一致性 / 示例可编译 / 散落备份 (`lint:refs` / `lint:examples` / `lint:backups`);
-- **发布闭环**: `.releaserc` (semrel) + release workflow (OIDC + environment 人工闸门) + 发布自证 (`verify:release`, 按包) + 启动器自证 (有 bin 的包);
+- **发布闭环**: `.releaserc` (semrel) + release workflow (OIDC + environment 人工闸门) + 发布凭据预检 (`npm-trust-guard` + Release 的 `release` job 预检步, 2026-10-01 增) + 发布自证 (`verify:release`, 按包) + 启动器自证 (有 bin 的包);
 - **文档体系**: docs 索引 / designs 最小单元组织 (本组文档就是范例) / ADR 模板 / CONTRIBUTING / SECURITY / 行为准则;
 - **AI 协作文件**: AGENTS.md (turbo 托管块, 自动再生成) / `.vscode` 推荐配置。
 
@@ -36,7 +36,7 @@
 
 ## 裁剪点约定
 
-每套装备的裁剪 = 删除它的文件 + 删除它在 `ci.ts` 里的步骤声明。**前提**: 闸门清单先单源化 (现状清单散落在 package.json / ci.ts / lefthook / 两个 workflow 五处, 属于要先做的重构, 见[重定位执行与验证](collection-relocation.md))。单源化之前, 裁剪点按当时的实际挂载处逐一列出。
+每套装备的裁剪 = 删除它的文件 + 删除它在 `ci.ts` 里的步骤声明。**前提** (已落地, 2026-09-30): 闸门清单单源化 (清单曾散落在 package.json / ci.ts / lefthook / 两个 workflow 五处, 重构后 `scripts/ci.ts` 成为唯一清单, 见[重定位执行与验证](collection-relocation.md)与[技术债登记](tech-debt.md) TD-03)。
 
 ## 档位选择
 
@@ -46,6 +46,7 @@
 
 ## 修订记录
 
-| 日期       | 修订                                                 |
-| ---------- | ---------------------------------------------------- |
-| 2026-09-30 | 初稿: 三档清单、裁剪点约定 (含单源化前提) 与档位策略 |
+| 日期       | 修订                                                               |
+| ---------- | ------------------------------------------------------------------ |
+| 2026-09-30 | 初稿: 三档清单、裁剪点约定 (含单源化前提) 与档位策略               |
+| 2026-10-01 | 发布闭环补发布凭据预检装备; 裁剪点约定的单源化前提随落地更新为既成 |
