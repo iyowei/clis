@@ -23,7 +23,7 @@
     },
     "packages/sweep-node-modules-cli": {
       "name": "@iyowei/sweep-node-modules-cli",
-      "version": "0.1.1",
+      "version": "0.2.1",
       "bin": {
         "sweep-nm": "bin/sweep-nm.mjs",
       },
