@@ -309,6 +309,12 @@ describe('真实模板端到端', () => {
     expect(existsSync(join(coreDir, 'scripts/ci.ts'))).toBe(true);
     expect(existsSync(join(coreDir, 'docs/designs/tech-debt.md'))).toBe(false);
 
+    // 载体摘除在真实模板上生效 (T8 升格项): 只服务 conformance 步骤的 CLI 坐标不得留在生成物里,
+    // 否则生成物 lint 以 no-unused-vars 打红 (heavy-smoke 首跑实测), 而 heavy-smoke 不进常规 CI
+    const prunedCi = readFileSync(join(coreDir, 'scripts/ci.ts'), 'utf8');
+    expect(prunedCi).not.toContain('CLI_SRC');
+    expect(prunedCi).not.toContain('resolveCliAndApi');
+
     // 步骤表闭合 / 括号配平的实物验证: ci.ts 真跑一次 --help
     const help = spawnSync('bun', ['scripts/ci.ts', '--help'], {
       cwd: coreDir,
