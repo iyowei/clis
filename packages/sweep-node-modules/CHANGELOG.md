@@ -1,3 +1,10 @@
+## @iyowei/sweep-node-modules [0.5.1](https://github.com/iyowei/sweep-node-modules/compare/@iyowei/sweep-node-modules@0.5.0...@iyowei/sweep-node-modules@0.5.1) (2026-09-30)
+
+
+### Bug Fixes
+
+* 补齐 du 批量调用前的取消检查点 ([1893a8f](https://github.com/iyowei/sweep-node-modules/commit/1893a8fad620cfda3bce095c33a6afb6bf9a33a9))
+
 # @iyowei/sweep-node-modules [0.5.0](https://github.com/iyowei/sweep-node-modules/compare/@iyowei/sweep-node-modules@0.4.0...@iyowei/sweep-node-modules@0.5.0) (2026-09-29)
 
 
