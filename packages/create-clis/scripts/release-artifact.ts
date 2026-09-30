@@ -66,16 +66,18 @@ export const NPM_UNSHIPPABLE_BASENAMES: readonly string[] = [
 
 /**
  * 固定项白名单: 包自有文件 (bin 三件 + dist 两件) + npm 无条件收进包的文件 (README.md /
- * package.json; 官方没有任何排除通道: npm docs configuring-npm/package-json「files」节的
- * 排除语义 + 本机 npm-packlist 的 strict 规则, 见 ADR 0009 补记)。本常量把「包内应有什么」
- * 显式声明成契约, 发布前逐项对账。
+ * README.zh-CN.md / LICENSE / package.json; 官方没有任何排除通道: npm docs
+ * configuring-npm/package-json「files」节的排除语义 + 本机 npm-packlist 的 strict 规则,
+ * 见 ADR 0009 补记)。本常量把「包内应有什么」显式声明成契约, 发布前逐项对账。
  *
  * 改动义务: package.json 的 files / bin 变更, 或包根增删总是收录类文件 (README / LICENSE /
  * CHANGELOG) 时, 必须同步本清单, 否则闸门会拒绝发布 (这正是它存在的目的: 发行面变化必须是一次
  * 显式决定, 不能靠静默)。
  */
 export const PACK_FILES_BASE: readonly string[] = [
+  'LICENSE',
   'README.md',
+  'README.zh-CN.md',
   'package.json',
   'bin/create-clis',
   'bin/create-clis.cmd',
@@ -155,7 +157,7 @@ export interface PackExpectation {
  *   'README.md' → 'assets/template/README.md'; 'scripts/ci.ts' → 'assets/template/scripts/ci.ts'
  *
  * Output（数据契约）
- *   return { files: [<PACK_FILES_BASE 七项>, 'assets/manifest.json',
+ *   return { files: [<PACK_FILES_BASE 全量固定项>, 'assets/manifest.json',
  *                    'assets/template/_gitignore', 'assets/template/README.md',
  *                    'assets/template/scripts/ci.ts'], issue: null }
  * ```
