@@ -1,5 +1,5 @@
 /**
- * 变异生成器 (反向验收的自证件): 从两包源码 (packages/sweep-node-modules/src + packages/sweep-node-modules-cli/src) 复制一份实现
+ * 变异生成器 (反向验收的自证件): 从两包源码 (坐标由 workspaces 派生, 见 scripts/lib/workspace.ts) 复制一份实现
  * 并注入单点缺陷, 生成到 mutants/gen-<id>/; 副本自带 node_modules 链接 (指向 api 副本), 可独立运行。
  *
  * 用途 (变异自证): 语料必须能抓住每一个 mutant; 抓不住 = 语料盲区 (或该 mutant 定义过弱),
@@ -11,12 +11,12 @@
  *
  * 用法: bun scripts/transcription/make-mutants.ts [--help]
  *
- * 产物结构: mutants/gen-<id>/packages/{sweep-node-modules,sweep-node-modules-cli}/src/*.ts (注入后的实现)
+ * 产物结构: mutants/gen-<id>/<两包目录>/src/*.ts (注入后的实现, 目录名由 workspaces 派生)
  * + mutants/gen-<id>/scripts/transcription/api-harness.ts (套件参考 harness 的副本, 指向副本源码)
  * + mutants/gen-<id>/tsconfig.json (空文件: 切断对仓库根 tsconfig paths 的继承, 防包名 import 被劫持回真单源)
- * + mutants/gen-<id>/packages/sweep-node-modules/package.json (改写为源码导出式; cli 侧照抄真包, 副本自足可跑)
+ * + mutants/gen-<id>/<api 包目录>/package.json (改写为源码导出式; cli 侧照抄真包, 副本自足可跑)
  * + mutants/gen-<id>/mutant.json (注入记录)。
- * 运行某 mutant (cli 面): bun scripts/transcription/mutants/gen-<id>/packages/sweep-node-modules-cli/src/cli.ts
+ * 运行某 mutant (cli 面): bun scripts/transcription/mutants/gen-<id>/<cli 包目录>/src/cli.ts
  * 运行某 mutant (api 面): --api-target "bun scripts/transcription/mutants/gen-<id>/scripts/transcription/api-harness.ts"
  * (两者均与 run-conformance.ts 配合)。
  */
@@ -32,31 +32,20 @@ import {
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { resolveCliAndApi } from '../lib/workspace.ts';
+
 const HERE = dirname(fileURLToPath(import.meta.url));
 /** 仓库根 (scripts/transcription/ 上溯两级): 两包源码与配置的定位基准 */
 const REPO_ROOT = resolve(HERE, '..', '..');
+/** 两包坐标: 由根 package.json 的 workspaces 派生 (包目录 / 包名变更时本文件零修改) */
+const { api: API_PKG, cli: CLI_PKG } = resolveCliAndApi(REPO_ROOT);
 /** 被测源: 两包的 src (mutant 是整仓实现的注入副本) 与各自 package.json (副本自足可跑) */
-const API_SRC_DIR = join(REPO_ROOT, 'packages', 'sweep-node-modules', 'src');
-const CLI_SRC_DIR = join(
-  REPO_ROOT,
-  'packages',
-  'sweep-node-modules-cli',
-  'src',
-);
-const API_PKG_JSON = join(
-  REPO_ROOT,
-  'packages',
-  'sweep-node-modules',
-  'package.json',
-);
-const CLI_PKG_JSON = join(
-  REPO_ROOT,
-  'packages',
-  'sweep-node-modules-cli',
-  'package.json',
-);
+const API_SRC_DIR = join(REPO_ROOT, API_PKG.dir, 'src');
+const CLI_SRC_DIR = join(REPO_ROOT, CLI_PKG.dir, 'src');
+const API_PKG_JSON = join(REPO_ROOT, API_PKG.dir, 'package.json');
+const CLI_PKG_JSON = join(REPO_ROOT, CLI_PKG.dir, 'package.json');
 /** api 包名: cli 副本经同名 node_modules 链接解析到 api 副本 (就近优先于仓库根真包) */
-const API_PKG_NAME = '@iyowei/sweep-node-modules';
+const API_PKG_NAME = API_PKG.name;
 
 /** mutant 产物根 (本脚本独占命名空间; 其下 gen-* 已由 .gitignore 忽略) */
 const MUTANTS_DIR = join(HERE, 'mutants');
@@ -183,7 +172,7 @@ const HELP_TEXT = [
   '',
   '  --help       显示本帮助',
   '',
-  '产出: mutants/gen-<id>/packages/{sweep-node-modules,sweep-node-modules-cli}/src/*.ts + mutant.json (幂等重建)',
+  '产出: mutants/gen-<id>/<两包目录>/src/*.ts + mutant.json (幂等重建; 目录名由 workspaces 派生)',
 ].join('\n');
 
 /** 统计 needle 在 text 中的出现次数 (不重叠) */
@@ -231,8 +220,8 @@ async function locatePatchTarget(
   outDir: string,
   file: string,
 ): Promise<string> {
-  for (const pkg of ['sweep-node-modules', 'sweep-node-modules-cli'] as const) {
-    const candidate = join(outDir, 'packages', pkg, 'src', file);
+  for (const pkg of [API_PKG, CLI_PKG]) {
+    const candidate = join(outDir, pkg.dir, 'src', file);
     try {
       await stat(candidate);
       return candidate;
@@ -251,13 +240,13 @@ async function locatePatchTarget(
  * ```text
  * Input（真实 Payload）
  *   mutant = { id: 'exit-swallowed', patches: [{ file: 'cli.ts', find: 'process.exitCode = await main();', … }] }
- *   sourceFiles = ['cli.ts', 'render.ts', …] (packages/sweep-node-modules-cli/src 下全部非测试 .ts; api 侧同法)
+ *   sourceFiles = ['cli.ts', 'render.ts', …] (<cli 包目录>/src 下全部非测试 .ts; api 侧同法)
  *
  * 步骤 1：重建目录并复制两包源码 + package.json
- *   gen-exit-swallowed/packages/sweep-node-modules/src/  = api 源文件全量副本
- *   gen-exit-swallowed/packages/sweep-node-modules-cli/src/  = cli 源文件全量副本
+ *   gen-exit-swallowed/<api 包目录>/src/  = api 源文件全量副本
+ *   gen-exit-swallowed/<cli 包目录>/src/  = cli 源文件全量副本
  *   gen-exit-swallowed/tsconfig.json  = {} (断对仓库根 paths 的继承)
- *   gen-exit-swallowed/node_modules/@iyowei/sweep-node-modules -> ../../packages/sweep-node-modules (符号链接)
+ *   gen-exit-swallowed/node_modules/<api 包名> -> ../../<api 包目录> (符号链接)
  *
  * 步骤 2：逐补丁校验锚点唯一后替换 (目标文件按名在两包副本中定位)
  *   锚点出现 1 次 → 替换并记录 anchorLine (第 649 行)
@@ -269,16 +258,16 @@ async function locatePatchTarget(
 async function makeMutant(mutant: MutantSpec): Promise<AppliedPatch[]> {
   const outDir = join(MUTANTS_DIR, `${GEN_PREFIX}${mutant.id}`);
   await rm(outDir, { recursive: true, force: true });
-  await mkdir(join(outDir, 'packages', 'sweep-node-modules', 'src'), {
+  await mkdir(join(outDir, API_PKG.dir, 'src'), {
     recursive: true,
   });
-  await mkdir(join(outDir, 'packages', 'sweep-node-modules-cli', 'src'), {
+  await mkdir(join(outDir, CLI_PKG.dir, 'src'), {
     recursive: true,
   });
 
   for (const [srcDir, pkgDir] of [
-    [API_SRC_DIR, join(outDir, 'packages', 'sweep-node-modules')],
-    [CLI_SRC_DIR, join(outDir, 'packages', 'sweep-node-modules-cli')],
+    [API_SRC_DIR, join(outDir, API_PKG.dir)],
+    [CLI_SRC_DIR, join(outDir, CLI_PKG.dir)],
   ] as const) {
     for (const name of await listSourceFiles(srcDir)) {
       await writeFile(
@@ -296,7 +285,7 @@ async function makeMutant(mutant: MutantSpec): Promise<AppliedPatch[]> {
     await readFile(join(HERE, 'api-harness.ts')),
   );
   // 空 tsconfig 就近切断对仓库根 tsconfig 的 paths 继承: 否则 bun 会把副本 cli.ts 的包名
-  // import ('@iyowei/sweep-node-modules') 解析到真 API 单源 (paths 优先于 node_modules 链接),
+  // import (即 API 包名) 解析到真 API 单源 (paths 优先于 node_modules 链接),
   // 变异自证静默失效 (2026-09-30 实测: 缺此文件时 bun 载体对注入副本零抓取)。node 载体不读
   // paths 可免此劫持, 但受「node_modules 下 .ts 拒绝类型剥离、副本无 dist」限制, 故变异自证
   // 的运行时以 bun 载体为准。
@@ -307,7 +296,7 @@ async function makeMutant(mutant: MutantSpec): Promise<AppliedPatch[]> {
     name?: unknown;
   };
   await writeFile(
-    join(outDir, 'packages', 'sweep-node-modules', 'package.json'),
+    join(outDir, API_PKG.dir, 'package.json'),
     `${JSON.stringify(
       {
         name: typeof apiPkg.name === 'string' ? apiPkg.name : API_PKG_NAME,
@@ -319,18 +308,18 @@ async function makeMutant(mutant: MutantSpec): Promise<AppliedPatch[]> {
     )}\n`,
   );
   await writeFile(
-    join(outDir, 'packages', 'sweep-node-modules-cli', 'package.json'),
+    join(outDir, CLI_PKG.dir, 'package.json'),
     await readFile(CLI_PKG_JSON),
   );
 
-  // cli 副本对 '@iyowei/sweep-node-modules' 的解析必须落在 api 副本上 (而非宿主仓库的真包);
+  // cli 副本对 API 包名的解析必须落在 api 副本上 (而非宿主仓库的真包);
   // 链接置于副本根 node_modules, 按就近解析优先于仓库根的真实 workspace 链接。
   const apiLink = join(outDir, 'node_modules', API_PKG_NAME);
   await mkdir(dirname(apiLink), { recursive: true });
   await symlink(
     process.platform === 'win32'
-      ? join(outDir, 'packages', 'sweep-node-modules')
-      : join('..', '..', 'packages', 'sweep-node-modules'),
+      ? join(outDir, API_PKG.dir)
+      : join('..', '..', API_PKG.dir),
     apiLink,
     process.platform === 'win32' ? 'junction' : 'dir',
   );
@@ -355,9 +344,8 @@ async function makeMutant(mutant: MutantSpec): Promise<AppliedPatch[]> {
     id: mutant.id,
     title: mutant.title,
     expectCaughtBy: mutant.expectCaughtBy,
-    sourceDir:
-      'packages/sweep-node-modules/src + packages/sweep-node-modules-cli/src',
-    runHint: `bun ${join(MUTANTS_DIR, `${GEN_PREFIX}${mutant.id}`, 'packages', 'sweep-node-modules-cli', 'src', 'cli.ts')}`,
+    sourceDir: `${API_PKG.dir}/src + ${CLI_PKG.dir}/src`,
+    runHint: `bun ${join(MUTANTS_DIR, `${GEN_PREFIX}${mutant.id}`, CLI_PKG.dir, 'src', 'cli.ts')}`,
     patches: applied,
   };
   await writeFile(
@@ -424,7 +412,7 @@ async function main(): Promise<number> {
   }
 
   process.stdout.write(
-    `\n合计 ${MUTANTS.length} 个 mutant → ${join(MUTANTS_DIR, 'gen-*/packages/sweep-node-modules-cli/src/cli.ts')}\n`,
+    `\n合计 ${MUTANTS.length} 个 mutant → ${join(MUTANTS_DIR, `gen-*/${CLI_PKG.dir}/src/cli.ts`)}\n`,
   );
   return 0;
 }

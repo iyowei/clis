@@ -16,6 +16,8 @@
 import { spawnSync } from 'node:child_process';
 import { join } from 'node:path';
 
+import { resolveCliAndApi } from './lib/workspace.ts';
+
 process.chdir(join(import.meta.dir, '..'));
 
 /** 一个步骤: 展示名与命令参数 */
@@ -24,8 +26,9 @@ interface Step {
   args: string[];
 }
 
-/** CLI 入口坐标 (chdir 之后相对仓库根) */
-const CLI_SRC = 'packages/sweep-node-modules-cli/src/cli.ts';
+/** CLI 入口坐标: 由 workspaces 派生 (chdir 之后相对仓库根) */
+const { cli } = resolveCliAndApi(process.cwd());
+const CLI_SRC = `${cli.dir}/src/cli.ts`;
 
 /** 步骤表 (清单唯一来源): 键即 `--only` 接受的步骤名 */
 const STEPS: Readonly<Record<string, Step>> = {

@@ -14,7 +14,7 @@
 
 1. **闸门清单单源化**: `scripts/ci.ts` 升为唯一步骤清单 (步骤表 + 分组入口 `--verify` / `--conformance` / `--only <step>`); 两个 workflow 与 pre-push 只调入口; `package.json` 的单项闸门脚本移除 (单项入口走 `bun scripts/ci.ts --only <step>`)。取舍: 以 npm script 的 tab 补全直觉换清单唯一性, 用 `ci.ts --help` 列步骤名缓解;
 2. **发布闸门对称化**: 两包的发布自证抽共用判定库 + 每包薄入口 (现 CLI 包为「判定库 468 行 + 薄壳 72 行」, API 包为单文件 256 行, 判定对等而结构不对称);
-3. **领域硬编码派生化**: `make-mutants` (两包路径写死 34 处) / `tsconfig.json` paths / `run-conformance` 默认 target, 改为从根 `package.json` 的 workspaces 与包名派生 (一个共享的 workspace 解析模块);
+3. **领域硬编码派生化** (已落地 2026-09-30): `make-mutants` 与 `ci.ts` 的两包坐标改由共享的 workspace 解析模块 (`scripts/lib/workspace.ts`) 从根 `package.json` 的 workspaces 派生 (含单测); `tsconfig.json` 的 paths 为静态配置, 无法运行时派生, 属改包名时的单点同步 (见该模块注释); `run-conformance` 的 `--target` 本为必填参数、无默认值, 原设计表述「默认 target 写死」经实读修正为不成立, 无需改动;
 4. 阶段 A 收口标准: `bun run ci` 全绿 + 通用四闸门全绿, 行为零变化 (重构不引入功能改动)。
 
 ## 阶段 B: 改名与组织
