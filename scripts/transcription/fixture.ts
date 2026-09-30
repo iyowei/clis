@@ -11,7 +11,7 @@ import { dirname, join, resolve } from 'node:path';
 
 import {
   type ApiCorpusCase,
-  type CorpusCase,
+  type CliCorpusCase,
   type FixtureSpec,
   type SetupStep,
   applyVars,
@@ -194,7 +194,7 @@ export function buildEnv(
  * ```
  */
 export function executeCase(
-  caseSpec: CorpusCase,
+  caseSpec: CliCorpusCase,
   root: string,
   ctx: RunContext,
 ): ExecOutcome {

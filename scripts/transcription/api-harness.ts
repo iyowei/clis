@@ -130,6 +130,9 @@ async function runInstruction(instruction: unknown): Promise<{
       throw new HarnessError(`steps[${index}] 须为 { call: { ... } } 形态`);
     }
     const call = step.call;
+    if (call.args !== undefined && !Array.isArray(call.args)) {
+      throw new HarnessError(`steps[${index}]: args 须为数组`);
+    }
     const args = (call.args ?? []).map(resolveProbes);
     let returned: unknown;
 
