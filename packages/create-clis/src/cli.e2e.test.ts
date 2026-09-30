@@ -15,7 +15,6 @@ import {
   existsSync,
   mkdirSync,
   readFileSync,
-  readdirSync,
   rmSync,
   symlinkSync,
   writeFileSync,
@@ -28,24 +27,26 @@ import { buildTemplate } from '../scripts/build-template.ts';
 import { REPO_ROOT } from '../scripts/template-manifest.ts';
 import { type GenerateHooks, generateProject } from './generate.ts';
 import { TEMPLATE_VOCABULARY, type Vocabulary } from './render.ts';
-import { ORIGINAL, defaultTemplateDir } from './template-snapshot.ts';
+import {
+  ORIGINAL,
+  defaultTemplateDir,
+  listTemplateFiles,
+} from './template-snapshot.ts';
 
 const CLI = fileURLToPath(new URL('./cli.ts', import.meta.url));
 const RUNNERS = ['bun', 'node'];
 
 /** 非交互生成的标准变量 (五变量全给, 免进交互); 各用例按需拼接档位与收尾旗标 */
-const VARIABLES = [
-  '--name',
-  'demo-tool',
-  '--scope',
-  '@demo',
-  '--bin',
-  'dt',
-  '--owner',
-  'demouser',
-  '--repo',
-  'https://github.com/demouser/demo-tool',
-];
+const VARIABLES = Object.entries({
+  '--name': 'demo-tool',
+  '--scope': '@demo',
+  '--bin': 'dt',
+  '--owner': 'demouser',
+  '--repo': 'https://github.com/demouser/demo-tool',
+}).flatMap(([flag, value]) => [flag, value]);
+
+/** core 档 (多档用例的缺省档) */
+const CORE = ['--tier', 'core'];
 
 /** 跳过全部收尾动作 (e2e 不真跑依赖安装; git init 仅专门用例执行) */
 const NO_HOOKS = ['--no-git', '--no-install'];
@@ -110,11 +111,6 @@ function makeCase(label: string): {
   return { home, target: join(root, 'proj') };
 }
 
-/** 在隔离 HOME 里写一份 git 全局配置 (owner 默认值的环境来源) */
-function writeGitConfig(home: string, userName: string): void {
-  writeFileSync(join(home, '.gitconfig'), `[user]\n\tname = ${userName}\n`);
-}
-
 /** 跑一次接线后的 CLI (真实模板经环境变量注入; 隔离 HOME 防宿主 git 配置泄漏) */
 function runCli(
   runner: string,
@@ -139,33 +135,20 @@ function runCli(
   };
 }
 
-/** 以 --yes 零交互跑一次生成 (owner 取隔离 HOME 里预写的 git user.name) */
+/** 以 --yes 零交互跑一次生成 (先写隔离 HOME 的 git 全局配置, 供 owner 默认值取用) */
 function runYes(
   runner: string,
   target: string,
   home: string,
   extra: string[],
 ): ReturnType<typeof runCli> {
-  writeGitConfig(home, 'demo-user');
+  writeFileSync(join(home, '.gitconfig'), '[user]\n\tname = demo-user\n');
   return runCli(runner, [target, '--yes', ...extra], { home });
-}
-
-/** 递归列出目录下全部文件 (相对路径, 排序稳定) */
-function walkFiles(root: string, prefix = ''): string[] {
-  const out: string[] = [];
-  for (const entry of readdirSync(join(root, prefix), {
-    withFileTypes: true,
-  })) {
-    const rel = prefix === '' ? entry.name : `${prefix}/${entry.name}`;
-    if (entry.isDirectory()) out.push(...walkFiles(root, rel));
-    else if (entry.isFile()) out.push(rel);
-  }
-  return out.sort();
 }
 
 /** 全树零残留断言: 路径与内容都不得含给定形态, 命中即携文件与形态名失败 */
 function expectNoForm(target: string, forms: readonly string[]): void {
-  for (const rel of walkFiles(target)) {
+  for (const rel of listTemplateFiles(target)) {
     const pathHits = forms.filter((form) => rel.includes(form));
     expect(pathHits, `${rel} 路径残留形态`).toEqual([]);
     const text = readFileSync(join(target, rel), 'utf8');
@@ -241,8 +224,7 @@ function defineScaffoldCases(runner: string, available: boolean): void {
         expectCoreStructure(target);
         expectVocabularyApplied(target);
         // 零残留: 全树无占位形态、无原项目词汇
-        expectNoForm(target, PLACEHOLDER_FORMS);
-        expectNoForm(target, ORIGINAL_FORMS);
+        expectNoForm(target, [...PLACEHOLDER_FORMS, ...ORIGINAL_FORMS]);
         // 收尾旗标: 不建仓库、不装依赖
         expect(existsSync(join(target, '.git'))).toBe(false);
         expect(existsSync(join(target, 'node_modules'))).toBe(false);
@@ -284,7 +266,7 @@ function defineWiringCases(runner: string, available: boolean): void {
         expect(readFileSync(join(target, 'keep.txt'), 'utf8')).toBe(
           'keep-me\n',
         );
-        expect(walkFiles(target)).toEqual(['keep.txt']);
+        expect(listTemplateFiles(target)).toEqual(['keep.txt']);
       },
       TIMEOUT_MS,
     );
@@ -293,11 +275,7 @@ function defineWiringCases(runner: string, available: boolean): void {
       '--yes 零交互: 全默认派生 (owner 取隔离 HOME 的 git user.name)',
       () => {
         const { home, target } = makeCase('yes');
-        const result = runYes(runner, target, home, [
-          '--tier',
-          'core',
-          ...NO_HOOKS,
-        ]);
+        const result = runYes(runner, target, home, [...CORE, ...NO_HOOKS]);
 
         expect(result.status, `应退 0: ${result.stderr}`).toBe(0);
         // 项目名取目标目录 basename; 单段名不缩写; owner / repo 由默认链派生
@@ -319,11 +297,7 @@ function defineWiringCases(runner: string, available: boolean): void {
       '默认收尾: git init 执行, 产物是可独立建仓的目录',
       () => {
         const { home, target } = makeCase('git-init');
-        const result = runYes(runner, target, home, [
-          '--tier',
-          'core',
-          '--no-install',
-        ]);
+        const result = runYes(runner, target, home, [...CORE, '--no-install']);
 
         expect(result.status, `应退 0: ${result.stderr}`).toBe(0);
         expect(existsSync(join(target, '.git'))).toBe(true);
@@ -377,15 +351,11 @@ function defineFlagCases(runner: string, available: boolean): void {
   describe(`create-clis e2e [${runner}] 旗标与档位面`, () => {
     test.skipIf(!available)('旗标非法: 报因退非零且未生成', () => {
       const { home, target } = makeCase('bad-flag');
-      // 注: `--` 到不了 argv 还是被结构化剥离随载体而异 (bun 直跑剥离 `--`, node 会原样传入),
-      // 不在此断言; npm create 场景则统一由 npm 剥离
+      // 注: `--` 是否到达 argv 随载体而异 (bun 直跑剥离, node 原样传入; npm create 场景由 npm 剥离), 不在此断言
       const cases: { args: string[]; reason: string }[] = [
         { args: ['--bogus'], reason: '未知旗标' },
         { args: ['--tier', 'ultimate'], reason: '--tier' },
-        {
-          args: [target, '--name', 'BadName', '--no-git', '--no-install'],
-          reason: 'kebab-case',
-        },
+        { args: [target, '--name', 'BadName'], reason: 'kebab-case' },
       ];
       for (const { args, reason } of cases) {
         const result = runCli(runner, [...args, '--yes'], { home });
@@ -395,15 +365,7 @@ function defineFlagCases(runner: string, available: boolean): void {
       expect(existsSync(target)).toBe(false);
     });
 
-    test.skipIf(!available)('--help: 先行拦截, 退 0 且给出用法', () => {
-      const { home } = makeCase('help');
-      const result = runCli(runner, ['--help'], { home });
-
-      expect(result.status).toBe(0);
-      for (const text of ['create-clis', '--tier', '--no-install']) {
-        expect(result.stdout).toContain(text);
-      }
-    });
+    // 注: `--help` 的先行拦截与用法打印由 cli.smoke.test.ts 覆盖 (双载体秒级冒烟), 不在此重复
 
     test.skipIf(!available)('full 档: 增强档装备保留', () => {
       const { home, target } = makeCase('full');
@@ -437,18 +399,25 @@ function defineFlagCases(runner: string, available: boolean): void {
   });
 }
 
-/** 直调 generateProject (模块面用例共用): 真实模板夹具 + 固定词汇, hooks 由用例给定 */
+/** 直调 generateProject 的覆写面 (模块面用例共用): 缺省即真实模板 + 固定词汇 + core 档 */
+interface RunGenerateOverrides {
+  hooks?: GenerateHooks;
+  vocabulary?: Vocabulary;
+  templateDir?: string;
+}
+
+/** 直调 generateProject (模块面用例共用): 真实模板夹具, 覆写项由用例给定 */
 function runGenerate(
   targetDir: string,
-  hooks?: GenerateHooks,
+  overrides: RunGenerateOverrides = {},
 ): Promise<{ executed: string[] }> {
   return generateProject({
-    templateDir: TEMPLATE_DIR,
+    templateDir: overrides.templateDir ?? TEMPLATE_DIR,
     targetDir,
-    vocabulary: HOOK_VOCABULARY,
+    vocabulary: overrides.vocabulary ?? HOOK_VOCABULARY,
     tier: 'core',
     original: ORIGINAL,
-    hooks,
+    hooks: overrides.hooks,
   });
 }
 
@@ -458,11 +427,13 @@ describe('generateProject hooks 调度', () => {
     const { target } = makeCase('hooks');
     const calls: string[] = [];
     const result = await runGenerate(target, {
-      gitInit: () => {
-        calls.push('git');
-      },
-      install: async () => {
-        calls.push('install');
+      hooks: {
+        gitInit: () => {
+          calls.push('git');
+        },
+        install: async () => {
+          calls.push('install');
+        },
       },
     });
 
@@ -472,8 +443,10 @@ describe('generateProject hooks 调度', () => {
     // 未提供的动作不执行 (--no-git / --no-install 的折算语义)
     const second = makeCase('hooks-skip');
     const skipped = await runGenerate(second.target, {
-      install: () => {
-        calls.push('install-only');
+      hooks: {
+        install: () => {
+          calls.push('install-only');
+        },
       },
     });
     expect(calls).toEqual(['git', 'install', 'install-only']);
@@ -482,11 +455,13 @@ describe('generateProject hooks 调度', () => {
     // 抛错即中止: 后续 hook 不执行, 半成品保留 (产物已完整生成, 失败发生在收尾面)
     const third = makeCase('hooks-fail');
     const failing = runGenerate(third.target, {
-      gitInit: () => {
-        throw new Error('boom');
-      },
-      install: () => {
-        calls.push('must-not-run');
+      hooks: {
+        gitInit: () => {
+          throw new Error('boom');
+        },
+        install: () => {
+          calls.push('must-not-run');
+        },
       },
     });
     await expect(failing).rejects.toThrow('boom');
@@ -519,15 +494,18 @@ describe('模块与产物面', () => {
       symlinkSync(join(REPO_ROOT, 'node_modules', name), link, 'dir');
     }
 
-    const check = spawnSync(
-      'node',
-      [
-        join(REPO_ROOT, 'node_modules', 'prettier', 'bin', 'prettier.cjs'),
-        '--check',
-        '.',
-      ],
-      { cwd: target, encoding: 'utf8', timeout: TIMEOUT_MS },
+    const prettierCli = join(
+      REPO_ROOT,
+      'node_modules',
+      'prettier',
+      'bin',
+      'prettier.cjs',
     );
+    const check = spawnSync('node', [prettierCli, '--check', '.'], {
+      cwd: target,
+      encoding: 'utf8',
+      timeout: TIMEOUT_MS,
+    });
     expect(
       check.status,
       `format-check 应通过: ${check.stdout}${check.stderr}`,

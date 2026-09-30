@@ -17,14 +17,16 @@ for (const runner of ['bun', 'node']) {
     spawnSync(runner, ['--version'], { encoding: 'utf8' }).status === 0;
 
   describe(`cli 入口冒烟 [${runner}]`, () => {
-    test.skipIf(!available)('--help 可打印且退 0', () => {
+    test.skipIf(!available)('--help: 先行拦截, 退 0 且给出用法与旗标', () => {
       const result = spawnSync(runner, [CLI, '--help'], {
         encoding: 'utf8',
         timeout: TIMEOUT_MS,
       });
       const detail = `status=${result.status} stdout=${result.stdout} stderr=${result.stderr}`;
       expect(result.status, `应退 0 (${detail})`).toBe(0);
-      expect(result.stdout).toContain('create-clis');
+      for (const text of ['create-clis', '--tier', '--no-install']) {
+        expect(result.stdout).toContain(text);
+      }
     });
   });
 }
