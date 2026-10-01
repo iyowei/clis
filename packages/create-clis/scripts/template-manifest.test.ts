@@ -35,13 +35,14 @@ const VOCABULARY = [
   'iTonyYo',
 ] as const;
 
-/** 走查跳过目录: 依赖 / 版本控制 / 构建缓存 / 生成物 / 变异副本 (口径同 root scripts/lint-doc-shared.ts) */
+/** 走查跳过目录: 依赖 / 版本控制 / 构建缓存 / 生成物 / 变异副本 / 宿主运行时状态 (口径同 root scripts/lint-doc-shared.ts) */
 const SKIP_DIRS = new Set([
   'node_modules',
   '.git',
   '.turbo',
   'dist',
   'mutants',
+  '.claude',
 ]);
 
 /** 环境态垃圾 (仅可能在本机出现, 不入库): 完备性体检跳过, 避免测试依赖机器状态 */

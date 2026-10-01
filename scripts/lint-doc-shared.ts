@@ -12,13 +12,14 @@ import { fileURLToPath } from 'node:url';
 /** 仓库根 (scripts/ 的上一级) */
 export const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
-/** 走查跳过目录: 依赖 / 版本控制 / 构建缓存 / 生成物 / 变异副本 */
+/** 走查跳过目录: 依赖 / 版本控制 / 构建缓存 / 生成物 / 变异副本 / 宿主运行时状态 */
 export const SKIP_DIRS: ReadonlySet<string> = new Set([
   'node_modules',
   '.git',
   '.turbo',
   'dist',
   'mutants',
+  '.claude',
 ]);
 
 /**
