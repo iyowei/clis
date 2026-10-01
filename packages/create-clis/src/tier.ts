@@ -5,8 +5,8 @@
  * 满档减去「增强档」; 核心档 = 标准档再减去「标准档」。每套装备的裁剪 = 删除它的文件 + 删除
  * 它在 `scripts/ci.ts` 里的步骤声明 (裁剪点约定, 2026-09-30 单源化后成立)。
  *
- * 消费方: 生成主流程 (Task 7) 在「复制模板 → 按档裁剪」一步调 pruneTemplate (见
- * docs/designs/scaffold-contract.md 流程第 2 步)。
+ * 消费方: 生成主流程 (Task 7) 在「按档裁剪」一步调 pruneTemplate (见
+ * docs/designs/scaffold-contract.md 流程第 3 步)。
  */
 import { existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';

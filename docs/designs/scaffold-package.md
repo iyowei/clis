@@ -25,7 +25,7 @@
 
 ## 交互
 
-生成器是一个交互式 CLI: 无参数时挨个提问, 有旗标时零交互。变量表、旗标、生成后收尾 (git init / install / 自检) 的完整契约见[生成器契约](scaffold-contract.md)。
+生成器是一个交互式 CLI: 无参数时挨个提问, 有旗标时零交互。变量表、旗标、生成流程 (自检前置于收尾) 与收尾动作 (git init / install) 的完整契约见[生成器契约](scaffold-contract.md)。
 
 ## 质量闭环
 
