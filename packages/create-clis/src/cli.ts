@@ -18,6 +18,7 @@ import {
 } from './generate.ts';
 import { askAll, createPromptIO } from './prompt.ts';
 import { ORIGINAL, defaultTemplateDir } from './template-snapshot.ts';
+import { type Tier } from './tier.ts';
 import {
   type CliOptions,
   DEFAULT_TIER,
@@ -58,13 +59,24 @@ function buildHooks(options: CliOptions): GenerateHooks {
 }
 
 /**
- * next steps 文案: 进入目录 → 装依赖 (仅未装时) → ci 验证 → 从文档总索引读起。
+ * next steps 文案: 进入目录 → 装依赖 (仅未装时) → (full 档) 自填语料提示 → ci 验证 → 从
+ * 文档总索引读起。
  * 落点取生成物的 `docs/README.md` (实存的总索引): 本仓的定位文档 (collection-positioning.md)
  * 是 exclude 面, 生成物里没有它, 指过去用户读不到。
+ * full 档提示的原因: 转写契约套件随模板只带机制, 契约与语料是 exclude 面的自填内容, 填好前
+ * 生成物 `bun run ci` 的 conformance 相关步骤必红; 不点破的话, 「验证全绿」这句就是误导。
  */
-function nextSteps(targetDir: string, installed: boolean): string {
+function nextSteps(targetDir: string, installed: boolean, tier: Tier): string {
   const lines = ['', '下一步:', `  cd ${targetDir}`];
   if (!installed) lines.push('  bun install         # 安装依赖');
+  if (tier === 'full') {
+    lines.push(
+      '  # full 档: 转写契约套件只带机制, 契约与语料需自填 (docs/sweep/protocol/);',
+    );
+    lines.push(
+      '  # 填好前 bun run ci 的 lint:coverage 与 conformance 步骤会红',
+    );
+  }
   lines.push('  bun run ci          # 验证全绿');
   lines.push('  然后从 docs/README.md (文档总索引) 读起, 开始改造。');
   return lines.join('\n');
@@ -138,7 +150,7 @@ async function main(): Promise<number> {
       process.stdout.write(`收尾已执行: ${executed.join(', ')}\n`);
     }
     process.stdout.write(`已生成: ${targetDir} (档位: ${tier})\n`);
-    process.stdout.write(`${nextSteps(targetDir, parsed.install)}\n`);
+    process.stdout.write(`${nextSteps(targetDir, parsed.install, tier)}\n`);
     return 0;
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
