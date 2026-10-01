@@ -75,7 +75,7 @@ Under `npm create`, flags go after `--` (`npm create clis -- --tier core`); npm 
 
 - **core**: the engineering skeleton and release closure every repo in the collection carries (the layer without which the repo has not been finished);
 - **standard** (default): adds the standard-tier equipment: the multi-package split (tool + library), the test setup, and the tech-debt ledger;
-- **full**: adds the enhanced tier on top: the transcription conformance kit (behavior contracts + a golden corpus + a deterministic verifier + mutation self-check; the mechanism ships, the corpus and clauses are content to fill in) and its ledger reconciliation gate (`lint:coverage`).
+- **full**: adds the enhanced tier on top: the transcription conformance kit (behavior contracts + a golden corpus + a deterministic verifier + mutation self-check) and its ledger reconciliation gate (`lint:coverage`). Only the mechanism ships; the contract, coverage table, and corpus under `docs/sweep/protocol/` are content to fill in. Until you fill them, `bun run ci` stays red on `lint:coverage` and `conformance:bun` / `conformance:node`: a fresh full-tier project is not green out of the box (core and standard are).
 
 Two notes on shape. Every generated repo comes out in the two-package collection form (tool + library); the generator does not produce single-package repos, so prune one package by hand if that is what you want. And the tier is a packing list, not a stored field: nothing in the generated repo records it, so later upgrades or downgrades are manual, file-by-file affairs (the pruning rules are in [capability-tiers.md](../../docs/designs/capability-tiers.md)).
 
