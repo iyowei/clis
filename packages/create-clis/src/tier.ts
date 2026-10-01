@@ -1,9 +1,12 @@
 /**
- * 档位裁剪: 三档 (core / standard / full) → 「删除路径集 + ci 步骤摘除集」, 并对模板目录执行裁剪。
+ * 档位裁剪: 三档 (core / standard / full) → 「删除路径集 + ci 步骤摘除集 + 根 package.json
+ * 脚本摘除集」, 并对模板目录执行裁剪。
  *
  * 档位语义与裁剪点约定以 docs/designs/capability-tiers.md 为权威: 满档 = 全部装备; 标准档 =
  * 满档减去「增强档」; 核心档 = 标准档再减去「标准档」。每套装备的裁剪 = 删除它的文件 + 删除
- * 它在 `scripts/ci.ts` 里的步骤声明 (裁剪点约定, 2026-09-30 单源化后成立)。
+ * 它在 `scripts/ci.ts` 里的步骤声明与根 `package.json` 里的脚本声明 (裁剪点约定, 2026-09-30
+ * 单源化后成立; 脚本面 2026-10-01 终审补: 机制件删了而 `bun run <script>` 入口仍留在根
+ * package.json, 实跑必死)。
  *
  * 消费方: 生成主流程 (Task 7) 在「按档裁剪」一步调 pruneTemplate (见
  * docs/designs/scaffold-contract.md 流程第 3 步)。
@@ -14,12 +17,14 @@ import { join } from 'node:path';
 /** 装备档位 */
 export type Tier = 'core' | 'standard' | 'full';
 
-/** 一次裁剪要动的两处: 模板内的删除路径集 + `scripts/ci.ts` 的步骤摘除集 */
+/** 一次裁剪要动的三处: 模板内的删除路径集 + `scripts/ci.ts` 的步骤摘除集 + 根 `package.json` 的脚本摘除集 */
 export interface RemoveRule {
   /** 相对模板根的删除路径 (目录以 `/` 收尾); 规则与模板不同步时 pruneTemplate 抛错 */
   readonly deletePaths: readonly string[];
   /** 从 STEPS 表与组数组一并摘除的步骤名; 其载体文件须同在 deletePaths 内 */
   readonly ciSteps: readonly string[];
+  /** 从根 `package.json` 的 scripts 一并摘除的脚本名; 其命令引用的载体文件须同在 deletePaths 内 (不摘会留下悬空脚本, 生成物 `bun run <脚本>` 必死) */
+  readonly packageScripts: readonly string[];
 }
 
 /** 增强档机制件目录 (capability-tiers.md§增强档「转写契约套件」: 行为契约 + 金样本语料 + 确定性验收器 + 变异自证) */
@@ -42,13 +47,25 @@ const CONFORMANCE_CI_STEPS: readonly string[] = [
 /** 闸门清单 (步骤声明手术的对象): 模板根相对路径 */
 const CI_SCRIPT = 'scripts/ci.ts';
 
+/** 根包清单 (脚本声明手术的对象): 模板根相对路径 */
+const ROOT_PACKAGE_JSON = 'package.json';
+
+/**
+ * 增强档装备在根 `package.json` 里的脚本挂载: `conformance` 的载体 run-conformance.ts 随
+ * `scripts/transcription/` 整目录摘除; 不摘此脚本, core / standard 档生成物会留下一条指向
+ * 不存在文件的 `bun run conformance` (实跑必死)。
+ */
+const CONFORMANCE_PACKAGE_SCRIPTS: readonly string[] = ['conformance'];
+
 /**
  * 档位 → 裁剪规则 (逐条映射 docs/designs/capability-tiers.md「三档」清单)。
  *
  * 增强档 → full 之外的两档均摘:
  * - §增强档「转写契约套件 (conformance): 行为契约 + 金样本语料 + 确定性验收器 + 变异自证」
  *   → `scripts/transcription/` 整目录 (机制件; 语料与条款本是项目自填内容);
- * - §增强档「台账对账闸门 (`lint:coverage`)」与套件的执行挂载 → CONFORMANCE_CI_STEPS。
+ * - §增强档「台账对账闸门 (`lint:coverage`)」与套件的执行挂载 → CONFORMANCE_CI_STEPS; 套件在
+ *   根 `package.json` 的 `conformance` 脚本 → CONFORMANCE_PACKAGE_SCRIPTS (载体随机制件摘除,
+ *   脚本不摘即悬空)。
  *   注 (T4 移交项): `scripts/transcription/api-harness.ts` 直连示例包源码面, 依赖其导出领域常量;
  *   模板骨架不含领域常量 (不把领域噪声钉进模板), 该文件随套件在 standard / core 一并摘除
  *   (两档自洽), 仅 full 保留。
@@ -71,14 +88,16 @@ const CI_SCRIPT = 'scripts/ci.ts';
  * 选择解读 (单包化超出生成器定位), 其措辞修订归 Task 9 文档同步 (capability-tiers.md)。
  */
 const TIER_RULES: Readonly<Record<Tier, RemoveRule>> = {
-  full: { deletePaths: [], ciSteps: [] },
+  full: { deletePaths: [], ciSteps: [], packageScripts: [] },
   standard: {
     deletePaths: [CONFORMANCE_KIT_DIR],
     ciSteps: CONFORMANCE_CI_STEPS,
+    packageScripts: CONFORMANCE_PACKAGE_SCRIPTS,
   },
   core: {
     deletePaths: [CONFORMANCE_KIT_DIR, TECH_DEBT_LEDGER],
     ciSteps: CONFORMANCE_CI_STEPS,
+    packageScripts: CONFORMANCE_PACKAGE_SCRIPTS,
   },
 };
 
@@ -88,13 +107,16 @@ export function removeRulesFor(tier: Tier): RemoveRule {
 }
 
 /**
- * 按档裁剪模板目录: 删除 deletePaths 指向的文件 / 目录, 并对 `scripts/ci.ts` 做步骤声明手术
+ * 按档裁剪模板目录: 删除 deletePaths 指向的文件 / 目录, 对 `scripts/ci.ts` 做步骤声明手术
  * (删「单个 STEPS 条目块」(含紧贴其上的注释行)、「组数组中的引用行」, 与「只服务被摘步骤的
- * 载体声明及其来源导入」)。
+ * 载体声明及其来源导入」), 并对根 `package.json` 做脚本声明手术 (摘除 packageScripts 列出的
+ * scripts 条目)。
  *
  * 先全量校验 (路径存在 + 手术干跑与自检) 再落盘, 任一项不过即抛错且不留半成品。
  * 边界: 手术只做行级摘除, 不重排格式 (组数组缩为单元素后的折叠、载体摘除留下的空行都属格式化
- * 面, 由生成流程的格式化收口处置: T7 替换后统一跑 prettier, 见 task-4 报告「生成期格式化漂移」)。
+ * 面, 由生成流程的格式化收口处置: T7 替换后统一跑 prettier, 见 task-4 报告「生成期格式化漂移」);
+ * 根 package.json 的脚本面按 JSON 结构摘除后序列化回 2 空格缩进 (与模板既有 prettier 稳定态
+ * 同形)。
  *
  * ### 数据追踪示例
  * ```text
@@ -102,22 +124,26 @@ export function removeRulesFor(tier: Tier): RemoveRule {
  *   targetDir = '<生成物根>'  (模板快照副本)
  *   rules = removeRulesFor('standard')
  *         = { deletePaths: ['scripts/transcription/'],
- *             ciSteps: ['lint:coverage', 'conformance:bun', 'conformance:node'] }
+ *             ciSteps: ['lint:coverage', 'conformance:bun', 'conformance:node'],
+ *             packageScripts: ['conformance'] }
  *
  * 步骤 1：前置校验 (任一项不过即抛错)
  *   <targetDir>/scripts/transcription/ 存在 ✓  *(缺失即「裁剪路径不存在」)*
  *   STEPS 表条目摘三后 = ['build', 'typecheck', 'test', 'lint', 'format-check', 'lint:refs',
  *                        'lint:examples', 'lint:backups', 'npm-trust']  *(手术干跑)*
  *   'lint:coverage' 块引用的 scripts/transcription/validate-coverage.ts 在删除面内 ✓
+ *   'conformance' 脚本存在, 且其命令引用的 scripts/transcription/run-conformance.ts 在删除面内 ✓
  *
  * 步骤 2：落盘
  *   删 <targetDir>/scripts/transcription/ (整目录)
  *   回写 <targetDir>/scripts/ci.ts: STEPS 少三条; VERIFY_GROUP 少 'lint:coverage';
  *   CONFORMANCE_GROUP 余 ['build'] (转写步骤引用行同步摘除); CLI 入口坐标块与它的
  *   resolveCliAndApi 导入随 conformance 步骤摘净 (摘后全文已无引用 = 只服务被摘步骤)
+ *   回写 <targetDir>/package.json: scripts 少 'conformance', 其余脚本原样
  *
  * Output（数据契约）
- *   <targetDir> 内增强档机制件与其步骤声明、专属载体声明一并消失, 其余文件逐字节原样
+ *   <targetDir> 内增强档机制件、其步骤声明、根包上的套件脚本与专属载体声明一并消失,
+ *   其余文件逐字节原样
  * ```
  */
 export function pruneTemplate(targetDir: string, rules: RemoveRule): void {
@@ -138,10 +164,105 @@ export function pruneTemplate(targetDir: string, rules: RemoveRule): void {
       rules.deletePaths,
     );
   }
+  const packageJsonPath = join(targetDir, ROOT_PACKAGE_JSON);
+  let prunedPackageJson: string | null = null;
+  if (rules.packageScripts.length > 0) {
+    if (!existsSync(packageJsonPath)) {
+      throw new Error(`模板缺少根 ${ROOT_PACKAGE_JSON} (脚本声明手术无处可施)`);
+    }
+    prunedPackageJson = prunePackageScripts(
+      readFileSync(packageJsonPath, 'utf8'),
+      rules.packageScripts,
+      rules.deletePaths,
+    );
+  }
   for (const path of rules.deletePaths) {
     rmSync(join(targetDir, path), { recursive: true, force: true });
   }
   if (prunedCi !== null) writeFileSync(ciPath, prunedCi);
+  if (prunedPackageJson !== null) {
+    writeFileSync(packageJsonPath, prunedPackageJson);
+  }
+}
+
+/**
+ * 脚本声明手术: 从根 `package.json` 的 scripts 摘除指定脚本名。
+ *
+ * 术前校验: 每个名字都在 scripts 表里 (缺名前即抛, 规则与模板不同步不算静默略过), 且该脚本
+ * 命令引用的载体文件进删除面 (防摘除后悬空: 载体已删而脚本还在, `bun run <脚本>` 必死;
+ * 与 ciSteps 的载体校验同构)。
+ * 术后自检: 摘名零残留, 其余脚本逐项原样, 产物仍是合法 JSON。
+ */
+function prunePackageScripts(
+  source: string,
+  scripts: readonly string[],
+  deletePaths: readonly string[],
+): string {
+  const parsed: unknown = JSON.parse(source);
+  const table =
+    typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed)
+      ? (parsed as { scripts?: unknown }).scripts
+      : undefined;
+  if (typeof table !== 'object' || table === null || Array.isArray(table)) {
+    throw new Error(
+      `${ROOT_PACKAGE_JSON} 形态预期不符: 找不到 scripts 表 (脚本声明手术无法进行)`,
+    );
+  }
+  const scriptsTable = table as Record<string, unknown>;
+  const retained: Record<string, string> = {};
+  for (const [name, command] of Object.entries(scriptsTable)) {
+    if (typeof command === 'string' && !scripts.includes(name)) {
+      retained[name] = command;
+    }
+  }
+  for (const name of scripts) {
+    const command = scriptsTable[name];
+    if (typeof command !== 'string') {
+      throw new Error(
+        `脚本不存在: '${name}' 不在模板 ${ROOT_PACKAGE_JSON} 的 scripts 里 (裁剪规则与模板不同步)`,
+      );
+    }
+    assertScriptCarriageDeleted(name, command, deletePaths);
+  }
+  for (const name of scripts) delete scriptsTable[name];
+  const pruned = `${JSON.stringify(parsed, null, 2)}\n`;
+
+  const afterScripts =
+    (JSON.parse(pruned) as { scripts?: Record<string, string> }).scripts ?? {};
+  for (const name of scripts) {
+    if (name in afterScripts) {
+      throw new Error(
+        `脚本手术自检未过: '${name}' 仍残留在 ${ROOT_PACKAGE_JSON}`,
+      );
+    }
+  }
+  for (const [name, command] of Object.entries(retained)) {
+    if (afterScripts[name] !== command) {
+      throw new Error(
+        `脚本手术自检未过: 保留脚本 '${name}' 在手术后发生变化 (${ROOT_PACKAGE_JSON})`,
+      );
+    }
+  }
+  return pruned;
+}
+
+/** 脚本载体未进删除面即抛错: 摘除脚本会让其命令引用的文件悬空 (与 ciSteps 的载体校验同构) */
+function assertScriptCarriageDeleted(
+  name: string,
+  command: string,
+  deletePaths: readonly string[],
+): void {
+  for (const match of command.matchAll(/scripts\/[A-Za-z0-9._/-]+/g)) {
+    const referenced: string = match[0];
+    const covered = deletePaths.some((path) =>
+      path.endsWith('/') ? referenced.startsWith(path) : referenced === path,
+    );
+    if (!covered) {
+      throw new Error(
+        `脚本载体未进删除面: 摘除 '${name}' 会让 ${referenced} 悬空 (deletePaths 未覆盖); 脚本须与其载体文件同进裁剪面`,
+      );
+    }
+  }
 }
 
 /**

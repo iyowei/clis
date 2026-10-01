@@ -107,18 +107,30 @@ const CONFORMANCE_GROUP: readonly string[] = [
 const HELP_TEXT = ['步骤名: ' + Object.keys(STEPS).join(' / ')].join('\\n');
 `;
 
+/** 夹具根 package.json: 形态对齐模板 (含 conformance 脚本; 缩进 2 空格 + 末尾换行, 与模板同形) */
+const FIXTURE_PACKAGE_JSON = `{
+  "name": "demo-monorepo",
+  "scripts": {
+    "build": "turbo run build",
+    "conformance": "bun scripts/transcription/run-conformance.ts",
+    "ci": "bun scripts/ci.ts"
+  }
+}
+`;
+
 const createdRoots: string[] = [];
 afterEach(() => {
   for (const root of createdRoots.splice(0))
     rmSync(root, { recursive: true, force: true });
 });
 
-/** 建一个夹具模板根: `scripts/ci.ts` + 增强档机制件目录 (步骤引用的载体文件) */
+/** 建一个夹具模板根: `scripts/ci.ts` + 根 package.json + 增强档机制件目录 (步骤引用的载体文件) */
 const setupCiFixture = (): string => {
   const root = makeTmpRoot('create-clis-tier-');
   createdRoots.push(root);
   mkdirSync(join(root, 'scripts/transcription'), { recursive: true });
   writeFileSync(join(root, 'scripts/ci.ts'), FIXTURE_CI_TS);
+  writeFileSync(join(root, 'package.json'), FIXTURE_PACKAGE_JSON);
   for (const carrier of [
     'validate-coverage.ts',
     'run-conformance.ts',
@@ -148,6 +160,7 @@ describe('removeRulesFor 三档规则面', () => {
     const full = removeRulesFor('full');
     expect(full.deletePaths).toEqual([]);
     expect(full.ciSteps).toEqual([]);
+    expect(full.packageScripts).toEqual([]);
 
     const standard = removeRulesFor('standard');
     // 增强档机制件 (conformance 套件整目录) 与对应步骤
@@ -155,6 +168,8 @@ describe('removeRulesFor 三档规则面', () => {
     expect(standard.ciSteps).toContain('lint:coverage');
     expect(standard.ciSteps).toContain('conformance:bun');
     expect(standard.ciSteps).toContain('conformance:node');
+    // 增强档在根包上的脚本挂载 (载体随机制件摘除, 脚本不摘即悬空)
+    expect(standard.packageScripts).toContain('conformance');
     // 标准档装备 (技术债册子) 是 core 才摘, standard 保留
     expect(standard.deletePaths).not.toContain('docs/designs/tech-debt.md');
     // 核心档装备不得进删除面
@@ -177,6 +192,9 @@ describe('removeRulesFor 三档规则面', () => {
     for (const step of standard.ciSteps) {
       expect(core.ciSteps).toContain(step);
     }
+    for (const script of standard.packageScripts) {
+      expect(core.packageScripts).toContain(script);
+    }
     // 标准档四条里唯一有独立文件载体的: 技术债登记册 (其余三条见 tier.ts 映射注)
     expect(standard.deletePaths).not.toContain('docs/designs/tech-debt.md');
     expect(core.deletePaths).toContain('docs/designs/tech-debt.md');
@@ -197,6 +215,7 @@ describe('pruneTemplate 步骤声明手术', () => {
     pruneTemplate(root, {
       deletePaths: ['scripts/transcription/'],
       ciSteps: ['lint:coverage', 'conformance:bun'],
+      packageScripts: [],
     });
 
     const pruned = readFileSync(join(root, 'scripts/ci.ts'), 'utf8');
@@ -211,6 +230,7 @@ describe('pruneTemplate 步骤声明手术', () => {
       pruneTemplate(missingPath, {
         deletePaths: ['scripts/not-here/'],
         ciSteps: [],
+        packageScripts: [],
       }),
     ).toThrow(/裁剪路径不存在/);
 
@@ -219,6 +239,7 @@ describe('pruneTemplate 步骤声明手术', () => {
       pruneTemplate(missingStep, {
         deletePaths: [],
         ciSteps: ['lint:nonexistent'],
+        packageScripts: [],
       }),
     ).toThrow(/步骤不存在/);
 
@@ -228,6 +249,7 @@ describe('pruneTemplate 步骤声明手术', () => {
       pruneTemplate(orphanStep, {
         deletePaths: ['scripts/transcription/'],
         ciSteps: ['lint:backups'],
+        packageScripts: [],
       }),
     ).toThrow(/载体/);
 
@@ -264,6 +286,7 @@ describe('pruneTemplate 步骤声明手术', () => {
     pruneTemplate(root, {
       deletePaths: ['scripts/transcription/'],
       ciSteps: ['lint:coverage', 'conformance:bun'],
+      packageScripts: [],
     });
 
     const pruned = readFileSync(join(root, 'scripts/ci.ts'), 'utf8');
@@ -272,6 +295,55 @@ describe('pruneTemplate 步骤声明手术', () => {
       "import { resolveCliAndApi } from './lib/workspace.ts';",
     );
     expect(pruned).not.toContain('conformance:bun');
+  });
+});
+
+describe('pruneTemplate 脚本声明手术', () => {
+  test('指定脚本名从根 package.json 消失, 其余脚本原样', () => {
+    const root = setupCiFixture();
+    pruneTemplate(root, {
+      deletePaths: ['scripts/transcription/'],
+      ciSteps: [],
+      packageScripts: ['conformance'],
+    });
+
+    const pkg = JSON.parse(
+      readFileSync(join(root, 'package.json'), 'utf8'),
+    ) as {
+      name: string;
+      scripts: Record<string, string>;
+    };
+    expect('conformance' in pkg.scripts).toBe(false);
+    expect(pkg.scripts.build).toBe('turbo run build');
+    expect(pkg.scripts.ci).toBe('bun scripts/ci.ts');
+    // 非 scripts 字段不受牵连
+    expect(pkg.name).toBe('demo-monorepo');
+  });
+
+  test('脚本摘除自检: 脚本名缺失 / 脚本载体未进删除面 均抛错且不留半成品', () => {
+    const missingScript = setupCiFixture();
+    expect(() =>
+      pruneTemplate(missingScript, {
+        deletePaths: ['scripts/transcription/'],
+        ciSteps: [],
+        packageScripts: ['lint'],
+      }),
+    ).toThrow(/脚本不存在/);
+
+    // 载体未删: 摘 conformance 却不让 transcription 目录进删除面, 生成物会留下悬空脚本
+    const orphanScript = setupCiFixture();
+    expect(() =>
+      pruneTemplate(orphanScript, {
+        deletePaths: [],
+        ciSteps: [],
+        packageScripts: ['conformance'],
+      }),
+    ).toThrow(/脚本载体/);
+
+    // 自检不过时不得留半成品: package.json 逐字节原样
+    expect(readFileSync(join(orphanScript, 'package.json'), 'utf8')).toBe(
+      FIXTURE_PACKAGE_JSON,
+    );
   });
 });
 
@@ -287,6 +359,13 @@ describe('真实模板端到端', () => {
       existsSync(join(fullDir, 'scripts/transcription/api-harness.ts')),
     ).toBe(true);
     expect(existsSync(join(fullDir, 'docs/designs/tech-debt.md'))).toBe(true);
+    // 满档保留根包的 conformance 脚本 (载体在场, 脚本不悬空)
+    const fullScripts = (
+      JSON.parse(readFileSync(join(fullDir, 'package.json'), 'utf8')) as {
+        scripts: Record<string, string>;
+      }
+    ).scripts;
+    expect(typeof fullScripts.conformance).toBe('string');
 
     // standard: 增强档整目录摘除, 标准档 (技术债册子) 与两包骨架保留
     const standardDir = buildTemplateCopy(root, 'standard');
@@ -301,6 +380,13 @@ describe('真实模板端到端', () => {
     expect(
       existsSync(join(standardDir, 'packages/{{NAME}}-cli/src/cli.ts')),
     ).toBe(true);
+    // 增强档在根包的脚本挂载同摘 (留存即悬空: 载体目录已删)
+    const standardScripts = (
+      JSON.parse(readFileSync(join(standardDir, 'package.json'), 'utf8')) as {
+        scripts: Record<string, string>;
+      }
+    ).scripts;
+    expect(standardScripts.conformance).toBeUndefined();
 
     // core: 连标准档一并摘除; api-harness.ts 在此随增强档消失 (T4 移交项的 core 侧)
     const coreDir = buildTemplateCopy(root, 'core');
@@ -308,6 +394,13 @@ describe('真实模板端到端', () => {
     expect(existsSync(join(coreDir, 'scripts/transcription'))).toBe(false);
     expect(existsSync(join(coreDir, 'scripts/ci.ts'))).toBe(true);
     expect(existsSync(join(coreDir, 'docs/designs/tech-debt.md'))).toBe(false);
+    const coreScripts = (
+      JSON.parse(readFileSync(join(coreDir, 'package.json'), 'utf8')) as {
+        scripts: Record<string, string>;
+      }
+    ).scripts;
+    expect(coreScripts.conformance).toBeUndefined();
+    expect(typeof coreScripts.ci).toBe('string');
 
     // 载体摘除在真实模板上生效 (T8 升格项): 只服务 conformance 步骤的 CLI 坐标不得留在生成物里,
     // 否则生成物 lint 以 no-unused-vars 打红 (heavy-smoke 首跑实测), 而 heavy-smoke 不进常规 CI

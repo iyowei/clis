@@ -64,6 +64,21 @@ const HOOK_VOCABULARY: Vocabulary = {
 /** 子进程时限: 生成含全树 prettier 收口, 阈值给足防慢机误判; 交互死锁由它兜底 */
 const TIMEOUT_MS = 120_000;
 
+/** 生成物内路径存在性 (用例高频断言面) */
+const has = (root: string, rel: string): boolean => existsSync(join(root, rel));
+
+/** 读生成物内文件文本 (用例高频读取面) */
+const readAt = (root: string, rel: string): string =>
+  readFileSync(join(root, rel), 'utf8');
+
+/** 在生成物根跑一次闸门清单 --help (摘除面越界的实物兜底: 步骤表闭合 / 括号配平) */
+const ciHelpAt = (cwd: string): ReturnType<typeof spawnSync> =>
+  spawnSync('bun', ['scripts/ci.ts', '--help'], {
+    cwd,
+    encoding: 'utf8',
+    timeout: TIMEOUT_MS,
+  });
+
 /** 真实模板夹具: 现场经 buildTemplate 产出 (CLI 输入即构建链的真实产物形态) */
 const TEMPLATE_ROOT = makeTmpRoot('create-clis-e2e-tpl-');
 const TEMPLATE_DIR = join(TEMPLATE_ROOT, 'template');
@@ -73,9 +88,7 @@ buildTemplate({
   original: ORIGINAL,
 });
 
-afterAll(() => {
-  rmSync(TEMPLATE_ROOT, { recursive: true, force: true });
-});
+afterAll(() => rmSync(TEMPLATE_ROOT, { recursive: true, force: true }));
 
 /** 变量零残留判据 (与引擎同源): 五个占位形态 + 裸 slug 组合形态 */
 const PLACEHOLDER_FORMS = [
@@ -101,10 +114,7 @@ afterEach(() => {
 });
 
 /** 建一个用例工作区: home 作为隔离 HOME, target 作为生成目标 (basename 即项目名) */
-function makeCase(label: string): {
-  home: string;
-  target: string;
-} {
+function makeCase(label: string): { home: string; target: string } {
   const root = makeTmpRoot(`create-clis-e2e-${label}-`);
   createdRoots.push(root);
   const home = join(root, 'home');
@@ -152,7 +162,7 @@ function expectNoForm(target: string, forms: readonly string[]): void {
   for (const rel of listTemplateFiles(target)) {
     const pathHits = forms.filter((form) => rel.includes(form));
     expect(pathHits, `${rel} 路径残留形态`).toEqual([]);
-    const text = readFileSync(join(target, rel), 'utf8');
+    const text = readAt(target, rel);
     const textHits = forms.filter((form) => text.includes(form));
     expect(textHits, `${rel} 内容残留形态`).toEqual([]);
   }
@@ -184,14 +194,27 @@ function expectCoreStructure(target: string): void {
 
 /** 替换面抽样: 根包与 API 包的词汇落位 (全树零残留由 expectNoForm 背书) */
 function expectVocabularyApplied(target: string): void {
-  const rootPkg = readFileSync(join(target, 'package.json'), 'utf8');
+  const rootPkg = readAt(target, 'package.json');
   expect(rootPkg).toContain('"name": "demo-tool-monorepo"');
   expect(rootPkg).toContain('"author": "demouser');
-  const apiPkg = readFileSync(
-    join(target, 'packages/demo-tool/package.json'),
-    'utf8',
-  );
+  const apiPkg = readAt(target, 'packages/demo-tool/package.json');
   expect(apiPkg).toContain('"name": "@demo/demo-tool"');
+}
+
+/**
+ * 根 package.json 的悬空脚本断言 (廉价兜底): 每条 script 命令里出现的 `scripts/...` 路径都
+ * 必须在生成物里实存。裁剪摘除机制件目录时若漏摘挂在根包上的脚本 (如 standard / core 档的
+ * conformance), 生成物会留下一条实跑必死的入口; 结构断言抓不到, 本断言抓得到。
+ */
+function expectRootScriptsResolve(target: string): void {
+  const pkg = JSON.parse(readAt(target, 'package.json')) as {
+    scripts: Record<string, string>;
+  };
+  for (const [name, command] of Object.entries(pkg.scripts)) {
+    for (const [referenced] of command.matchAll(/scripts\/[A-Za-z0-9._/-]+/g)) {
+      expect(has(target, referenced), `script ${name} 悬空`).toBe(true);
+    }
+  }
 }
 
 /** next steps 三步断言: 进入目录 / ci 验证 / 文档总索引 (生成物实存入口, 非本仓的定位文档) */
@@ -221,18 +244,17 @@ function defineScaffoldCases(runner: string, available: boolean): void {
           [target, ...VARIABLES, '--tier', 'core', ...NO_HOOKS],
           { home },
         );
-        expect(
-          result.status,
-          `应退 0; stdout=${result.stdout} stderr=${result.stderr}`,
-        ).toBe(0);
+        expect(result.status, `应退 0: ${result.stderr}`).toBe(0);
 
         expectCoreStructure(target);
         expectVocabularyApplied(target);
+        // 根包脚本零悬空: core 档摘了 conformance 套件, 根包不得再挂它的入口
+        expectRootScriptsResolve(target);
         // 零残留: 全树无占位形态、无原项目词汇
         expectNoForm(target, [...PLACEHOLDER_FORMS, ...ORIGINAL_FORMS]);
         // 收尾旗标: 不建仓库、不装依赖
-        expect(existsSync(join(target, '.git'))).toBe(false);
-        expect(existsSync(join(target, 'node_modules'))).toBe(false);
+        expect(has(target, '.git')).toBe(false);
+        expect(has(target, 'node_modules')).toBe(false);
         expectNextSteps(result.stdout, target);
       },
       TIMEOUT_MS,
@@ -255,7 +277,7 @@ function defineWiringCases(runner: string, available: boolean): void {
           { home: empty.home },
         );
         expect(ok.status, `空目录应放行: ${ok.stderr}`).toBe(0);
-        expect(existsSync(join(empty.target, 'package.json'))).toBe(true);
+        expect(has(empty.target, 'package.json')).toBe(true);
 
         // 非空: 拒绝且不覆盖 (原文件原样在, 也没有任何生成物混入)
         const { home, target } = makeCase('occupied');
@@ -270,9 +292,7 @@ function defineWiringCases(runner: string, available: boolean): void {
         expect(result.stderr).toContain('非空');
         // 拒绝发生在写入之前: 不得把用户自己的目录谎报为半成品
         expect(result.stderr).not.toContain('半成品');
-        expect(readFileSync(join(target, 'keep.txt'), 'utf8')).toBe(
-          'keep-me\n',
-        );
+        expect(readAt(target, 'keep.txt')).toBe('keep-me\n');
         expect(listTemplateFiles(target)).toEqual(['keep.txt']);
       },
       TIMEOUT_MS,
@@ -286,13 +306,10 @@ function defineWiringCases(runner: string, available: boolean): void {
 
         expect(result.status, `应退 0: ${result.stderr}`).toBe(0);
         // 项目名取目标目录 basename; 单段名不缩写; owner / repo 由默认链派生
-        const rootPkg = readFileSync(join(target, 'package.json'), 'utf8');
+        const rootPkg = readAt(target, 'package.json');
         expect(rootPkg).toContain('"name": "proj-monorepo"');
         expect(rootPkg).toContain('"author": "demo-user');
-        const apiPkg = readFileSync(
-          join(target, 'packages/proj/package.json'),
-          'utf8',
-        );
+        const apiPkg = readAt(target, 'packages/proj/package.json');
         expect(apiPkg).toContain(
           '"homepage": "https://github.com/demo-user/proj#readme"',
         );
@@ -324,14 +341,9 @@ function defineWiringCases(runner: string, available: boolean): void {
         );
 
         expect(result.status, `应退 0: ${result.stderr}`).toBe(0);
-        const apiPkg = readFileSync(
-          join(target, 'packages/proj/package.json'),
-          'utf8',
-        );
+        const apiPkg = readAt(target, 'packages/proj/package.json');
         expect(apiPkg).toContain('"name": "@piped/proj"');
-        expect(existsSync(join(target, 'packages/proj-cli/bin/proj.mjs'))).toBe(
-          true,
-        );
+        expect(has(target, 'packages/proj-cli/bin/proj.mjs')).toBe(true);
       },
     );
 
@@ -383,10 +395,13 @@ function defineFlagCases(runner: string, available: boolean): void {
       );
 
       expect(result.status, `应退 0: ${result.stderr}`).toBe(0);
-      expect(
-        existsSync(join(target, 'scripts/transcription/run-conformance.ts')),
-      ).toBe(true);
-      expect(existsSync(join(target, 'docs/designs/tech-debt.md'))).toBe(true);
+      const kitFile = 'scripts/transcription/run-conformance.ts';
+      expect(has(target, kitFile)).toBe(true);
+      expect(has(target, 'docs/designs/tech-debt.md')).toBe(true);
+      // 根包脚本零悬空 + 闸门清单仍可跑: 摘除面不越界 (full 档保留 conformance 套件)
+      expectRootScriptsResolve(target);
+      const help = ciHelpAt(target);
+      expect(help.status, `full 档 ci --help 应退 0: ${help.stderr}`).toBe(0);
     });
 
     test.skipIf(!available)(
@@ -396,10 +411,10 @@ function defineFlagCases(runner: string, available: boolean): void {
         const result = runYes(runner, target, home, NO_HOOKS);
 
         expect(result.status, `应退 0: ${result.stderr}`).toBe(0);
-        expect(existsSync(join(target, 'scripts/transcription'))).toBe(false);
-        expect(existsSync(join(target, 'docs/designs/tech-debt.md'))).toBe(
-          true,
-        );
+        expect(has(target, 'scripts/transcription')).toBe(false);
+        expect(has(target, 'docs/designs/tech-debt.md')).toBe(true);
+        // 缺省档同样不得留下 conformance 悬空脚本 (I-3 的 standard 侧)
+        expectRootScriptsResolve(target);
       },
       TIMEOUT_MS,
     );
