@@ -7,7 +7,9 @@
  */
 import { describe, expect, test } from 'bun:test';
 
-import { type PromptIO, askAll } from './prompt.ts';
+import { basename, resolve } from 'node:path';
+
+import { type AskOutcome, type PromptIO, askAll } from './prompt.ts';
 import { type Vocabulary } from './render.ts';
 import {
   type CliOptions,
@@ -40,6 +42,12 @@ function errorText(result: unknown): string {
 function vocabularyOf(result: unknown): Vocabulary {
   expect(result).not.toHaveProperty('error');
   return result as Vocabulary;
+}
+
+/** 从 askAll 结果取词汇表 (非 collected 即断言失败, 兼作类型收窄) */
+function collectedOf(outcome: AskOutcome): Vocabulary {
+  expect(outcome.state).toBe('collected');
+  return (outcome as { vocabulary: Vocabulary }).vocabulary;
 }
 
 describe('validateName (kebab-case)', () => {
@@ -157,6 +165,20 @@ describe('parseFlags', () => {
       install: true,
       yes: false,
     });
+  });
+
+  test('位置参数为 . / .. 时项目名回退到解析后的目录名 (不拿字面量 . 当项目名)', () => {
+    // 背景: basename('.') 是 '.', 直接当项目名会被 kebab-case 校验拒绝且报错费解
+    // (`create-clis . --yes` 的实测场景); 回退值取 resolve 后的 basename (当前 / 上级目录名)
+    const cwdName = basename(resolve('.'));
+    const parentName = basename(resolve('..'));
+    expect(
+      cwdName.length,
+      '用例前提: 测试进程 cwd 不是文件系统根',
+    ).toBeGreaterThan(0);
+    expect(parseFlags(['.'])).toMatchObject({ dir: '.', name: cwdName });
+    expect(parseFlags(['..'])).toMatchObject({ dir: '..', name: parentName });
+    // 显式 --name 优先于该回退由后续既有用例 (--name 优先于位置参数的 basename) 背书
   });
 
   test('--name 优先于位置参数的 basename', () => {
@@ -377,16 +399,11 @@ function scriptedIO(answers: (string | null)[]): {
 describe('askAll (交互收集)', () => {
   test('--yes: 零交互取全默认', async () => {
     const { io, asked } = scriptedIO([]);
-    const outcome = await askAll(
-      io,
-      ENV,
-      options({ name: 'my-tool', yes: true }),
+    const vocabulary = collectedOf(
+      await askAll(io, ENV, options({ name: 'my-tool', yes: true })),
     );
-    if (outcome.state !== 'collected') {
-      throw new Error(`应收集成功, 实际 ${outcome.state}`);
-    }
     expect(asked).toHaveLength(0);
-    expect(outcome.vocabulary).toEqual({
+    expect(vocabulary).toEqual({
       name: 'my-tool',
       scope: '',
       binName: 'my-tool',
@@ -397,10 +414,7 @@ describe('askAll (交互收集)', () => {
 
   test('五问顺序与默认值提示', async () => {
     const { io, asked } = scriptedIO(['my-tool', '', '', '', '']);
-    const outcome = await askAll(io, ENV, options());
-    if (outcome.state !== 'collected') {
-      throw new Error(`应收集成功, 实际 ${outcome.state}`);
-    }
+    const vocabulary = collectedOf(await askAll(io, ENV, options()));
     expect(asked.map((item) => item.question)).toEqual([
       '项目名',
       'scope',
@@ -411,7 +425,7 @@ describe('askAll (交互收集)', () => {
     expect(asked[2]?.hint).toContain('默认: my-tool');
     expect(asked[3]?.hint).toContain('默认: iyowei');
     expect(asked[4]?.hint).toContain('https://github.com/iyowei/my-tool');
-    expect(outcome.vocabulary).toEqual({
+    expect(vocabulary).toEqual({
       name: 'my-tool',
       scope: '',
       binName: 'my-tool',
@@ -428,12 +442,11 @@ describe('askAll (交互收集)', () => {
       'acme',
       '',
     ]);
-    const outcome = await askAll(io, { gitUserName: null }, options());
-    if (outcome.state !== 'collected') {
-      throw new Error(`应收集成功, 实际 ${outcome.state}`);
-    }
+    const vocabulary = collectedOf(
+      await askAll(io, { gitUserName: null }, options()),
+    );
     expect(asked[3]?.hint).toContain('必填');
-    expect(outcome.vocabulary).toEqual({
+    expect(vocabulary).toEqual({
       name: 'data-kit-tools',
       scope: '@acme',
       binName: 'data-kt',
@@ -444,21 +457,17 @@ describe('askAll (交互收集)', () => {
 
   test('git user.name 不可用作 owner 时同样按必填处理', async () => {
     const { io, asked } = scriptedIO(['my-tool', '', '', 'me', '']);
-    const outcome = await askAll(io, { gitUserName: 'Iyo Wei' }, options());
-    if (outcome.state !== 'collected') {
-      throw new Error(`应收集成功, 实际 ${outcome.state}`);
-    }
+    const vocabulary = collectedOf(
+      await askAll(io, { gitUserName: 'Iyo Wei' }, options()),
+    );
     expect(asked[3]?.hint).toContain('必填');
-    expect(outcome.vocabulary.owner).toBe('me');
+    expect(vocabulary.owner).toBe('me');
   });
 
   test('答案非法时打印原因并重问', async () => {
     const { io, printed } = scriptedIO(['Bad Name', 'my-tool', '', '', '', '']);
-    const outcome = await askAll(io, ENV, options());
-    if (outcome.state !== 'collected') {
-      throw new Error(`应收集成功, 实际 ${outcome.state}`);
-    }
-    expect(outcome.vocabulary.name).toBe('my-tool');
+    const vocabulary = collectedOf(await askAll(io, ENV, options()));
+    expect(vocabulary.name).toBe('my-tool');
     expect(printed.some((line) => line.includes('kebab-case'))).toBe(true);
   });
 
@@ -478,20 +487,15 @@ describe('askAll (交互收集)', () => {
 
   test('已由旗标给出的变量不再提问', async () => {
     const { io, asked } = scriptedIO(['', '', '']);
-    const outcome = await askAll(
-      io,
-      ENV,
-      options({ name: 'my-tool', scope: '@me' }),
+    const vocabulary = collectedOf(
+      await askAll(io, ENV, options({ name: 'my-tool', scope: '@me' })),
     );
-    if (outcome.state !== 'collected') {
-      throw new Error(`应收集成功, 实际 ${outcome.state}`);
-    }
     expect(asked.map((item) => item.question)).toEqual([
       'bin 名',
       'owner',
       '仓库地址',
     ]);
-    expect(outcome.vocabulary).toEqual({
+    expect(vocabulary).toEqual({
       name: 'my-tool',
       scope: '@me',
       binName: 'my-tool',

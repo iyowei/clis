@@ -11,7 +11,7 @@
  * - 除 readGitUserName (环境适配出口) 外全为纯函数; 交互收集在 prompt.ts。
  */
 import { spawnSync } from 'node:child_process';
-import { basename } from 'node:path';
+import { basename, resolve } from 'node:path';
 
 import { type Vocabulary } from './render.ts';
 import { type Tier } from './tier.ts';
@@ -185,7 +185,8 @@ function valueTokenAt(argv: string[], index: number): string | undefined {
  * 「旗标汇总」: 五个值旗标 + --tier + --no-git / --no-install / --yes, 外加一个位置参数。
  *
  * 约定:
- * - 位置参数是目标目录 [dir]; 项目名缺省取该目录 basename (--name 优先), 目录自身的可用性
+ * - 位置参数是目标目录 [dir]; 项目名缺省取该目录 basename (--name 优先; `.` / `..` 的
+ *   basename 是自身而非目录名, 回退到 resolve 后的 basename), 目录自身的可用性
  *   (存在 / 为空) 由生成流程在落盘前检查, 不属本函数;
  * - 值旗标两种写法 (`--name x` 与 `--name=x`); 重复旗标后者胜;
  * - 解析只做形态判定 (未知旗标 / 缺值 / 档位枚举), 取值合法性交 resolveVocabulary;
@@ -270,8 +271,14 @@ export function parseFlags(argv: string[]): CliOptions | { error: string } {
   }
 
   if (options.name === undefined && options.dir !== undefined) {
+    // `.` / `..` 的 basename 是自身而非目录名 (`create-clis . --yes` 会拿 `.` 当项目名, 报出
+    // 费解的 kebab-case 错误): 特判回退到 resolve 后的 basename (当前 / 上级目录名)。
     const derived = basename(options.dir);
-    if (derived.length > 0) options.name = derived;
+    const fallback =
+      derived === '.' || derived === '..'
+        ? basename(resolve(options.dir))
+        : derived;
+    if (fallback.length > 0) options.name = fallback;
   }
 
   return options;
