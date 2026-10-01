@@ -1,12 +1,11 @@
 # create-clis
 
 [![CI](https://github.com/iyowei/clis/actions/workflows/ci.yml/badge.svg)](https://github.com/iyowei/clis/actions/workflows/ci.yml)
+[![npm](https://img.shields.io/npm/v/create-clis)](https://www.npmjs.com/package/create-clis)
 
 **English** | [中文](README.zh-CN.md)
 
 Scaffold a standalone clis collection repository from the clis skeleton snapshot: capability tiers, generic vocabulary, and a green CI out of the box.
-
-> Status: not on the npm registry yet; the npm badges land with the first published version.
 
 ## Requirements
 
@@ -26,11 +25,18 @@ pnpm create clis
 # bun: bun create clis is bunx create-clis
 bun create clis
 
+# deno: deno create follows npm's create- convention (npm:clis resolves to create-clis)
+deno create npm:clis
+
 # or call the package directly
 bunx create-clis
+npx create-clis
+
+# yarn Berry has no create convention; dlx is the equivalent
+yarn dlx create-clis
 ```
 
-The four entry points are equivalent. The target directory defaults to a subdirectory of the current directory named after the project:
+These entry points are equivalent. The target directory defaults to a subdirectory of the current directory named after the project:
 
 ```shell
 # interactive: pass the target directory; the rest are asked one by one

@@ -1,12 +1,11 @@
 # create-clis
 
 [![CI](https://github.com/iyowei/clis/actions/workflows/ci.yml/badge.svg)](https://github.com/iyowei/clis/actions/workflows/ci.yml)
+[![npm](https://img.shields.io/npm/v/create-clis)](https://www.npmjs.com/package/create-clis)
 
 [English](README.md) | **中文**
 
 从本仓骨架的泛化快照生成一个独立的新 clis 集合仓: 带能力档位与通用词汇, 开箱就是一条全绿的 CI。
-
-> 状态: 尚未发布到 npm registry; npm 徽章随首个发布版本补上。
 
 ## 要求
 
@@ -26,11 +25,18 @@ pnpm create clis
 # bun: bun create clis 即 bunx create-clis
 bun create clis
 
+# deno: deno create 遵循 npm 的 create- 约定 (npm:clis 解析为 create-clis)
+deno create npm:clis
+
 # 也可以直接跑包名
 bunx create-clis
+npx create-clis
+
+# yarn Berry 没有 create 约定, dlx 是等价入口
+yarn dlx create-clis
 ```
 
-四个入口等价; 目标目录缺省是当前目录下以项目名命名的子目录:
+这些入口等价; 目标目录缺省是当前目录下以项目名命名的子目录:
 
 ```shell
 # 交互问答: 位置参数是目标目录, 其余变量逐个提问
