@@ -14,6 +14,8 @@
 - **`@iyowei/sweep-node-modules-cli`**: `sweep-nm` 命令行工具; 安装、使用、配置与安全防护见 [README](packages/sweep-node-modules-cli/README.zh-CN.md)。
 - **`@iyowei/sweep-node-modules`**: 可编程 API 包, 可以在程序或脚本里调用; 用法见 [README](packages/sweep-node-modules/README.zh-CN.md)。
 
+**create-clis**: 集合仓生成器, 从本仓骨架快照生成一个独立的新集合仓 (带能力档位、通用词汇与开箱全绿的 CI); 用法见 [README](packages/create-clis/README.zh-CN.md)。
+
 ## 文档
 
 - [工程技术文档总索引](docs/README.md): 仓库级入口 (集合仓治理与脚手架设计、ADR 与开发文档);
