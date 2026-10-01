@@ -12,9 +12,7 @@
     "packages/*"
   ],
   "multi-release": {
-    "ignorePackages": [
-      "create-clis"
-    ]
+    "ignorePackages": []
   },
   "scripts": {
     "safe-install": "bun scripts/safe-install.ts",

@@ -153,7 +153,7 @@ export const TEMPLATE_MANIFEST: readonly ManifestEntry[] = [
   {
     path: 'package.json',
     disposition: 'reset',
-    note: '根 package.json 改判 reset (评判定): 泛化后 bench 脚本指向模板排除面外的 packages/<name>/bench/ (恒悬空), multi-release.ignorePackages 登记生成物里不存在的包 —— 都是生成物不成立的形态; 骨架手写新项目形态 (无 bench / 无 multi-release 登记, 根名取 <name>-monorepo 避开裸包名与示例包同名). 注意: 工具链 devDependencies 版本是手写快照, 本仓升级依赖时须同步这份骨架',
+    note: '根 package.json 改判 reset (评判定): 泛化后 bench 脚本指向模板排除面外的 packages/<name>/bench/ (恒悬空), multi-release 发布隔离登记 (ignorePackages 一类字段, 本仓现已清空) 会登记生成物里不存在的包 —— 都是生成物不成立的形态; 骨架手写新项目形态 (无 bench / 无 multi-release 登记, 根名取 <name>-monorepo 避开裸包名与示例包同名). 注意: 工具链 devDependencies 版本是手写快照, 本仓升级依赖时须同步这份骨架',
   },
   {
     path: 'tsconfig.json',

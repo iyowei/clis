@@ -217,33 +217,37 @@ describe('ptyWrapArgs', () => {
 });
 
 describe('filterPublishable', () => {
-  /** 最小 WorkspacePackage 夹具 (过滤只看 manifest.private 与包名) */
+  /** 最小 WorkspacePackage 夹具 (过滤只看 manifest.private) */
   const pkg = (name: string, isPrivate = false): WorkspacePackage => ({
     name,
     dir: `packages/${name}`,
     manifest: isPrivate ? { name, private: true } : { name },
   });
 
-  test('命中 ignorePackages 的包被排除 (核对面与发布链豁免单源)', () => {
-    const packages = [pkg('@x/api'), pkg('@x/cli'), pkg('create-clis')];
-    expect(
-      filterPublishable(packages, ['create-clis']).map((item) => item.name),
-    ).toEqual(['@x/api', '@x/cli']);
-  });
-
-  test('private 包照旧排除 (过滤升级不丢既有语义)', () => {
-    const packages = [pkg('@x/api'), pkg('@x/private-lib', true)];
-    expect(filterPublishable(packages, []).map((item) => item.name)).toEqual([
+  test('private 包被排除, 非 private 包保留 (核对面与发布链 ignorePrivate 同源)', () => {
+    const packages = [
+      pkg('@x/api'),
+      pkg('@x/cli'),
+      pkg('@x/private-lib', true),
+    ];
+    expect(filterPublishable(packages).map((item) => item.name)).toEqual([
       '@x/api',
+      '@x/cli',
     ]);
   });
 
-  test('名单缺失或非数组形态视为空名单, 不误伤可发布包', () => {
-    const packages = [pkg('@x/api'), pkg('create-clis')];
-    for (const ignoreList of [undefined, null, 'create-clis', 42, {}]) {
-      expect(
-        filterPublishable(packages, ignoreList).map((item) => item.name),
-      ).toEqual(['@x/api', 'create-clis']);
-    }
+  test('private 字段缺失或非 true (如 false) 均视为可发布, 不误伤', () => {
+    const packages: WorkspacePackage[] = [
+      pkg('@x/api'),
+      {
+        name: '@x/flag',
+        dir: 'packages/flag',
+        manifest: { name: '@x/flag', private: false },
+      },
+    ];
+    expect(filterPublishable(packages).map((item) => item.name)).toEqual([
+      '@x/api',
+      '@x/flag',
+    ]);
   });
 });

@@ -1,6 +1,7 @@
 {
   "name": "create-clis",
   "version": "0.0.0",
+  "private": true,
   "description": "Scaffold a standalone clis collection repository from the clis skeleton snapshot: capability tiers, generic vocabulary, green CI out of the box. clis 集合仓生成器。",
   "keywords": [
     "cli",
