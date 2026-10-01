@@ -57,14 +57,16 @@ function buildHooks(options: CliOptions): GenerateHooks {
   return hooks;
 }
 
-/** next steps 文案: 进入目录 → 装依赖 (仅未装时) → ci 验证 → 从定位文档读起 */
+/**
+ * next steps 文案: 进入目录 → 装依赖 (仅未装时) → ci 验证 → 从文档总索引读起。
+ * 落点取生成物的 `docs/README.md` (实存的总索引): 本仓的定位文档 (collection-positioning.md)
+ * 是 exclude 面, 生成物里没有它, 指过去用户读不到。
+ */
 function nextSteps(targetDir: string, installed: boolean): string {
   const lines = ['', '下一步:', `  cd ${targetDir}`];
   if (!installed) lines.push('  bun install         # 安装依赖');
   lines.push('  bun run ci          # 验证全绿');
-  lines.push(
-    '  然后从 docs/designs/collection-positioning.md 读起, 开始改造。',
-  );
+  lines.push('  然后从 docs/README.md (文档总索引) 读起, 开始改造。');
   return lines.join('\n');
 }
 

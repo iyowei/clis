@@ -194,12 +194,12 @@ function expectVocabularyApplied(target: string): void {
   expect(apiPkg).toContain('"name": "@demo/demo-tool"');
 }
 
-/** next steps 三步断言: 进入目录 / ci 验证 / 定位文档 */
+/** next steps 三步断言: 进入目录 / ci 验证 / 文档总索引 (生成物实存入口, 非本仓的定位文档) */
 function expectNextSteps(stdout: string, target: string): void {
   expect(stdout).toContain('已生成');
   expect(stdout).toContain(target);
   expect(stdout).toContain('bun run ci');
-  expect(stdout).toContain('docs/designs/collection-positioning.md');
+  expect(stdout).toContain('docs/README.md');
 }
 
 for (const runner of RUNNERS) {
