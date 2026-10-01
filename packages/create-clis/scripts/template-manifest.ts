@@ -225,13 +225,14 @@ export const TEMPLATE_MANIFEST: readonly ManifestEntry[] = [
   },
   {
     path: 'packages/sweep-node-modules/package.json',
-    disposition: 'generalize',
-    note: 'description 为领域文案, 词汇替换不改写内容面 (示例包文案由骨架侧承接)',
+    disposition: 'reset',
+    note: '现 description 为原产品领域文案、version 为原产品版本 (词汇替换不改写内容面, 会原样带进生成物); 换中性示例包骨架 (greet 示例自述, version 0.0.0)',
   },
   { path: 'packages/sweep-node-modules/LICENSE', disposition: 'generalize' },
   {
     path: 'packages/sweep-node-modules-cli/package.json',
-    disposition: 'generalize',
+    disposition: 'reset',
+    note: '现 description / keywords 为原产品领域文案与检索词, version 与内部依赖版本为原产品版本; 换中性示例包骨架 (description / keywords 泛化, version 0.0.0, 内部依赖同 0.0.0)',
   },
   {
     path: 'packages/sweep-node-modules-cli/LICENSE',

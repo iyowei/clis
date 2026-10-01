@@ -1,0 +1,48 @@
+{
+  "name": "{{SCOPE}}/{{NAME}}-cli",
+  "version": "0.0.0",
+  "description": "The command-line tool of this collection: a thin shell over the API package, where the domain logic lives. 本集合仓的命令行示例包。",
+  "keywords": [
+    "cli",
+    "cli-tool",
+    "tool",
+    "typescript",
+    "bun",
+    "node"
+  ],
+  "author": "{{OWNER}} (https://github.com/{{OWNER}})",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+{{REPO_URL}}.git"
+  },
+  "homepage": "{{REPO_URL}}#readme",
+  "bugs": {
+    "url": "{{REPO_URL}}/issues"
+  },
+  "type": "module",
+  "bin": {
+    "{{BIN_NAME}}": "bin/{{BIN_NAME}}.mjs"
+  },
+  "files": [
+    "bin/{{BIN_NAME}}.mjs",
+    "dist"
+  ],
+  "engines": {
+    "node": ">=22.18.0"
+  },
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  },
+  "devDependencies": {
+    "{{SCOPE}}/{{NAME}}": "0.0.0"
+  },
+  "scripts": {
+    "build": "bun build src/cli.ts --target=node --outfile=dist/cli.js && bun scripts/write-dist-manifest.ts",
+    "prepublishOnly": "npm run build && npm run verify:release",
+    "verify:release": "bun scripts/verify-release.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "bun test"
+  }
+}

@@ -1,0 +1,40 @@
+{
+  "name": "{{SCOPE}}/{{NAME}}",
+  "version": "0.0.0",
+  "description": "The programmable API package of this collection: replace the greet example with your own domain logic. 本集合仓的可编程 API 示例包。",
+  "author": "{{OWNER}} (https://github.com/{{OWNER}})",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+{{REPO_URL}}.git"
+  },
+  "homepage": "{{REPO_URL}}#readme",
+  "bugs": {
+    "url": "{{REPO_URL}}/issues"
+  },
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "engines": {
+    "node": ">=22.18.0"
+  },
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  },
+  "scripts": {
+    "build": "bun scripts/build.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "bun test",
+    "verify:release": "bun scripts/verify-release.ts",
+    "prepublishOnly": "npm run build && npm run verify:release"
+  }
+}
