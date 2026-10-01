@@ -13,7 +13,9 @@
       // 口径: $TURBO_DEFAULT$ 保住包目录默认面 (含 .gitignore 语义; 显式写 inputs 会丢掉默认面,
       // 官方文档明示); 其余条目是模板构建会读的根级源, 与 .gitignore 无关的保守超集。
       // 注意: 显式 glob 不再享 .gitignore 过滤, 所以对 packages/ 这类会落构建产物的目录必须显式
-      // 排除 (dist / .turbo / node_modules), 否则产物进缓存键, 每次构建自我失效、缓存恒不命中。
+      // 排除 (dist / .turbo / node_modules / assets), 否则产物进缓存键, 每次构建自我失效、缓存恒
+      // 不命中, 或根级源变更后凭空多一轮重算。assets 只排除生成器包自己那份 (那是本任务的构建
+      // 产物); 不写成通用的 `packages/**/assets/**`, 防将来某包把真源放 assets 被误排除在外。
       // 同步义务: 骨架清单的唯一权威是 packages/create-clis/scripts/template-manifest.ts; 新增
       // 根级骨架源时先登记那份清单, 再照本条补一条 glob, 两处不互为来源。
       "inputs": [
@@ -47,6 +49,7 @@
         "!$TURBO_ROOT$/packages/**/dist/**",
         "!$TURBO_ROOT$/packages/**/.turbo/**",
         "!$TURBO_ROOT$/packages/**/node_modules/**",
+        "!$TURBO_ROOT$/packages/create-clis/assets/**",
         "$TURBO_ROOT$/scripts/**",
         "$TURBO_ROOT$/tsconfig.json",
       ],
