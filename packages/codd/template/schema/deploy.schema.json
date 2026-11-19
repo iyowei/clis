@@ -17,16 +17,18 @@
     },
     "name": {
       "type": "string",
-      "pattern": "^[a-z0-9-]+$",
+      "pattern": "^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$",
       "minLength": 1,
       "maxLength": 32,
-      "description": "[必填] 实例逻辑名称 (无默认值, 仅小写字母, 数字与连字符, <= 32 字符)。生成器自动将 <stackPrefix>-<name>-<fingerprint> 组合进 dist/ 交付目录, 服务器栈目录与备份目录, 确保同机部署同名实例也 100% 不冲突。"
+      "description": "[必填] 实例逻辑名称 (无默认值, 合规 DNS-1123 标签: 仅小写字母, 数字与连字符, 首尾为字母或数字, <= 32 字符)。生成器自动将 <stackPrefix>-<name>-<fingerprint> 组合进 dist/ 交付目录, 服务器栈目录与备份目录, 确保同机部署同名实例也 100% 不冲突。"
     },
     "stackPrefix": {
       "type": "string",
-      "pattern": "^[a-z0-9-]+$",
+      "pattern": "^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$",
+      "minLength": 1,
+      "maxLength": 32,
       "default": "mongo",
-      "description": "[选填] 容器, 网络, 卷与工具镜像命名前缀。不填默认使用 \"mongo\" (<stackPrefix>-<fingerprint>)。"
+      "description": "[选填] 容器, 网络, 卷与工具镜像命名前缀 (合规 DNS-1123 标签)。不填默认使用 \"mongo\" (<stackPrefix>-<fingerprint>)。"
     },
     "hardware": {
       "type": "object",

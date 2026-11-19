@@ -84,6 +84,15 @@ const validateHardwareBounds = (hw: HardwareSpec): WorkloadType => {
       `hardware.diskGb 须在 10-65536 GB 之间 (当前填了 ${hw.diskGb}), 请至少分配 10 GB 数据盘`,
     );
   }
+  if (
+    hw.expectedAppConnections !== undefined &&
+    (!Number.isInteger(hw.expectedAppConnections) ||
+      hw.expectedAppConnections < 1)
+  ) {
+    throw new SizingError(
+      `hardware.expectedAppConnections 须为 >= 1 的整数 (当前填了 ${String(hw.expectedAppConnections)})`,
+    );
+  }
   const workload: WorkloadType = hw.workload ?? 'balanced';
   if (!(workload in OPLOG_DISK_RATIO)) {
     throw new SizingError(
