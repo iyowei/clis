@@ -55,7 +55,7 @@ body:
     attributes:
       label: Runtime and version
       description: The runtime the run actually used (bun or node) and its version.
-      placeholder: 'bun 1.4.2 / node 24.7.0'
+      placeholder: 'bun 1.4.5 / node 24.7.0'
     validations:
       required: true
   - type: dropdown

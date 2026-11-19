@@ -48,7 +48,7 @@ body:
     id: runtime
     attributes:
       label: Runtime and version
-      placeholder: 'bun 1.4.2 / node 24.0.0'
+      placeholder: 'bun 1.4.5 / node 24.0.0'
     validations:
       required: true
   - type: textarea
