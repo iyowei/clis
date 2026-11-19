@@ -16,9 +16,13 @@ import { REPO_ROOT, walkFiles } from './lint-doc-shared.ts';
 /** 备份后缀: 与宪法「修改前置备份」的命名收尾一致 */
 const BACKUP_SUFFIXES = ['.modified', '.deleted'] as const;
 
-/** 全树找出散落备份 (相对路径, 供测试注入临时根) */
+/**
+ * 全树找出散落备份 (相对路径, 供测试注入临时根)。
+ * 刻意传 skipPaths: []: 模板目录 (template / template-skeletons) 属源码区, 同样禁止残留备份,
+ * 仅跳过 node_modules / .git / .turbo / dist / mutants 等 SKIP_DIRS。
+ */
 export function findStrayBackups(root: string = REPO_ROOT): string[] {
-  return walkFiles(root, BACKUP_SUFFIXES);
+  return walkFiles(root, BACKUP_SUFFIXES, { skipPaths: [] });
 }
 
 /** 主流程: 打印散落清单并以退出码收口 (0 无散落 / 1 有散落) */
@@ -29,7 +33,7 @@ function main(): void {
     return;
   }
   process.stderr.write(
-    `检出 ${strays.length} 个散落备份 (备份纪律: 移出仓库至 ~/tmp/sweep_backups/, 保留相对结构):\n`,
+    `检出 ${strays.length} 个散落备份 (备份纪律: 移出仓库至 ~/tmp/clis_backups/, 保留相对结构):\n`,
   );
   for (const stray of strays) process.stderr.write(`  ${stray}\n`);
   process.exitCode = 1;

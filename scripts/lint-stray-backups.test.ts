@@ -42,12 +42,14 @@ describe('findStrayBackups', () => {
     expect(findStrayBackups(makeRoot(['README.md', 'a/b/c.json']))).toEqual([]);
   });
 
-  test('嵌套深处的备份同样被抓', () => {
+  test('嵌套深处与模板源码目录内的备份同样被抓', () => {
     const root = makeRoot([
       'docs/nested/deep/note.md.20260101_000000.modified',
+      'packages/demo/template/app/lib.ts.20260101_000000.modified',
     ]);
     expect(findStrayBackups(root)).toEqual([
       'docs/nested/deep/note.md.20260101_000000.modified',
+      'packages/demo/template/app/lib.ts.20260101_000000.modified',
     ]);
   });
 });
