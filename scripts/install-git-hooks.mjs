@@ -52,11 +52,21 @@ const realpathOr = (value) => {
   }
 };
 
+/** 清洗宿主 GIT_* 环境变量: 防止外层 git 钩子或子模块环境把 rev-parse 改道到别的仓库 */
+const cleanGitEnv = () => {
+  const env = {};
+  for (const [key, value] of Object.entries(process.env)) {
+    if (!key.startsWith('GIT_') && value !== undefined) env[key] = value;
+  }
+  return env;
+};
+
 /** 包根所在 git 仓库的根 (不在仓库内或 git 不可用时为 null) */
 const gitToplevel = () => {
   const out = run('git', ['rev-parse', '--show-toplevel'], {
     cwd: PKG_ROOT,
     encoding: 'utf8',
+    env: cleanGitEnv(),
   });
   return out.status === 0 ? out.stdout.trim() : null;
 };
