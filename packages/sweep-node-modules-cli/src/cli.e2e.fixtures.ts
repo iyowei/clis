@@ -53,6 +53,11 @@ export function runCli(
     ...(process.env as Record<string, string>),
   };
   delete env.SWEEP_NM_CONFIG;
+  if (options.env?.HOME !== undefined) {
+    // Windows 下 os.homedir() 读 USERPROFILE、默认配置读 APPDATA: 隔离 HOME 时一并收口
+    env.USERPROFILE = options.env.HOME;
+    env.APPDATA = join(options.env.HOME, 'AppData', 'Roaming');
+  }
   Object.assign(env, options.env);
   if (options.noColor === false) {
     delete env.NO_COLOR;

@@ -122,28 +122,25 @@ function makeCase(label: string): { home: string; target: string } {
   return { home, target: join(root, 'proj') };
 }
 
-/** 跑一次接线后的 CLI (真实模板经环境变量注入; 隔离 HOME 防宿主 git 配置泄漏) */
+/** 跑一次接线后的 CLI (真实模板经环境变量注入; 隔离 HOME / USERPROFILE / GIT_CONFIG_GLOBAL 防宿主 git 配置泄漏) */
 function runCli(
   runner: string,
   args: string[],
   options: { home: string; input?: string },
 ): { status: number | null; stdout: string; stderr: string } {
-  const env: Record<string, string> = {
-    ...(process.env as Record<string, string>),
-    HOME: options.home,
-    CREATE_CLIS_TEMPLATE_DIR: TEMPLATE_DIR,
-  };
-  const result = spawnSync(runner, [CLI, ...args], {
+  const { status, stdout, stderr } = spawnSync(runner, [CLI, ...args], {
     encoding: 'utf8',
-    env,
+    env: {
+      ...(process.env as Record<string, string>),
+      HOME: options.home,
+      USERPROFILE: options.home,
+      GIT_CONFIG_GLOBAL: join(options.home, '.gitconfig'),
+      CREATE_CLIS_TEMPLATE_DIR: TEMPLATE_DIR,
+    },
     input: options.input,
     timeout: TIMEOUT_MS,
   });
-  return {
-    status: result.status,
-    stdout: result.stdout ?? '',
-    stderr: result.stderr ?? '',
-  };
+  return { status, stdout: stdout ?? '', stderr: stderr ?? '' };
 }
 
 /** 以 --yes 零交互跑一次生成 (先写隔离 HOME 的 git 全局配置, 供 owner 默认值取用) */
@@ -160,11 +157,15 @@ function runYes(
 /** 全树零残留断言: 路径与内容都不得含给定形态, 命中即携文件与形态名失败 */
 function expectNoForm(target: string, forms: readonly string[]): void {
   for (const rel of listTemplateFiles(target)) {
-    const pathHits = forms.filter((form) => rel.includes(form));
-    expect(pathHits, `${rel} 路径残留形态`).toEqual([]);
+    expect(
+      forms.filter((f) => rel.includes(f)),
+      `${rel} 路径残留形态`,
+    ).toEqual([]);
     const text = readAt(target, rel);
-    const textHits = forms.filter((form) => text.includes(form));
-    expect(textHits, `${rel} 内容残留形态`).toEqual([]);
+    expect(
+      forms.filter((f) => text.includes(f)),
+      `${rel} 内容残留形态`,
+    ).toEqual([]);
   }
 }
 
