@@ -12,6 +12,7 @@ export {
 } from './assets.ts';
 export {
   type ComputedSizing,
+  HARDWARE_BOUNDS,
   computeSizing,
   type FormulaStep,
   type HardwareSpec,
@@ -32,6 +33,7 @@ export {
   randomAlnumSecret,
   randomFingerprint,
   randomKeyFile,
+  withStateLock,
 } from './state.ts';
 export {
   type AppInput,
@@ -48,9 +50,16 @@ export {
   type RotateMode,
 } from './types.ts';
 export {
-  assertBunEngineCompatible,
+  ALNUM_RE,
+  DB_NAME_RE,
   DNS_LABEL_RE,
   DNS_SUBDOMAIN_RE,
   IPV4_RE,
+  RESERVED_DBS,
+  SAFE_ABS_PATH_RE,
+  assertBunEngineCompatible,
+  validateAppInput,
   validateManifest,
+  validateNodeBindIp,
+  validateSafeAbsPath,
 } from './validate.ts';

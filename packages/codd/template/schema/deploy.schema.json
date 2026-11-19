@@ -79,8 +79,8 @@
     },
     "bunImage": {
       "type": "string",
-      "default": "oven/bun:1-slim",
-      "description": "[选填] 构建 mongo-tools 运维容器所提取 Bun 二进制的基础镜像。不填默认使用 \"oven/bun:1-slim\"。"
+      "default": "oven/bun:1.4.5-slim",
+      "description": "[选填] 构建 mongo-tools 运维容器所提取 Bun 二进制的基础镜像。不填默认使用 \"oven/bun:1.4.5-slim\"。"
     },
     "tz": {
       "type": "string",
@@ -141,7 +141,9 @@
           "db": {
             "type": "string",
             "pattern": "^[A-Za-z0-9_-]+$",
-            "description": "[必填] 业务数据库名 (禁止 admin, local, config)。"
+            "minLength": 1,
+            "maxLength": 63,
+            "description": "[必填] 业务数据库名 (禁止 admin, local, config, 长度 <= 63)。"
           },
           "user": {
             "type": "string",
@@ -258,7 +260,10 @@
         },
         "releaseName": {
           "type": "string",
-          "description": "[选填] Helm Release 名称。不填默认自动嵌入唯一指纹 \"<stackPrefix>-<name>-<fingerprint>\" 确保同 Namespace 零冲突; 若显式填入固定名称则集群内使用该名称, 同时本地 dist/ 目录仍带指纹后缀隔离。"
+          "pattern": "^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$",
+          "minLength": 1,
+          "maxLength": 50,
+          "description": "[选填] Helm Release 名称 (合规 DNS-1123 标签, <= 50 字符以保证派生 init-configmap 与 Job Pod 名恒 <= 63)。不填默认自动嵌入唯一指纹 \"<stackPrefix>-<name>-<fingerprint>\" 确保同 Namespace 零冲突; 若显式填入固定名称则集群内使用该名称, 同时本地 dist/ 目录仍带指纹后缀隔离。"
         },
         "storageClass": {
           "type": "string",

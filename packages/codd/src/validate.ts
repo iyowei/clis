@@ -1,18 +1,25 @@
 /**
- * 部署清单 (DeployManifest) 与运行时引擎兼容性校验。
+ * 部署清单 (DeployManifest) 细粒度校验与运行时引擎兼容性检查。
  */
-import { parseSshInput } from './ssh.ts';
 import {
   type AppInput,
   ConfigError,
   type DeployManifest,
   type DeployMode,
   type NetworkMode,
-  type NodeInput,
+  type NodeOs,
 } from './types.ts';
+import {
+  validateK8sSection,
+  validatePodmanNodesSection,
+} from './validate-sections.ts';
 
 const VALID_MODES = new Set(['single', 'replica-set', 'k8s-single', 'k8s-rs']);
-const RESERVED_DBS = new Set(['admin', 'local', 'config']);
+export const RESERVED_DBS: ReadonlySet<string> = new Set([
+  'admin',
+  'local',
+  'config',
+]);
 const WARN_PORTS = new Set([27017, 27018, 27019]);
 
 const ALLOWED_KEYS = new Set([
@@ -37,21 +44,20 @@ const ALLOWED_KEYS = new Set([
   'nodes',
   'k8s',
 ]);
+const ALLOWED_HARDWARE_KEYS = new Set([
+  'cpuCores',
+  'memoryGb',
+  'diskGb',
+  'workload',
+  'expectedAppConnections',
+]);
+const ALLOWED_APP_KEYS = new Set(['db', 'user', 'password']);
 const ALLOWED_AUTH_KEYS = new Set([
   'rootUsername',
   'rootPassword',
   'backupUsername',
   'backupPassword',
   'keyFile',
-  'existingSecret',
-]);
-const ALLOWED_K8S_KEYS = new Set([
-  'namespace',
-  'releaseName',
-  'storageClass',
-  'serviceType',
-  'nodePort',
-  'podAntiAffinity',
   'existingSecret',
 ]);
 
@@ -61,17 +67,15 @@ export const DNS_LABEL_RE = /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/;
 export const DNS_SUBDOMAIN_RE = /^[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?$/;
 export const IPV4_RE =
   /^(?:(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)\.){3}(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)$/;
+export const ALNUM_RE = /^[A-Za-z0-9]+$/;
+export const DB_NAME_RE = /^[A-Za-z0-9_-]+$/;
+export const SAFE_ABS_PATH_RE =
+  /^\/[A-Za-z0-9._@+-]+(?:\/[A-Za-z0-9._@+-]+)*\/?$/;
 
-const ALNUM_RE = /^[A-Za-z0-9]+$/;
-const DB_NAME_RE = /^[A-Za-z0-9_-]+$/;
-const HOST_NAME_RE = /^[A-Za-z0-9._-]+$/;
 const IMAGE_REF_RE = /^[A-Za-z0-9][A-Za-z0-9._/:@-]{0,254}$/;
 const IMAGE_TAG_RE = /^[A-Za-z0-9_][A-Za-z0-9._-]{0,127}$/;
 const TZ_RE = /^[A-Za-z0-9_+-]+(?:\/[A-Za-z0-9_+-]+){0,2}$/;
 const RS_NAME_RE = /^[A-Za-z0-9][A-Za-z0-9_-]{0,62}$/;
-const SAFE_ABS_PATH_RE = /^\/[A-Za-z0-9._@+-]+(?:\/[A-Za-z0-9._@+-]+)*\/?$/;
-const PODMAN_BIN_RE =
-  /^(?:[A-Za-z0-9._-]+|\/[A-Za-z0-9._@+-]+(?:\/[A-Za-z0-9._@+-]+)*)$/;
 
 const isPlainObject = (val: unknown): val is Record<string, unknown> =>
   val !== null && typeof val === 'object' && !Array.isArray(val);
@@ -90,13 +94,14 @@ const checkAllowedKeys = (
   }
 };
 
+const isValidAlnum = (val: unknown): val is string =>
+  typeof val === 'string' &&
+  val.length > 0 &&
+  ALNUM_RE.test(val) &&
+  val !== 'CHANGE_ME';
+
 const checkAlnum = (val: unknown, label: string): string => {
-  if (
-    typeof val !== 'string' ||
-    val.length === 0 ||
-    !ALNUM_RE.test(val) ||
-    val === 'CHANGE_ME'
-  ) {
+  if (!isValidAlnum(val)) {
     throw new ConfigError(
       `${label} 必须为非空字母数字字符串, 且不能为 CHANGE_ME`,
     );
@@ -163,18 +168,67 @@ const checkK8sResourceName = (val: unknown, label: string): void => {
   }
 };
 
-const checkSafeAbsPath = (val: unknown, label: string): string => {
+/** 细粒度校验安全绝对路径 (供 CLI 向导与清单校验共用) */
+export const validateSafeAbsPath = (
+  val: unknown,
+  nodeOs?: NodeOs,
+): string | null => {
   if (
     typeof val !== 'string' ||
     !SAFE_ABS_PATH_RE.test(val) ||
     hasPathTraversal(val) ||
     val.includes('CHANGE_ME')
   ) {
-    throw new ConfigError(
-      `${label} 必须是安全的绝对路径 (不含 '..'、空格、引号或 Shell 元字符, 且不含 CHANGE_ME)`,
-    );
+    return "必须是安全的绝对路径 (以 / 开头, 不含 '..'、空格、引号或 Shell 元字符, 且不含 CHANGE_ME)";
   }
-  return val;
+  if (
+    nodeOs === 'macos' &&
+    !val.startsWith('/Users/') &&
+    !val.startsWith('/private/')
+  ) {
+    return 'macOS 节点路径必须位于 /Users/ 或 /private/ 下以便 Podman VM 挂载';
+  }
+  return null;
+};
+
+/** 细粒度校验单个业务库与账号配置 (供 CLI 向导与清单校验共用) */
+export const validateAppInput = (app: Partial<AppInput>): string | null => {
+  const db = app.db;
+  if (
+    typeof db !== 'string' ||
+    db.length === 0 ||
+    db.length > 63 ||
+    !DB_NAME_RE.test(db)
+  ) {
+    return `业务库名 '${String(db)}' 非法 (仅允许字母、数字、下划线与连字符, 长度 1-63)`;
+  }
+  if (RESERVED_DBS.has(db)) {
+    return `业务库名 '${db}' 使用了保留系统库名 (admin / local / config)`;
+  }
+  if (!isValidAlnum(app.user)) {
+    return `业务库 '${db}' 的账号名必须为非空字母数字字符串, 且不能为 CHANGE_ME`;
+  }
+  if (app.password !== undefined && !isValidAlnum(app.password)) {
+    return `业务库 '${db}' 的密码必须为非空字母数字字符串, 且不能为 CHANGE_ME`;
+  }
+  return null;
+};
+
+/** 细粒度校验节点 bindIp (供 CLI 向导与清单校验共用) */
+export const validateNodeBindIp = (
+  bindIp: unknown,
+  mode: DeployMode,
+): string | null => {
+  if (typeof bindIp !== 'string' || !IPV4_RE.test(bindIp)) {
+    return `bindIp 必须是合法 IPv4 地址, 当前为 '${String(bindIp)}'`;
+  }
+  if (
+    mode === 'replica-set' &&
+    (bindIp === '127.0.0.1' || bindIp === '0.0.0.0')
+  ) {
+    return `replica-set 模式 bindIp 不能是 ${bindIp}, 请填私网或 WireGuard IP`;
+  }
+  return null;
 };
 
 const parseSemverTuple = (ver: string): [number, number, number] | null => {
@@ -182,25 +236,52 @@ const parseSemverTuple = (ver: string): [number, number, number] | null => {
   return m ? [Number(m[1]), Number(m[2]), Number(m[3])] : null;
 };
 
+const compareSemver = (
+  a: [number, number, number],
+  b: [number, number, number],
+): number => {
+  if (a[0] !== b[0]) return a[0] - b[0];
+  if (a[1] !== b[1]) return a[1] - b[1];
+  return a[2] - b[2];
+};
+
+const matchesUpperBound = (
+  prefix: string,
+  cur: [number, number, number],
+  min: [number, number, number],
+): boolean => {
+  if (prefix === '^') {
+    if (min[0] > 0) return cur[0] === min[0];
+    if (min[1] > 0) return cur[0] === 0 && cur[1] === min[1];
+    return cur[0] === 0 && cur[1] === 0 && cur[2] === min[2];
+  }
+  if (prefix === '~') {
+    return cur[0] === min[0] && cur[1] === min[1];
+  }
+  return true;
+};
+
 /**
- * 纯工具函数: 显式检查给定 Bun 版本是否满足目标引擎下限。
- * 注意: generateBundle 不应拿容器工具镜像的 engines.bun 去阻断本机宿主运行生成器。
+ * 纯工具函数: 显式检查给定 Bun 版本是否满足目标引擎范围 (支持 >= / ^ / ~ / 精确版本)。
  */
 export const assertBunEngineCompatible = (
   requiredRange: string | undefined,
   currentBunVersion: string | undefined = process.versions.bun,
 ): void => {
   if (!requiredRange || !currentBunVersion) return;
-  const min = parseSemverTuple(requiredRange.replace(/^>=\s*/, ''));
+  const trimmed = requiredRange.trim();
+  const opMatch = /^(>=|\^|~)?\s*(.+)$/.exec(trimmed);
+  if (!opMatch) return;
+  const prefix = opMatch[1] ?? '>=';
+  const min = parseSemverTuple(opMatch[2]!);
   const cur = parseSemverTuple(currentBunVersion);
   if (!min || !cur) return;
+
   const ok =
-    cur[0] > min[0] ||
-    (cur[0] === min[0] && cur[1] > min[1]) ||
-    (cur[0] === min[0] && cur[1] === min[1] && cur[2] >= min[2]);
+    compareSemver(cur, min) >= 0 && matchesUpperBound(prefix, cur, min);
   if (!ok) {
     throw new ConfigError(
-      `当前 Bun 版本 (${currentBunVersion}) 低于最低要求 (${requiredRange}), 请执行 bun upgrade 升级后再运行`,
+      `当前 Bun 版本 (${currentBunVersion}) 不满足引擎要求 (${requiredRange}), 请执行 bun upgrade 调整版本后再运行`,
     );
   }
 };
@@ -214,12 +295,10 @@ const validateScalarFields = (m: DeployManifest): void => {
     checkPattern(m.bunImage, IMAGE_REF_RE, 'bunImage', true);
   if (m.tz !== undefined) checkPattern(m.tz, TZ_RE, 'tz');
   if (m.rsName !== undefined) checkPattern(m.rsName, RS_NAME_RE, 'rsName');
-  if (m.keepDaily !== undefined) {
+  if (m.keepDaily !== undefined)
     checkIntRange(m.keepDaily, 1, Number.MAX_SAFE_INTEGER, 'keepDaily');
-  }
-  if (m.keepWeekly !== undefined) {
+  if (m.keepWeekly !== undefined)
     checkIntRange(m.keepWeekly, 0, Number.MAX_SAFE_INTEGER, 'keepWeekly');
-  }
   if (m.multiNetAlias !== undefined && typeof m.multiNetAlias !== 'boolean') {
     throw new ConfigError('multiNetAlias 必须为布尔值 (true 或 false)');
   }
@@ -235,24 +314,17 @@ const validateAppsAndAuth = (
   const seenDbs = new Set<string>();
   for (let i = 0; i < apps.length; i += 1) {
     const app = apps[i];
-    if (!isPlainObject(app))
+    if (!isPlainObject(app)) {
       throw new ConfigError(`apps[${i}] 必须是 JSON 对象`);
-    const db = app.db;
-    if (
-      typeof db !== 'string' ||
-      !DB_NAME_RE.test(db) ||
-      RESERVED_DBS.has(db)
-    ) {
-      throw new ConfigError(
-        `业务库名 '${String(db)}' 非法或使用了保留系统库名`,
-      );
     }
-    if (seenDbs.has(db))
+    checkAllowedKeys(app, ALLOWED_APP_KEYS, `apps[${i}]`);
+    const appErr = validateAppInput(app as Partial<AppInput>);
+    if (appErr) throw new ConfigError(appErr);
+    const db = (app as unknown as AppInput).db;
+    if (seenDbs.has(db)) {
       throw new ConfigError(`apps 中存在重复数据库名: ${db}`);
+    }
     seenDbs.add(db);
-    checkAlnum(app.user, `apps[${db}].user`);
-    if (app.password !== undefined)
-      checkAlnum(app.password, `apps[${db}].password`);
   }
 
   if (auth === undefined) return;
@@ -269,8 +341,9 @@ const validateAppsAndAuth = (
     if (auth[key] !== undefined) checkAlnum(auth[key], `auth.${key}`);
   }
   if (auth.keyFile !== undefined && auth.keyFile !== '') {
-    if (typeof auth.keyFile !== 'string')
+    if (typeof auth.keyFile !== 'string') {
       throw new ConfigError('auth.keyFile 必须是字符串');
+    }
     const kf = auth.keyFile.trim();
     if (!/^[A-Za-z0-9+/=]+$/.test(kf) || kf.length < 16 || kf.length > 1024) {
       throw new ConfigError('auth.keyFile 须为 16-1024 位单行 base64 字符串');
@@ -281,153 +354,12 @@ const validateAppsAndAuth = (
   }
 };
 
-const validateK8sConfig = (k8s: DeployManifest['k8s']): void => {
-  if (k8s === undefined) return;
-  if (!isPlainObject(k8s)) throw new ConfigError('k8s 必须是 JSON 对象');
-  checkAllowedKeys(k8s, ALLOWED_K8S_KEYS, 'k8s');
-
-  if (k8s.namespace !== undefined)
-    checkDnsLabel(k8s.namespace, 'k8s.namespace', 63);
-  if (k8s.releaseName !== undefined)
-    checkDnsLabel(k8s.releaseName, 'k8s.releaseName', 53);
-  if (k8s.storageClass !== undefined)
-    checkK8sResourceName(k8s.storageClass, 'k8s.storageClass');
-  if (
-    k8s.serviceType !== undefined &&
-    k8s.serviceType !== 'ClusterIP' &&
-    k8s.serviceType !== 'NodePort'
-  ) {
-    throw new ConfigError(
-      `k8s.serviceType 只允许 ClusterIP 或 NodePort, 当前为 '${String(k8s.serviceType)}'`,
-    );
-  }
-  if (k8s.nodePort !== undefined)
-    checkIntRange(k8s.nodePort, 30000, 32767, 'k8s.nodePort');
-  if (
-    k8s.podAntiAffinity !== undefined &&
-    k8s.podAntiAffinity !== 'hard' &&
-    k8s.podAntiAffinity !== 'soft'
-  ) {
-    throw new ConfigError(
-      `k8s.podAntiAffinity 只允许 hard 或 soft, 当前为 '${String(k8s.podAntiAffinity)}'`,
-    );
-  }
-  if (k8s.existingSecret !== undefined) {
-    checkK8sResourceName(k8s.existingSecret, 'k8s.existingSecret');
-  }
-};
-
-const validateSinglePodmanNode = (
-  node: NodeInput,
-  index: number,
-  mode: DeployMode,
-  networkMode: NetworkMode,
-  seenNames: Set<string>,
-  seenHosts: Set<string>,
-): void => {
-  if (!isPlainObject(node))
-    throw new ConfigError(`nodes[${index}] 必须是 JSON 对象`);
-  if (node.os !== 'linux' && node.os !== 'macos') {
-    throw new ConfigError(`nodes[${index}].os 只允许 linux 或 macos`);
-  }
-  if (networkMode === 'host' && node.os === 'macos') {
-    throw new ConfigError(
-      'macOS 节点运行在 Podman 虚拟机内, 不支持 networkMode=host, 请改用默认 bridge',
-    );
-  }
-  const backupDir = checkSafeAbsPath(
-    node.backupDir,
-    `nodes[${index}].backupDir`,
-  );
-  if (
-    node.os === 'macos' &&
-    !backupDir.startsWith('/Users/') &&
-    !backupDir.startsWith('/private/')
-  ) {
-    throw new ConfigError(
-      `macOS 节点 nodes[${index}].backupDir 必须位于 /Users/ 或 /private/ 下`,
-    );
-  }
-  if (node.stackDir !== undefined)
-    checkSafeAbsPath(node.stackDir, `nodes[${index}].stackDir`);
-  if (node.podmanBin !== undefined) {
-    if (
-      typeof node.podmanBin !== 'string' ||
-      !PODMAN_BIN_RE.test(node.podmanBin) ||
-      hasPathTraversal(node.podmanBin)
-    ) {
-      throw new ConfigError(
-        `nodes[${index}].podmanBin 必须为安全的命令名或绝对路径 (不含 '..' 与 Shell 元字符)`,
-      );
-    }
-  }
-
-  const nodeName =
-    node.name ?? (mode === 'single' ? 'main' : `node${index + 1}`);
-  checkPattern(nodeName, HOST_NAME_RE, `nodes[${index}].name`);
-  if (seenNames.has(nodeName))
-    throw new ConfigError(`nodes 存在重复名称: ${nodeName}`);
-  seenNames.add(nodeName);
-
-  const bindIp = node.bindIp ?? (mode === 'single' ? '127.0.0.1' : '');
-  if (typeof bindIp !== 'string' || !IPV4_RE.test(bindIp)) {
-    throw new ConfigError(
-      `nodes[${index}].bindIp 必须是合法 IPv4 地址, 当前为 '${String(bindIp)}'`,
-    );
-  }
-  if (
-    mode === 'replica-set' &&
-    (bindIp === '127.0.0.1' || bindIp === '0.0.0.0')
-  ) {
-    throw new ConfigError(
-      `replica-set 模式 nodes[${index}].bindIp 不能是 ${bindIp}, 请填私网或 WireGuard IP`,
-    );
-  }
-
-  const host = node.host ?? (mode === 'single' ? '127.0.0.1' : nodeName);
-  checkPattern(host, HOST_NAME_RE, `nodes[${index}].host`);
-  if (seenHosts.has(host))
-    throw new ConfigError(`nodes 存在重复 host: ${host}`);
-  seenHosts.add(host);
-
-  if (node.sshTarget !== undefined && node.sshTarget !== '') {
-    if (typeof node.sshTarget !== 'string') {
-      throw new ConfigError(`nodes[${index}].sshTarget 必须为字符串`);
-    }
-    parseSshInput(node.sshTarget, `nodes[${index}].sshTarget`);
-  }
-};
-
-const validatePodmanNodes = (
-  nodes: NodeInput[] | undefined,
-  mode: DeployMode,
-  networkMode: NetworkMode,
-): void => {
-  const expected = mode === 'single' ? 1 : 3;
-  if (!Array.isArray(nodes) || nodes.length !== expected) {
-    throw new ConfigError(`${mode} 模式需要恰好 ${expected} 个 nodes 定义`);
-  }
-  const seenNames = new Set<string>();
-  const seenHosts = new Set<string>();
-  for (let i = 0; i < nodes.length; i += 1) {
-    validateSinglePodmanNode(
-      nodes[i]!,
-      i,
-      mode,
-      networkMode,
-      seenNames,
-      seenHosts,
-    );
-  }
-};
-
 export const validateManifest = (manifest: DeployManifest): string[] => {
   const warnings: string[] = [];
   if (!isPlainObject(manifest)) {
     throw new ConfigError('deploy.json 顶层必须是 JSON 对象');
   }
   const rawObj = manifest as unknown as Record<string, unknown>;
-
   if ('fingerprint' in rawObj) {
     throw new ConfigError(
       'fingerprint 由生成器自动生成并锁存 .codd-state/, 不得在 deploy.json 中配置 (确需换指纹请用 CLI 参数 --new-fingerprint)',
@@ -446,6 +378,12 @@ export const validateManifest = (manifest: DeployManifest): string[] => {
   checkDnsLabel(manifest.name, 'name', 32);
   if (manifest.stackPrefix !== undefined) {
     checkDnsLabel(manifest.stackPrefix, 'stackPrefix', 32);
+  }
+  if (manifest.hardware !== undefined) {
+    if (!isPlainObject(manifest.hardware)) {
+      throw new ConfigError('hardware 必须是 JSON 对象');
+    }
+    checkAllowedKeys(manifest.hardware, ALLOWED_HARDWARE_KEYS, 'hardware');
   }
   validateScalarFields(manifest);
 
@@ -478,9 +416,23 @@ export const validateManifest = (manifest: DeployManifest): string[] => {
   }
 
   validateAppsAndAuth(manifest.apps, manifest.auth);
-  validateK8sConfig(manifest.k8s);
+  const sectionValidators = {
+    dnsLabelRe: DNS_LABEL_RE,
+    dnsSubdomainRe: DNS_SUBDOMAIN_RE,
+    validateSafeAbsPath,
+    validateNodeBindIp,
+  };
+  validateK8sSection(manifest.k8s, sectionValidators);
   if (manifest.mode === 'single' || manifest.mode === 'replica-set') {
-    validatePodmanNodes(manifest.nodes, manifest.mode, networkMode);
+    validatePodmanNodesSection({
+      nodes: manifest.nodes,
+      mode: manifest.mode,
+      networkMode,
+      port,
+      hostPort,
+      warnings,
+      validators: sectionValidators,
+    });
   }
 
   return warnings;
