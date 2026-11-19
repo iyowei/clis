@@ -11,7 +11,12 @@ import {
 } from 'node:fs';
 import { join } from 'node:path';
 
-import type { DeployManifest, GenerateState, RotateMode } from './types.ts';
+import {
+  ConfigError,
+  type DeployManifest,
+  type GenerateState,
+  type RotateMode,
+} from './types.ts';
 
 export const randomAlnumSecret = (bytes = 12): string =>
   randomBytes(bytes).toString('hex');
@@ -54,15 +59,30 @@ const pickSecret = (
   return generator();
 };
 
+const readPreviousState = (stateFile: string): Partial<GenerateState> => {
+  if (!existsSync(stateFile)) return {};
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(readFileSync(stateFile, 'utf8'));
+  } catch (err) {
+    const detail = err instanceof Error ? err.message : String(err);
+    throw new ConfigError(
+      `状态文件 ${stateFile} 损坏 (不是合法 JSON): ${detail}`,
+    );
+  }
+  if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    throw new ConfigError(`状态文件 ${stateFile} 损坏 (顶层应为 JSON 对象)`);
+  }
+  return parsed as Partial<GenerateState>;
+};
+
 export const loadOrUpdateState = (
   stateFile: string,
   manifest: DeployManifest,
   rotate: RotateMode,
   newFingerprint: boolean,
 ): GenerateState => {
-  const prev: Partial<GenerateState> = existsSync(stateFile)
-    ? (JSON.parse(readFileSync(stateFile, 'utf8')) as GenerateState)
-    : {};
+  const prev = readPreviousState(stateFile);
 
   const fingerprint = newFingerprint
     ? randomFingerprint()
