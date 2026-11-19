@@ -71,7 +71,9 @@ The remaining flags:
 - **`--no-git`**: skip `git init` (runs by default);
 - **`--no-install`**: skip dependency install (runs by default);
 - **`--yes`**: all defaults, zero interaction;
-- **`--help`**: print help.
+- **`-V`, `--version`**: print version;
+- **`-h`, `--help`**: print help;
+- **`create-clis update [--check] [--pm <pm>] [--registry <url>] [--force]`**: when installed globally via bun / npm / pnpm / yarn / volta, detect the active package manager and self-update (or inspect the latest version with `--check`).
 
 Under `npm create`, flags go after `--` (`npm create clis -- --tier core`); npm strips that `--`, which is standard npm behavior the generator does not have to handle. Values are validated the moment they are collected (kebab-case name, command-safe bin name, well-formed scope, owner, and repo URL), failing on the spot with the reason.
 

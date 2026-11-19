@@ -107,6 +107,10 @@ sweep-nm config
 # 初始化向导: 交互式生成配置文件
 sweep-nm init
 
+# 自更新: 自动识别当前安装器 (bun / npm / pnpm / yarn / volta) 升级到最新版
+sweep-nm update
+sweep-nm update --check
+
 # 完整选项表 (亦可 -h)
 sweep-nm --help
 ```

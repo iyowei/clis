@@ -71,7 +71,9 @@ npm create clis -- my-tool --tier core
 - **`--no-git`**: 跳过 `git init` (默认执行);
 - **`--no-install`**: 跳过依赖安装 (默认执行);
 - **`--yes`**: 全部取默认值, 零交互;
-- **`--help`**: 打印帮助。
+- **`-V`, `--version`**: 打印版本号;
+- **`-h`, `--help`**: 打印帮助;
+- **`create-clis update [--check] [--pm <管理器>] [--registry <url>] [--force]`**: 全局安装场景下自动识别安装器 (bun / npm / pnpm / yarn / volta) 并原地自更新 (`--check` 仅检查)。
 
 经 `npm create` 调用时, 旗标要写在 `--` 后面 (`npm create clis -- --tier core`); 这个 `--` 由 npm 剥离, 是生态的既有行为, 生成器不参与。各变量的取值在收集那一刻就校验 (项目名 kebab-case、bin 名命令行可用、scope / owner / 仓库地址形态), 不合法当场给原因。
 

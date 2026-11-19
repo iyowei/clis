@@ -107,6 +107,10 @@ sweep-nm config
 # init wizard: generate a config file interactively
 sweep-nm init
 
+# self-update: detect your package manager (bun / npm / pnpm / yarn / volta) and upgrade
+sweep-nm update
+sweep-nm update --check
+
 # full option list (also -h)
 sweep-nm --help
 ```
