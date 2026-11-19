@@ -17,7 +17,11 @@ import { join } from 'node:path';
 
 import { cleanGitEnv } from '../../../scripts/lib/git-env.ts';
 import { buildCoddAssets, toPosixPath } from './build-assets.ts';
-import { rewriteDtsSpecifiers } from './build.ts';
+import {
+  INTERNAL_DTS_FILES,
+  pruneInternalDts,
+  rewriteDtsSpecifiers,
+} from './build.ts';
 import {
   ASSET_DIR,
   ASSET_MANIFEST_FILE,
@@ -130,6 +134,30 @@ describe('模板资产构建与 .d.ts 后处理', () => {
     expect(readFileSync(join(dir, 'index.d.ts'), 'utf8')).toContain(
       "export type T = import('./nested/b.js').B;",
     );
+  });
+
+  test('pruneInternalDts 清理 3 个内部 .d.ts 并在公开声明泄漏引用时告警', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'codd-prune-dts-'));
+    dirs.push(dir);
+    for (const f of INTERNAL_DTS_FILES) {
+      writeFileSync(join(dir, f), 'export const internal = 1;\n', 'utf8');
+    }
+    writeFileSync(
+      join(dir, 'index.d.ts'),
+      "export { generateBundle } from './generate.js';\n",
+      'utf8',
+    );
+    expect(pruneInternalDts(dir)).toEqual([]);
+    for (const f of INTERNAL_DTS_FILES) {
+      expect(existsSync(join(dir, f))).toBe(false);
+    }
+
+    writeFileSync(
+      join(dir, 'generate.d.ts'),
+      "export type Bad = import('./emit-k8s.js').K8sEmitContext;\n",
+      'utf8',
+    );
+    expect(pruneInternalDts(dir)).toEqual(['generate.d.ts -> emit-k8s']);
   });
 });
 

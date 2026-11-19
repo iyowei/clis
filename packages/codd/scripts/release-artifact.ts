@@ -40,7 +40,7 @@ export const NPM_UNSHIPPABLE_BASENAMES = new Set([
 
 /**
  * 发行面固定项白名单 (不含动态展开的 assets/ 模板资产):
- * 与 tsconfig.build.json 编译出的 11 个 API 模块 .d.ts 精确对应。
+ * 与 tsconfig.build.json 编译并清理未导出内部模块后的 9 个公开 API 模块 .d.ts 精确对应。
  */
 export const PACK_FILES_BASE: readonly string[] = [
   'LICENSE',
@@ -48,9 +48,6 @@ export const PACK_FILES_BASE: readonly string[] = [
   'README.zh-CN.md',
   'package.json',
   'dist/assets.d.ts',
-  'dist/emit-k8s.d.ts',
-  'dist/emit-podman-helpers.d.ts',
-  'dist/emit-podman.d.ts',
   'dist/formulas.d.ts',
   'dist/generate.d.ts',
   'dist/index.d.ts',

@@ -16,8 +16,6 @@
     "src/ssh.ts",
     "src/state.ts",
     "src/render.ts",
-    "src/emit-podman.ts",
-    "src/emit-k8s.ts",
     "src/generate.ts"
   ],
   "exclude": ["src/**/*.test.ts", "src/cli.ts", "src/wizard.ts", "src/ui/**"]
