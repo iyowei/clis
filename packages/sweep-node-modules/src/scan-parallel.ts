@@ -156,8 +156,6 @@ async function walkRoot(root: string, ctx: WalkContext): Promise<void> {
   } = ctx;
   /** 待遍历目录栈 (LIFO 取子树局部性, pop 为 O(1)) */
   const stack: Pending[] = [{ dir: root, included: include.size === 0 }];
-  /** 恒等于「栈深 + 在飞」; 归零即本轮遍历结束 */
-  let outstanding = 1;
   /** 当前在飞的任务数, 上限 CONCURRENCY */
   let active = 0;
   /**
@@ -171,14 +169,24 @@ async function walkRoot(root: string, ctx: WalkContext): Promise<void> {
     resolveDrained = resolve;
   });
 
-  /** 补齐并发空位; outstanding 归零时释放等待方 */
+  /** 补齐并发空位; 遇异常或取消立即停泵, 在飞任务全部排空后释放等待方 */
   function pump(): void {
-    while (active < CONCURRENCY && stack.length > 0) {
+    while (
+      active < CONCURRENCY &&
+      stack.length > 0 &&
+      failures.length === 0 &&
+      !signal?.aborted
+    ) {
       const next = stack.pop()!;
       active += 1;
       void visit(next.dir, next.included);
     }
-    if (outstanding === 0 && resolveDrained !== null) {
+    const stopped = failures.length > 0 || signal?.aborted === true;
+    if (
+      active === 0 &&
+      (stack.length === 0 || stopped) &&
+      resolveDrained !== null
+    ) {
       const resolve = resolveDrained;
       resolveDrained = null;
       resolve();
@@ -246,14 +254,12 @@ async function walkRoot(root: string, ctx: WalkContext): Promise<void> {
 
         // 只入栈, 由 pump 统一分配并发额度; 就地展开会退化为无界递归并发
         stack.push({ dir: join(dir, name), included: childIncluded });
-        outstanding += 1;
       }
     } catch (error) {
       // 取首个异常为准 (对齐 A 的遇错即中断), 抛点推迟到池排空之后
       if (failures.length === 0) failures.push(error);
     } finally {
       active -= 1;
-      outstanding -= 1;
       pump();
     }
   }
@@ -261,6 +267,11 @@ async function walkRoot(root: string, ctx: WalkContext): Promise<void> {
   pump();
   await drained;
   if (failures.length > 0) throw failures[0];
+  if (signal?.aborted) {
+    throw new SweepError('CANCELLED', '扫描在遍历任务检查点被取消', {
+      phase: 'scan',
+    });
+  }
 }
 
 export function createParallelScanner(): Scanner {
@@ -314,6 +325,11 @@ export function createParallelScanner(): Scanner {
       const seenRoots = new Set<string>();
       const roots: string[] = [];
       for (const root of options.roots) {
+        if (options.signal?.aborted) {
+          throw new SweepError('CANCELLED', '扫描在根预检阶段被取消', {
+            phase: 'scan',
+          });
+        }
         let key: string;
         try {
           // realpath 只解析不校验类型, 故随后补一次类型判定 (根指向文件 → 根不是目录)

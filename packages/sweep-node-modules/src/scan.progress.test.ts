@@ -49,7 +49,10 @@ for (const scanner of scanners) {
           include: [],
           signal: controller.signal,
         }),
-      ).rejects.toThrow('扫描在遍历任务检查点被取消');
+      ).rejects.toMatchObject({
+        code: 'CANCELLED',
+        details: { phase: 'scan' },
+      });
     });
 
     test('进度事件: 每命中一处发一条 hit, 形状含 project / target / root', async () => {
@@ -76,3 +79,55 @@ for (const scanner of scanners) {
     });
   });
 }
+
+/** 构造深度为 depth 的串行链式目录列表 (d0, d0/d1, ...) */
+function buildChainDirs(depth: number): string[] {
+  const dirs: string[] = [];
+  let current = '';
+  for (let i = 0; i < depth; i += 1) {
+    current = current ? `${current}/d${i}` : `d${i}`;
+    dirs.push(current);
+  }
+  return dirs;
+}
+
+describe('scan 取消与进度 [parallel] 异常停泵与根预检取消', () => {
+  test('onProgress 抛错: 并发池立刻停泵, 不继续遍历深层待派发目录', async () => {
+    const { root } = await make({
+      projects: buildChainDirs(12).map((dir) => ({ dir })),
+    });
+    let calls = 0;
+
+    await expect(
+      createParallelScanner().scan({
+        roots: [root],
+        exclude: [],
+        include: [],
+        onProgress: () => {
+          calls += 1;
+          throw new Error('stop-scan-now');
+        },
+      }),
+    ).rejects.toThrow('stop-scan-now');
+
+    expect(calls).toBe(1);
+  });
+
+  test('根预检前已取消: 立即抛 CANCELLED, 不进入任何根遍历', async () => {
+    const { root } = await make({ projects: [{ dir: 'alpha' }] });
+    const controller = new AbortController();
+    controller.abort();
+
+    await expect(
+      createParallelScanner().scan({
+        roots: [root],
+        exclude: [],
+        include: [],
+        signal: controller.signal,
+      }),
+    ).rejects.toMatchObject({
+      code: 'CANCELLED',
+      details: { phase: 'scan' },
+    });
+  });
+});
