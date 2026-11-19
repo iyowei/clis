@@ -9,6 +9,8 @@
 import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 
+import { readPackageMeta, runSelfUpdate } from '@iyowei/cli-updater';
+
 import {
   type GenerateHooks,
   TargetRejectedError,
@@ -31,9 +33,14 @@ import {
 const HELP_TEXT = [
   'create-clis: 从 clis 集合仓骨架快照生成独立的新集合仓',
   '',
-  '用法: create-clis [目录] [选项]',
+  '用法:',
+  '  create-clis [目录] [选项]',
+  '  create-clis update [--check] [--pm <管理器>] [--registry <url>] [--force]',
   '',
   '目录缺省为当前目录下以项目名命名的子目录; 目标目录已存在且非空时直接拒绝 (不覆盖)。',
+  '',
+  '子命令:',
+  '  update            自动识别安装器 (bun/npm/pnpm/yarn/volta) 升级到最新版 (--check 仅检查)',
   '',
   '选项:',
   '  --name <名>       项目名 (kebab-case; 缺省取目录 basename)',
@@ -45,7 +52,8 @@ const HELP_TEXT = [
   '  --no-git          跳过 git init (默认执行)',
   '  --no-install      跳过依赖安装 (默认执行)',
   '  --yes             全部取默认值, 零交互',
-  '  --help            本帮助',
+  '  -V, --version     显示版本号',
+  '  -h, --help        本帮助',
   '',
   '经 npm create 调用时旗标写在 -- 之后 (npm create clis -- --tier core), 该 -- 由 npm 剥离。',
 ].join('\n');
@@ -113,7 +121,18 @@ function nextSteps(
  */
 async function main(): Promise<number> {
   const argv = process.argv.slice(2);
-  if (argv.includes('--help')) {
+  if (argv[0] === 'update') {
+    return await runSelfUpdate({
+      binName: 'create-clis',
+      entryMetaUrl: import.meta.url,
+      argv: argv.slice(1),
+    });
+  }
+  if (argv.includes('--version') || argv.includes('-V')) {
+    process.stdout.write(`${readPackageMeta(import.meta.url).version}\n`);
+    return 0;
+  }
+  if (argv.includes('--help') || argv.includes('-h')) {
     process.stdout.write(`${HELP_TEXT}\n`);
     return 0;
   }
