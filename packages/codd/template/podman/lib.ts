@@ -225,6 +225,17 @@ export const verifyGzip = async (file: string): Promise<void> => {
   await pipeline(createReadStream(file), createGunzip(), sink);
 };
 
+/** 构造演练沙箱临时库名, 严格控制在 MongoDB 63 字节上限以内 */
+export const buildDrillDbName = (
+  targetDb: string,
+  nowMs = Date.now(),
+): string => {
+  const tsTag = nowMs.toString(36);
+  const prefix = 'd_';
+  const maxDbPart = Math.max(1, 63 - prefix.length - 1 - tsTag.length);
+  return `${prefix}${targetDb.slice(0, maxDbPart)}_${tsTag}`;
+};
+
 /** 用于文件名的时间戳, 形如 20261118_114500, 按 TZ 取本地时间 */
 export const stamp = (d = new Date()): string =>
   d

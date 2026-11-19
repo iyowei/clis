@@ -54,12 +54,10 @@ const backupOneDb = async (
       '--gzip',
     ]);
 
-    // 完整性校验: 非空且 gzip 流可完整解压
+    // 完整性校验: 仅拒绝 0 字节空文件, 结合 verifyGzip 完整解压校验避免空业务库合法归档误报
     const { size } = await stat(partial);
-    if (size < 100) {
-      throw new FatalError(
-        `业务库 ${db} 备份文件异常小 (${size} 字节), 判定失败`,
-      );
+    if (size === 0) {
+      throw new FatalError(`业务库 ${db} 备份文件为空 (0 字节), 判定失败`);
     }
     await verifyGzip(partial);
     await rename(partial, final);

@@ -1,7 +1,7 @@
 /**
- * 零污染恢复演练: 在工具容器内部拉起独立的临时沙箱 mongod (127.0.0.1:27999),
+ * 零污染恢复演练: 在工具容器内部基于 0700 私有目录 Unix Domain Socket 拉起独立临时沙箱 mongod,
  * 将备份归档恢复至沙箱实例后逐表统计文档数与索引数, 并通过只读 backup 账号与线上库比对索引结构。
- * 全程对线上生产库零写入, 零 oplog 膨胀, 零 WiredTiger 缓存冲刷。
+ * 全程零 TCP 端口占用/暴露, 对线上生产库零写入, 零 oplog 膨胀, 零 WiredTiger 缓存冲刷。
  *
  * 用法: bun run drill.ts [备份文件名]   不带参数则按全部已配置业务库各自抽最新备份演练
  */
@@ -14,6 +14,7 @@ import { MongoClient } from 'mongodb';
 import {
   BACKUP_DIR,
   FatalError,
+  buildDrillDbName,
   buildMongoUri,
   getConfiguredApps,
   listBackups,
@@ -25,13 +26,17 @@ import {
   verifyGzip,
 } from './lib';
 
-const SANDBOX_PORT = 27999;
-const SANDBOX_URI = `mongodb://127.0.0.1:${SANDBOX_PORT}/?directConnection=true`;
-
 const sleep = (ms: number): Promise<void> =>
   new Promise((resolve) => setTimeout(resolve, ms));
 
-const startSandboxMongod = async (dbPath: string): Promise<ChildProcess> => {
+const buildSocketUri = (sockPath: string): string =>
+  `mongodb://${encodeURIComponent(sockPath)}/?directConnection=true`;
+
+const startSandboxMongod = async (
+  dbPath: string,
+  sockPath: string,
+  sandboxUri: string,
+): Promise<ChildProcess> => {
   await mkdir(dbPath, { recursive: true, mode: 0o700 });
   const stderrChunks: string[] = [];
   const proc = spawn(
@@ -39,10 +44,8 @@ const startSandboxMongod = async (dbPath: string): Promise<ChildProcess> => {
     [
       '--dbpath',
       dbPath,
-      '--port',
-      String(SANDBOX_PORT),
       '--bind_ip',
-      '127.0.0.1',
+      sockPath,
       '--noauth',
       '--wiredTigerCacheSizeGB',
       '0.25',
@@ -54,7 +57,7 @@ const startSandboxMongod = async (dbPath: string): Promise<ChildProcess> => {
     if (stderrChunks.length < 20) stderrChunks.push(chunk.toString('utf8'));
   });
 
-  const probe = new MongoClient(SANDBOX_URI, {
+  const probe = new MongoClient(sandboxUri, {
     serverSelectionTimeoutMS: 500,
     connectTimeoutMS: 500,
   });
@@ -99,17 +102,18 @@ const stopSandboxMongod = async (
 const drillOneArchive = async (
   sandboxClient: MongoClient,
   liveClient: MongoClient,
+  sandboxUri: string,
   name: string,
   targetDb: string,
 ): Promise<void> => {
   const file = join(BACKUP_DIR, name);
   await verifyGzip(file);
 
-  const drillDb = `drill_${targetDb}_${Date.now()}`;
+  const drillDb = buildDrillDbName(targetDb);
   try {
     log(`演练备份 ${name} -> 隔离沙箱 ${drillDb} (校验目标: ${targetDb})`);
     await run('mongorestore', [
-      `--uri=${SANDBOX_URI}`,
+      `--uri=${sandboxUri}`,
       `--archive=${file}`,
       '--gzip',
       `--nsInclude=${targetDb}.*`,
@@ -120,8 +124,10 @@ const drillOneArchive = async (
 
     const drill = sandboxClient.db(drillDb);
     const live = liveClient.db(targetDb);
-    const cols = (await drill.listCollections().toArray())
+    // 仅统计实体集合, 跳过视图 (view) 与 system.* 内部集合防 indexes() 报错
+    const cols = (await drill.listCollections({ type: 'collection' }).toArray())
       .map((c) => c.name)
+      .filter((colName) => !colName.startsWith('system.'))
       .sort();
     if (cols.length === 0) {
       throw new FatalError(`恢复 ${name} 后没有任何集合 (目标库: ${targetDb})`);
@@ -205,26 +211,42 @@ main(async () => {
     }
   }
 
-  const sandboxDbPath = `/tmp/codd-drill-${process.pid}-${Date.now()}`;
+  const sandboxDir = `/tmp/codd-drill-${process.pid}-${Date.now()}`;
+  const sandboxDbPath = join(sandboxDir, 'db');
+  const sandboxSockPath = join(sandboxDir, 'drill.sock');
+  const sandboxUri = buildSocketUri(sandboxSockPath);
   let sandboxProc: ChildProcess | undefined;
-  const sandboxClient = new MongoClient(SANDBOX_URI);
+  const sandboxClient = new MongoClient(sandboxUri);
   const liveClient = new MongoClient(
     buildMongoUri(backupUser, backupPassword, 'secondaryPreferred'),
   );
 
   try {
-    log('启动容器内隔离沙箱 mongod (127.0.0.1:27999, 内存上限 0.25GB)...');
-    sandboxProc = await startSandboxMongod(sandboxDbPath);
+    await mkdir(sandboxDir, { recursive: true, mode: 0o700 });
+    log(
+      `启动容器内隔离沙箱 mongod (Unix Socket: ${sandboxSockPath}, 内存上限 0.25GB)...`,
+    );
+    sandboxProc = await startSandboxMongod(
+      sandboxDbPath,
+      sandboxSockPath,
+      sandboxUri,
+    );
     await sandboxClient.connect();
     await liveClient.connect();
     for (const t of targets) {
-      await drillOneArchive(sandboxClient, liveClient, t.name, t.db);
+      await drillOneArchive(
+        sandboxClient,
+        liveClient,
+        sandboxUri,
+        t.name,
+        t.db,
+      );
     }
   } finally {
     await sandboxClient.close().catch(() => undefined);
     await liveClient.close().catch(() => undefined);
     await stopSandboxMongod(sandboxProc);
-    await rm(sandboxDbPath, { recursive: true, force: true }).catch(
+    await rm(sandboxDir, { recursive: true, force: true }).catch(
       () => undefined,
     );
     log('已销毁隔离沙箱 mongod 与临时数据目录');
