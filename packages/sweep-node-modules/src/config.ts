@@ -32,7 +32,7 @@ export interface Config {
  *
  * 保守取向: 宁可挡住个别同名的真实项目 (用户可从配置中删除该项), 也不漏放安装树。
  */
-export const DEFAULT_EXCLUDE: readonly string[] = [
+export const DEFAULT_EXCLUDE: readonly string[] = Object.freeze([
   // 包管理器 / 版本管理器的安装树与缓存: 全局包树、npx 缓存与 store 删后无法由项目级重装恢复
   '.bun',
   '.npm',
@@ -56,7 +56,7 @@ export const DEFAULT_EXCLUDE: readonly string[] = [
   '.config',
   '.cache',
   '.claude',
-];
+]);
 
 /** 配置路径来源 */
 export type ConfigSource = 'flag' | 'env' | 'platform-default';
@@ -181,6 +181,15 @@ function fieldError(
       message: `${field} 第 ${badIndex + 1} 项应为字符串 (实际: ${describeActual(value[badIndex])})`,
     };
   }
+  if (field === 'roots') {
+    const emptyIndex = value.findIndex((item) => item === '');
+    if (emptyIndex !== -1) {
+      return {
+        field,
+        message: `${field} 第 ${emptyIndex + 1} 项不能为空字符串`,
+      };
+    }
+  }
   return null;
 }
 
@@ -235,6 +244,7 @@ export async function loadConfig(path: string): Promise<LoadConfigResult> {
       'CONFIG_READ_FAILED',
       `配置读取失败 (${path}): ${(error as Error).message}`,
       { path, errno: (error as { code?: string }).code },
+      { cause: error },
     );
   }
 
@@ -246,6 +256,7 @@ export async function loadConfig(path: string): Promise<LoadConfigResult> {
       'CONFIG_CORRUPT_JSON',
       `配置损坏 (${path}): JSON 解析失败: ${(error as Error).message}`,
       { path },
+      { cause: error },
     );
   }
 

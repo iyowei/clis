@@ -56,11 +56,16 @@ describe('构造期', () => {
     expect(capture({ roots: [] }).code).toBe('INVALID_ARGUMENT');
     expect(capture({ roots: [] }).details).toEqual({ field: 'roots' });
     expect(capture({ roots: [''] }).details).toEqual({ field: 'roots' });
+    expect(capture({ roots: ['.'] }).details).toEqual({ field: 'roots' });
+    expect(capture({ roots: ['./app'] }).details).toEqual({ field: 'roots' });
     expect(capture({ roots: [42] }).details).toEqual({ field: 'roots' });
     expect(capture({ roots: ['/w'], exclude: ['ok', 7] }).details).toEqual({
       field: 'exclude',
     });
     expect(capture({ roots: ['/w'], home: 3 }).details).toEqual({
+      field: 'home',
+    });
+    expect(capture({ roots: ['/w'], home: '' }).details).toEqual({
       field: 'home',
     });
     expect(capture({ roots: ['/w'], policy: {} }).details).toEqual({

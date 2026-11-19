@@ -22,12 +22,7 @@ import { homedir } from 'node:os';
 import { type Classification, classifyTarget } from './classify.ts';
 import type { SweepPhase } from './codes.ts';
 import { DEFAULT_EXCLUDE, mergeNames } from './config.ts';
-import {
-  type RemovalResult,
-  removeTargets,
-  splitStaleRejections,
-  toTrustRoots,
-} from './delete.ts';
+import { type RemovalResult, removeTargets, toTrustRoots } from './delete.ts';
 import { SweepError } from './errors.ts';
 import type { PathMapping, RejectedTarget, ValidationResult } from './guard.ts';
 import {
@@ -39,6 +34,7 @@ import {
 import { createScanner } from './scan.ts';
 import { createSizer } from './size.ts';
 import { collectSkips, deletionBatch, skipReasonOf } from './skip.ts';
+import { splitStaleRejections } from './stale.ts';
 import { isSuccessOutcome } from './summary.ts';
 import type {
   EntryOutcome,
@@ -94,14 +90,17 @@ function assertShape(options: SweepOptions): void {
   if (typeof options !== 'object' || options === null)
     throw invalidArgument('options', '构造选项必须是对象');
   assertNameArray(options.roots, 'roots', true);
+  const style = options.style ?? nativeStyle();
+  if (options.roots.some((root) => !style.ops.isAbsolute(root)))
+    throw invalidArgument('roots', '必须是绝对路径');
   assertNameArray(options.exclude, 'exclude', false);
   assertNameArray(options.include, 'include', false);
   if (
     options.home !== undefined &&
     options.home !== null &&
-    typeof options.home !== 'string'
+    (typeof options.home !== 'string' || options.home === '')
   )
-    throw invalidArgument('home', '必须是字符串或 null');
+    throw invalidArgument('home', '必须是非空字符串或 null');
   if (
     options.policy !== undefined &&
     (typeof options.policy !== 'object' ||

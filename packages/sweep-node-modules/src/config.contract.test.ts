@@ -472,4 +472,28 @@ describe('config 契约: 装载错误的结构化 (SweepError + code + details)'
     expect(code).toBe('CONFIG_ABSENT');
     expect(details).toEqual({ path: missing, source: 'flag' });
   });
+
+  test('roots 含空字符串元素拒为 CONFIG_CORRUPT_SHAPE, 且 DEFAULT_EXCLUDE 已冻结、底层错误保留 cause', async () => {
+    expect(Object.isFrozen(DEFAULT_EXCLUDE)).toBe(true);
+
+    const emptyRootPath = await writeConfig(
+      'empty-root.json',
+      JSON.stringify({ roots: ['/a', ''] }),
+    );
+    const { code, details } = await catchSweepError(loadConfig(emptyRootPath));
+    expect(code).toBe('CONFIG_CORRUPT_SHAPE');
+    expect(details).toEqual({ path: emptyRootPath, field: 'roots' });
+
+    const brokenPath = await writeConfig('broken.json', '{ invalid');
+    let caught: unknown;
+    try {
+      await loadConfig(brokenPath);
+    } catch (error) {
+      caught = error;
+    }
+    expect(isSweepError(caught)).toBe(true);
+    if (isSweepError(caught)) {
+      expect(caught.cause).toBeInstanceOf(Error);
+    }
+  });
 });
