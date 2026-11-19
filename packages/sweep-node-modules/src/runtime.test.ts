@@ -18,14 +18,20 @@ test('isBun: 功能检测命中 (本文件由 bun test 承载, 恒为 true)', ()
 });
 
 test('spawnCapture: 正常命令捕获 stdout 与 exit 0', async () => {
-  const result = await spawnCapture('/bin/echo', ['hi']);
+  const result = await spawnCapture(process.execPath, [
+    '-e',
+    'process.stdout.write("hi\\n")',
+  ]);
 
   expect(result.stdout).toBe('hi\n');
   expect(result.exitCode).toBe(0);
 });
 
 test('spawnCapture: 退出码非零原样返回, 不抛错 (交由调用方判定)', async () => {
-  const result = await spawnCapture('/bin/sh', ['-c', 'exit 3']);
+  const result = await spawnCapture(process.execPath, [
+    '-e',
+    'process.exit(3)',
+  ]);
 
   expect(result.stdout).toBe('');
   expect(result.exitCode).toBe(3);

@@ -34,13 +34,16 @@ try {
   await rm(path, { force: true });
 }
 
-const echo = await spawnCapture('/bin/echo', ['hi']);
+const echo = await spawnCapture(process.execPath, [
+  '-e',
+  'process.stdout.write("hi\\n")',
+]);
 check(
   echo.stdout === 'hi\n' && echo.exitCode === 0,
   'spawnCapture 正常命令 (stdout 与 exit 0)',
 );
 
-const failed = await spawnCapture('/bin/sh', ['-c', 'exit 3']);
+const failed = await spawnCapture(process.execPath, ['-e', 'process.exit(3)']);
 check(failed.exitCode === 3, 'spawnCapture 非零退出码原样返回, 不抛错');
 
 let missingThrew = false;
