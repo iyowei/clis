@@ -19,7 +19,7 @@ import type {
  * 成功侧 kind 全集 (目标已达成): removed 实删 / missing 删除阶段核验已不存在 /
  * stale 安全闸前已不存在被摘出。新增 kind 时必须在本表显式归类。
  */
-const SUCCESS_KINDS: ReadonlySet<EntryOutcomeKind> = new Set([
+const SUCCESS_KINDS: ReadonlySet<EntryOutcomeKind> = /*#__PURE__*/ new Set([
   'removed',
   'missing',
   'stale',
