@@ -5,6 +5,7 @@
  */
 import { afterEach, describe, expect, test } from 'bun:test';
 
+import { chmod, mkdir, stat, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
 import {
@@ -128,5 +129,66 @@ for (const candidate of candidates) {
       expect(result.gone).toEqual([]);
       expect(result.warnings).toEqual([]);
     });
+
+    it('空 targets 遇已取消 signal 立即抛 CANCELLED (SWEEP-P1-3)', async () => {
+      const controller = new AbortController();
+      controller.abort();
+
+      await expect(
+        candidate.sizer.measure([], { signal: controller.signal }),
+      ).rejects.toMatchObject({
+        code: 'CANCELLED',
+        details: { phase: 'measure' },
+      });
+    });
   });
 }
+
+const isRootOrWin =
+  process.platform === 'win32' ||
+  (process as { getuid?: () => number }).getuid?.() === 0;
+
+describe('size-js 并发池、内部取消与 errno 告警 (SWEEP-P1-1)', () => {
+  test('多子目录并发求和与精确字节口径一致', async () => {
+    const { root } = await make({ projects: [{ dir: 'big', files: 0 }] });
+    const target = join(root, 'big', 'node_modules');
+    let expectedBytes = 0;
+    for (let i = 0; i < 40; i += 1) {
+      const sub = join(target, `pkg-${i}`);
+      await mkdir(sub, { recursive: true });
+      const content = 'a'.repeat(100 + i);
+      await writeFile(join(sub, 'index.js'), content);
+      expectedBytes += content.length;
+    }
+
+    const result = await createJsSizer().measure([target]);
+    expect(result.entries).toEqual([{ target, bytes: expectedBytes }]);
+    expect(result.warnings).toEqual([]);
+  });
+
+  test.skipIf(isRootOrWin)(
+    '不可读子目录: SIZE_SUBPATH_FAILED 告警填充 errno',
+    async () => {
+      const { root } = await make({
+        projects: [{ dir: 'partial', files: 1, bytesPerFile: 64 }],
+      });
+      const target = join(root, 'partial', 'node_modules');
+      const lockedSub = join(target, 'locked-sub');
+      await mkdir(lockedSub, { recursive: true });
+      // eslint-disable-next-line no-bitwise
+      const origMode = (await stat(lockedSub)).mode & 0o777;
+      await chmod(lockedSub, 0o000);
+      try {
+        const result = await createJsSizer().measure([target]);
+        expect(result.entries).toEqual([{ target, bytes: 64 }]);
+        const subWarn = result.warnings.find(
+          (w) => w.code === 'SIZE_SUBPATH_FAILED',
+        );
+        expect(subWarn?.path).toBe(lockedSub);
+        expect(subWarn?.errno).toBe('EACCES');
+      } finally {
+        await chmod(lockedSub, origMode).catch(() => {});
+      }
+    },
+  );
+});

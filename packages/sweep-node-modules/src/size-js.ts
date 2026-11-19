@@ -5,7 +5,7 @@
  * 根目录存在但不可读 → 结构化记入 unmeasured; 子目录失败 → 告警并继续累计已读部分。
  */
 import type { Dirent } from 'node:fs';
-import { readdir, stat } from 'node:fs/promises';
+import { lstat, readdir } from 'node:fs/promises';
 import { join } from 'node:path';
 
 import type { UnmeasuredCode } from './codes.ts';
@@ -61,47 +61,123 @@ function errorCode(error: unknown): string | undefined {
   return (error as { code?: string } | null)?.code;
 }
 
+/** 同时在飞的 readdir / lstat 上限 (参照 scan-parallel.ts 32 路有界并发池, 防 FD 爆炸) */
+const SIZE_CONCURRENCY = 32;
+
+/** 待统计工作项 (显式栈, 零深递归) */
+type SizeWorkItem =
+  { kind: 'dir'; path: string } | { kind: 'file'; path: string };
+
+/** 追加子路径读取失败告警 (附原始 errno 供调用方定位) */
+function pushSubpathWarning(
+  warnings: SweepWarning[],
+  path: string,
+  error: unknown,
+): void {
+  const errno = errorCode(error);
+  warnings.push({
+    code: 'SIZE_SUBPATH_FAILED',
+    message: `体积统计失败 (${describeFailure(errno).reason}): ${path}`,
+    path,
+    ...(errno !== undefined ? { errno } : {}),
+  });
+}
+
+/** 将一批 Dirent 分类入栈 (符号链接不跟随: 防环、防越出 target) */
+function enqueueDirents(
+  stack: SizeWorkItem[],
+  dir: string,
+  dirents: readonly Dirent[],
+): void {
+  for (const dirent of dirents) {
+    if (dirent.isSymbolicLink()) continue;
+    const path = join(dir, dirent.name);
+    if (dirent.isDirectory()) stack.push({ kind: 'dir', path });
+    else if (dirent.isFile()) stack.push({ kind: 'file', path });
+  }
+}
+
 /**
- * 递归累计目录条目内普通文件字节数。
- * 子目录 / 文件读取失败记中文告警并跳过该子树, 同级其余条目照常累计;
- * 根层 readdir 已由 measure 完成, 失败分流 (不存在 / unmeasured) 不进入本函数。
+ * 显式栈 + 32 路有界并发池累计目录内普通文件字节数。
+ * 出栈前检查取消信号立即抛 CANCELLED; 文件大小改用 lstat 不跟随符号链接;
+ * 子目录 / 文件读取失败记中文告警 (含 errno) 并跳过, 同级其余条目照常累计。
  */
 async function sumEntries(
   dirents: Dirent[],
   dir: string,
   warnings: SweepWarning[],
+  signal: AbortSignal | undefined,
 ): Promise<number> {
+  const stack: SizeWorkItem[] = [];
+  enqueueDirents(stack, dir, dirents);
   let total = 0;
-  for (const dirent of dirents) {
-    // 符号链接不跟随: 防环、防越出 target
-    if (dirent.isSymbolicLink()) continue;
+  let active = 0;
+  const failures: unknown[] = [];
+  let resolveDrained: (() => void) | null = null;
+  const drained = new Promise<void>((resolve) => {
+    resolveDrained = resolve;
+  });
 
-    const path = join(dir, dirent.name);
-    if (dirent.isDirectory()) {
-      try {
-        total += await sumEntries(
-          await readdir(path, { withFileTypes: true }),
-          path,
-          warnings,
-        );
-      } catch (error) {
-        warnings.push({
-          code: 'SIZE_SUBPATH_FAILED',
-          message: `体积统计失败 (${describeFailure(errorCode(error)).reason}): ${path}`,
-          path,
-        });
-      }
-    } else if (dirent.isFile()) {
-      try {
-        total += (await stat(path)).size;
-      } catch (error) {
-        warnings.push({
-          code: 'SIZE_SUBPATH_FAILED',
-          message: `体积统计失败 (${describeFailure(errorCode(error)).reason}): ${path}`,
-          path,
-        });
-      }
+  function pump(): void {
+    while (
+      active < SIZE_CONCURRENCY &&
+      stack.length > 0 &&
+      failures.length === 0 &&
+      !signal?.aborted
+    ) {
+      const item = stack.pop()!;
+      active += 1;
+      void processItem(item);
     }
+    const stopped = failures.length > 0 || signal?.aborted === true;
+    if (
+      active === 0 &&
+      (stack.length === 0 || stopped) &&
+      resolveDrained !== null
+    ) {
+      const resolve = resolveDrained;
+      resolveDrained = null;
+      resolve();
+    }
+  }
+
+  async function processItem(item: SizeWorkItem): Promise<void> {
+    try {
+      if (signal?.aborted) {
+        throw new SweepError('CANCELLED', '体积统计在目录遍历检查点被取消', {
+          phase: 'measure',
+        });
+      }
+      if (item.kind === 'dir') {
+        try {
+          const children = await readdir(item.path, { withFileTypes: true });
+          enqueueDirents(stack, item.path, children);
+        } catch (error) {
+          pushSubpathWarning(warnings, item.path, error);
+        }
+        return;
+      }
+      try {
+        const stats = await lstat(item.path);
+        if (stats.isFile()) total += stats.size;
+      } catch (error) {
+        pushSubpathWarning(warnings, item.path, error);
+      }
+    } catch (error) {
+      if (failures.length === 0) failures.push(error);
+    } finally {
+      active -= 1;
+      pump();
+    }
+  }
+
+  pump();
+  await drained;
+  if (failures.length > 0) throw failures[0];
+  if (signal?.aborted) {
+    throw new SweepError('CANCELLED', '体积统计在目录遍历检查点被取消', {
+      phase: 'measure',
+    });
   }
   return total;
 }
@@ -114,6 +190,12 @@ export function createJsSizer(): Sizer {
       targets: string[],
       options?: MeasureOptions,
     ): Promise<SizeResult> {
+      // 入口取消预检: 即便 targets 为空数组, 已中止的 signal 仍须立即抛 CANCELLED
+      if (options?.signal?.aborted) {
+        throw new SweepError('CANCELLED', '体积统计在逐目标检查点被取消', {
+          phase: 'measure',
+        });
+      }
       const warnings: SweepWarning[] = [];
       const entries: SizeEntry[] = [];
       const unmeasured: UnmeasuredEntry[] = [];
@@ -159,7 +241,12 @@ export function createJsSizer(): Sizer {
           }
           continue;
         }
-        const bytes = await sumEntries(dirents, target, warnings);
+        const bytes = await sumEntries(
+          dirents,
+          target,
+          warnings,
+          options?.signal,
+        );
         entries.push({ target, bytes });
         emit?.({ kind: 'measured', target, bytes, basis: 'logical-bytes' });
       }
