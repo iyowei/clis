@@ -139,6 +139,20 @@ describe('设备边界: 目标与所属根的文件系统比对 (探针注入)',
     expect(flagged.map((entry) => entry.target)).toEqual([target]);
     expect([...released]).toEqual([]);
   });
+  test('最具体根按严格包含偏序判定: 含冗余斜杠的宽根不得因字符串更长覆盖窄根', async () => {
+    const devices = {
+      '/w/////': 1,
+      '/w/vol': 2,
+      '/w/vol/proj/node_modules': 2,
+    };
+    const target = '/w/vol/proj/node_modules';
+    const released = await findCrossDeviceTargets([target], {
+      roots: ['/w/////', '/w/vol'],
+      style: POSIX_STYLE,
+      probe: makeProbe(devices).probe,
+    });
+    expect(released).toEqual([]);
+  });
   test('无归属根 (根之外) 与不可核验 (设备号读不到) 均不入集', async () => {
     const { probe } = makeProbe({
       '/w': 1,

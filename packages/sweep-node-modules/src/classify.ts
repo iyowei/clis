@@ -34,7 +34,7 @@ export interface Classification {
  * - `extensions`: 编辑器 / IDE 的扩展根 (扩展自带 node_modules, 属应用而非用户项目);
  * - `_npx`: npm 的 npx 包缓存 (下划线前缀是 npm 私有约定, 用户项目不会取这个名)。
  */
-const INSTALL_TREE_SEGMENTS = new Set(
+const INSTALL_TREE_SEGMENTS = /*#__PURE__*/ new Set(
   [...DEFAULT_EXCLUDE, 'extensions', '_npx'].map((name) => name.toLowerCase()),
 );
 
@@ -86,7 +86,12 @@ export function classifyTarget(
   const style = options.style ?? nativeStyle();
   const homeOption = options.home === undefined ? homedir() : options.home;
 
-  const parts = target.split(style.ops.sep).filter((part) => part !== '');
+  const normalizedTarget = style.ops.normalize(target);
+  const parts = (
+    style.name === 'win32'
+      ? normalizedTarget.split(/[\\/]+/)
+      : normalizedTarget.split(style.ops.sep)
+  ).filter((part) => part !== '');
   // 末段恒为 node_modules (调用方契约), 判定只看它之前的级别
   const ancestors = parts.slice(0, -1);
 
@@ -106,12 +111,15 @@ export function classifyTarget(
     };
 
   // 家目录下的隐藏目录: 取相对家目录的首段, 排除上溯 (..) 与跨盘绝对路径 —— 两者都说明目标不在家目录内
-  if (homeOption !== null) {
+  if (homeOption !== null && homeOption !== '') {
     const relative = style.ops.relative(
       fold(homeOption, style),
-      fold(target, style),
+      fold(normalizedTarget, style),
     );
-    const [first] = relative.split(style.ops.sep);
+    const [first] =
+      style.name === 'win32'
+        ? relative.split(/[\\/]+/)
+        : relative.split(style.ops.sep);
     if (
       first !== undefined &&
       first !== '..' &&

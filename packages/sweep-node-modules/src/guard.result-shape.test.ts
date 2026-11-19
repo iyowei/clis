@@ -12,7 +12,15 @@ import {
   type WorkspaceSpec,
   makeWorkspace,
 } from './fixtures.ts';
-import { validateTargets } from './guard.ts';
+import {
+  POSIX_STYLE,
+  WIN32_STYLE,
+  anchorChainPaths,
+  insideAnyRoot,
+  isFilesystemRootBody,
+  isHomeBody,
+  validateTargets,
+} from './guard.ts';
 
 const workspaces: Workspace[] = [];
 async function make(spec: WorkspaceSpec): Promise<Workspace> {
@@ -89,7 +97,7 @@ describe('安全闸结果形态', () => {
     ]);
   });
 
-  test('取消信号: 已 abort 的 signal 在逐目标检查点抛 CANCELLED', async () => {
+  test('取消信号: 已 abort 的 signal 在逐目标检查点抛 CANCELLED (含空 targets 入口预检)', async () => {
     const { root } = await make({ projects: [{ dir: 'alpha' }] });
     const controller = new AbortController();
     controller.abort();
@@ -100,5 +108,46 @@ describe('安全闸结果形态', () => {
         signal: controller.signal,
       }),
     ).rejects.toThrow('安全闸校验在逐目标检查点被取消');
+
+    await expect(
+      validateTargets([], {
+        roots: [],
+        signal: controller.signal,
+      }),
+    ).rejects.toMatchObject({
+      code: 'CANCELLED',
+      details: { phase: 'validate' },
+    });
+  });
+});
+
+describe('安全闸跨平台边界与常量冻结 (SWEEP-P0-3 / P0-6)', () => {
+  test('POSIX_STYLE 与 WIN32_STYLE 已运行时冻结', () => {
+    expect(Object.isFrozen(POSIX_STYLE)).toBe(true);
+    expect(Object.isFrozen(WIN32_STYLE)).toBe(true);
+  });
+
+  test('win32 正斜杠路径: anchorChainPaths / insideAnyRoot / isFilesystemRootBody / isHomeBody 均成立', () => {
+    expect(
+      anchorChainPaths('C:/Users/me/.bun/install/global', WIN32_STYLE),
+    ).toEqual([
+      'C:\\Users',
+      'C:\\Users\\me',
+      'C:\\Users\\me\\.bun',
+      'C:\\Users\\me\\.bun\\install',
+      'C:\\Users\\me\\.bun\\install\\global',
+    ]);
+    expect(anchorChainPaths('C:/', WIN32_STYLE)).toEqual([]);
+    expect(
+      insideAnyRoot('C:/Repo/App/node_modules', ['c:/repo'], WIN32_STYLE),
+    ).toBe(true);
+    expect(insideAnyRoot('/work/node_modules', [''], POSIX_STYLE)).toBe(false);
+    expect(insideAnyRoot('', ['/work'], POSIX_STYLE)).toBe(false);
+    expect(isFilesystemRootBody('C:/', WIN32_STYLE)).toBe(true);
+    expect(isFilesystemRootBody('c:///', WIN32_STYLE)).toBe(true);
+    expect(isFilesystemRootBody('', WIN32_STYLE)).toBe(false);
+    expect(isHomeBody('C:\\Users\\X', 'c:/users/x/', WIN32_STYLE)).toBe(true);
+    expect(isHomeBody('/Users/x', '/Users/x/', POSIX_STYLE)).toBe(true);
+    expect(isHomeBody('', '', POSIX_STYLE)).toBe(false);
   });
 });

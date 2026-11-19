@@ -235,4 +235,31 @@ describe('classify: 平台风格', () => {
       suspectReason('C:\\node_modules', { style: WIN32_STYLE, home: null }),
     ).toBeNull();
   });
+
+  test('win32: 正斜杠路径 (C:/...) 同样命中安装树、lib 与家目录隐藏目录语义闸', () => {
+    expect(
+      suspectReason('C:/Users/me/.bun/install/global/node_modules', {
+        style: WIN32_STYLE,
+        home: 'C:/Users/me',
+      }),
+    ).toBe('位于 .bun 安装树目录');
+    expect(
+      suspectReason('C:/opt/node/v22/lib/node_modules', {
+        style: WIN32_STYLE,
+        home: 'C:/Users/me',
+      }),
+    ).toBe('父目录为 lib, 形如版本管理器的 node 安装树');
+    expect(
+      suspectReason('C:/Users/me/.custom-app/node_modules', {
+        style: WIN32_STYLE,
+        home: 'C:/Users/me',
+      }),
+    ).toBe('位于 .custom-app (家目录下的隐藏目录)');
+    expect(
+      suspectReason('C:/Users/me/work/app/node_modules', {
+        style: WIN32_STYLE,
+        home: 'C:/Users/me',
+      }),
+    ).toBeNull();
+  });
 });

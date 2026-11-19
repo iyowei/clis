@@ -27,6 +27,7 @@ export type PathOps = Pick<
   | 'join'
   | 'resolve'
   | 'dirname'
+  | 'normalize'
 >;
 
 export interface PathStyle {
@@ -36,16 +37,16 @@ export interface PathStyle {
   caseInsensitive: boolean;
 }
 
-export const POSIX_STYLE: PathStyle = {
+export const POSIX_STYLE: PathStyle = Object.freeze({
   name: 'posix',
   ops: posix,
   caseInsensitive: false,
-};
-export const WIN32_STYLE: PathStyle = {
+});
+export const WIN32_STYLE: PathStyle = Object.freeze({
   name: 'win32',
   ops: win32,
   caseInsensitive: true,
-};
+});
 
 /** 当前平台的判定风格 */
 export function nativeStyle(): PathStyle {
@@ -77,28 +78,35 @@ export function insideAnyRoot(
   roots: string[],
   style: PathStyle,
 ): boolean {
+  if (realPath === '') return false;
   return roots.some((root) => {
+    // 空串 root 在 path.relative 里会锚定 cwd, 必须直接拒绝
+    if (root === '') return false;
     const rel = style.ops.relative(fold(root, style), fold(realPath, style));
     if (rel === '' || style.ops.isAbsolute(rel)) return false;
     return rel !== '..' && !rel.startsWith(`..${style.ops.sep}`);
   });
 }
 
-/** 不变量 ③ a: realPath 是文件系统根本体 (posix 的 /、win32 的盘根) */
+/** 不变量 ③ a: realPath 是文件系统根本体 (posix 的 /、win32 的盘根; 先 normalize 消去正斜杠与冗余分隔符) */
 export function isFilesystemRootBody(
   realPath: string,
   style: PathStyle,
 ): boolean {
-  return fold(style.ops.parse(realPath).root, style) === fold(realPath, style);
+  if (realPath === '') return false;
+  const normalized = style.ops.normalize(realPath);
+  const root = style.ops.parse(normalized).root;
+  return root !== '' && fold(root, style) === fold(normalized, style);
 }
 
-/** 不变量 ③ b: realPath 是 home 本体; home 传 null 即关闭该防线 */
+/** 不变量 ③ b: realPath 是 home 本体 (用 relative === '' 消去尾分隔符与正反斜杠差异); home 传 null 即关闭该防线 */
 export function isHomeBody(
   realPath: string,
   home: string | null,
   style: PathStyle,
 ): boolean {
-  return home !== null && dedupeKey(realPath, style) === dedupeKey(home, style);
+  if (home === null || home === '' || realPath === '') return false;
+  return style.ops.relative(fold(home, style), fold(realPath, style)) === '';
 }
 
 /**
@@ -152,11 +160,16 @@ export function firstSymlinkOnAnchor(links: AnchorLink[]): string | null {
  *   Output return ['/Users', '/Users/x', '/Users/x/ws', '/Users/x/ws/app']
  */
 export function anchorChainPaths(root: string, style: PathStyle): string[] {
-  const absolute = style.ops.isAbsolute(root) ? root : style.ops.resolve(root);
+  const absolute = style.ops.isAbsolute(root)
+    ? style.ops.normalize(root)
+    : style.ops.resolve(root);
   const prefix = style.ops.parse(absolute).root;
+  const tail = absolute.slice(prefix.length);
+  const parts =
+    style.name === 'win32' ? tail.split(/[\\/]+/) : tail.split(style.ops.sep);
   const chain: string[] = [];
   let cursor = prefix;
-  for (const part of absolute.slice(prefix.length).split(style.ops.sep)) {
+  for (const part of parts) {
     if (part === '') continue;
     cursor = style.ops.join(cursor, part);
     chain.push(cursor);
@@ -307,6 +320,12 @@ export async function validateTargets(
   targets: string[],
   options: ValidateOptions,
 ): Promise<ValidationResult> {
+  // 入口取消预检: 即便 targets 为空数组, 已中止的 signal 仍须立即抛 CANCELLED
+  if (options.signal?.aborted) {
+    throw new SweepError('CANCELLED', '安全闸校验在逐目标检查点被取消', {
+      phase: 'validate',
+    });
+  }
   const style = options.style ?? nativeStyle();
   const homeOption = options.home === undefined ? homedir() : options.home;
 
@@ -482,7 +501,7 @@ function owningRoot(
   let best: string | null = null;
   for (const root of roots) {
     if (!insideAnyRoot(target, [root], style)) continue;
-    if (best === null || root.length > best.length) best = root;
+    if (best === null || insideAnyRoot(root, [best], style)) best = root;
   }
   return best;
 }
