@@ -14,35 +14,40 @@
 import { existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
+import { pruneWorkflowJobs } from './tier-workflow.ts';
+
 /** 装备档位 */
 export type Tier = 'core' | 'standard' | 'full';
 
-/** 一次裁剪要动的三处: 模板内的删除路径集 + `scripts/ci.ts` 的步骤摘除集 + 根 `package.json` 的脚本摘除集 */
+/** 一次裁剪要动的地方: 删除路径集 + ci 步骤摘除集 + 根 package.json 脚本摘除集 + 可选 workflow job 摘除集 */
 export interface RemoveRule {
   /** 相对模板根的删除路径 (目录以 `/` 收尾); 规则与模板不同步时 pruneTemplate 抛错 */
   readonly deletePaths: readonly string[];
   /** 从 STEPS 表与组数组一并摘除的步骤名; 其载体文件须同在 deletePaths 内 */
   readonly ciSteps: readonly string[];
-  /** 从根 `package.json` 的 scripts 一并摘除的脚本名; 其命令引用的载体文件须同在 deletePaths 内 (不摘会留下悬空脚本, 生成物 `bun run <脚本>` 必死) */
+  /** 从根 `package.json` 的 scripts 一并摘除的脚本名; 其命令引用的载体文件须同在 deletePaths 内 */
   readonly packageScripts: readonly string[];
+  /** 从 `.github/workflows/{ci,release}.yml` 摘除的 job 名 (省略或空数组不触碰 workflow) */
+  readonly workflowJobs?: readonly string[];
 }
 
-/** 增强档机制件目录 (capability-tiers.md§增强档「转写契约套件」: 行为契约 + 金样本语料 + 确定性验收器 + 变异自证) */
+/** 增强档机制件目录 (转写契约套件) */
 const CONFORMANCE_KIT_DIR = 'scripts/transcription/';
 
-/** 标准档装备 (capability-tiers.md§标准档「技术债登记册」; 模板内为空册骨架) */
+/** 标准档装备: 技术债登记册 + 依赖方向闸门及其单测 */
 const TECH_DEBT_LEDGER = 'docs/designs/tech-debt.md';
+const DEP_DIRECTION_SCRIPT = 'scripts/lint-dependency-direction.ts';
+const DEP_DIRECTION_TEST = 'scripts/lint-dependency-direction.test.ts';
 
-/**
- * 增强档 ci 步骤:
- * - `lint:coverage` = §增强档「台账对账闸门 (契约 / 语料 / 豁免三方对账, 只对启用 conformance 的项目有意义)」;
- * - `conformance:bun` / `conformance:node` = 转写契约套件的执行挂载 (载体 run-conformance.ts 随机制件摘除)。
- */
+/** 增强档 ci 步骤 */
 const CONFORMANCE_CI_STEPS: readonly string[] = [
   'lint:coverage',
   'conformance:bun',
   'conformance:node',
 ];
+
+/** 标准档 ci 步骤 */
+const STANDARD_CI_STEPS: readonly string[] = ['lint:deps'];
 
 /** 闸门清单 (步骤声明手术的对象): 模板根相对路径 */
 const CI_SCRIPT = 'scripts/ci.ts';
@@ -50,54 +55,41 @@ const CI_SCRIPT = 'scripts/ci.ts';
 /** 根包清单 (脚本声明手术的对象): 模板根相对路径 */
 const ROOT_PACKAGE_JSON = 'package.json';
 
-/**
- * 增强档装备在根 `package.json` 里的脚本挂载: `conformance` 的载体 run-conformance.ts 随
- * `scripts/transcription/` 整目录摘除; 不摘此脚本, core / standard 档生成物会留下一条指向
- * 不存在文件的 `bun run conformance` (实跑必死)。
- */
+/** GitHub Actions workflow 路径 (按需摘除 conformance job 防白烧 macOS runner) */
+const WORKFLOW_FILES: readonly string[] = [
+  '.github/workflows/ci.yml',
+  '.github/workflows/release.yml',
+];
+
+/** 增强档装备在根 `package.json` 里的脚本挂载 */
 const CONFORMANCE_PACKAGE_SCRIPTS: readonly string[] = ['conformance'];
 
-/**
- * 档位 → 裁剪规则 (逐条映射 docs/designs/capability-tiers.md「三档」清单)。
- *
- * 增强档 → full 之外的两档均摘:
- * - §增强档「转写契约套件 (conformance): 行为契约 + 金样本语料 + 确定性验收器 + 变异自证」
- *   → `scripts/transcription/` 整目录 (机制件; 语料与条款本是项目自填内容);
- * - §增强档「台账对账闸门 (`lint:coverage`)」与套件的执行挂载 → CONFORMANCE_CI_STEPS; 套件在
- *   根 `package.json` 的 `conformance` 脚本 → CONFORMANCE_PACKAGE_SCRIPTS (载体随机制件摘除,
- *   脚本不摘即悬空)。
- *   注 (T4 移交项): `scripts/transcription/api-harness.ts` 直连示例包源码面, 依赖其导出领域常量;
- *   模板骨架不含领域常量 (不把领域噪声钉进模板), 该文件随套件在 standard / core 一并摘除
- *   (两档自洽), 仅 full 保留。
- *
- * 标准档 → 仅 core 摘 (逐条映射如下):
- * - §标准档「多包分层: 工具 + 库 (薄壳模式); 单包工具可跳过本档的包结构部分」: 无文件删除 ——
- *   本模板的包结构是硬耦合 (scripts/lib/workspace.ts#resolveCliAndApi 要求 CLI 包与 API 包同时
- *   在场, 由 ci.ts 顶层调用; CLI 骨架经薄壳依赖 API 包; 根 tsconfig 双态 paths 亦映射两包源码),
- *   摘任一包都会打断生成物; 单包化需生成期重写而非删文件, 超出生成器定位 (产出独立的新集合仓,
- *   即双包集合仓形态), core 档对该条为形状选择 (两包形态保留), 不落删除;
- * - §标准档「依赖方向闸门: 依赖方向纪律由工具强制执行」: 无对应实现物 —— 该闸门在本仓尚属规划
- *   (docs/designs/dependency-direction.md「执行 (规划)」), 模板内无文件与步骤可摘; 落地后在此补;
- * - §标准档「测试体系: 契约测试 + e2e (双载体参数化) + 冒烟 (node-smoke 直跑)」: 无对应实现物 ——
- *   三类测试的实现件全在各包 src 槽位 (packages/<pkg>/src/), 该槽位已判 reset 本就不进模板;
- *   模板内剩余测试皆为核心档闸门 / 发布链各自的配套测试, 不属于本档装备;
- * - §标准档「技术债登记册」→ TECH_DEBT_LEDGER (模板内唯一本档文件载体)。
- *
- * 裁决 (2026-10-01, Task 5 评审闭合, 选项①): 上述三条「无独立可摘载体」判定经独立复核成立 ——
- * core 档对它们为形状选择 / 豁免, 不落任何文件删除; 「单包工具可跳过本档的包结构部分」按形状
- * 选择解读 (单包化超出生成器定位), 其措辞修订归 Task 9 文档同步 (capability-tiers.md)。
- */
+/** 增强档在 GitHub Actions 里对应的 job 名 */
+const CONFORMANCE_WORKFLOW_JOBS: readonly string[] = ['conformance'];
+
 const TIER_RULES: Readonly<Record<Tier, RemoveRule>> = {
-  full: { deletePaths: [], ciSteps: [], packageScripts: [] },
+  full: {
+    deletePaths: [],
+    ciSteps: [],
+    packageScripts: [],
+    workflowJobs: [],
+  },
   standard: {
     deletePaths: [CONFORMANCE_KIT_DIR],
     ciSteps: CONFORMANCE_CI_STEPS,
     packageScripts: CONFORMANCE_PACKAGE_SCRIPTS,
+    workflowJobs: CONFORMANCE_WORKFLOW_JOBS,
   },
   core: {
-    deletePaths: [CONFORMANCE_KIT_DIR, TECH_DEBT_LEDGER],
-    ciSteps: CONFORMANCE_CI_STEPS,
+    deletePaths: [
+      CONFORMANCE_KIT_DIR,
+      TECH_DEBT_LEDGER,
+      DEP_DIRECTION_SCRIPT,
+      DEP_DIRECTION_TEST,
+    ],
+    ciSteps: [...CONFORMANCE_CI_STEPS, ...STANDARD_CI_STEPS],
     packageScripts: CONFORMANCE_PACKAGE_SCRIPTS,
+    workflowJobs: CONFORMANCE_WORKFLOW_JOBS,
   },
 };
 
@@ -176,12 +168,27 @@ export function pruneTemplate(targetDir: string, rules: RemoveRule): void {
       rules.deletePaths,
     );
   }
+  const prunedWorkflows = new Map<string, string>();
+  const workflowJobs = rules.workflowJobs ?? [];
+  if (workflowJobs.length > 0) {
+    for (const rel of WORKFLOW_FILES) {
+      const wfPath = join(targetDir, rel);
+      if (!existsSync(wfPath)) continue;
+      prunedWorkflows.set(
+        wfPath,
+        pruneWorkflowJobs(readFileSync(wfPath, 'utf8'), workflowJobs),
+      );
+    }
+  }
   for (const path of rules.deletePaths) {
     rmSync(join(targetDir, path), { recursive: true, force: true });
   }
   if (prunedCi !== null) writeFileSync(ciPath, prunedCi);
   if (prunedPackageJson !== null) {
     writeFileSync(packageJsonPath, prunedPackageJson);
+  }
+  for (const [wfPath, content] of prunedWorkflows) {
+    writeFileSync(wfPath, content);
   }
 }
 
@@ -401,34 +408,46 @@ function removeGroupReferences(
     .join('\n');
 }
 
-/** CLI 入口坐标块 (前置注释行 + 两行声明 + 紧随的空行), 形态与模板 `scripts/ci.ts` 逐行同形 */
+/** 旧形态 CLI 入口坐标块 (保留以兼容单测手写夹具) */
 const CLI_COORDINATE_BLOCK =
   /\/\*\* CLI 入口坐标[^\n]*\nconst \{ cli \} = resolveCliAndApi\(process\.cwd\(\)\);\nconst CLI_SRC = [^\n]*\n\n?/;
 
-/** 坐标块的来源导入 (只服务坐标块) */
+/** 旧形态导入 */
 const CLI_COORDINATE_IMPORT =
   /^import \{ resolveCliAndApi \} from '\.\/lib\/workspace\.ts';\n/m;
 
-/**
- * 术后载体摘除: 「只服务被摘步骤」的顶层声明与其来源导入一并摘净。
- *
- * 动因 (T8 heavy-smoke 首跑实测): 步骤声明手术原本只摘 STEPS 条目与组数组引用, 留下 CLI 入口
- * 坐标块 (它只被 conformance 步骤消费); core / standard 档生成物的 lint 随即以 no-unused-vars
- * 三连打红 (CLI_SRC → cli → 来源导入), 与「生成物开箱即绿」的契约冲突; 摘净后才与删除面自洽
- * (载体文件删了, 消费它的声明也不留)。
- *
- * 判据取「把坐标块摘掉后全文再无 CLI_SRC 引用」这个可判定信号: 只服务被摘步骤才摘, 将来若有
- * 保留步骤也消费它则整块保留; 来源导入同理 (还有别的调用点则保留)。
- */
+/** 新形态惰性派生函数块 (scripts/ci.ts 的 resolveConformanceCliSrc) */
+const LAZY_CONFORMANCE_FN =
+  /\/\*\* 惰性派生转写验收 CLI 入口坐标[^\n]*\nfunction resolveConformanceCliSrc\(\): string \{[\s\S]*?\n\}\n\n?/;
+
+/** 新形态导入 */
+const LAZY_CONFORMANCE_IMPORT =
+  /^import \{ resolveProductPairs \} from '\.\/lib\/workspace\.ts';\n/m;
+
+/** 术后载体摘除: 「只服务被摘步骤」的顶层声明与来源导入一并摘净 (兼顾新旧两种形态) */
 function pruneOrphanedCarriers(source: string): string {
-  const block = CLI_COORDINATE_BLOCK.exec(source);
-  if (block === null) return source;
-  const withoutBlock = source.replace(block[0], '');
-  if (withoutBlock.includes('CLI_SRC')) return source;
-  const withoutImport = withoutBlock.replace(CLI_COORDINATE_IMPORT, '');
-  return withoutImport.includes('resolveCliAndApi')
-    ? withoutBlock
-    : withoutImport;
+  let out = source;
+  const legacyBlock = CLI_COORDINATE_BLOCK.exec(out);
+  if (legacyBlock !== null) {
+    const withoutBlock = out.replace(legacyBlock[0], '');
+    if (!withoutBlock.includes('CLI_SRC')) {
+      const withoutImport = withoutBlock.replace(CLI_COORDINATE_IMPORT, '');
+      out = withoutImport.includes('resolveCliAndApi')
+        ? withoutBlock
+        : withoutImport;
+    }
+  }
+  const lazyBlock = LAZY_CONFORMANCE_FN.exec(out);
+  if (lazyBlock !== null) {
+    const withoutBlock = out.replace(lazyBlock[0], '');
+    if (!withoutBlock.includes('resolveConformanceCliSrc')) {
+      const withoutImport = withoutBlock.replace(LAZY_CONFORMANCE_IMPORT, '');
+      out = withoutImport.includes('resolveProductPairs')
+        ? withoutBlock
+        : withoutImport;
+    }
+  }
+  return out;
 }
 
 /** 术后自检: 步骤名集合对账 + 被摘名零残留 + STEPS 表闭合 + 全文件括号配平 */

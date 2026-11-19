@@ -161,17 +161,20 @@ describe('removeRulesFor 三档规则面', () => {
     expect(full.deletePaths).toEqual([]);
     expect(full.ciSteps).toEqual([]);
     expect(full.packageScripts).toEqual([]);
+    expect(full.workflowJobs).toEqual([]);
 
     const standard = removeRulesFor('standard');
-    // 增强档机制件 (conformance 套件整目录) 与对应步骤
+    // 增强档机制件 (conformance 套件整目录) 与对应步骤 / workflow job
     expect(standard.deletePaths).toContain('scripts/transcription/');
     expect(standard.ciSteps).toContain('lint:coverage');
     expect(standard.ciSteps).toContain('conformance:bun');
     expect(standard.ciSteps).toContain('conformance:node');
+    expect(standard.workflowJobs).toContain('conformance');
     // 增强档在根包上的脚本挂载 (载体随机制件摘除, 脚本不摘即悬空)
     expect(standard.packageScripts).toContain('conformance');
-    // 标准档装备 (技术债册子) 是 core 才摘, standard 保留
+    // 标准档装备 (技术债册子 + 依赖方向闸门) 是 core 才摘, standard 保留
     expect(standard.deletePaths).not.toContain('docs/designs/tech-debt.md');
+    expect(standard.ciSteps).not.toContain('lint:deps');
     // 核心档装备不得进删除面
     for (const kept of [
       'scripts/ci.ts',
@@ -195,9 +198,9 @@ describe('removeRulesFor 三档规则面', () => {
     for (const script of standard.packageScripts) {
       expect(core.packageScripts).toContain(script);
     }
-    // 标准档四条里唯一有独立文件载体的: 技术债登记册 (其余三条见 tier.ts 映射注)
-    expect(standard.deletePaths).not.toContain('docs/designs/tech-debt.md');
     expect(core.deletePaths).toContain('docs/designs/tech-debt.md');
+    expect(core.deletePaths).toContain('scripts/lint-dependency-direction.ts');
+    expect(core.ciSteps).toContain('lint:deps');
   });
 
   test('core 删除面不触及生成物骨架 (两包结构与 ci.ts 摘除即打断模板)', () => {
@@ -367,7 +370,7 @@ describe('真实模板端到端', () => {
     ).scripts;
     expect(typeof fullScripts.conformance).toBe('string');
 
-    // standard: 增强档整目录摘除, 标准档 (技术债册子) 与两包骨架保留
+    // standard: 增强档整目录与 workflow job 摘除, 标准档 (技术债册子 + 依赖方向闸门) 保留
     const standardDir = buildTemplateCopy(root, 'standard');
     pruneTemplate(standardDir, removeRulesFor('standard'));
     expect(existsSync(join(standardDir, 'scripts/transcription'))).toBe(false);
@@ -375,25 +378,42 @@ describe('真实模板端到端', () => {
       true,
     );
     expect(
+      existsSync(join(standardDir, 'scripts/lint-dependency-direction.ts')),
+    ).toBe(true);
+    expect(
       existsSync(join(standardDir, 'packages/{{NAME}}/src/index.ts')),
     ).toBe(true);
     expect(
       existsSync(join(standardDir, 'packages/{{NAME}}-cli/src/cli.ts')),
     ).toBe(true);
-    // 增强档在根包的脚本挂载同摘 (留存即悬空: 载体目录已删)
+    // 增强档在根包的脚本挂载与 workflow job 同摘
     const standardScripts = (
       JSON.parse(readFileSync(join(standardDir, 'package.json'), 'utf8')) as {
         scripts: Record<string, string>;
       }
     ).scripts;
     expect(standardScripts.conformance).toBeUndefined();
+    const stdCiYml = readFileSync(
+      join(standardDir, '.github/workflows/ci.yml'),
+      'utf8',
+    );
+    const stdRelYml = readFileSync(
+      join(standardDir, '.github/workflows/release.yml'),
+      'utf8',
+    );
+    expect(stdCiYml).not.toContain('\n  conformance:\n');
+    expect(stdRelYml).not.toContain('\n  conformance:\n');
+    expect(stdRelYml).toContain('needs: verify');
 
-    // core: 连标准档一并摘除; api-harness.ts 在此随增强档消失 (T4 移交项的 core 侧)
+    // core: 连标准档一并摘除
     const coreDir = buildTemplateCopy(root, 'core');
     pruneTemplate(coreDir, removeRulesFor('core'));
     expect(existsSync(join(coreDir, 'scripts/transcription'))).toBe(false);
     expect(existsSync(join(coreDir, 'scripts/ci.ts'))).toBe(true);
     expect(existsSync(join(coreDir, 'docs/designs/tech-debt.md'))).toBe(false);
+    expect(
+      existsSync(join(coreDir, 'scripts/lint-dependency-direction.ts')),
+    ).toBe(false);
     const coreScripts = (
       JSON.parse(readFileSync(join(coreDir, 'package.json'), 'utf8')) as {
         scripts: Record<string, string>;
@@ -402,11 +422,11 @@ describe('真实模板端到端', () => {
     expect(coreScripts.conformance).toBeUndefined();
     expect(typeof coreScripts.ci).toBe('string');
 
-    // 载体摘除在真实模板上生效 (T8 升格项): 只服务 conformance 步骤的 CLI 坐标不得留在生成物里,
-    // 否则生成物 lint 以 no-unused-vars 打红 (heavy-smoke 首跑实测), 而 heavy-smoke 不进常规 CI
+    // 载体摘除在真实模板上生效: 只服务 conformance 步骤的坐标派生与导入不得残留
     const prunedCi = readFileSync(join(coreDir, 'scripts/ci.ts'), 'utf8');
-    expect(prunedCi).not.toContain('CLI_SRC');
-    expect(prunedCi).not.toContain('resolveCliAndApi');
+    expect(prunedCi).not.toContain('resolveConformanceCliSrc');
+    expect(prunedCi).not.toContain('resolveProductPairs');
+    expect(prunedCi).not.toContain('lint:deps');
 
     // 步骤表闭合 / 括号配平的实物验证: ci.ts 真跑一次 --help
     const help = spawnSync('bun', ['scripts/ci.ts', '--help'], {
@@ -417,6 +437,7 @@ describe('真实模板端到端', () => {
     const printed = help.stdout;
     expect(printed).toContain('lint:backups');
     expect(printed).toContain('typecheck');
+    expect(printed).not.toContain('lint:deps');
     expect(printed).not.toContain('lint:coverage');
     expect(printed).not.toContain('conformance:bun');
     expect(printed).not.toContain('conformance:node');
