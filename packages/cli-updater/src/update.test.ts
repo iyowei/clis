@@ -105,7 +105,8 @@ describe('runSelfUpdate 全状态机验证', () => {
       io: io2,
       deps: {
         platform: 'darwin',
-        env: { PATH: process.env.PATH },
+        env: { PATH: '/usr/local/bin' },
+        isFile: (p) => p === '/usr/local/bin/bun',
         pathExists: () => false,
         readText: () => null,
         fetchLatest: async (_pkg, reg) => ({
@@ -127,7 +128,7 @@ describe('runSelfUpdate 全状态机验证', () => {
     expect(out2.join('\n')).toContain('已通过 bun 更新');
   });
 
-  test('已是最新版本时退出码 0 不触发包管理器; --force 强制重装', async () => {
+  test('已是最新版本时退出码 0 不触发包管理器; --force 强制重装 (含 win32 路径注入)', async () => {
     let calls = 0;
     const { io: io1, out: out1 } = captureIo();
     const code1 = await runSelfUpdate({
@@ -137,7 +138,8 @@ describe('runSelfUpdate 全状态机验证', () => {
       io: io1,
       deps: {
         platform: 'darwin',
-        env: { PATH: process.env.PATH },
+        env: { PATH: '/usr/local/bin' },
+        isFile: (p) => p === '/usr/local/bin/bun',
         pathExists: () => false,
         readText: () => null,
         fetchLatest: async (_pkg, reg) => ({
@@ -158,12 +160,19 @@ describe('runSelfUpdate 全状态机验证', () => {
     const { io: io2 } = captureIo();
     const code2 = await runSelfUpdate({
       binName: 'sweep-nm',
-      meta: bunMeta,
+      meta: {
+        ...bunMeta,
+        rawPackageRoot:
+          'C:\\Users\\dev\\.bun\\install\\global\\node_modules\\@iyowei\\sweep-node-modules-cli',
+        packageRoot:
+          'C:\\Users\\dev\\.bun\\install\\global\\node_modules\\@iyowei\\sweep-node-modules-cli',
+      },
       argv: ['--force'],
       io: io2,
       deps: {
-        platform: 'darwin',
-        env: { PATH: process.env.PATH },
+        platform: 'win32',
+        env: { PATH: 'C:\\Users\\dev\\.bun\\bin' },
+        isFile: (p) => p === 'C:\\Users\\dev\\.bun\\bin\\bun.exe',
         pathExists: () => false,
         readText: () => null,
         fetchLatest: async (_pkg, reg) => ({
@@ -198,6 +207,8 @@ describe('runSelfUpdate 非全局与异常边界', () => {
       argv: [],
       io: io1,
       deps: {
+        env: {},
+        argvEntry: '',
         pathExists: (p) =>
           p.endsWith('src/cli.ts') || p.endsWith('src\\cli.ts'),
         readText: () => null,
@@ -223,6 +234,8 @@ describe('runSelfUpdate 非全局与异常边界', () => {
       argv: [],
       io: io2,
       deps: {
+        env: {},
+        argvEntry: '',
         pathExists: () => false,
         readText: () => null,
         fetchLatest: async (_pkg, reg) => ({
@@ -251,6 +264,8 @@ describe('runSelfUpdate 非全局与异常边界', () => {
       argv: [],
       io: io1,
       deps: {
+        env: {},
+        argvEntry: '',
         pathExists: () => false,
         readText: () => null,
         fetchLatest: async (_pkg, reg) => ({
@@ -281,6 +296,8 @@ describe('runSelfUpdate 非全局与异常边界', () => {
       argv: [],
       io: io1,
       deps: {
+        env: {},
+        argvEntry: '',
         pathExists: () => false,
         readText: () => null,
         fetchLatest: async () => ({

@@ -74,6 +74,7 @@ export interface SelfUpdateRunOptions {
     homeDir?: string;
     argvEntry?: string;
     pathExists?: (path: string) => boolean;
+    isFile?: (path: string) => boolean;
     readText?: (path: string) => string | null;
     fetchLatest?: (
       packageName: string,
@@ -303,6 +304,7 @@ function performUpgrade(
     explicitRegistry: opts.registry,
     platform,
     env,
+    isFile: deps.isFile,
     yarnVersion,
   });
 
