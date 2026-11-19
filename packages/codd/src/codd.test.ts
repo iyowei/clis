@@ -299,4 +299,138 @@ describe('零冲突指纹路径、模板渲染与 SSH 解析', () => {
     expect(() => parseSshInput('mybox; rm -rf /')).toThrow(ConfigError);
     expect(() => parseSshInput('-oProxyCommand=evil')).toThrow(ConfigError);
   });
+
+  test('非整 GB 自动转整 m/Mi、cpuCores 规整至 0.001 步长并防 workload 原型链污染', () => {
+    const frac = computeSizing({
+      cpuCores: 1.5556,
+      memoryGb: 1.5,
+      diskGb: 12.5,
+      workload: 'balanced',
+    });
+    expect(frac.cpuLimit).toBe(1.556);
+    expect(frac.memoryLimitPodman).toBe('1536m');
+    expect(frac.k8sLimitMemory).toBe('1536Mi');
+    expect(frac.k8sRequestMemory).toBe('1536Mi');
+    expect(frac.persistenceSize).toBe('12800Mi');
+
+    const mem3 = computeSizing({ cpuCores: 2, memoryGb: 3, diskGb: 30 });
+    expect(mem3.memoryReservationPodman).toBe('1536m');
+
+    for (const protoKey of ['constructor', 'toString', '__proto__']) {
+      expect(() =>
+        computeSizing({
+          cpuCores: 2,
+          memoryGb: 4,
+          diskGb: 50,
+          workload: protoKey as 'balanced',
+        }),
+      ).toThrow(SizingError);
+    }
+  });
+
+  test('错误类显式设置 name、子对象未知字段/超长库名/超长 releaseName 被拦截', () => {
+    expect(new ConfigError('x').name).toBe('ConfigError');
+    expect(new SizingError('x').name).toBe('SizingError');
+    expect(new TemplateRenderError('x').name).toBe('TemplateRenderError');
+
+    expect(() =>
+      validateManifest({
+        ...baseSingleManifest(),
+        hardware: {
+          cpuCores: 2,
+          memoryGb: 2,
+          diskGb: 32,
+          extraField: 1,
+        } as unknown as DeployManifest['hardware'],
+      }),
+    ).toThrow(ConfigError);
+
+    expect(() =>
+      validateManifest({
+        ...baseSingleManifest(),
+        hardware: 'bad' as unknown as DeployManifest['hardware'],
+      }),
+    ).toThrow(ConfigError);
+
+    expect(() =>
+      validateManifest({
+        ...baseSingleManifest(),
+        apps: [
+          {
+            db: 'app',
+            user: 'appu',
+            unknownKey: true,
+          } as unknown as DeployManifest['apps'][number],
+        ],
+      }),
+    ).toThrow(ConfigError);
+
+    expect(() =>
+      validateManifest({
+        ...baseSingleManifest(),
+        apps: [{ db: 'a'.repeat(64), user: 'appu' }],
+      }),
+    ).toThrow(ConfigError);
+
+    expect(() =>
+      validateManifest({
+        ...baseSingleManifest(),
+        nodes: [
+          {
+            os: 'linux',
+            backupDir: '/home/ops/bak',
+            bindIP: '10.0.0.1',
+          } as unknown as NonNullable<DeployManifest['nodes']>[number],
+        ],
+      }),
+    ).toThrow(ConfigError);
+
+    expect(() =>
+      validateManifest({
+        mode: 'k8s-single',
+        name: 'app',
+        apps: [{ db: 'app', user: 'appu' }],
+        k8s: { releaseName: 'a'.repeat(51) },
+      }),
+    ).toThrow(ConfigError);
+    expect(() =>
+      validateManifest({
+        mode: 'k8s-single',
+        name: 'app',
+        apps: [{ db: 'app', user: 'appu' }],
+        k8s: { releaseName: 'a'.repeat(50) },
+      }),
+    ).not.toThrow();
+  });
+
+  test('assertBunEngineCompatible 兼容 ^ / ~ / >=, SSH 拦截 -J/-F/非法 target, 备份目录精确匹配 unitSlug', () => {
+    expect(() => assertBunEngineCompatible('^1.4.2', '1.9.0')).not.toThrow();
+    expect(() => assertBunEngineCompatible('^1.4.2', '2.0.0')).toThrow(
+      ConfigError,
+    );
+    expect(() => assertBunEngineCompatible('~1.4.2', '1.4.9')).not.toThrow();
+    expect(() => assertBunEngineCompatible('~1.4.2', '1.5.0')).toThrow(
+      ConfigError,
+    );
+
+    expect(() => parseSshInput('ssh -J bastion ops@10.0.0.2')).toThrow(
+      ConfigError,
+    );
+    expect(() => parseSshInput('ssh -F /tmp/ssh.cfg mybox')).toThrow(
+      ConfigError,
+    );
+    expect(() => parseSshInput('user@@host')).toThrow(ConfigError);
+    expect(() => parseSshInput('user@')).toThrow(ConfigError);
+
+    const fp = 'a1b2c3d4e5f6';
+    expect(
+      resolveServerBackupDir(
+        `/home/ops/srv/backups/mongo-ha-${fp}`,
+        'mongo',
+        'ha',
+        fp,
+        'node2',
+      ),
+    ).toBe(`/home/ops/srv/backups/mongo-ha-${fp}-node2`);
+  });
 });
