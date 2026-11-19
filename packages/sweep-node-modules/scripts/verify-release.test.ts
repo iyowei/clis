@@ -10,6 +10,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { cleanGitEnv } from '../../../scripts/lib/git-env.ts';
+import { resolveNpmCommand } from '../../../scripts/lib/release-verify.ts';
 import {
   PACK_FILES_EXPECTED,
   type VerifyFacts,
@@ -184,7 +185,12 @@ describe('collectFacts 集成采集', () => {
   const dirs: string[] = [];
   afterEach(() => {
     for (const dir of dirs.splice(0))
-      rmSync(dir, { recursive: true, force: true });
+      rmSync(dir, {
+        recursive: true,
+        force: true,
+        maxRetries: 5,
+        retryDelay: 100,
+      });
   });
 
   test('临时仓库: git 事实 / 清单 / 摘要 / 递归 d.ts 复查 (含 import 类型查询) / pack 清单逐项落地', () => {
@@ -234,5 +240,58 @@ describe('collectFacts 集成采集', () => {
         'package.json',
       ].sort(),
     );
+  }, 30_000);
+});
+
+describe('resolveNpmCommand 跨平台调用推导', () => {
+  const args = ['pack', '--dry-run', '--json', '--ignore-scripts'];
+
+  test('POSIX 直接调 npm', () => {
+    expect(resolveNpmCommand(args, 'linux', {})).toEqual({
+      command: 'npm',
+      args,
+    });
+  });
+
+  test('Windows 优先走 npm_execpath 的 npm-cli.js', () => {
+    const cli = 'C:\\nodejs\\node_modules\\npm\\bin\\npm-cli.js';
+    expect(
+      resolveNpmCommand(args, 'win32', { npm_execpath: cli }, (p) => p === cli),
+    ).toEqual({
+      command: 'node',
+      args: [cli, ...args],
+    });
+  });
+
+  test('Windows 从 PATH 解析 node.exe + npm-cli.js 绕开 .cmd 批处理壳层', () => {
+    const nodeDir = 'C:\\Program Files\\nodejs';
+    const npmCli = `${nodeDir}\\node_modules\\npm\\bin\\npm-cli.js`;
+    const nodeExe = `${nodeDir}\\node.exe`;
+    const existing = new Set([npmCli, nodeExe]);
+    expect(
+      resolveNpmCommand(
+        args,
+        'win32',
+        { Path: `C:\\Windows;"${nodeDir}"` },
+        (p) => existing.has(p),
+      ),
+    ).toEqual({
+      command: nodeExe,
+      args: [npmCli, ...args],
+    });
+  });
+
+  test('Windows 找不到 npm-cli.js 时回退 ComSpec /d /s /c npm.cmd', () => {
+    expect(
+      resolveNpmCommand(
+        args,
+        'win32',
+        { PATH: 'C:\\Windows', ComSpec: 'C:\\Windows\\System32\\cmd.exe' },
+        () => false,
+      ),
+    ).toEqual({
+      command: 'C:\\Windows\\System32\\cmd.exe',
+      args: ['/d', '/s', '/c', 'npm.cmd', ...args],
+    });
   });
 });
