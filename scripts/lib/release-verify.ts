@@ -9,7 +9,14 @@
  */
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { existsSync, readFileSync, statSync } from 'node:fs';
+import {
+  existsSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  statSync,
+} from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join, win32 } from 'node:path';
 
 import { cleanGitEnv } from './git-env.ts';
@@ -299,11 +306,15 @@ export const resolveNpmCommand = (
  * 采集失败 (npm 不在 PATH / 非零退出 / 输出非 JSON) 一律落 issue, 不抛: 判定层按「采不到就拒」处理。
  */
 export const readPackFiles = (root: string): PackFacts => {
+  const cacheDir = mkdtempSync(join(tmpdir(), 'npm-pack-cache-'));
   const invocation = resolveNpmCommand([
     'pack',
     '--dry-run',
     '--json',
     '--ignore-scripts',
+    '--no-update-notifier',
+    '--cache',
+    cacheDir,
   ]);
   let raw: string;
   try {
@@ -312,12 +323,26 @@ export const readPackFiles = (root: string): PackFacts => {
       encoding: 'utf8',
       stdio: ['ignore', 'pipe', 'ignore'],
       maxBuffer: 32 * 1024 * 1024,
+      env: {
+        ...process.env,
+        NO_UPDATE_NOTIFIER: '1',
+        npm_config_update_notifier: 'false',
+        npm_config_fund: 'false',
+        npm_config_audit: 'false',
+      },
     });
   } catch {
     return {
       files: null,
       issue: 'npm pack 跑不起来 (需要 npm: 不在 PATH 或非零退出)',
     };
+  } finally {
+    rmSync(cacheDir, {
+      recursive: true,
+      force: true,
+      maxRetries: 5,
+      retryDelay: 100,
+    });
   }
   const files = parsePackFiles(raw);
   if (files === null) {
