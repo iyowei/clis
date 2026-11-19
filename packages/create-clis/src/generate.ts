@@ -38,10 +38,11 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { createRequire } from 'node:module';
-import { dirname, join } from 'node:path';
+import { dirname, join, win32 } from 'node:path';
 
-import * as prettier from 'prettier';
+import type * as Prettier from 'prettier';
 
+import { cleanGitEnv } from '../../../scripts/lib/git-env.ts';
 import {
   TEMPLATE_VOCABULARY,
   type Vocabulary,
@@ -90,13 +91,8 @@ export interface GenerateResult {
  */
 export class TargetRejectedError extends Error {}
 
-/** prettier 插件绝对路径: 收口不依赖产物目录的 node_modules (此刻尚未安装依赖) */
-const PRETTIER_PLUGIN = createRequire(import.meta.url).resolve(
-  '@trivago/prettier-plugin-sort-imports',
-);
-
-/** 目标目录可用性: 不存在即通过; 已存在且非空即拒绝 (无 --force, 覆盖风险远大于便利) */
-function assertTargetAvailable(targetDir: string): void {
+/** 目标目录可用性: 不存在即通过; 已存在且非空或非目录即拒绝 (无 --force, 覆盖风险远大于便利) */
+export function assertTargetAvailable(targetDir: string): void {
   if (!existsSync(targetDir)) return;
   if (!statSync(targetDir).isDirectory()) {
     throw new TargetRejectedError(`目标路径已存在且不是目录: ${targetDir}`);
@@ -201,11 +197,16 @@ async function formatTree(root: string): Promise<void> {
       `模板缺少 .prettierrc: 无可用的格式化收口配置 (模板形态预期不符)`,
     );
   }
-  const raw = JSON.parse(readFileSync(configPath, 'utf8')) as prettier.Options;
-  const options: prettier.Options = { ...raw, plugins: [PRETTIER_PLUGIN] };
+  const prettier = await import('prettier');
+  const prettierPlugin = createRequire(import.meta.url).resolve(
+    '@trivago/prettier-plugin-sort-imports',
+  );
+  const raw = JSON.parse(readFileSync(configPath, 'utf8')) as Prettier.Options;
+  const options: Prettier.Options = { ...raw, plugins: [prettierPlugin] };
   const ignorePath = join(root, '.prettierignore');
-  const fileInfoOptions: prettier.FileInfoOptions = {
-    plugins: [PRETTIER_PLUGIN],
+  const fileInfoOptions: Prettier.FileInfoOptions = {
+    plugins: [prettierPlugin],
+    resolveConfig: false,
   };
   if (existsSync(ignorePath)) fileInfoOptions.ignorePath = ignorePath;
 
@@ -240,13 +241,19 @@ function assertNoResidual(
   vocabulary: Vocabulary,
   original: Vocabulary,
 ): void {
+  const placeholderLiterals = Object.values(TEMPLATE_VOCABULARY).filter(
+    (value): value is string => typeof value === 'string' && value.length > 0,
+  );
   const leftovers: string[] = [];
   for (const rel of listTemplateFiles(targetDir)) {
     const text = readFileSync(join(targetDir, rel), 'utf8');
-    if (
+    const hasPlaceholder =
       containsResidual(rel, TEMPLATE_VOCABULARY) ||
-      containsResidual(text, TEMPLATE_VOCABULARY)
-    ) {
+      containsResidual(text, TEMPLATE_VOCABULARY) ||
+      placeholderLiterals.some(
+        (literal) => rel.includes(literal) || text.includes(literal),
+      );
+    if (hasPlaceholder) {
       leftovers.push(`${rel} (模板占位形态残留)`);
     }
     if (
@@ -325,19 +332,155 @@ export async function generateProject(
   return { executed };
 }
 
+const WIN32_ABS_DIR_RE = /^(?:[A-Za-z]:[/\\]|\\\\[^\\]+\\[^\\]+)/;
+const WIN32_HOOK_EXTS = ['.exe', '.com', '.cmd'] as const;
+
+const isFileAt = (filePath: string): boolean => {
+  try {
+    return statSync(filePath).isFile();
+  } catch {
+    return false;
+  }
+};
+
+/** 清洗安装期环境变量: 剥离 npm_execpath 与 npm_lifecycle_* 防宿主包管理器上下文干扰 bun install */
+export function cleanInstallEnv(
+  sourceEnv: NodeJS.ProcessEnv = process.env,
+): Record<string, string> {
+  const env: Record<string, string> = {};
+  for (const [key, value] of Object.entries(sourceEnv)) {
+    if (value === undefined) continue;
+    const lower = key.toLowerCase();
+    if (lower === 'npm_execpath' || lower.startsWith('npm_lifecycle_')) {
+      continue;
+    }
+    env[key] = value;
+  }
+  return env;
+}
+
+/** 构造安全的 Windows cmd.exe 批处理命令行 (逐元字符转义并用最外层引号包裹防 /s 剥离) */
+function escapeCmdMeta(value: string): string {
+  return value.replace(/[&|<>^()%!]/g, '^$&');
+}
+
+function buildBatchInvocation(
+  batchPath: string,
+  args: readonly string[],
+  env: Record<string, string>,
+): { command: string; args: string[]; windowsVerbatimArguments: boolean } {
+  const comspec = env.ComSpec ?? env.COMSPEC ?? 'cmd.exe';
+  const quoted = [batchPath, ...args]
+    .map((item) => `"${escapeCmdMeta(item)}"`)
+    .join(' ');
+  return {
+    command: comspec,
+    args: ['/d', '/s', '/c', `"${quoted}"`],
+    windowsVerbatimArguments: true,
+  };
+}
+
 /**
- * git init 收尾 hook (默认收尾): 静默初始化, 失败即抛错。
+ * 跨平台解析收尾 hook 可执行文件:
+ * - POSIX 直接按裸名走 execvp;
+ * - Windows 严格按绝对 PATH 依次查找 .exe / .com / .cmd (规避盘根相对路径与裸名 cwd 劫持)。
+ */
+export function resolveHookCommand(
+  name: string,
+  options: {
+    platform?: NodeJS.Platform;
+    pathEnv?: string;
+    fileProbe?: (candidate: string) => boolean;
+  } = {},
+): { command: string; isBatch: boolean } {
+  const platform = options.platform ?? process.platform;
+  if (platform !== 'win32') return { command: name, isBatch: false };
+  const pathEnv = options.pathEnv ?? process.env.PATH ?? process.env.Path ?? '';
+  const fileProbe = options.fileProbe ?? isFileAt;
+  for (const raw of pathEnv.split(';')) {
+    const dir =
+      raw.length > 1 && raw.startsWith('"') && raw.endsWith('"')
+        ? raw.slice(1, -1)
+        : raw;
+    if (dir === '' || !WIN32_ABS_DIR_RE.test(dir)) continue;
+    for (const ext of WIN32_HOOK_EXTS) {
+      const candidate = win32.join(dir, `${name}${ext}`);
+      if (fileProbe(candidate)) {
+        return { command: candidate, isBatch: ext === '.cmd' };
+      }
+    }
+  }
+  return { command: name, isBatch: false };
+}
+
+/** 供测试注入的子进程执行结果最小形状 */
+export interface HookSpawnResult {
+  status: number | null;
+  signal: NodeJS.Signals | null;
+  error?: Error;
+  stderr?: string | Buffer | null;
+}
+
+/** 供测试注入的子进程执行器签名 */
+export type HookSpawner = (
+  command: string,
+  args: readonly string[],
+  options: {
+    cwd: string;
+    encoding?: 'utf8';
+    stdio?: 'inherit';
+    env: Record<string, string>;
+    windowsVerbatimArguments?: boolean;
+  },
+) => HookSpawnResult;
+
+const defaultSpawner: HookSpawner = (command, args, options) =>
+  spawnSync(command, args, options);
+
+/**
+ * git init 收尾 hook (默认收尾): 清洗 GIT_* 环境变量后静默初始化, 缺失或失败清晰报错。
  * 外部副作用：在 targetDir 建 .git 目录 (启动一次 git 子进程)。
  */
-export function createGitInitHook(): (targetDir: string) => void {
+export function createGitInitHook(
+  spawner: HookSpawner = defaultSpawner,
+): (targetDir: string) => void {
   return (targetDir) => {
-    const result = spawnSync('git', ['init', '--quiet'], {
+    const env = cleanGitEnv();
+    const resolved = resolveHookCommand('git', {
+      pathEnv: env.PATH ?? env.Path ?? '',
+    });
+    const invocation = resolved.isBatch
+      ? buildBatchInvocation(resolved.command, ['init', '--quiet'], env)
+      : {
+          command: resolved.command,
+          args: ['init', '--quiet'],
+          windowsVerbatimArguments: false,
+        };
+    const result = spawner(invocation.command, invocation.args, {
       cwd: targetDir,
       encoding: 'utf8',
+      env,
+      windowsVerbatimArguments: invocation.windowsVerbatimArguments,
     });
+    if (result.error !== undefined) {
+      const code = (result.error as NodeJS.ErrnoException).code;
+      if (code === 'ENOENT') {
+        throw new Error(
+          'git init 失败: 未找到 git 可执行文件 (请先安装 git, 或使用 --no-git 跳过)',
+        );
+      }
+      throw new Error(`git init 启动失败: ${result.error.message}`);
+    }
     if (result.status !== 0) {
+      const rawStderr = result.stderr;
+      const stderr = (
+        typeof rawStderr === 'string'
+          ? rawStderr
+          : (rawStderr?.toString('utf8') ?? '')
+      ).trim();
+      const detail = stderr.length > 0 ? `: ${stderr}` : '';
       throw new Error(
-        `git init 失败 (退出码 ${String(result.status)}): ${result.stderr.trim()}`,
+        `git init 失败 (退出码 ${String(result.status ?? result.signal)})${detail}`,
       );
     }
   };
@@ -345,19 +488,46 @@ export function createGitInitHook(): (targetDir: string) => void {
 
 /**
  * 依赖安装收尾 hook (默认收尾): 产物是 bun 工程 (packageManager 声明 bun), 用 bun install。
- * 失败时抛错并给出可自行重跑的指引 (产物本身已生成完整, 不因安装失败而清除)。
+ * 清洗 npm_execpath / npm_lifecycle_* 环境变量, 兼容 Windows .exe/.com/.cmd, 缺 bun 给出清晰指引。
  * 外部副作用：在 targetDir 安装依赖 (stdio 透传给用户看进度)。
  */
-export function createInstallHook(): (targetDir: string) => void {
+export function createInstallHook(
+  spawner: HookSpawner = defaultSpawner,
+): (targetDir: string) => void {
   return (targetDir) => {
     process.stdout.write('  安装依赖 (bun install) ...\n');
-    const result = spawnSync('bun', ['install'], {
+    const env = cleanInstallEnv();
+    const resolved = resolveHookCommand('bun', {
+      pathEnv: env.PATH ?? env.Path ?? '',
+    });
+    const invocation = resolved.isBatch
+      ? buildBatchInvocation(resolved.command, ['install'], env)
+      : {
+          command: resolved.command,
+          args: ['install'],
+          windowsVerbatimArguments: false,
+        };
+    const result = spawner(invocation.command, invocation.args, {
       cwd: targetDir,
       stdio: 'inherit',
+      env,
+      windowsVerbatimArguments: invocation.windowsVerbatimArguments,
     });
+    if (result.error !== undefined) {
+      const code = (result.error as NodeJS.ErrnoException).code;
+      if (code === 'ENOENT') {
+        throw new Error(
+          `依赖安装失败: 未找到 bun 可执行文件 (生成物为 bun 工程, 请先安装 bun: https://bun.sh, ` +
+            `或使用 --no-install 跳过后进入 ${targetDir} 手动安装)`,
+        );
+      }
+      throw new Error(
+        `依赖安装启动失败: ${result.error.message}; 产物已生成完整, 可进入 ${targetDir} 重跑 bun install`,
+      );
+    }
     if (result.status !== 0) {
       throw new Error(
-        `依赖安装失败 (退出码 ${String(result.status)}); 产物已生成完整, ` +
+        `依赖安装失败 (退出码 ${String(result.status ?? result.signal)}); 产物已生成完整, ` +
           `可进入 ${targetDir} 重跑 bun install`,
       );
     }
