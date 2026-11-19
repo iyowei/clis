@@ -155,6 +155,12 @@ export function parseArgs(argv: string[]): ParseOutcome {
   }
 
   const [only] = positionals;
+  if (positionals.includes('update')) {
+    return {
+      ok: false,
+      message: '子命令 update 必须位于参数首位 (用法: sweep-nm update [选项])',
+    };
+  }
   if (
     positionals.length > 1 ||
     (only !== undefined && only !== 'init' && only !== 'config')

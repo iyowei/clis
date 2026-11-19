@@ -164,4 +164,14 @@ describe('parseArgs', () => {
       },
     });
   });
+
+  test('非首位 update 返回清晰用法提示 (SWEEPCLI-P1-1)', () => {
+    const withYes = parseArgs(['--yes', 'update']);
+    expect(withYes.ok).toBe(false);
+    if (!withYes.ok) expect(withYes.message).toContain('必须位于参数首位');
+
+    const withCfg = parseArgs(['--config', 'c.json', 'update']);
+    expect(withCfg.ok).toBe(false);
+    if (!withCfg.ok) expect(withCfg.message).toContain('sweep-nm update');
+  });
 });
