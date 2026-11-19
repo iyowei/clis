@@ -12,12 +12,16 @@ import { POSIX_STYLE, WIN32_STYLE } from './guard.ts';
 
 const HOME = '/Users/iyowei';
 
-/** 判定为安装树即返回理由 (断言用), 否则返回 null; 家目录固定注入, 不依赖宿主 HOME */
+/** 判定为安装树即返回理由 (断言用), 否则返回 null; 默认注入 POSIX 风味与固定家目录, 不依赖宿主 OS */
 function suspectReason(
   target: string,
   options: ClassifyOptions = {},
 ): string | null {
-  const result = classifyTarget(target, { home: HOME, ...options });
+  const result = classifyTarget(target, {
+    style: POSIX_STYLE,
+    home: HOME,
+    ...options,
+  });
   return result.kind === 'suspect-install-tree' ? (result.reason ?? '') : null;
 }
 
@@ -144,7 +148,10 @@ describe('classify: 安装树形态 (本机实测布局)', () => {
     expect(suspectReason('/srv/.hidden-app/node_modules')).toBeNull();
     // 判定可关闭 (注入 home: null), 供不需要该维度的调用方使用
     expect(
-      classifyTarget(`${HOME}/.hidden-app/node_modules`, { home: null }).kind,
+      classifyTarget(`${HOME}/.hidden-app/node_modules`, {
+        style: POSIX_STYLE,
+        home: null,
+      }).kind,
     ).toBe('project');
   });
 

@@ -2,6 +2,8 @@
  * render 测试的共享样例数据与断言工具 (主干契约 render.test.ts 与鲁棒性套件共用)。
  * 单一事实来源: 样例改动须同步影响两支测试, 防止两处 fixture 漂移。
  */
+import { POSIX_STYLE } from '@iyowei/sweep-node-modules';
+
 import type { RenderEntry, RenderOptions } from './render.ts';
 
 export const HOME = '/Users/iyowei';
@@ -78,6 +80,7 @@ export const previewOptions: RenderOptions = {
   entries: SAMPLES,
   color: false,
   home: HOME,
+  pathStyle: POSIX_STYLE,
 };
 
 /** 剥去 SGR 颜色码 (测试侧独立实现, 不复用实现内部) */

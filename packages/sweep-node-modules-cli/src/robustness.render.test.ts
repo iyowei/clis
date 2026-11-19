@@ -251,10 +251,12 @@ describe('路径风味矩阵 (posix / win32)', () => {
   });
 
   test('带尾斜杠的 home 仍正常缩写为 ~ 与 ~/...', () => {
-    expect(shortenHome('/Users/iyowei', '/Users/iyowei/')).toBe('~');
-    expect(shortenHome('/Users/iyowei/work/app', '/Users/iyowei/')).toBe(
-      '~/work/app',
+    expect(shortenHome('/Users/iyowei', '/Users/iyowei/', POSIX_STYLE)).toBe(
+      '~',
     );
+    expect(
+      shortenHome('/Users/iyowei/work/app', '/Users/iyowei/', POSIX_STYLE),
+    ).toBe('~/work/app');
     const out = render({
       ...previewOptions,
       home: `${HOME}/`,

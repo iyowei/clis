@@ -304,11 +304,15 @@ function shortenPath(path: string, style: PathStyle, home?: string): string {
 }
 
 /**
- * 家目录缩写 (平台原生风味): 与清单渲染内部同源, 导出供向导等复用。
+ * 家目录缩写 (默认平台原生风味, 支持注入 PathStyle 测跨平台语义): 与清单渲染内部同源, 导出供向导等复用。
  * home 缺省时不缩写 (保持纯函数, 不读环境)。
  */
-export function shortenHome(path: string, home?: string): string {
-  return shortenPath(path, PLATFORM_STYLE, home);
+export function shortenHome(
+  path: string,
+  home?: string,
+  style: PathStyle = PLATFORM_STYLE,
+): string {
+  return shortenPath(path, style, home);
 }
 
 /**
