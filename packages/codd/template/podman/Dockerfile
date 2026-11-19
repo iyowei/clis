@@ -1,7 +1,7 @@
 # 备份、恢复、演练工具镜像: 以 MongoDB 镜像为底 (自带 mongodump, mongorestore, mongosh 及其全部依赖库),
 # 再把 Bun 二进制从官方 Bun 镜像拷进来运行 TypeScript。
 # 镜像坐标全部由 podman-compose.yml 从 .env 传入, 本文件不硬编码版本号。
-ARG BUN_IMAGE=oven/bun:1-slim
+ARG BUN_IMAGE=oven/bun:1.4.5-slim
 ARG MONGO_IMAGE=mongo:latest
 
 FROM ${BUN_IMAGE} AS bun
