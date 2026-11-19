@@ -55,7 +55,14 @@
         "$TURBO_ROOT$/tsconfig.json",
       ],
     },
-    "typecheck": {},
-    "test": {},
+    "typecheck": {
+      "dependsOn": ["^build"],
+    },
+    "test": {
+      "dependsOn": ["^build"],
+    },
+    "bench": {
+      "cache": false,
+    },
   },
 }

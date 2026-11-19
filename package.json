@@ -23,7 +23,7 @@
     "lint:fix": "oxlint --fix",
     "format": "prettier --write .",
     "test": "turbo run test && bun test scripts/",
-    "bench": "bun packages/sweep-node-modules/bench/run.ts",
+    "bench": "turbo run bench",
     "conformance": "bun scripts/transcription/run-conformance.ts",
     "ci": "bun scripts/ci.ts"
   },
