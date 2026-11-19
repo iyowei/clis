@@ -205,11 +205,13 @@ async function walkRoot(root: string, ctx: WalkContext): Promise<void> {
       let entries: Dirent[];
       try {
         entries = await readdir(dir, { withFileTypes: true });
-      } catch {
+      } catch (error) {
+        const errno = (error as { code?: string } | null)?.code;
         warnings.push({
           code: 'SCAN_DIR_UNREADABLE',
           message: `目录不可读, 已跳过: ${dir}`,
           path: dir,
+          ...(typeof errno === 'string' ? { errno } : {}),
         });
         return;
       }
@@ -304,6 +306,12 @@ export function createParallelScanner(): Scanner {
      * ```
      */
     async scan(options: ScanOptions): Promise<ScanResult> {
+      // 入口取消预检: 即便 roots 为空数组, 已中止的 signal 仍须立即抛 CANCELLED
+      if (options.signal?.aborted) {
+        throw new SweepError('CANCELLED', '扫描在根预检阶段被取消', {
+          phase: 'scan',
+        });
+      }
       const warnings: SweepWarning[] = [];
       const exclude = new Set(options.exclude);
       /** 每个 exclude 名一条计数, 未命中的名字预置 0 以保证仍在列; 按名计数, 与遍历次序无关 */

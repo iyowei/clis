@@ -53,6 +53,19 @@ for (const scanner of scanners) {
         code: 'CANCELLED',
         details: { phase: 'scan' },
       });
+
+      // 空 roots 遇已取消 signal 也必须立即抛 CANCELLED
+      await expect(
+        scanner.scan({
+          roots: [],
+          exclude: [],
+          include: [],
+          signal: controller.signal,
+        }),
+      ).rejects.toMatchObject({
+        code: 'CANCELLED',
+        details: { phase: 'scan' },
+      });
     });
 
     test('进度事件: 每命中一处发一条 hit, 形状含 project / target / root', async () => {
@@ -130,4 +143,28 @@ describe('scan 取消与进度 [parallel] 异常停泵与根预检取消', () =>
       details: { phase: 'scan' },
     });
   });
+
+  const isRootOrWin =
+    process.platform === 'win32' ||
+    (process as { getuid?: () => number }).getuid?.() === 0;
+
+  test.skipIf(isRootOrWin)(
+    '不可读目录: SCAN_DIR_UNREADABLE 告警填充 errno (SWEEP-P1-3)',
+    async () => {
+      const { root } = await make({
+        projects: [{ dir: 'alpha' }],
+        unreadable: ['locked-dir'],
+      });
+      const result = await createParallelScanner().scan({
+        roots: [root],
+        exclude: [],
+        include: [],
+      });
+      const unreadable = result.warnings.find(
+        (w) => w.code === 'SCAN_DIR_UNREADABLE',
+      );
+      expect(unreadable?.path).toBe(join(root, 'locked-dir'));
+      expect(unreadable?.errno).toBe('EACCES');
+    },
+  );
 });

@@ -128,6 +128,11 @@ export function createNativeScanner(): Scanner {
       signal,
       onProgress,
     }: ScanOptions): Promise<ScanResult> {
+      if (signal?.aborted) {
+        throw new SweepError('CANCELLED', '扫描在遍历任务检查点被取消', {
+          phase: 'scan',
+        });
+      }
       const warnings: SweepWarning[] = [];
       const excluded = new Set(exclude);
       const included = new Set(include);

@@ -54,6 +54,11 @@ export function createPruningScanner(): Scanner {
      * ```
      */
     async scan(options: ScanOptions): Promise<ScanResult> {
+      if (options.signal?.aborted) {
+        throw new SweepError('CANCELLED', '扫描在遍历任务检查点被取消', {
+          phase: 'scan',
+        });
+      }
       const warnings: SweepWarning[] = [];
       const exclude = new Set(options.exclude);
       const include = new Set(options.include);
