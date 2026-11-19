@@ -4,9 +4,10 @@
  */
 import { spawnSync } from 'node:child_process';
 import { readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
-const ROOT = join(import.meta.dir, '..');
+const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const DIST = join(ROOT, 'dist');
 
 function collectDtsFiles(dir: string): string[] {
@@ -19,26 +20,35 @@ function collectDtsFiles(dir: string): string[] {
   return out;
 }
 
+function runOrExit(command: string, args: readonly string[]): void {
+  const result = spawnSync(command, args, { stdio: 'inherit' });
+  if (result.error !== undefined) {
+    process.stderr.write(
+      `cli-updater build: 执行 ${command} 失败: ${result.error.message}\n`,
+    );
+    process.exit(1);
+  }
+  if (result.status !== 0) {
+    process.exit(result.status ?? 1);
+  }
+}
+
 rmSync(DIST, { recursive: true, force: true });
 
-const bundle = spawnSync(
-  'bun',
-  [
-    'build',
-    join(ROOT, 'src/index.ts'),
-    '--target=node',
-    `--outfile=${join(DIST, 'index.js')}`,
-  ],
-  { stdio: 'inherit' },
-);
-if (bundle.status !== 0) process.exit(bundle.status ?? 1);
+runOrExit('bun', [
+  'build',
+  join(ROOT, 'src/index.ts'),
+  '--target=node',
+  `--outfile=${join(DIST, 'index.js')}`,
+]);
 
-const types = spawnSync(
-  'bunx',
-  ['tsc', '-p', join(ROOT, 'tsconfig.build.json')],
-  { stdio: 'inherit' },
-);
-if (types.status !== 0) process.exit(types.status ?? 1);
+runOrExit('bun', [
+  'x',
+  '--no-install',
+  'tsc',
+  '-p',
+  join(ROOT, 'tsconfig.build.json'),
+]);
 
 for (const path of collectDtsFiles(DIST)) {
   const before = readFileSync(path, 'utf8');
