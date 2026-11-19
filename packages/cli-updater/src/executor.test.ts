@@ -1,0 +1,251 @@
+/**
+ * 升级命令构造、PATH 防劫持解析、Windows npm 直调与 Yarn Berry 拦截单测。
+ */
+import { describe, expect, test } from 'bun:test';
+
+import {
+  buildIsolatedEnv,
+  buildUpgradePlan,
+  formatUpgradeDisplayCommand,
+  isYarnBerryVersion,
+  resolveExecutableInPath,
+  resolvePmInvocation,
+} from './executor.ts';
+
+describe('resolveExecutableInPath 防当前目录劫持', () => {
+  test('POSIX 跳过相对与空 PATH 条目, 仅解析绝对目录', () => {
+    const existing = new Set(['./bun', '/usr/local/bin/bun']);
+    const found = resolveExecutableInPath(
+      'bun',
+      'darwin',
+      { PATH: ':.:./bin:/usr/local/bin' },
+      (p) => existing.has(p),
+    );
+    expect(found).toEqual({ path: '/usr/local/bin/bun', isBatch: false });
+  });
+
+  test('Windows 优先原生 .exe, 其次 .cmd 批处理, 跳过相对路径', () => {
+    const existing = new Set(['C:\\tools\\pnpm.cmd', 'C:\\bun\\bun.exe']);
+    expect(
+      resolveExecutableInPath('bun', 'win32', { Path: '.;"C:\\bun"' }, (p) =>
+        existing.has(p),
+      ),
+    ).toEqual({ path: 'C:\\bun\\bun.exe', isBatch: false });
+
+    expect(
+      resolveExecutableInPath('pnpm', 'win32', { PATH: 'C:\\tools' }, (p) =>
+        existing.has(p),
+      ),
+    ).toEqual({ path: 'C:\\tools\\pnpm.cmd', isBatch: true });
+  });
+});
+
+describe('resolvePmInvocation 跨平台调用构造', () => {
+  test('Windows 下 npm 优先直调 node.exe + npm-cli.js 绕开 npm.cmd 壳层', () => {
+    const nodeDir = 'C:\\Program Files\\nodejs';
+    const nodeExe = `${nodeDir}\\node.exe`;
+    const npmCli = `${nodeDir}\\node_modules\\npm\\bin\\npm-cli.js`;
+    const existing = new Set([nodeExe, npmCli]);
+    const inv = resolvePmInvocation(
+      'npm',
+      ['install', '-g', 'create-clis@1.1.0'],
+      'win32',
+      { PATH: nodeDir },
+      (p) => existing.has(p),
+    );
+    expect(inv).toEqual({
+      command: nodeExe,
+      args: [npmCli, 'install', '-g', 'create-clis@1.1.0'],
+    });
+  });
+
+  test('Windows 下 .cmd 批处理走显式 ComSpec /d /s /c', () => {
+    const existing = new Set(['C:\\pnpm\\pnpm.cmd']);
+    const inv = resolvePmInvocation(
+      'pnpm',
+      ['add', '-g', 'create-clis@1.1.0'],
+      'win32',
+      { PATH: 'C:\\pnpm', ComSpec: 'C:\\Windows\\System32\\cmd.exe' },
+      (p) => existing.has(p),
+    );
+    expect(inv).toEqual({
+      command: 'C:\\Windows\\System32\\cmd.exe',
+      args: [
+        '/d',
+        '/s',
+        '/c',
+        'C:\\pnpm\\pnpm.cmd',
+        'add',
+        '-g',
+        'create-clis@1.1.0',
+      ],
+    });
+  });
+});
+
+describe('buildUpgradePlan 五大包管理器与安全拦截', () => {
+  const posixEnv = { PATH: '/usr/local/bin' };
+  const allPosix = (p: string): boolean => p.startsWith('/usr/local/bin/');
+
+  test('bun / npm / pnpm / yarn v1 / volta 分别产出精确升级命令与可选 --registry', () => {
+    const bunPlan = buildUpgradePlan({
+      pm: 'bun',
+      packageName: '@iyowei/sweep-node-modules-cli',
+      targetSpec: '0.4.0',
+      explicitRegistry: 'https://registry.npmmirror.com/',
+      platform: 'darwin',
+      env: posixEnv,
+      isFile: allPosix,
+    });
+    expect(bunPlan.ok).toBe(true);
+    if (bunPlan.ok) {
+      expect(bunPlan.plan.args).toEqual([
+        'add',
+        '-g',
+        '@iyowei/sweep-node-modules-cli@0.4.0',
+        '--registry=https://registry.npmmirror.com',
+      ]);
+      expect(bunPlan.plan.displayCommand).toBe(
+        'bun add -g @iyowei/sweep-node-modules-cli@0.4.0 --registry=https://registry.npmmirror.com',
+      );
+    }
+
+    const npmPlan = buildUpgradePlan({
+      pm: 'npm',
+      packageName: 'create-clis',
+      targetSpec: '1.2.0',
+      platform: 'linux',
+      env: posixEnv,
+      isFile: allPosix,
+    });
+    expect(npmPlan.ok).toBe(true);
+    if (npmPlan.ok) {
+      expect(npmPlan.plan.args).toEqual(['install', '-g', 'create-clis@1.2.0']);
+    }
+
+    const pnpmPlan = buildUpgradePlan({
+      pm: 'pnpm',
+      packageName: 'create-clis',
+      targetSpec: '1.2.0',
+      platform: 'linux',
+      env: posixEnv,
+      isFile: allPosix,
+    });
+    expect(pnpmPlan.ok && pnpmPlan.plan.args).toEqual([
+      'add',
+      '-g',
+      'create-clis@1.2.0',
+    ]);
+
+    const yarnPlan = buildUpgradePlan({
+      pm: 'yarn',
+      packageName: 'create-clis',
+      targetSpec: '1.2.0',
+      yarnVersion: '1.22.22',
+      platform: 'linux',
+      env: posixEnv,
+      isFile: allPosix,
+    });
+    expect(yarnPlan.ok && yarnPlan.plan.args).toEqual([
+      'global',
+      'add',
+      'create-clis@1.2.0',
+    ]);
+
+    const voltaPlan = buildUpgradePlan({
+      pm: 'volta',
+      packageName: 'create-clis',
+      targetSpec: '1.2.0',
+      platform: 'linux',
+      env: posixEnv,
+      isFile: allPosix,
+    });
+    expect(voltaPlan.ok && voltaPlan.plan.args).toEqual([
+      'install',
+      'create-clis@1.2.0',
+    ]);
+  });
+
+  test('Yarn v2+ (Berry) 明确前置拦截并提示切换管理器', () => {
+    expect(isYarnBerryVersion('4.5.0')).toBe(true);
+    expect(isYarnBerryVersion('1.22.22')).toBe(false);
+
+    const plan = buildUpgradePlan({
+      pm: 'yarn',
+      packageName: 'create-clis',
+      targetSpec: '1.2.0',
+      yarnVersion: '4.5.0',
+      platform: 'darwin',
+      env: posixEnv,
+      isFile: allPosix,
+    });
+    expect(plan.ok).toBe(false);
+    if (!plan.ok) expect(plan.reason).toContain('Berry');
+  });
+
+  test('缺失对应包管理器二进制时报错并给出手动复制命令', () => {
+    const plan = buildUpgradePlan({
+      pm: 'pnpm',
+      packageName: 'create-clis',
+      targetSpec: '1.2.0',
+      platform: 'darwin',
+      env: posixEnv,
+      isFile: () => false,
+    });
+    expect(plan.ok).toBe(false);
+    if (!plan.ok) {
+      expect(plan.fallbackCommand).toBe('pnpm add -g create-clis@1.2.0');
+    }
+  });
+
+  test('恶意包名、非法版本标签与非法 registry 一律拦截', () => {
+    expect(
+      buildUpgradePlan({
+        pm: 'npm',
+        packageName: 'bad;whoami',
+        platform: 'linux',
+        env: posixEnv,
+        isFile: allPosix,
+      }).ok,
+    ).toBe(false);
+    expect(
+      buildUpgradePlan({
+        pm: 'npm',
+        packageName: 'create-clis',
+        targetSpec: '1.0.0 && id',
+        platform: 'linux',
+        env: posixEnv,
+        isFile: allPosix,
+      }).ok,
+    ).toBe(false);
+    expect(
+      buildUpgradePlan({
+        pm: 'npm',
+        packageName: 'create-clis',
+        explicitRegistry: 'file:///etc/passwd',
+        platform: 'linux',
+        env: posixEnv,
+        isFile: allPosix,
+      }).ok,
+    ).toBe(false);
+  });
+
+  test('buildIsolatedEnv 剥离宿主 npm 生命周期污染变量并应用覆盖', () => {
+    const env = buildIsolatedEnv(
+      {
+        PATH: '/usr/bin',
+        npm_execpath: '/old/npm',
+        npm_lifecycle_event: 'start',
+        INIT_CWD: '/dirty/dir',
+      },
+      { npm_config_registry: 'https://registry.npmmirror.com' },
+    );
+    expect(env.npm_execpath).toBeUndefined();
+    expect(env.npm_lifecycle_event).toBeUndefined();
+    expect(env.INIT_CWD).toBeUndefined();
+    expect(env.npm_config_registry).toBe('https://registry.npmmirror.com');
+    expect(formatUpgradeDisplayCommand('volta', 'create-clis', '1.0.0')).toBe(
+      'volta install create-clis@1.0.0',
+    );
+  });
+});

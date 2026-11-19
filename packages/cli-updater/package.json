@@ -1,0 +1,25 @@
+{
+  "name": "@iyowei/cli-updater",
+  "version": "1.0.0",
+  "private": true,
+  "clisRole": "shared-lib",
+  "description": "Shared cross-package-manager self-update engine for clis CLI tools (bun / npm / pnpm / yarn / volta).",
+  "author": "iTonyYo (https://github.com/iTonyYo)",
+  "license": "MIT",
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "engines": {
+    "node": ">=22.18.0"
+  },
+  "scripts": {
+    "build": "bun scripts/build.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "bun test src"
+  }
+}

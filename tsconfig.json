@@ -15,7 +15,8 @@
       "@iyowei/sweep-node-modules/testing": [
         "./packages/sweep-node-modules/src/fixtures.ts"
       ],
-      "@iyowei/codd": ["./packages/codd/src/index.ts"]
+      "@iyowei/codd": ["./packages/codd/src/index.ts"],
+      "@iyowei/cli-updater": ["./packages/cli-updater/src/index.ts"]
     },
 
     "strict": true,

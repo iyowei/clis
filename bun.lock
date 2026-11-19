@@ -17,6 +17,10 @@
         "typescript": "7.0.2",
       },
     },
+    "packages/cli-updater": {
+      "name": "@iyowei/cli-updater",
+      "version": "1.0.0",
+    },
     "packages/codd": {
       "name": "@iyowei/codd",
       "version": "1.0.0",
@@ -28,6 +32,7 @@
         "codd": "bin/codd.mjs",
       },
       "devDependencies": {
+        "@iyowei/cli-updater": "1.0.0",
         "@iyowei/codd": "1.0.0",
       },
     },
@@ -41,6 +46,9 @@
         "@trivago/prettier-plugin-sort-imports": "6.0.2",
         "prettier": "3.9.9",
       },
+      "devDependencies": {
+        "@iyowei/cli-updater": "1.0.0",
+      },
     },
     "packages/sweep-node-modules": {
       "name": "@iyowei/sweep-node-modules",
@@ -53,6 +61,7 @@
         "sweep-nm": "bin/sweep-nm.mjs",
       },
       "devDependencies": {
+        "@iyowei/cli-updater": "1.0.0",
         "@iyowei/sweep-node-modules": "0.5.1",
       },
     },
@@ -87,6 +96,8 @@
     "@colors/colors": ["@colors/colors@1.6.0", "", {}, "sha512-Ir+AOibqzrIsL6ajt3Rz3LskB7OiMVHqltZmspbW/TJuTVuyOMirVqAkjfY6JISiLHgyNqicAC8AyHHGzNd/dA=="],
 
     "@dabh/diagnostics": ["@dabh/diagnostics@2.0.9", "", { "dependencies": { "@so-ric/colorspace": "^1.1.6", "enabled": "2.0.x", "kuler": "^2.0.0" } }, "sha512-R6siwR65Hm+3yfgP7o8DKhNvputQAwfoz9zTc3kyDudnomj2/BcLmD+uGQQPICjuFUp8ounPBU+jmKsocwVVAg=="],
+
+    "@iyowei/cli-updater": ["@iyowei/cli-updater@workspace:packages/cli-updater"],
 
     "@iyowei/codd": ["@iyowei/codd@workspace:packages/codd"],
 
