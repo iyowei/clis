@@ -225,21 +225,27 @@ describe('collectFacts 集成采集', () => {
     git(['add', '-A']);
     git(['-c', 'user.email=t@t', '-c', 'user.name=t', 'commit', '-qm', 'init']);
 
-    const facts = collectFacts(root);
+    const skipPack = process.env.CI_SKIP_PACK_TEST === '1';
+    const facts = collectFacts(
+      root,
+      skipPack ? { files: [], issue: null } : undefined,
+    );
     expect(facts.gitStatus).toBe('');
     expect(facts.gitHead).toMatch(/^[0-9a-f]{40}$/);
     expect(facts.dist.manifest).toBeNull();
     expect(facts.dist.entrySha256).toMatch(/^[0-9a-f]{64}$/);
     expect(facts.dtsTsSpecifierHits).toEqual(['bad.d.ts', 'nested/query.d.ts']);
-    expect(facts.pack.files).toEqual(
-      [
-        'dist/bad.d.ts',
-        'dist/index.d.ts',
-        'dist/index.js',
-        'dist/nested/query.d.ts',
-        'package.json',
-      ].sort(),
-    );
+    if (!skipPack) {
+      expect(facts.pack.files).toEqual(
+        [
+          'dist/bad.d.ts',
+          'dist/index.d.ts',
+          'dist/index.js',
+          'dist/nested/query.d.ts',
+          'package.json',
+        ].sort(),
+      );
+    }
   }, 30_000);
 });
 

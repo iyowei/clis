@@ -421,15 +421,20 @@ describe('发行面白名单 · 注入式 (喂假 pack 输出, 一次 npm 都不
  * 注册期判定 skip 并播报原因; dist 在场则全程维持原有全清单断言, 不削弱真问题抓取力。
  */
 const hasDist = existsSync(join(PACKAGE_ROOT, 'dist'));
+const skipPackTest = process.env.CI_SKIP_PACK_TEST === '1';
 
 if (!hasDist) {
   console.warn(
     '[Skip] 工作树无构建产物 (先 bun run build); 本用例守护发行面杂质回归',
   );
+} else if (skipPackTest) {
+  console.warn(
+    '[Skip] 已设置 CI_SKIP_PACK_TEST=1, 跳过重复的真机 npm pack 对齐 (已在 Linux CI 与 prepublishOnly 覆盖)',
+  );
 }
 
 describe('发行面白名单 · 真实 npm 对齐 (本仓库实测)', () => {
-  test.skipIf(!hasDist)(
+  test.skipIf(!hasDist || skipPackTest)(
     '本仓库工作树的 pack 清单与白名单逐项一致 (包根杂质复发的常驻回归)',
     () => {
       const facts = readPackFiles(PACKAGE_ROOT);

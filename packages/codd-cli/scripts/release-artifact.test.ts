@@ -149,15 +149,20 @@ const hasDist = existsSync(join(PACKAGE_ROOT, 'dist', CLI_FILE));
 const hasAssets = existsSync(
   join(PACKAGE_ROOT, ASSET_DIR, ASSET_MANIFEST_FILE),
 );
+const skipPackTest = process.env.CI_SKIP_PACK_TEST === '1';
 
 if (!hasDist || !hasAssets) {
   console.warn(
     '[Skip] 工作树缺构建产物 (先 bun run build); 本用例守护发行面杂质与资产漂移回归',
   );
+} else if (skipPackTest) {
+  console.warn(
+    '[Skip] 已设置 CI_SKIP_PACK_TEST=1, 跳过重复的真机 npm pack 对齐 (已在 Linux CI 与 prepublishOnly 覆盖)',
+  );
 }
 
 describe('发行面白名单 · 真实 npm 对齐 (本仓库实测)', () => {
-  test.skipIf(!hasDist || !hasAssets)(
+  test.skipIf(!hasDist || !hasAssets || skipPackTest)(
     '本包工作树的 pack 清单与白名单逐项一致 (真机 readPackFiles 回归)',
     () => {
       const facts = readPackFiles(PACKAGE_ROOT);

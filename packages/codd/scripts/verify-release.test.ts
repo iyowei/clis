@@ -311,12 +311,18 @@ describe('collectFacts 临时仓库集成采集', () => {
       'init',
     ]);
 
-    const facts = collectFacts(root);
+    const skipPack = process.env.CI_SKIP_PACK_TEST === '1';
+    const facts = collectFacts(
+      root,
+      skipPack ? { files: [], issue: null } : undefined,
+    );
     expect(facts.gitStatus).toBe('');
     expect(facts.gitHead).toMatch(/^[0-9a-f]{40}$/);
     expect(facts.dist.entrySha256).toMatch(/^[0-9a-f]{64}$/);
     expect(facts.dtsTsSpecifierHits).toEqual(['sub/bad.d.ts']);
-    expect(facts.pack.files).toContain('dist/index.js');
+    if (!skipPack) {
+      expect(facts.pack.files).toContain('dist/index.js');
+    }
   }, 30_000);
 });
 
@@ -324,9 +330,10 @@ const hasDist = existsSync(join(PACKAGE_ROOT, 'dist', ENTRY_FILE));
 const hasAssets = existsSync(
   join(PACKAGE_ROOT, ASSET_DIR, ASSET_MANIFEST_FILE),
 );
+const skipPackTest = process.env.CI_SKIP_PACK_TEST === '1';
 
 describe('发行面白名单 · 真实 npm 对齐 (本包实测)', () => {
-  test.skipIf(!hasDist || !hasAssets)(
+  test.skipIf(!hasDist || !hasAssets || skipPackTest)(
     '工作树 pack 清单与白名单逐项一致且包版本号非空',
     () => {
       const pkg = JSON.parse(
