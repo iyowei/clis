@@ -46,15 +46,33 @@ export interface ComputedSizing {
   warnings: string[];
 }
 
-export class SizingError extends Error {}
+export class SizingError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'SizingError';
+  }
+}
+
+export const HARDWARE_BOUNDS = Object.freeze({
+  cpuCores: Object.freeze({ min: 1, max: 256 }),
+  memoryGb: Object.freeze({ min: 1, max: 1024 }),
+  diskGb: Object.freeze({ min: 10, max: 65536 }),
+});
 
 const clamp = (n: number, min: number, max: number): number =>
   Math.min(max, Math.max(min, n));
 
+const roundMilli = (n: number): number => Math.round(n * 1000) / 1000;
 const roundQuarter = (n: number): number => Math.floor(n * 4) / 4;
 const floor50 = (n: number): number => Math.floor(n / 50) * 50;
 const ceil50 = (n: number): number => Math.ceil(n / 50) * 50;
 const round10 = (n: number): number => Math.round(n / 10) * 10;
+
+const formatPodmanMem = (gb: number): string =>
+  Number.isInteger(gb) ? `${gb}g` : `${Math.round(gb * 1024)}m`;
+
+const formatK8sSize = (gb: number): string =>
+  Number.isInteger(gb) ? `${gb}Gi` : `${Math.round(gb * 1024)}Mi`;
 
 const OPLOG_DISK_RATIO: Record<WorkloadType, number> = {
   balanced: 0.03,
@@ -69,19 +87,32 @@ const WORKLOAD_ZH: Record<WorkloadType, string> = {
 };
 
 const validateHardwareBounds = (hw: HardwareSpec): WorkloadType => {
-  if (!Number.isFinite(hw.cpuCores) || hw.cpuCores < 1 || hw.cpuCores > 256) {
+  const { cpuCores: cpuB, memoryGb: memB, diskGb: diskB } = HARDWARE_BOUNDS;
+  if (
+    !Number.isFinite(hw.cpuCores) ||
+    hw.cpuCores < cpuB.min ||
+    hw.cpuCores > cpuB.max
+  ) {
     throw new SizingError(
-      `hardware.cpuCores 须在 1-256 核之间 (当前填了 ${hw.cpuCores}), 请填入正数核数如 2 或 4`,
+      `hardware.cpuCores 须在 ${cpuB.min}-${cpuB.max} 核之间 (当前填了 ${hw.cpuCores}), 请填入正数核数如 2 或 4`,
     );
   }
-  if (!Number.isFinite(hw.memoryGb) || hw.memoryGb < 1 || hw.memoryGb > 1024) {
+  if (
+    !Number.isFinite(hw.memoryGb) ||
+    hw.memoryGb < memB.min ||
+    hw.memoryGb > memB.max
+  ) {
     throw new SizingError(
-      `hardware.memoryGb 须在 1-1024 GB 之间 (当前填了 ${hw.memoryGb}), 生产环境建议至少 2 GB`,
+      `hardware.memoryGb 须在 ${memB.min}-${memB.max} GB 之间 (当前填了 ${hw.memoryGb}), 生产环境建议至少 2 GB`,
     );
   }
-  if (!Number.isFinite(hw.diskGb) || hw.diskGb < 10 || hw.diskGb > 65536) {
+  if (
+    !Number.isFinite(hw.diskGb) ||
+    hw.diskGb < diskB.min ||
+    hw.diskGb > diskB.max
+  ) {
     throw new SizingError(
-      `hardware.diskGb 须在 10-65536 GB 之间 (当前填了 ${hw.diskGb}), 请至少分配 10 GB 数据盘`,
+      `hardware.diskGb 须在 ${diskB.min}-${diskB.max} GB 之间 (当前填了 ${hw.diskGb}), 请至少分配 ${diskB.min} GB 数据盘`,
     );
   }
   if (
@@ -94,7 +125,10 @@ const validateHardwareBounds = (hw: HardwareSpec): WorkloadType => {
     );
   }
   const workload: WorkloadType = hw.workload ?? 'balanced';
-  if (!(workload in OPLOG_DISK_RATIO)) {
+  if (
+    typeof workload !== 'string' ||
+    !Object.hasOwn(OPLOG_DISK_RATIO, workload)
+  ) {
     throw new SizingError(
       `不支持的 workload 类型 "${String(workload)}", 可选值为 balanced, write-heavy 或 read-heavy`,
     );
@@ -137,15 +171,21 @@ export const computeSizing = (hw: HardwareSpec): ComputedSizing => {
     );
   }
 
-  const cpuLimit = hw.cpuCores;
+  const cpuLimit = roundMilli(hw.cpuCores);
   const memGb = hw.memoryGb;
 
   // 1) 容器软保护与 K8s requests: K8s 内存 requests == limits 防节点内存压力下 OOM 驱逐数据库
   const memResGb =
     memGb <= 2 ? Math.min(memGb, 1) : Math.max(1, roundQuarter(memGb * 0.5));
-  const k8sReqCpu =
-    cpuLimit <= 2 ? cpuLimit : Math.max(1, roundQuarter(cpuLimit * 0.5));
+  const k8sReqCpu = roundMilli(
+    cpuLimit <= 2 ? cpuLimit : Math.max(1, roundQuarter(cpuLimit * 0.5)),
+  );
   const k8sReqMemGb = memGb;
+  const memoryLimitPodman = formatPodmanMem(memGb);
+  const memoryReservationPodman = formatPodmanMem(memResGb);
+  const k8sLimitMemory = formatK8sSize(memGb);
+  const k8sRequestMemory = formatK8sSize(k8sReqMemGb);
+  const persistenceSize = formatK8sSize(hw.diskGb);
 
   // 2) WiredTiger Cache: <= 8G 遵循 0.5 * (RAM - 1GB); > 8G 大规格提升至 0.55 * (RAM - 1GB)
   const wtRatio = memGb > 8 ? 0.55 : 0.5;
@@ -194,8 +234,8 @@ export const computeSizing = (hw: HardwareSpec): ComputedSizing => {
       value: `${memGb} GB`,
       formula:
         memGb <= 2
-          ? '小内存保底 1g 软保护线'
-          : `软保护 ${memResGb}g / 硬上限 ${memGb}g`,
+          ? `小内存保底 ${memoryReservationPodman} 软保护线`
+          : `软保护 ${memoryReservationPodman} / 硬上限 ${memoryLimitPodman}`,
       plainReason: `平时用多少占多少, 最高不超过 ${memGb} GB (保底预留 ${memResGb} GB)`,
     },
     {
@@ -236,11 +276,11 @@ export const computeSizing = (hw: HardwareSpec): ComputedSizing => {
 
   return {
     cpuLimit,
-    memoryLimitPodman: `${memGb}g`,
-    memoryReservationPodman: `${memResGb}g`,
-    k8sLimitMemory: `${memGb}Gi`,
+    memoryLimitPodman,
+    memoryReservationPodman,
+    k8sLimitMemory,
     k8sRequestCpu: k8sReqCpu,
-    k8sRequestMemory: `${k8sReqMemGb}Gi`,
+    k8sRequestMemory,
     wtCacheGb,
     maxIncomingConnections,
     oplogSizeMb,
@@ -251,7 +291,7 @@ export const computeSizing = (hw: HardwareSpec): ComputedSizing => {
     stopGracePeriodSec,
     backupConcurrency,
     logMaxSize,
-    persistenceSize: `${hw.diskGb}Gi`,
+    persistenceSize,
     workload,
     hardwareSummary,
     formulaSummary,
