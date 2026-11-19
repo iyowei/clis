@@ -3,7 +3,7 @@
  */
 import { describe, expect, test } from 'bun:test';
 
-import { parseUpdateArgs } from './args.ts';
+import { formatUpdateHelp, parseUpdateArgs } from './args.ts';
 import { type CommandSpec } from './executor.ts';
 import { type PackageMeta, type UpdateIO, runSelfUpdate } from './update.ts';
 
@@ -319,6 +319,12 @@ describe('runSelfUpdate 非全局与异常边界', () => {
       io: io2,
     });
     expect(helpCode).toBe(0);
-    expect(out2.join('\n')).toContain('codd update');
+    expect(out2.length).toBeGreaterThan(1);
+    for (const line of out2) {
+      expect(line).not.toContain('\n');
+    }
+    expect(out2.join('\n')).toBe(
+      formatUpdateHelp('codd', privateGlobalMeta.name),
+    );
   });
 });
