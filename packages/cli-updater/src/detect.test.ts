@@ -8,6 +8,7 @@ import {
   type PackageManager,
   detectInstallOriginFromPath,
   isWithinDir,
+  safeRealpath,
 } from './detect.ts';
 
 describe('isWithinDir 路径边界判定', () => {
@@ -39,7 +40,7 @@ describe('detectInstallOriginFromPath 跨包管理器与 OS 矩阵', () => {
     expect(origin.kind).toBe('source');
   });
 
-  test('临时一次性运行器: npx / bunx / pnpm dlx / yarn dlx', () => {
+  test('临时一次性运行器: npx / bunx / pnpm dlx / yarn dlx / deno', () => {
     const cases: readonly (readonly [string, EphemeralRunner])[] = [
       [
         '/Users/dev/.npm/_npx/ab12cd/node_modules/@iyowei/sweep-node-modules-cli',
@@ -62,6 +63,14 @@ describe('detectInstallOriginFromPath 跨包管理器与 OS 矩阵', () => {
         'pnpm-dlx',
       ],
       ['/tmp/xfs-8a1b/dlx-1234/node_modules/create-clis', 'yarn-dlx'],
+      [
+        '/Users/dev/Library/Caches/deno/npm/registry.npmjs.org/create-clis/1.0.0',
+        'deno',
+      ],
+      [
+        'C:\\Users\\dev\\AppData\\Local\\deno\\npm\\registry.npmjs.org\\create-clis\\1.0.0',
+        'deno',
+      ],
     ];
     for (const [pkgRoot, expectedRunner] of cases) {
       const origin = detectInstallOriginFromPath({
@@ -122,6 +131,10 @@ describe('detectInstallOriginFromPath 跨包管理器与 OS 矩阵', () => {
         'npm',
       ],
       [
+        'C:\\Users\\dev\\AppData\\Local\\mise\\installs\\node\\22.18.0\\node_modules\\create-clis',
+        'npm',
+      ],
+      [
         'C:\\Users\\dev\\AppData\\Roaming\\npm\\node_modules\\@iyowei\\sweep-node-modules-cli',
         'npm',
       ],
@@ -178,6 +191,10 @@ describe('detectInstallOriginFromPath 跨包管理器与 OS 矩阵', () => {
     });
     expect(origin).toMatchObject({ kind: 'global', pm: 'pnpm' });
   });
+});
+
+describe('detectInstallOriginFromPath 本地项目与防误判回归', () => {
+  const noFiles = (): boolean => false;
 
   test('项目本地依赖按锁文件识别推荐包管理器', () => {
     const proj = '/Users/dev/my-app';
@@ -223,5 +240,93 @@ describe('detectInstallOriginFromPath 跨包管理器与 OS 矩阵', () => {
       pathExists: noFiles,
     });
     expect(origin.kind).toBe('unknown');
+  });
+
+  test('NPM_CONFIG_PREFIX=$HOME/.local 收紧至 (lib/)?node_modules, 不再抢跑 ~/.local/share/pnpm', () => {
+    const pnpmPkg =
+      '/home/dev/.local/share/pnpm/global/5/node_modules/@iyowei/sweep-node-modules-cli';
+    expect(
+      detectInstallOriginFromPath({
+        packageRoot: pnpmPkg,
+        env: { NPM_CONFIG_PREFIX: '/home/dev/.local' },
+        pathExists: noFiles,
+      }),
+    ).toMatchObject({ kind: 'global', pm: 'pnpm' });
+
+    expect(
+      detectInstallOriginFromPath({
+        packageRoot: '/home/dev/.local/lib/node_modules/create-clis',
+        env: { NPM_CONFIG_PREFIX: '/home/dev/.local' },
+        pathExists: noFiles,
+      }),
+    ).toMatchObject({ kind: 'global', pm: 'npm' });
+
+    expect(
+      detectInstallOriginFromPath({
+        packageRoot: 'C:\\Users\\dev\\.local\\node_modules\\create-clis',
+        env: { NPM_CONFIG_PREFIX: 'C:\\Users\\dev\\.local' },
+        pathExists: noFiles,
+      }),
+    ).toMatchObject({ kind: 'global', pm: 'npm' });
+  });
+
+  test('高可信 packageRoot 优先于低可信 rawPaths / argv[1], 不被 shim 路径覆盖', () => {
+    const npmRoot =
+      '/opt/homebrew/lib/node_modules/@iyowei/sweep-node-modules-cli';
+    expect(
+      detectInstallOriginFromPath({
+        packageRoot: npmRoot,
+        rawPaths: ['/Users/dev/.volta/bin/sweep-nm'],
+        env: { VOLTA_HOME: '/Users/dev/.volta' },
+        pathExists: noFiles,
+      }),
+    ).toMatchObject({ kind: 'global', pm: 'npm' });
+
+    // 当 packageRoot 自身无特征命中时, 仍回退至 rawPaths 保留 shim 线索
+    expect(
+      detectInstallOriginFromPath({
+        packageRoot: '/opt/cas-store/abc123/pkg',
+        rawPaths: ['/Users/dev/.volta/tools/image/packages/create-clis'],
+        env: {},
+        pathExists: noFiles,
+      }),
+    ).toMatchObject({ kind: 'global', pm: 'volta' });
+  });
+
+  test('<prefix>/lib/node_modules 启发式位于动态实查 globalRoots 之后', () => {
+    const customDir = '/srv/custom/lib/node_modules/create-clis';
+    expect(
+      detectInstallOriginFromPath({
+        packageRoot: customDir,
+        env: {},
+        pathExists: noFiles,
+        globalRoots: { pnpm: '/srv/custom/lib/node_modules' },
+      }),
+    ).toMatchObject({ kind: 'global', pm: 'pnpm' });
+
+    // 未提供动态实查结果时仍保留 <prefix>/lib/node_modules 兜底
+    expect(
+      detectInstallOriginFromPath({
+        packageRoot: customDir,
+        env: {},
+        pathExists: noFiles,
+      }),
+    ).toMatchObject({ kind: 'global', pm: 'npm' });
+  });
+
+  test('环境变量根同时匹配原值与 realpath (兼容 Windows 8.3 短路径 RUNNER~1)', () => {
+    const origin = detectInstallOriginFromPath({
+      packageRoot:
+        'C:\\Users\\runneradmin\\.bun\\install\\global\\node_modules\\create-clis',
+      env: { BUN_INSTALL: 'C:\\Users\\RUNNER~1\\.bun' },
+      pathExists: noFiles,
+      realpath: (p) =>
+        p === 'C:\\Users\\RUNNER~1\\.bun' ? 'C:\\Users\\runneradmin\\.bun' : p,
+    });
+    expect(origin).toMatchObject({ kind: 'global', pm: 'bun' });
+
+    expect(safeRealpath('/non-existent-path-for-cli-updater-test')).toBe(
+      '/non-existent-path-for-cli-updater-test',
+    );
   });
 });
