@@ -19,6 +19,7 @@
     "lint": "oxlint",
     "lint:fix": "oxlint --fix",
     "format": "prettier --write .",
+    "format-check": "prettier --check .",
     "test": "turbo run test && bun test scripts/",
     "conformance": "bun scripts/transcription/run-conformance.ts",
     "ci": "bun scripts/ci.ts"
