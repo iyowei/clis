@@ -52,6 +52,6 @@
     "prepublishOnly": "npm run build && npm run verify:release",
     "verify:release": "bun scripts/verify-release.ts",
     "typecheck": "tsc --noEmit",
-    "test": "bun test --path-ignore-patterns=assets/** --path-ignore-patterns=template/**"
+    "test": "bun test src scripts"
   }
 }

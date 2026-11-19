@@ -48,7 +48,7 @@
     "verify:release": "bun scripts/verify-release.ts",
     "heavy-smoke": "bun scripts/heavy-smoke.ts",
     "typecheck": "tsc --noEmit",
-    "test": "bun test --path-ignore-patterns=assets/**"
+    "test": "bun test src scripts"
   },
   "dependencies": {
     "@trivago/prettier-plugin-sort-imports": "6.0.2",
