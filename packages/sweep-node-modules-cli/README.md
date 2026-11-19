@@ -4,20 +4,20 @@
 [![npm version](https://img.shields.io/npm/v/@iyowei/sweep-node-modules-cli)](https://www.npmjs.com/package/@iyowei/sweep-node-modules-cli)
 [![npm downloads](https://img.shields.io/npm/dm/@iyowei/sweep-node-modules-cli)](https://www.npmjs.com/package/@iyowei/sweep-node-modules-cli)
 ![node](https://img.shields.io/node/v/@iyowei/sweep-node-modules-cli)
-![bun](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Fiyowei%2Fsweep-node-modules%2Fmain%2Fpackage.json&query=%24.packageManager&label=bun)
+![bun](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Fiyowei%2Fclis%2Fmain%2Fpackage.json&query=%24.packageManager&label=bun)
 
 **English** | [中文](README.zh-CN.md)
 
 A workspace-level cleaner for `node_modules`: scan several root directories in one pass, list every `node_modules` directory across your projects along with its size, and bulk-delete them after you confirm, reclaiming disk space. The CLI is a thin shell over the API package it is built on, [`@iyowei/sweep-node-modules`](https://www.npmjs.com/package/@iyowei/sweep-node-modules). For programmatic use from your own scripts and tools, reach for that package (its usage is documented there).
 
-> Where this sits: single-project cleaners handle "go into one project and clean its own artifacts"; this tool handles "stand at the workspace level and clean many projects in one pass". The two layers coexist; see [ADR 0001](../sweep-node-modules/docs/adrs/0001-workspace-level-cleaner.md).
+> Where this sits: single-project cleaners handle "go into one project and clean its own artifacts"; this tool handles "stand at the workspace level and clean many projects in one pass". The two layers coexist; see [ADR 0001](https://github.com/iyowei/clis/blob/main/packages/sweep-node-modules/docs/adrs/0001-workspace-level-cleaner.md).
 
 ## Requirements
 
 - **Dual runtime** for the actual work: bun when available, node otherwise (identical behavior; bun starts faster).
-- Modern runtime APIs only: any recent bun; for node, a version that runs TypeScript natively (the same version floor applies to the source install and the package install; version snapshot and test records in [ADR 0006](../../docs/adrs/0006-dual-runtime-bun-first.md)).
+- Modern runtime APIs only: any recent bun; for node, a version that runs TypeScript natively (the same version floor applies to the source install and the package install; version snapshot and test records in [ADR 0006](https://github.com/iyowei/clis/blob/main/docs/adrs/0006-dual-runtime-bun-first.md)).
 - Zero third-party runtime dependencies (built-in runtime capabilities only).
-- Runs on macOS and Linux today; Windows launchers are shipped but not yet verified on a real Windows machine (see the evidence gap in [ADR 0007](../sweep-node-modules/docs/adrs/0007-platform-portability.md)).
+- Runs on macOS and Linux today; Windows launchers are shipped but not yet verified on a real Windows machine (see the evidence gap in [ADR 0007](https://github.com/iyowei/clis/blob/main/packages/sweep-node-modules/docs/adrs/0007-platform-portability.md)).
 
 ## Installation
 
@@ -130,18 +130,18 @@ The config file lives at a platform-appropriate path: `%APPDATA%\sweep-node-modu
 ```
 
 - `roots`: the scan roots, any number of them; duplicate or nested roots are deduplicated by real path. **The delete side requires real paths**: no symlink may sit on a root or any of its ancestors (system links such as `/tmp` and `/var` included); if one is hit, `--yes` rejects the whole batch and tells you to rewrite the path in real form (e.g. `/private/tmp/x`), which clears it. Scanning is not subject to this: a root that is itself a symlink still gets scanned.
-- `exclude`: the exclusion list; a name match at any directory level between a root and a `node_modules` skips it (more exclusions, less deletion: the safe direction). **Omit this field and a built-in default list applies** (package manager / version manager install trees, editor extension directories, system and application data roots; the list and its rationale are in the [design doc](../../docs/sweep/designs/config-and-initialization.md), section "Default exclusions"). These names never warn when they match nothing, since they vary by platform. Write the field explicitly (an empty array counts) and your own list takes over completely.
+- `exclude`: the exclusion list; a name match at any directory level between a root and a `node_modules` skips it (more exclusions, less deletion: the safe direction). **Omit this field and a built-in default list applies** (package manager / version manager install trees, editor extension directories, system and application data roots; the list and its rationale are in the [design doc](https://github.com/iyowei/clis/blob/main/packages/sweep-node-modules/docs/designs/config-and-initialization.md), section "Default exclusions"). These names never warn when they match nothing, since they vary by platform. Write the field explicitly (an empty array counts) and your own list takes over completely.
 - **Suspected install trees stay out of the delete batch by default**: targets that look like install trees (e.g. `~/.bun/install/global/node_modules`, `<version dir>/lib/node_modules`, editor extension directories, any `node_modules` under a hidden directory in the home dir, or under a system-data-root name such as `Library` / `.local` / `.config` / `.cache`) are flagged in the list as `疑似安装树: <reason>` (suspected install tree, plus the reason) and keep their `node_modules` suffix; `--yes` does not delete them (reported as a failure, with an explanation of the skip). Cleaning them takes an explicit `--force`, which releases only this batch of targets and relaxes no deletion guard.
 - **Cross-device targets stay out of the delete batch by default**: when a target and its owning root are not on the same filesystem (a cloud drive, network share, or container volume is mounted under the root and the entry lands on that volume), it is likewise not deleted; the list line notes the form at its end, `跨设备: 根与目标之间有挂载点` (a mount point lies between root and target) or `跨设备: 目标本体即挂载点` (the target itself is the mount point). For the first form, add that mount point as its own root and it cleans as usual; for the second, unmount the volume first; `--force` does not release this category.
 - `include`: the inclusion list (a whitelist); only matches are included, matched the same way as `exclude`. Omitted or empty means no filtering (more inclusions, more deletion); when a name matches both lists, `exclude` wins. A misspelled name would leave the result empty, so unmatched names warn on stderr.
 - `node_modules` and `.git` are always stripped from either list: the former is the tool's very target (under `exclude` it would rule out the only thing this tool does, under `include` it can never match), the latter is a directory the scan always skips. If stripping leaves `include` empty, that means no filtering, not "scan only `node_modules`".
 - First run with no config: on an interactive terminal the init wizard starts automatically (the scan root defaults to your home directory); in non-interactive environments (scripts and the like) it falls back to the current working directory as the root and says so, without asking. Re-enter the wizard any time with `sweep-nm init`.
 
-> Field definitions are authoritative in the [design doc](../../docs/sweep/designs/config-and-initialization.md).
+> Field definitions are authoritative in the [design doc](https://github.com/iyowei/clis/blob/main/packages/sweep-node-modules/docs/designs/config-and-initialization.md).
 
 ## Safety guardrails
 
-Deletion is the only irreversible action this tool performs, and a whole discipline of guards has grown around it. Below are the heavyweight ones; the full set, including an honest account of the known residual risks, lives in [the safety guardrails document](../../docs/sweep/designs/safety-guardrails.md) (in Chinese).
+Deletion is the only irreversible action this tool performs, and a whole discipline of guards has grown around it. Below are the heavyweight ones; the full set, including an honest account of the known residual risks, lives in [the safety guardrails document](https://github.com/iyowei/clis/blob/main/packages/sweep-node-modules/docs/designs/safety-guardrails.md) (in Chinese).
 
 > The tool's character in one line: when anything is uncertain, the default is not to delete.
 
@@ -159,8 +159,9 @@ Deletion is the only irreversible action this tool performs, and a whole discipl
 
 ## Development
 
-Environment setup, common commands, dual-runtime verification, and commit hooks: see the [development guide](../../docs/development.md).
+Environment setup, common commands, dual-runtime verification, and commit hooks: see the [development guide](https://github.com/iyowei/clis/blob/main/docs/development.md).
 
 ## Documentation
 
-- [Engineering documentation index](../../docs/README.md)
+- [CLI package docs](https://github.com/iyowei/clis/blob/main/packages/sweep-node-modules-cli/docs/README.md)
+- [Engineering documentation index](https://github.com/iyowei/clis/blob/main/docs/README.md)
