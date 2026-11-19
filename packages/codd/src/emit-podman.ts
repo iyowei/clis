@@ -1,19 +1,22 @@
 /**
  * Podman 部署包渲染器 (支持单节点与 3 物理节点高可用副本集)。
  */
-import { chmodSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, mkdirSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 
-import { copyTemplateFile, readTemplateFile } from './assets.ts';
+import { readTemplateFile } from './assets.ts';
 import {
   type ResolvedPodmanNode,
   appendSingleCreds,
+  buildMongodBindLine,
   buildNetworkFragments,
   computeRsMemberHost,
   emitMacosPlist,
+  formatUploadNextStep,
+  writeLfFile,
 } from './emit-podman-helpers.ts';
 import type { ComputedSizing, HardwareSpec } from './formulas.ts';
-import { renderTemplate } from './render.ts';
+import { TemplateRenderError, renderTemplate } from './render.ts';
 import {
   deriveRemoteHome,
   parseSshInput,
@@ -26,6 +29,7 @@ import type {
   GenerateState,
   NetworkMode,
 } from './types.ts';
+import { IPV4_RE } from './validate.ts';
 
 const STATIC_PODMAN_FILES = [
   'init.js',
@@ -38,6 +42,8 @@ const STATIC_PODMAN_FILES = [
   'restore.ts',
   'tune-linux-host.sh',
 ];
+
+const TOOLS_LOCK_NAME_RE = /"name":\s*"codd"/;
 
 interface ToolsPackageManifest {
   version: string;
@@ -58,6 +64,7 @@ export interface PodmanEmitContext {
   bundleDirs: string[];
   credLines: string[];
   nextSteps: string[];
+  warnings: string[];
 }
 
 interface PodmanTemplates {
@@ -99,7 +106,7 @@ const emitSinglePodmanNode = (opts: {
   ctx.bundleDirs.push(bundleDir);
 
   for (const f of STATIC_PODMAN_FILES) {
-    copyTemplateFile(podmanTplDir, f, join(bundleDir, f));
+    writeLfFile(join(bundleDir, f), readTemplateFile(podmanTplDir, f));
   }
   chmodSync(join(bundleDir, 'tune-linux-host.sh'), 0o755);
 
@@ -114,6 +121,12 @@ const emitSinglePodmanNode = (opts: {
     port,
     hostPort,
   });
+  const rsSelfHostExtra =
+    manifest.mode === 'replica-set' &&
+    networkMode === 'host' &&
+    !IPV4_RE.test(node.host)
+      ? '      - "${RS_SELF_HOST}:${MONGO_BIND_IP}"\n'
+      : '';
 
   const sharedVars = {
     DEPLOY_ID: deployId,
@@ -125,7 +138,7 @@ const emitSinglePodmanNode = (opts: {
     TZ: manifest.tz ?? 'Asia/Shanghai',
     MONGO_IMAGE_NAME: manifest.imageName ?? 'mongo',
     MONGO_IMAGE_TAG: manifest.imageTag ?? '9.0.8',
-    BUN_IMAGE: manifest.bunImage ?? 'oven/bun:1-slim',
+    BUN_IMAGE: manifest.bunImage ?? 'oven/bun:1.4.5-slim',
     TOOLS_IMAGE_NAME: `${stackPrefix}-tools`,
     MONGO_BIND_IP: node.bindIp,
     MONGO_PORT: port,
@@ -150,6 +163,7 @@ const emitSinglePodmanNode = (opts: {
       NOFILE_ULIMIT: sizing.nofileUlimit,
       NPROC_ULIMIT: sizing.nprocUlimit,
       LOG_MAX_SIZE: sizing.logMaxSize,
+      RS_SELF_HOST_EXTRA: rsSelfHostExtra,
       MONGO_NETWORK_SECTION: net.mongoNetworkSection,
       CLIENT_NETWORK_SECTION: net.clientNetworkSection,
       TOP_NETWORKS_SECTION: net.topNetworksSection,
@@ -166,6 +180,7 @@ const emitSinglePodmanNode = (opts: {
     MAX_CONNS_FORMULA: `${sizing.maxIncomingConnections} (非缓存内存安全上限)`,
     OPLOG_FORMULA: `${sizing.oplogSizeMb} MB (磁盘 ${hw.diskGb}G x ${sizing.workload})`,
     BLOCK_COMPRESSOR: sizing.blockCompressor,
+    NET_BIND_LINE: buildMongodBindLine(networkMode, node.bindIp),
     MAX_INCOMING_CONNECTIONS: sizing.maxIncomingConnections,
     RS_NAME: rsName,
     OPLOG_SIZE_MB: sizing.oplogSizeMb,
@@ -197,11 +212,11 @@ const emitSinglePodmanNode = (opts: {
     BACKUP_DIR: node.isolatedBackupDir,
   });
 
-  writeFileSync(join(bundleDir, 'podman-compose.yml'), composeRendered, 'utf8');
-  writeFileSync(join(bundleDir, 'mongod.conf'), mongodRendered, 'utf8');
-  writeFileSync(join(bundleDir, 'Makefile'), tpls.makeRendered, 'utf8');
-  writeFileSync(join(bundleDir, 'package.json'), tpls.toolsPkg, 'utf8');
-  writeFileSync(join(bundleDir, 'bun.lock'), tpls.toolsLock, 'utf8');
+  writeLfFile(join(bundleDir, 'podman-compose.yml'), composeRendered);
+  writeLfFile(join(bundleDir, 'mongod.conf'), mongodRendered);
+  writeLfFile(join(bundleDir, 'Makefile'), tpls.makeRendered);
+  writeLfFile(join(bundleDir, 'package.json'), tpls.toolsPkg);
+  writeLfFile(join(bundleDir, 'bun.lock'), tpls.toolsLock);
   writeSecretFile(join(bundleDir, '.env'), envRendered, 0o600);
 
   if (node.os === 'macos') {
@@ -213,6 +228,7 @@ const emitSinglePodmanNode = (opts: {
       manifestName: manifest.name,
       fingerprint: state.fingerprint,
       plistTmpl: tpls.plistTmpl,
+      warnings: ctx.warnings,
     });
   }
 
@@ -227,12 +243,14 @@ const emitSinglePodmanNode = (opts: {
         state.fingerprint,
       )
     : `~/srv/stacks/${dirName}`;
-  const targetDesc = parsedSsh
-    ? `${parsedSsh.target}:${remoteStackDir}/`
-    : `${remoteStackDir}/`;
-  const rshFlag = parsedSsh ? parsedSsh.rsyncRshFlag : '';
   ctx.nextSteps.push(
-    `[${node.nodeName}/${rsRole}] rsync -av ${rshFlag}${bundleDir}/ ${targetDesc}`,
+    formatUploadNextStep({
+      nodeName: node.nodeName,
+      rsRole,
+      bundleDir,
+      remoteStackDir,
+      parsedSsh,
+    }),
   );
 };
 
@@ -273,6 +291,17 @@ export const emitPodmanBundles = (ctx: PodmanEmitContext): void => {
     2,
   )}\n`;
 
+  const rawToolsLock = readTemplateFile(podmanTplDir, 'tools.bun.lock');
+  if (!TOOLS_LOCK_NAME_RE.test(rawToolsLock)) {
+    throw new TemplateRenderError(
+      '模板 tools.bun.lock 缺少预期包名字段 "name": "codd", 无法替换为目标工具镜像名',
+    );
+  }
+  const toolsLock = rawToolsLock.replace(
+    TOOLS_LOCK_NAME_RE,
+    `"name": "${toolsImageName}"`,
+  );
+
   const tpls: PodmanTemplates = {
     composeTmpl: readTemplateFile(podmanTplDir, 'podman-compose.yml.tmpl'),
     mongodTmpl: readTemplateFile(podmanTplDir, 'mongod.conf.tmpl'),
@@ -290,10 +319,7 @@ export const emitPodmanBundles = (ctx: PodmanEmitContext): void => {
       },
     ),
     toolsPkg,
-    toolsLock: readTemplateFile(podmanTplDir, 'tools.bun.lock').replace(
-      /"name":\s*"codd"/,
-      `"name": "${toolsImageName}"`,
-    ),
+    toolsLock,
   };
 
   const resolvedNodes: ResolvedPodmanNode[] = manifest.nodes!.map((n, idx) => {

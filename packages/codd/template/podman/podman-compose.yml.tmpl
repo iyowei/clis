@@ -43,7 +43,7 @@ services:
       - --wiredTigerCacheSizeGB
       - "${WT_CACHE_GB:-{{WT_CACHE_GB}}}"
     extra_hosts:
-      - "${RS_PEER_1:-unused-peer1.invalid:127.0.0.1}"
+{{RS_SELF_HOST_EXTRA}}      - "${RS_PEER_1:-unused-peer1.invalid:127.0.0.1}"
       - "${RS_PEER_2:-unused-peer2.invalid:127.0.0.1}"
     volumes:
       - mongo-data:/data/db
@@ -80,7 +80,7 @@ services:
       mongo:
         condition: service_healthy
     extra_hosts:
-      - "${RS_PEER_1:-unused-peer1.invalid:127.0.0.1}"
+{{RS_SELF_HOST_EXTRA}}      - "${RS_PEER_1:-unused-peer1.invalid:127.0.0.1}"
       - "${RS_PEER_2:-unused-peer2.invalid:127.0.0.1}"
     environment:
       MONGO_HOST: {{MONGO_CLIENT_HOST}}
@@ -113,7 +113,7 @@ services:
         BUN_IMAGE: ${BUN_IMAGE:?请在 .env 设置 BUN_IMAGE}
     restart: "no"
     extra_hosts:
-      - "${RS_PEER_1:-unused-peer1.invalid:127.0.0.1}"
+{{RS_SELF_HOST_EXTRA}}      - "${RS_PEER_1:-unused-peer1.invalid:127.0.0.1}"
       - "${RS_PEER_2:-unused-peer2.invalid:127.0.0.1}"
     environment:
       TZ: ${TZ:-{{TZ}}}

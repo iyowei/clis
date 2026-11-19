@@ -13,23 +13,24 @@ MONGO_HOST_PORT := $(or $(MONGO_HOST_PORT),{{MONGO_HOST_PORT}})
 TOOLS_IMAGE := $(TOOLS_IMAGE_NAME):$(MONGO_IMAGE_TAG)
 CONTAINER := $(STACK_PREFIX)-$(FINGERPRINT)
 
-.PHONY: help up down logs status init tools backup drill restore stats shell check-env check-perf tune-host
+.PHONY: help up down logs status init tools tools-rebuild backup drill restore stats shell check-env check-perf tune-host
 
 help:
 	@echo "可用命令 (可通过 ENV=.env.other 指定环境文件, 默认 .env):"
-	@echo "  make tune-host  - 一键开启并持久化内核 THP / swappiness 调优 (Linux 宿主机或 macOS Podman VM)"
-	@echo "  make up         - 启动并自动初始化 (副本集, 全业务库账号, 自动建 0700 指纹备份目录)"
-	@echo "  make down       - 停止并移除容器 (数据卷保留)"
-	@echo "  make logs       - 查看实时日志"
-	@echo "  make status     - 容器状态与资源占用"
-	@echo "  make check-perf - 检查内核 THP / swappiness / ulimit 及 MongoDB 启动告警"
-	@echo "  make init       - 重跑副本集与全业务库账号初始化 (幂等, 新增库或轮换密码后执行)"
-	@echo "  make tools      - 构建工具镜像 (备份, 恢复, 演练依赖它)"
-	@echo "  make backup     - 立即备份所有已配置业务库 (主库 + MONGO_EXTRA_APPS, 从节点优先读取)"
-	@echo "  make drill      - 零污染恢复演练 (在容器内拉起独立沙箱 mongod 恢复并核对线上索引)"
+	@echo "  make tune-host     - 一键开启并持久化内核 THP / swappiness 调优 (Linux 宿主机或 macOS Podman VM)"
+	@echo "  make up            - 启动并自动初始化 (副本集, 全业务库账号, 自动建 0700 指纹备份目录)"
+	@echo "  make down          - 停止并移除容器 (数据卷保留)"
+	@echo "  make logs          - 查看实时日志"
+	@echo "  make status        - 容器状态与资源占用"
+	@echo "  make check-perf    - 检查内核 THP / swappiness / ulimit 及 MongoDB 启动告警"
+	@echo "  make init          - 重跑副本集与全业务库账号初始化 (幂等, 新增库或轮换密码后执行)"
+	@echo "  make tools         - 构建工具镜像 (备份, 恢复, 演练依赖它)"
+	@echo "  make tools-rebuild - 强制无缓存重建工具镜像 (升级 MongoDB 或 Bun 依赖后执行)"
+	@echo "  make backup        - 立即备份所有已配置业务库 (主库 + MONGO_EXTRA_APPS, 从节点优先读取)"
+	@echo "  make drill         - 零污染恢复演练 (在容器内拉起独立沙箱 mongod 恢复并核对线上索引)"
 	@echo "  make restore FILE=<备份文件名> CONFIRM=yes - 按归档文件名自动识别库名并真恢复"
-	@echo "  make stats      - 内存和 CPU 实时占用"
-	@echo "  make shell      - 进入 mongosh (root)"
+	@echo "  make stats         - 内存和 CPU 实时占用"
+	@echo "  make shell         - 进入 mongosh (root)"
 	@echo "说明: 没有 reset 这类删卷命令, 删卷请手动执行 podman volume rm, 防止误操作。"
 
 check-env:
@@ -109,6 +110,9 @@ init: check-env
 tools: check-env
 	@podman image exists $(TOOLS_IMAGE) || $(COMPOSE) --profile tools build mongo-tools
 
+tools-rebuild: check-env
+	$(COMPOSE) --profile tools build --no-cache mongo-tools
+
 backup: check-env tools
 	$(TOOLS) bun run backup.ts
 
@@ -124,5 +128,10 @@ stats: check-env
 
 shell: check-env
 	@set -a; . "$(ENV_SRC)"; set +a; \
-	podman exec -it $(CONTAINER) mongosh \
-	  "mongodb://$$MONGO_INITDB_ROOT_USERNAME:$$MONGO_INITDB_ROOT_PASSWORD@127.0.0.1:$${MONGO_PORT:-{{MONGO_PORT}}}/admin?authSource=admin&directConnection=true"
+	MONGO_PORT="$${MONGO_PORT:-{{MONGO_PORT}}}" \
+	podman exec -it \
+	  -e MONGO_INITDB_ROOT_USERNAME \
+	  -e MONGO_INITDB_ROOT_PASSWORD \
+	  -e MONGO_PORT \
+	  $(CONTAINER) mongosh --nodb --shell --eval \
+	  'db = connect("mongodb://" + encodeURIComponent(process.env.MONGO_INITDB_ROOT_USERNAME) + ":" + encodeURIComponent(process.env.MONGO_INITDB_ROOT_PASSWORD) + "@127.0.0.1:" + process.env.MONGO_PORT + "/admin?authSource=admin&directConnection=true");'

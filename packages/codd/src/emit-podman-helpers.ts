@@ -1,5 +1,5 @@
 /**
- * Podman 渲染器的纯模板辅助函数: 网络拓扑片段、macOS LaunchAgent XML 转义与连接串汇总。
+ * Podman 渲染器的纯模板辅助函数: 网络拓扑片段、mongod 绑定策略、macOS LaunchAgent 与连接串汇总。
  */
 import { writeFileSync } from 'node:fs';
 import { join, posix } from 'node:path';
@@ -11,6 +11,7 @@ import type {
   GenerateState,
   NetworkMode,
   NodeInput,
+  ParsedSshTarget,
 } from './types.ts';
 
 export interface ResolvedPodmanNode extends NodeInput {
@@ -38,6 +39,13 @@ export interface NetworkFragments {
   mongoClientHost: string;
 }
 
+export const toLf = (content: string): string =>
+  content.replaceAll('\r\n', '\n');
+
+export const writeLfFile = (filePath: string, content: string): void => {
+  writeFileSync(filePath, toLf(content), 'utf8');
+};
+
 export const escapeXml = (str: string): string =>
   str
     .replaceAll('&', '&amp;')
@@ -45,6 +53,27 @@ export const escapeXml = (str: string): string =>
     .replaceAll('>', '&gt;')
     .replaceAll('"', '&quot;')
     .replaceAll("'", '&apos;');
+
+/**
+ * 推导 mongod.conf net 段绑定配置:
+ * - bridge 模式由宿主机 ports 映射控制暴露网卡, 容器内维持 bindIpAll: true;
+ * - host 模式严禁默认 bindIpAll: true 架空 bindIp:
+ *   - 127.0.0.1 -> 仅绑定本机回环;
+ *   - 自定义私网/WireGuard IP -> 绑定 127.0.0.1,<bindIp> (保本机探活/make shell 可达且不暴露公网);
+ *   - 显式 0.0.0.0 -> 尊重自定义渲染 bindIpAll: true。
+ */
+export const buildMongodBindLine = (
+  networkMode: NetworkMode,
+  bindIp: string,
+): string => {
+  if (networkMode === 'bridge' || bindIp === '0.0.0.0') {
+    return 'bindIpAll: true';
+  }
+  if (bindIp === '127.0.0.1') {
+    return 'bindIp: "127.0.0.1"';
+  }
+  return `bindIp: "127.0.0.1,${bindIp}"`;
+};
 
 export const computeRsMemberHost = (opts: {
   manifest: DeployManifest;
@@ -122,6 +151,44 @@ export const buildNetworkFragments = (opts: {
   };
 };
 
+export const formatUploadNextStep = (opts: {
+  nodeName: string;
+  rsRole: string;
+  bundleDir: string;
+  remoteStackDir: string;
+  parsedSsh: ParsedSshTarget | null;
+  platform?: NodeJS.Platform;
+}): string => {
+  const {
+    nodeName,
+    rsRole,
+    bundleDir,
+    remoteStackDir,
+    parsedSsh,
+    platform = process.platform,
+  } = opts;
+  if (platform === 'win32') {
+    const scpFlags: string[] = [];
+    if (parsedSsh?.port && parsedSsh.port !== 22) {
+      scpFlags.push(`-P ${parsedSsh.port}`);
+    }
+    if (parsedSsh?.identityFile) {
+      scpFlags.push(`-i "${parsedSsh.identityFile}"`);
+    }
+    const optStr = scpFlags.length > 0 ? `${scpFlags.join(' ')} ` : '';
+    const dst = parsedSsh
+      ? `${parsedSsh.target}:${remoteStackDir}`
+      : `<user@host>:${remoteStackDir}`;
+    return `[${nodeName}/${rsRole}] scp -r ${optStr}"${bundleDir}" "${dst}" (Windows 提示: 如在 Git Bash/WSL 中执行可改用 rsync)`;
+  }
+
+  const targetDesc = parsedSsh
+    ? `${parsedSsh.target}:${remoteStackDir}/`
+    : `${remoteStackDir}/`;
+  const rshFlag = parsedSsh ? parsedSsh.rsyncRshFlag : '';
+  return `[${nodeName}/${rsRole}] rsync -av ${rshFlag}"${bundleDir}/" "${targetDesc}"`;
+};
+
 export const emitMacosPlist = (opts: {
   node: ResolvedPodmanNode;
   bundleDir: string;
@@ -130,6 +197,7 @@ export const emitMacosPlist = (opts: {
   manifestName: string;
   fingerprint: string;
   plistTmpl: string;
+  warnings: string[];
 }): void => {
   const {
     node,
@@ -139,9 +207,15 @@ export const emitMacosPlist = (opts: {
     manifestName,
     fingerprint,
     plistTmpl,
+    warnings,
   } = opts;
-  const home =
-    deriveRemoteHome(node.isolatedBackupDir, 'macos') ?? '/Users/<用户名>';
+  const derivedHome = deriveRemoteHome(node.isolatedBackupDir, 'macos');
+  const home = derivedHome ?? '/Users/<用户名>';
+  if (!derivedHome) {
+    warnings.push(
+      `macOS 节点 ${node.nodeName} 无法从 backupDir (${node.isolatedBackupDir}) 推导用户名, .plist 中已写入占位符 /Users/<用户名>, 部署前请手动替换`,
+    );
+  }
   const stackDir = resolveServerStackDir(
     node.stackDir,
     home,
@@ -156,16 +230,20 @@ export const emitMacosPlist = (opts: {
     `mongo-backup-${fingerprint}.log`,
   );
   const podmanBin = node.podmanBin ?? '/opt/homebrew/bin/podman';
+  const rawPodmanDir = podmanBin.includes('/') ? posix.dirname(podmanBin) : '';
+  const podmanPathPrefix =
+    rawPodmanDir && rawPodmanDir !== '.' && rawPodmanDir !== '/'
+      ? `${escapeXml(rawPodmanDir)}:`
+      : '';
   const plistRendered = renderTemplate('mongo-backup.plist.tmpl', plistTmpl, {
     FINGERPRINT: escapeXml(fingerprint),
-    PODMAN_DIR: escapeXml(posix.dirname(podmanBin)),
+    PODMAN_PATH_PREFIX: podmanPathPrefix,
     STACK_DIR: escapeXml(stackDir),
     LOG_PATH: escapeXml(logPath),
   });
-  writeFileSync(
+  writeLfFile(
     join(bundleDir, `com.codd.mongo-backup-${fingerprint}.plist`),
     plistRendered,
-    'utf8',
   );
 };
 

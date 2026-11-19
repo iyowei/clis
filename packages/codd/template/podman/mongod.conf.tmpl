@@ -7,31 +7,31 @@ systemLog:
   verbosity: 0
 
 storage:
-  dbPath: /data/db
+  dbPath: "/data/db"
   wiredTiger:
     engineConfig:
-      journalCompressor: snappy
+      journalCompressor: "snappy"
     collectionConfig:
-      blockCompressor: {{BLOCK_COMPRESSOR}}
+      blockCompressor: "{{BLOCK_COMPRESSOR}}"
     indexConfig:
       prefixCompression: true
 
 net:
   # 监听端口由 compose --port 参数注入, 避免两处配置冲突
-  bindIpAll: true
+  {{NET_BIND_LINE}}
   ipv6: false
   maxIncomingConnections: {{MAX_INCOMING_CONNECTIONS}}
   compression:
-    compressors: snappy,zstd
+    compressors: "snappy,zstd"
 
 security:
-  authorization: enabled
-  keyFile: /etc/mongo/keyfile/mongodb-keyfile
+  authorization: "enabled"
+  keyFile: "/etc/mongo/keyfile/mongodb-keyfile"
 
 replication:
-  replSetName: {{RS_NAME}}
+  replSetName: "{{RS_NAME}}"
   oplogSizeMB: {{OPLOG_SIZE_MB}}
 
 operationProfiling:
-  mode: slowOp
+  mode: "slowOp"
   slowOpThresholdMs: {{SLOW_OP_THRESHOLD_MS}}

@@ -61,10 +61,15 @@ check_kernel_view() {
       set +a
       echo "=== 容器运行态 ulimit 与 MongoDB startupWarnings ==="
       podman exec "$CONTAINER" bash -c 'printf "  ulimit -n (nofile): %s | ulimit -u (nproc): %s | GLIBC_TUNABLES=%s\n" "$(ulimit -n)" "$(ulimit -u)" "${GLIBC_TUNABLES:-unset}"' 2>/dev/null || true
-      podman exec "$CONTAINER" mongosh \
-        "mongodb://${MONGO_INITDB_ROOT_USERNAME}:${MONGO_INITDB_ROOT_PASSWORD}@127.0.0.1:${MONGO_PORT:-27117}/admin?authSource=admin&directConnection=true" \
-        --quiet --eval '
-          const w = db.adminCommand({ getLog: "startupWarnings" }).log || [];
+      MONGO_PORT="${MONGO_PORT:-27117}" \
+      podman exec \
+        -e MONGO_INITDB_ROOT_USERNAME \
+        -e MONGO_INITDB_ROOT_PASSWORD \
+        -e MONGO_PORT \
+        "$CONTAINER" mongosh --nodb --quiet --eval '
+          const uri = "mongodb://" + encodeURIComponent(process.env.MONGO_INITDB_ROOT_USERNAME || "") + ":" + encodeURIComponent(process.env.MONGO_INITDB_ROOT_PASSWORD || "") + "@127.0.0.1:" + process.env.MONGO_PORT + "/admin?authSource=admin&directConnection=true";
+          const admin = new Mongo(uri).getDB("admin");
+          const w = admin.adminCommand({ getLog: "startupWarnings" }).log || [];
           print("  startupWarnings 数量: " + w.length);
           w.forEach((line) => print("    - " + line));
         ' 2>/dev/null || true
