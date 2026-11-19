@@ -3,7 +3,7 @@
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: {{ $fullname }}-init
+  name: {{ printf "%s-init" $fullname | quote }}
   labels:
     {{- include "mongo.labels" . | nindent 4 }}
     app.kubernetes.io/component: init
@@ -24,55 +24,55 @@ spec:
       restartPolicy: OnFailure
       containers:
         - name: mongo-configurator
-          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
-          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          image: {{ printf "%s:%s" .Values.image.repository .Values.image.tag | quote }}
+          imagePullPolicy: {{ .Values.image.pullPolicy | default "IfNotPresent" | quote }}
           env:
             - name: GLIBC_TUNABLES
-              value: glibc.pthread.rseq=0
+              value: "glibc.pthread.rseq=0"
             - name: MONGO_POD_PREFIX
-              value: {{ $fullname }}
+              value: {{ $fullname | quote }}
             - name: MONGO_HEADLESS_SVC
-              value: {{ $fullname }}-headless
+              value: {{ printf "%s-headless" $fullname | quote }}
             - name: MONGO_NAMESPACE
-              value: {{ .Release.Namespace }}
+              value: {{ .Release.Namespace | quote }}
             - name: MONGO_REPLICA_COUNT
-              value: "{{ .Values.replicaCount }}"
+              value: {{ .Values.replicaCount | toString | quote }}
             - name: MONGO_PORT
-              value: "{{ .Values.config.net.port }}"
+              value: {{ .Values.config.net.port | toString | quote }}
             - name: MONGO_RS_NAME
-              value: {{ .Values.config.replication.replSetName }}
+              value: {{ .Values.config.replication.replSetName | toString | quote }}
             - name: MONGO_INITDB_ROOT_USERNAME
-              value: {{ .Values.auth.rootUsername }}
+              value: {{ .Values.auth.rootUsername | toString | quote }}
             - name: MONGO_INITDB_ROOT_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: {{ $authSecret }}
+                  name: {{ $authSecret | quote }}
                   key: root-password
             - name: MONGO_APP_DATABASE
-              value: {{ .Values.app.database }}
+              value: {{ .Values.app.database | toString | quote }}
             - name: MONGO_APP_USER
-              value: {{ .Values.app.username }}
+              value: {{ .Values.app.username | toString | quote }}
             - name: MONGO_APP_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: {{ $authSecret }}
+                  name: {{ $authSecret | quote }}
                   key: app-password
             - name: MONGO_EXTRA_APPS
               {{- if .Values.app.extraApps }}
-              value: {{ .Values.app.extraApps | quote }}
+              value: {{ .Values.app.extraApps | toString | quote }}
               {{- else }}
               valueFrom:
                 secretKeyRef:
-                  name: {{ $authSecret }}
+                  name: {{ $authSecret | quote }}
                   key: extra-apps
                   optional: true
               {{- end }}
             - name: MONGO_BACKUP_USER
-              value: {{ default "backup" .Values.auth.backupUsername }}
+              value: {{ default "backup" .Values.auth.backupUsername | toString | quote }}
             - name: MONGO_BACKUP_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: {{ $authSecret }}
+                  name: {{ $authSecret | quote }}
                   key: backup-password
           workingDir: /app
           command:
@@ -96,5 +96,5 @@ spec:
       volumes:
         - name: init-script
           configMap:
-            name: {{ $fullname }}-init-script
+            name: {{ printf "%s-init-script" $fullname | quote }}
             defaultMode: 0755

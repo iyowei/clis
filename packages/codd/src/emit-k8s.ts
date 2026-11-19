@@ -2,20 +2,16 @@
  * Kubernetes (Helm) 自包含部署包渲染器 (支持单副本与 3 副本高可用 StatefulSet)。
  */
 import {
-  copyFileSync,
   existsSync,
   mkdirSync,
+  readFileSync,
   readdirSync,
   rmSync,
   writeFileSync,
 } from 'node:fs';
 import { join } from 'node:path';
 
-import {
-  copyTemplateFile,
-  readTemplateFile,
-  resolveTemplateFilePath,
-} from './assets.ts';
+import { readTemplateFile, resolveTemplateFilePath } from './assets.ts';
 import type { ComputedSizing } from './formulas.ts';
 import { renderTemplate } from './render.ts';
 import { writeSecretFile } from './state.ts';
@@ -33,35 +29,57 @@ export interface K8sEmitContext {
   nextSteps: string[];
 }
 
+const writeLf = (targetPath: string, content: string): void => {
+  writeFileSync(targetPath, content.replaceAll('\r\n', '\n'), 'utf8');
+};
+
 const copyPortableHelmChart = (
   helmTplDir: string,
   targetChartDir: string,
 ): void => {
   mkdirSync(join(targetChartDir, 'templates'), { recursive: true });
-  copyTemplateFile(
-    helmTplDir,
-    'Chart.yaml',
+  writeLf(
     join(targetChartDir, 'Chart.yaml'),
+    readTemplateFile(helmTplDir, 'Chart.yaml'),
   );
-  copyTemplateFile(
-    helmTplDir,
-    'values.yaml',
+  writeLf(
     join(targetChartDir, 'values.yaml'),
+    readTemplateFile(helmTplDir, 'values.yaml'),
   );
 
   const helmIgnoreSrc = resolveTemplateFilePath(helmTplDir, '.helmignore');
   if (existsSync(helmIgnoreSrc)) {
-    copyFileSync(helmIgnoreSrc, join(targetChartDir, '.helmignore'));
+    writeLf(
+      join(targetChartDir, '.helmignore'),
+      readFileSync(helmIgnoreSrc, 'utf8'),
+    );
   }
 
   for (const entry of readdirSync(join(helmTplDir, 'templates'))) {
     if (entry.endsWith('.yaml') || entry.endsWith('.tpl')) {
-      copyFileSync(
-        join(helmTplDir, 'templates', entry),
+      writeLf(
         join(targetChartDir, 'templates', entry),
+        readFileSync(join(helmTplDir, 'templates', entry), 'utf8'),
       );
     }
   }
+};
+
+/**
+ * 推导默认 Helm Release 名称: 先截断前缀至 <= (50 - 1 - fp.length) 并去尾 '-',
+ * 再固定拼接 -${fingerprint}, 保证永不截断指纹且派生 init-configmap/Pod 名恒 <= 63。
+ */
+const buildDefaultReleaseName = (
+  stackPrefix: string,
+  manifestName: string,
+  fingerprint: string,
+): string => {
+  const maxPrefixLen = Math.max(1, 50 - 1 - fingerprint.length);
+  const rawPrefix = `${stackPrefix}-${manifestName}`
+    .slice(0, maxPrefixLen)
+    .replace(/-+$/, '');
+  const safePrefix = rawPrefix || 'm';
+  return `${safePrefix}-${fingerprint}`;
 };
 
 export const emitK8sBundle = (ctx: K8sEmitContext): void => {
@@ -80,14 +98,20 @@ export const emitK8sBundle = (ctx: K8sEmitContext): void => {
 
   const replicaCount = manifest.mode === 'k8s-single' ? 1 : 3;
   const ns = manifest.k8s?.namespace ?? 'data';
-  const defaultRelease = `${stackPrefix}-${manifest.name}-${state.fingerprint}`
-    .slice(0, 50)
-    .replace(/-+$/, '');
+  const defaultRelease = buildDefaultReleaseName(
+    stackPrefix,
+    manifest.name,
+    state.fingerprint,
+  );
   const releaseName = manifest.k8s?.releaseName ?? defaultRelease;
-  const secretName =
-    manifest.k8s?.existingSecret ??
-    manifest.auth?.existingSecret ??
-    `${releaseName}-auth`;
+  const explicitExistingSecret =
+    manifest.k8s?.existingSecret?.trim() ||
+    manifest.auth?.existingSecret?.trim() ||
+    '';
+  const usesExistingSecret = explicitExistingSecret.length > 0;
+  const secretName = usesExistingSecret
+    ? explicitExistingSecret
+    : `${releaseName}-auth`;
   const serviceType = manifest.k8s?.serviceType ?? 'ClusterIP';
   const nodePort = manifest.k8s?.nodePort ?? 30117;
   const defaultAntiAffinity = replicaCount > 1 ? 'hard' : 'soft';
@@ -140,10 +164,14 @@ export const emitK8sBundle = (ctx: K8sEmitContext): void => {
     },
   );
 
+  const secretNotice = usesExistingSecret
+    ? '# 注意: 清单已显式指定 existingSecret, deploy.sh 不会自动执行本脚本 (仅保留供外部 Vault/ExternalSecrets 核对键名)。\n'
+    : '';
   const secretRendered = renderTemplate(
     'create-secret.sh.tmpl',
     readTemplateFile(helmTplDir, 'create-secret.sh.tmpl'),
     {
+      SECRET_NOTICE: secretNotice,
       NAMESPACE: ns,
       SECRET_NAME: secretName,
       ROOT_PASSWORD: state.rootPassword,
@@ -154,16 +182,24 @@ export const emitK8sBundle = (ctx: K8sEmitContext): void => {
     },
   );
 
+  const secretStep = usesExistingSecret
+    ? [
+        `# 已显式指定 existingSecret (${secretName}), 跳过执行 create-secret.sh 以免覆写外部托管 Secret (create-secret.sh 仅保留供参考)`,
+        `kubectl -n "${ns}" get secret "${secretName}" >/dev/null`,
+      ].join('\n')
+    : '"$SCRIPT_DIR/create-secret.sh"';
+
   const deployRendered = renderTemplate(
     'deploy.sh.tmpl',
     readTemplateFile(helmTplDir, 'deploy.sh.tmpl'),
     {
+      SECRET_STEP: secretStep,
       RELEASE_NAME: releaseName,
       NAMESPACE: ns,
     },
   );
 
-  writeFileSync(join(k8sDir, 'values.generated.yaml'), valuesRendered, 'utf8');
+  writeLf(join(k8sDir, 'values.generated.yaml'), valuesRendered);
   writeSecretFile(join(k8sDir, 'create-secret.sh'), secretRendered, 0o700);
   writeSecretFile(join(k8sDir, 'deploy.sh'), deployRendered, 0o700);
 
@@ -187,5 +223,11 @@ export const emitK8sBundle = (ctx: K8sEmitContext): void => {
       );
     }
   }
-  ctx.nextSteps.push(`bash ${join(k8sDir, 'deploy.sh')}`);
+
+  const deployPath = join(k8sDir, 'deploy.sh');
+  ctx.nextSteps.push(
+    process.platform === 'win32'
+      ? `bash "${deployPath.replaceAll('\\', '/')}" (请在 Git Bash 或 WSL 中执行)`
+      : `bash "${deployPath}"`,
+  );
 };

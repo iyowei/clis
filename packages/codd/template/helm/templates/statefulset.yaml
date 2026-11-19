@@ -1,10 +1,13 @@
 {{- $authSecret := default (printf "%s-auth" (include "mongo.fullname" .)) .Values.auth.existingSecret -}}
+{{- $fullname := include "mongo.fullname" . -}}
+{{- $fixResources := default (dict "limits" (dict "cpu" "100m" "memory" "128Mi") "requests" (dict "cpu" "100m" "memory" "128Mi")) .Values.initContainer.resources -}}
+{{- $bootstrapResources := default (dict "limits" (dict "cpu" "500m" "memory" "512Mi") "requests" (dict "cpu" "500m" "memory" "512Mi")) .Values.initContainer.bootstrapResources -}}
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
-  name: {{ include "mongo.fullname" . }}
+  name: {{ $fullname | quote }}
 spec:
-  serviceName: {{ include "mongo.fullname" . }}-headless
+  serviceName: {{ printf "%s-headless" $fullname | quote }}
   podManagementPolicy: OrderedReady
   replicas: {{ .Values.replicaCount }}
   {{- if .Values.updateStrategy }}
@@ -13,8 +16,8 @@ spec:
   {{- end }}
   {{- if .Values.persistence.retainPolicy }}
   persistentVolumeClaimRetentionPolicy:
-    whenDeleted: {{ .Values.persistence.retainPolicy }}
-    whenScaled: {{ .Values.persistence.retainPolicy }}
+    whenDeleted: {{ .Values.persistence.retainPolicy | quote }}
+    whenScaled: {{ .Values.persistence.retainPolicy | quote }}
   {{- end }}
   selector:
     matchLabels:
@@ -22,7 +25,7 @@ spec:
   template:
     metadata:
       annotations:
-        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum | quote }}
       {{- with .Values.podAnnotations }}
         {{- tpl (toYaml .) $ | nindent 8 }}
       {{- end }}
@@ -48,7 +51,7 @@ spec:
           - labelSelector:
               matchLabels:
                 {{- include "mongo.selectorLabels" . | nindent 16 }}
-            topologyKey: {{ default "kubernetes.io/hostname" .Values.podAntiAffinityPreset.topologyKey }}
+            topologyKey: {{ default "kubernetes.io/hostname" .Values.podAntiAffinityPreset.topologyKey | quote }}
           {{- else }}
           preferredDuringSchedulingIgnoredDuringExecution:
           - weight: {{ default 100 .Values.podAntiAffinityPreset.weight }}
@@ -56,7 +59,7 @@ spec:
               labelSelector:
                 matchLabels:
                   {{- include "mongo.selectorLabels" . | nindent 18 }}
-              topologyKey: {{ default "kubernetes.io/hostname" .Values.podAntiAffinityPreset.topologyKey }}
+              topologyKey: {{ default "kubernetes.io/hostname" .Values.podAntiAffinityPreset.topologyKey | quote }}
           {{- end }}
         {{- end }}
       {{- end }}
@@ -64,16 +67,19 @@ spec:
         {{- toYaml .Values.podSecurityContext | nindent 8 }}
       initContainers:
         - name: fix-keyfile-permissions
-          image: "{{ .Values.initContainer.image.repository }}:{{ .Values.initContainer.image.tag }}"
-          imagePullPolicy: {{ .Values.initContainer.image.pullPolicy | default "IfNotPresent" }}
+          image: {{ printf "%s:%s" .Values.initContainer.image.repository .Values.initContainer.image.tag | quote }}
+          imagePullPolicy: {{ .Values.initContainer.image.pullPolicy | default "IfNotPresent" | quote }}
           securityContext:
             runAsUser: 0
             runAsGroup: 0
+          resources:
+            {{- toYaml $fixResources | nindent 12 }}
           # 先于 bootstrap-root 执行: 分发 0400 keyfile 并保证 /data/db 属主为 999:999 (避免重启时重复递归 chown -R)
           command:
             - sh
             - -c
             - |
+              set -eu
               cp /tmp/secret/mongodb-keyfile /etc/mongo/keyfile/mongodb-keyfile
               chown 999:999 /etc/mongo/keyfile/mongodb-keyfile
               chmod 400 /etc/mongo/keyfile/mongodb-keyfile
@@ -88,26 +94,29 @@ spec:
             - name: data
               mountPath: /data/db
         - name: bootstrap-root
-          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
-          imagePullPolicy: {{ .Values.image.pullPolicy | default "IfNotPresent" }}
+          image: {{ printf "%s:%s" .Values.image.repository .Values.image.tag | quote }}
+          imagePullPolicy: {{ .Values.image.pullPolicy | default "IfNotPresent" | quote }}
           securityContext:
             {{- toYaml .Values.securityContext | nindent 12 }}
+          resources:
+            {{- toYaml $bootstrapResources | nindent 12 }}
           env:
             - name: GLIBC_TUNABLES
-              value: glibc.pthread.rseq=0
+              value: "glibc.pthread.rseq=0"
             - name: MONGO_PORT
-              value: "{{ .Values.config.net.port }}"
+              value: {{ .Values.config.net.port | toString | quote }}
             - name: MONGO_INITDB_ROOT_USERNAME
-              value: {{ .Values.auth.rootUsername }}
+              value: {{ .Values.auth.rootUsername | toString | quote }}
             - name: MONGO_INITDB_ROOT_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: {{ $authSecret }}
+                  name: {{ $authSecret | quote }}
                   key: root-password
           command:
             - bash
             - -c
             - |
+              set -euo pipefail
               # 只有 0 号主引导 Pod 在全新空白数据卷时预建 root; 其余从节点保持空库等待初始同步复制
               case "$(hostname)" in
                 *-0) ;;
@@ -124,10 +133,24 @@ spec:
               echo ">>> [Bootstrap] Starting temporary mongod on port $MONGO_PORT..."
               mongod --port "$MONGO_PORT" --dbpath /data/db --bind_ip 127.0.0.1 --noauth --oplogSize 10 &
               PID=$!
+              trap 'if kill -0 "$PID" 2>/dev/null; then kill "$PID" 2>/dev/null || true; fi' EXIT
 
-              until mongosh --port "$MONGO_PORT" --quiet --eval "db.hello()" &>/dev/null; do
+              ready=0
+              for _ in $(seq 1 60); do
+                if ! kill -0 "$PID" 2>/dev/null; then
+                  echo "错误: [Bootstrap] 临时 mongod 进程已提前退出" >&2
+                  exit 1
+                fi
+                if mongosh --port "$MONGO_PORT" --quiet --eval "db.hello()" >/dev/null 2>&1; then
+                  ready=1
+                  break
+                fi
                 sleep 1
               done
+              if [ "$ready" -ne 1 ]; then
+                echo "错误: [Bootstrap] 等待临时 mongod 就绪超时 (60s)" >&2
+                exit 1
+              fi
 
               mongosh --port "$MONGO_PORT" --quiet --eval '
                 const rootUser = process.env.MONGO_INITDB_ROOT_USERNAME;
@@ -141,15 +164,15 @@ spec:
               '
 
               mongosh --port "$MONGO_PORT" --quiet --eval "db.getSiblingDB('admin').shutdownServer()"
-              wait $PID
+              wait "$PID"
               echo ">>> [Bootstrap] Done."
           volumeMounts:
             - name: data
               mountPath: /data/db
       containers:
         - name: mongo
-          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
-          imagePullPolicy: {{ .Values.image.pullPolicy | default "IfNotPresent" }}
+          image: {{ printf "%s:%s" .Values.image.repository .Values.image.tag | quote }}
+          imagePullPolicy: {{ .Values.image.pullPolicy | default "IfNotPresent" | quote }}
           ports:
             - name: mongo
               containerPort: {{ .Values.config.net.port }}
@@ -157,7 +180,7 @@ spec:
             {{- toYaml .Values.securityContext | nindent 12 }}
           env:
             - name: GLIBC_TUNABLES
-              value: glibc.pthread.rseq=0
+              value: "glibc.pthread.rseq=0"
           command: ["mongod", "--config", "/etc/mongo/mongod.conf"]
           # 内核级 TCP 探针: 0 进程派生, 0 内存尖峰, 防止重负载 Checkpoint 时误杀主库
           startupProbe:
@@ -192,10 +215,10 @@ spec:
       volumes:
         - name: config
           configMap:
-            name: {{ include "mongo.fullname" . }}-config
+            name: {{ printf "%s-config" $fullname | quote }}
         - name: keyfile-secret
           secret:
-            secretName: {{ $authSecret }}
+            secretName: {{ $authSecret | quote }}
         - name: keyfile-storage
           emptyDir: {}
   volumeClaimTemplates:
@@ -208,4 +231,4 @@ spec:
         {{- end }}
         resources:
           requests:
-            storage: {{ .Values.persistence.size }}
+            storage: {{ .Values.persistence.size | quote }}

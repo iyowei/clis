@@ -54,7 +54,8 @@ data:
       );
     }
 
-    const uri = `mongodb://${env.MONGO_INITDB_ROOT_USERNAME}:${env.MONGO_INITDB_ROOT_PASSWORD}@${fqdn(0)}/admin?authSource=admin&directConnection=true`;
+    const rootCreds = `${encodeURIComponent(env.MONGO_INITDB_ROOT_USERNAME || '')}:${encodeURIComponent(env.MONGO_INITDB_ROOT_PASSWORD || '')}`;
+    const uri = `mongodb://${rootCreds}@${fqdn(0)}/admin?authSource=admin&directConnection=true`;
     const admin = new Mongo(uri).getDB('admin');
 
     let needInit = false;
@@ -84,7 +85,7 @@ data:
           break;
         }
         if (h.primary) {
-          primaryUri = `mongodb://${env.MONGO_INITDB_ROOT_USERNAME}:${env.MONGO_INITDB_ROOT_PASSWORD}@${h.primary}/admin?authSource=admin&directConnection=true`;
+          primaryUri = `mongodb://${rootCreds}@${h.primary}/admin?authSource=admin&directConnection=true`;
           ready = true;
           break;
         }

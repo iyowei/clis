@@ -92,6 +92,21 @@ initContainer:
     repository: alpine
     tag: "3.19"
     pullPolicy: IfNotPresent
+  # requests == limits 确保 initContainers 不降级 Guaranteed QoS 并通过 ResourceQuota 校验
+  resources:
+    limits:
+      cpu: 100m
+      memory: 128Mi
+    requests:
+      cpu: 100m
+      memory: 128Mi
+  bootstrapResources:
+    limits:
+      cpu: 500m
+      memory: 512Mi
+    requests:
+      cpu: 500m
+      memory: 512Mi
 
 podSecurityContext:
   fsGroup: 999

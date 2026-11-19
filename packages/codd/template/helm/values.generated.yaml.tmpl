@@ -8,59 +8,59 @@ replicaCount: {{REPLICA_COUNT}}
 terminationGracePeriodSeconds: {{STOP_GRACE_PERIOD}}
 
 image:
-  repository: {{IMAGE_REPOSITORY}}
+  repository: "{{IMAGE_REPOSITORY}}"
   tag: "{{IMAGE_TAG}}"
 
 auth:
   existingSecret: "{{EXISTING_SECRET}}"
-  rootUsername: {{ROOT_USERNAME}}
-  backupUsername: {{BACKUP_USERNAME}}
+  rootUsername: "{{ROOT_USERNAME}}"
+  backupUsername: "{{BACKUP_USERNAME}}"
 
 app:
   database: "{{APP_DATABASE}}"
   username: "{{APP_USERNAME}}"
 
 service:
-  type: {{SERVICE_TYPE}}
+  type: "{{SERVICE_TYPE}}"
   port: {{PORT}}
   nodePort: {{NODE_PORT}}
 
 resources:
   limits:
     cpu: {{CPU_LIMIT}}
-    memory: {{K8S_LIMIT_MEMORY}}
+    memory: "{{K8S_LIMIT_MEMORY}}"
   requests:
     cpu: {{K8S_REQUEST_CPU}}
-    memory: {{K8S_REQUEST_MEMORY}}
+    memory: "{{K8S_REQUEST_MEMORY}}"
 
 persistence:
-  size: {{PERSISTENCE_SIZE}}
+  size: "{{PERSISTENCE_SIZE}}"
   storageClass: "{{STORAGE_CLASS}}"
 
 podAntiAffinityPreset:
   enabled: {{ANTI_AFFINITY_ENABLED}}
-  type: {{ANTI_AFFINITY_TYPE}}
+  type: "{{ANTI_AFFINITY_TYPE}}"
   weight: 100
-  topologyKey: kubernetes.io/hostname
+  topologyKey: "kubernetes.io/hostname"
 
 config:
   net:
     port: {{PORT}}
     maxIncomingConnections: {{MAX_INCOMING_CONNECTIONS}}
     compression:
-      compressors: snappy,zstd
+      compressors: "snappy,zstd"
   storage:
     wiredTiger:
       collectionConfig:
-        blockCompressor: {{BLOCK_COMPRESSOR}}
+        blockCompressor: "{{BLOCK_COMPRESSOR}}"
       engineConfig:
         cacheSizeGB: {{WT_CACHE_GB}}
-        journalCompressor: snappy
+        journalCompressor: "snappy"
       indexConfig:
         prefixCompression: true
   replication:
-    replSetName: {{RS_NAME}}
+    replSetName: "{{RS_NAME}}"
     oplogSizeMB: {{OPLOG_SIZE_MB}}
   operationProfiling:
-    mode: slowOp
+    mode: "slowOp"
     slowOpThresholdMs: {{SLOW_OP_THRESHOLD_MS}}

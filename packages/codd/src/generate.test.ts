@@ -133,7 +133,7 @@ describe('Podman 单节点、密码轮换与 P0/P1 修复验证', () => {
       const bundlePkg = JSON.parse(
         readFileSync(join(b1, 'package.json'), 'utf8'),
       ) as { engines: { bun: string } };
-      expect(bundlePkg.engines.bun).toBe('>=1.4.2');
+      expect(bundlePkg.engines.bun).toBe('>=1.4.5');
       expect(readFileSync(join(b1, 'Makefile'), 'utf8')).toContain(
         'tune-host:',
       );
@@ -371,9 +371,14 @@ describe('多节点副本集、Kubernetes 与红线拦截验证', () => {
       expect(vals).toContain('cacheSizeGB: 3.5');
       expect(vals).toContain('oplogSizeMB: 8190');
       expect(vals).not.toContain('logsu:');
-      expect(readFileSync(join(kDir, 'create-secret.sh'), 'utf8')).toContain(
-        "--from-literal=extra-apps='logs:logsu:",
+      const createSecretSh = readFileSync(
+        join(kDir, 'create-secret.sh'),
+        'utf8',
       );
+      expect(createSecretSh).toContain("kubectl apply -f - <<'EOF'");
+      expect(createSecretSh).toContain('stringData:');
+      expect(createSecretSh).toContain('extra-apps: "logs:logsu:');
+      expect(createSecretSh).not.toContain('--from-literal');
       expect(readFileSync(join(kDir, 'deploy.sh'), 'utf8')).toContain(
         '"$SCRIPT_DIR/chart"',
       );

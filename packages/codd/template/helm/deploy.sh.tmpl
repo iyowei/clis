@@ -2,7 +2,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-"$SCRIPT_DIR/create-secret.sh"
+{{SECRET_STEP}}
 helm upgrade --install "{{RELEASE_NAME}}" "$SCRIPT_DIR/chart" \
   --namespace "{{NAMESPACE}}" \
   -f "$SCRIPT_DIR/values.generated.yaml"

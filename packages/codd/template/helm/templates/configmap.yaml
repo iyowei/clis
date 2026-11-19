@@ -1,7 +1,7 @@
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: {{ include "mongo.fullname" . }}-config
+  name: {{ printf "%s-config" (include "mongo.fullname" .) | quote }}
 data:
   mongod.conf: |
     # MongoDB K8S 高性能配置
@@ -9,13 +9,13 @@ data:
       # 不指定 destination: file, 默认输出到 stdout
       verbosity: {{ .Values.config.systemLog.verbosity }}
     storage:
-      dbPath: /data/db
+      dbPath: "/data/db"
       wiredTiger:
         collectionConfig:
-          blockCompressor: {{ default "zstd" .Values.config.storage.wiredTiger.collectionConfig.blockCompressor }}
+          blockCompressor: {{ default "zstd" .Values.config.storage.wiredTiger.collectionConfig.blockCompressor | quote }}
         engineConfig:
           cacheSizeGB: {{ .Values.config.storage.wiredTiger.engineConfig.cacheSizeGB }}
-          journalCompressor: {{ default "snappy" (dig "engineConfig" "journalCompressor" "snappy" .Values.config.storage.wiredTiger) }}
+          journalCompressor: {{ default "snappy" (dig "engineConfig" "journalCompressor" "snappy" .Values.config.storage.wiredTiger) | quote }}
         indexConfig:
           prefixCompression: {{ if hasKey (default dict .Values.config.storage.wiredTiger.indexConfig) "prefixCompression" }}{{ .Values.config.storage.wiredTiger.indexConfig.prefixCompression }}{{ else }}true{{ end }}
     net:
@@ -24,13 +24,13 @@ data:
       ipv6: false
       maxIncomingConnections: {{ default 100 .Values.config.net.maxIncomingConnections }}
       compression:
-        compressors: {{ default "snappy,zstd" (dig "compression" "compressors" "snappy,zstd" .Values.config.net) }}
+        compressors: {{ default "snappy,zstd" (dig "compression" "compressors" "snappy,zstd" .Values.config.net) | quote }}
     security:
-      authorization: {{ .Values.config.security.authorization }}
-      keyFile: {{ .Values.config.security.keyFile }}
+      authorization: {{ .Values.config.security.authorization | quote }}
+      keyFile: {{ .Values.config.security.keyFile | quote }}
     replication:
-      replSetName: {{ .Values.config.replication.replSetName }}
+      replSetName: {{ .Values.config.replication.replSetName | quote }}
       oplogSizeMB: {{ .Values.config.replication.oplogSizeMB }}
     operationProfiling:
-      mode: {{ .Values.config.operationProfiling.mode }}
+      mode: {{ .Values.config.operationProfiling.mode | quote }}
       slowOpThresholdMs: {{ .Values.config.operationProfiling.slowOpThresholdMs }}
