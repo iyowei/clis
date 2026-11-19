@@ -52,7 +52,14 @@ export {
   toTrustRoots,
 } from './delete.ts';
 export { formatBytes, sanitizeLine, sanitizeOutputLine } from './display.ts';
-export { SweepError, type SweepErrorDetails, isSweepError } from './errors.ts';
+export {
+  type NarrowedSweepError,
+  SweepError,
+  type SweepErrorDetails,
+  type SweepErrorDetailsByCode,
+  isSweepError,
+  isSweepErrorCode,
+} from './errors.ts';
 export {
   type AnchorLink,
   type CrossDeviceEntry,

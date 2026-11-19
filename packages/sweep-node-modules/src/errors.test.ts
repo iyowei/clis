@@ -4,7 +4,13 @@
  */
 import { describe, expect, test } from 'bun:test';
 
-import { SweepError, type SweepErrorCode, isSweepError } from './index.ts';
+import {
+  SweepError,
+  type SweepErrorCode,
+  type SweepErrorDetailsByCode,
+  isSweepError,
+  isSweepErrorCode,
+} from './index.ts';
 
 /** SweepErrorCode 的全表 (与 codes.ts 的类型同步; 漏项需人工对齐, `satisfies` 只保成员合法) */
 const ALL_SWEEP_ERROR_CODES = [
@@ -97,5 +103,39 @@ describe('isSweepError 跨实例判别', () => {
         Object.assign(new Error('x'), { name: 'SweepError', code: 42 }),
       ),
     ).toBe(false);
+    // 缺 message 或 message 非字符串的伪造对象必须判假
+    expect(isSweepError({ name: 'SweepError', code: 'CANCELLED' })).toBe(false);
+    expect(
+      isSweepError({ name: 'SweepError', code: 'CANCELLED', message: 123 }),
+    ).toBe(false);
+  });
+
+  test('ErrorOptions cause 透传与按 code 窄化 details (编译期与运行期双验)', () => {
+    const rootCause = new SyntaxError('unexpected token');
+    const err = new SweepError(
+      'CONFIG_CORRUPT_JSON',
+      '配置 JSON 损坏',
+      { path: '/tmp/c.json' },
+      { cause: rootCause },
+    );
+    expect(err.cause).toBe(rootCause);
+
+    const unknownErr: unknown = new SweepError('CANCELLED', '已取消', {
+      phase: 'remove',
+      partial: { removed: ['/w/a/node_modules'], missing: [], failed: [] },
+    });
+    if (isSweepError(unknownErr) && unknownErr.code === 'CANCELLED') {
+      const details: SweepErrorDetailsByCode['CANCELLED'] | undefined =
+        unknownErr.details;
+      expect(details?.partial?.removed).toEqual(['/w/a/node_modules']);
+    } else {
+      throw new Error('应当收窄为 CANCELLED');
+    }
+
+    expect(isSweepErrorCode(unknownErr, 'CANCELLED')).toBe(true);
+    expect(isSweepErrorCode(unknownErr, 'INVALID_ARGUMENT')).toBe(false);
+    if (isSweepErrorCode(unknownErr, 'CANCELLED')) {
+      expect(unknownErr.details?.phase).toBe('remove');
+    }
   });
 });

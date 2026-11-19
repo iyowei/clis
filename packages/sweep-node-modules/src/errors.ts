@@ -11,17 +11,22 @@ import type { SweepErrorCode, SweepPhase } from './codes.ts';
 import type { ConfigSource } from './config.ts';
 import type { RemovalResult } from './delete.ts';
 
+/** 按 code 索引的错误上下文映射 (支持按 code 精确收窄 details) */
+export interface SweepErrorDetailsByCode {
+  CONFIG_READ_FAILED: { path: string; errno?: string };
+  CONFIG_CORRUPT_JSON: { path: string };
+  CONFIG_CORRUPT_SHAPE: { path: string; field: string };
+  CONFIG_ABSENT: { path: string; source: ConfigSource };
+  INVALID_ARGUMENT: { field: string };
+  CANCELLED: { phase: SweepPhase; partial?: RemovalResult };
+}
+
 /** 抛错附带的上下文: 判别联合, 按 code 取对应一支 */
 export type SweepErrorDetails =
-  | { path: string; errno?: string } // CONFIG_READ_FAILED
-  | { path: string } // CONFIG_CORRUPT_JSON
-  | { path: string; field: string } // CONFIG_CORRUPT_SHAPE (field = 首个不符的字段名)
-  | { path: string; source: ConfigSource } // CONFIG_ABSENT (只有显式来源会抛)
-  | { field: string } // INVALID_ARGUMENT (构造期同步抛)
-  | { phase: SweepPhase; partial?: RemovalResult }; // CANCELLED (partial 只在 phase === 'remove' 时出现)
+  SweepErrorDetailsByCode[keyof SweepErrorDetailsByCode];
 
 /** isSweepError 校验 code 取值的运行时全表 (与 SweepErrorCode 类型保持同步) */
-const SWEEP_ERROR_CODES: ReadonlySet<string> = new Set([
+const SWEEP_ERROR_CODES: ReadonlySet<string> = /*#__PURE__*/ new Set([
   'CONFIG_READ_FAILED',
   'CONFIG_CORRUPT_JSON',
   'CONFIG_CORRUPT_SHAPE',
@@ -31,33 +36,54 @@ const SWEEP_ERROR_CODES: ReadonlySet<string> = new Set([
 ] satisfies SweepErrorCode[]);
 
 /** 库抛出的唯一错误类型 (config / 参数 / 取消三档共用) */
-export class SweepError extends Error {
+export class SweepError<
+  Code extends SweepErrorCode = SweepErrorCode,
+> extends Error {
   override readonly name = 'SweepError' as const;
-  readonly code: SweepErrorCode;
-  readonly details?: SweepErrorDetails;
+  readonly code: Code;
+  readonly details?: SweepErrorDetailsByCode[Code];
 
   constructor(
-    code: SweepErrorCode,
+    code: Code,
     message: string,
-    details?: SweepErrorDetails,
+    details?: SweepErrorDetailsByCode[Code],
+    options?: ErrorOptions,
   ) {
-    super(message);
+    super(message, options);
     this.code = code;
     this.details = details;
   }
 }
 
+/** 按 code 展开的判别联合: `if (isSweepError(e) && e.code === 'CANCELLED') e.details?.partial` 直接收窄 */
+export type NarrowedSweepError = {
+  [K in SweepErrorCode]: SweepError<K>;
+}[SweepErrorCode];
+
 /**
- * 类型守卫: 不依赖类身份, 走「Error 形状 + name + code 取值」判别。
+ * 类型守卫: 不依赖类身份, 走「Error 形状 + name + message + code 取值」判别。
  * 扩展 / 打包环境里同一进程可能存在两份库实例, 此时 instanceof SweepError 会假阴;
  * 需要跨实例判别的调用方一律用它。
  */
-export function isSweepError(value: unknown): value is SweepError {
+export function isSweepError(value: unknown): value is NarrowedSweepError {
   if (typeof value !== 'object' || value === null) return false;
-  const candidate = value as { name?: unknown; code?: unknown };
+  const candidate = value as {
+    name?: unknown;
+    code?: unknown;
+    message?: unknown;
+  };
   return (
     candidate.name === 'SweepError' &&
+    typeof candidate.message === 'string' &&
     typeof candidate.code === 'string' &&
     SWEEP_ERROR_CODES.has(candidate.code)
   );
+}
+
+/** 单步按 code 收窄守卫: 校验为 SweepError 且 code 匹配时直接窄化到对应 details 分支 */
+export function isSweepErrorCode<Code extends SweepErrorCode>(
+  value: unknown,
+  code: Code,
+): value is SweepError<Code> {
+  return isSweepError(value) && value.code === code;
 }
