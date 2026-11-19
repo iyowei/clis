@@ -5,22 +5,12 @@ ENV_SRC := $(if $(filter /%,$(ENV)),$(ENV),./$(ENV))
 COMPOSE_FILE := podman-compose.yml
 COMPOSE := podman-compose --env-file $(ENV) -f $(COMPOSE_FILE)
 TOOLS := $(COMPOSE) --profile tools run --rm --no-deps mongo-tools
-STACK_PREFIX ?= $(shell . "$(ENV_SRC)" 2>/dev/null; echo $${STACK_PREFIX:-{{STACK_PREFIX}}})
-FINGERPRINT ?= $(shell . "$(ENV_SRC)" 2>/dev/null; echo $${FINGERPRINT})
-MONGO_IMAGE_TAG ?= $(shell . "$(ENV_SRC)" 2>/dev/null; echo $${MONGO_IMAGE_TAG})
-TOOLS_IMAGE_NAME ?= $(shell . "$(ENV_SRC)" 2>/dev/null; echo $${TOOLS_IMAGE_NAME:-{{TOOLS_IMAGE_NAME}}})
+-include $(ENV_SRC)
+STACK_PREFIX := $(or $(STACK_PREFIX),{{STACK_PREFIX}})
+TOOLS_IMAGE_NAME := $(or $(TOOLS_IMAGE_NAME),{{TOOLS_IMAGE_NAME}})
+MONGO_PORT := $(or $(MONGO_PORT),{{MONGO_PORT}})
+MONGO_HOST_PORT := $(or $(MONGO_HOST_PORT),{{MONGO_HOST_PORT}})
 TOOLS_IMAGE := $(TOOLS_IMAGE_NAME):$(MONGO_IMAGE_TAG)
-BACKUP_DIR ?= $(shell . "$(ENV_SRC)" 2>/dev/null; echo $${BACKUP_DIR})
-MONGO_EXTRA_APPS ?= $(shell . "$(ENV_SRC)" 2>/dev/null; echo $${MONGO_EXTRA_APPS})
-MONGO_BIND_IP ?= $(shell . "$(ENV_SRC)" 2>/dev/null; echo $${MONGO_BIND_IP})
-MONGO_PORT ?= $(shell . "$(ENV_SRC)" 2>/dev/null; echo $${MONGO_PORT:-{{MONGO_PORT}}})
-MONGO_HOST_PORT ?= $(shell . "$(ENV_SRC)" 2>/dev/null; echo $${MONGO_HOST_PORT:-{{MONGO_HOST_PORT}}})
-RS_ROLE ?= $(shell . "$(ENV_SRC)" 2>/dev/null; echo $${RS_ROLE})
-MONGO_KEYFILE ?= $(shell . "$(ENV_SRC)" 2>/dev/null; echo $${MONGO_KEYFILE})
-RS_SELF_HOST ?= $(shell . "$(ENV_SRC)" 2>/dev/null; echo $${RS_SELF_HOST})
-RS_MEMBERS ?= $(shell . "$(ENV_SRC)" 2>/dev/null; echo $${RS_MEMBERS})
-RS_PEER_1 ?= $(shell . "$(ENV_SRC)" 2>/dev/null; echo $${RS_PEER_1})
-RS_PEER_2 ?= $(shell . "$(ENV_SRC)" 2>/dev/null; echo $${RS_PEER_2})
 CONTAINER := $(STACK_PREFIX)-$(FINGERPRINT)
 
 .PHONY: help up down logs status init tools backup drill restore stats shell check-env check-perf tune-host
@@ -45,7 +35,7 @@ help:
 check-env:
 	@command -v podman >/dev/null 2>&1 || { echo "错误: 未找到 podman, macOS 请执行 brew install podman"; exit 1; }
 	@command -v podman-compose >/dev/null 2>&1 || { echo "错误: 未找到 podman-compose, macOS 请执行 brew install podman-compose (Linux 用包管理器或 pipx 安装)"; exit 1; }
-	@[ -f "$(ENV)" ] || { echo "缺少 $(ENV), 请先使用生成器 bun run generate 生成部署目录"; exit 1; }
+	@[ -f "$(ENV)" ] || { echo "缺少 $(ENV), 请先使用 codd 生成部署目录"; exit 1; }
 	@! grep -q 'CHANGE_ME' "$(ENV)" || { echo "错误: $(ENV) 里仍有模板占位值 CHANGE_ME, 请先全部替换"; exit 1; }
 	@printf '%s' "$(STACK_PREFIX)" | grep -Eq '^[a-z0-9-]+$$' || { echo "错误: STACK_PREFIX 只允许小写字母, 数字和连字符, 当前为 '$(STACK_PREFIX)'"; exit 1; }
 	@printf '%s' "$(FINGERPRINT)" | grep -Eq '^[a-z0-9-]+$$' || { echo "错误: FINGERPRINT 只允许小写字母, 数字和连字符, 当前为 '$(FINGERPRINT)'"; exit 1; }

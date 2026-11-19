@@ -68,8 +68,8 @@ const backupOneDb = async (
     await rm(partial, { force: true });
   }
 
-  // 周日的备份额外留一份
-  if (isSunday()) {
+  // 周日的备份额外留一份 (KEEP_WEEKLY=0 时跳过周日归档)
+  if (keepWeekly > 0 && isSunday()) {
     await copyFile(final, join(weeklyDir, basename(final)));
     log(`已存入 weekly/ [${db}]`);
   }
@@ -89,9 +89,9 @@ main(async () => {
     throw new FatalError(`未在 .env 配置业务库 ${targetArg}`);
   }
 
-  const keepDaily = intEnv('KEEP_DAILY', 7);
-  const keepWeekly = intEnv('KEEP_WEEKLY', 4);
-  const concurrency = intEnv('BACKUP_CONCURRENCY', 1);
+  const keepDaily = intEnv('KEEP_DAILY', 7, 1);
+  const keepWeekly = intEnv('KEEP_WEEKLY', 4, 0);
+  const concurrency = intEnv('BACKUP_CONCURRENCY', 1, 1);
   const weeklyDir = join(BACKUP_DIR, 'weekly');
   await mkdir(weeklyDir, { recursive: true });
 

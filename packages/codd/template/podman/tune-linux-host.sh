@@ -106,7 +106,7 @@ Before=podman.service docker.service
 
 [Service]
 Type=oneshot
-ExecStart=/bin/sh -c 'echo always > /sys/kernel/mm/transparent_hugepage/enabled && echo defer+madvise > /sys/kernel/mm/transparent_hugepage/defrag && echo 0 > /sys/kernel/mm/transparent_hugepage/khugepaged/max_ptes_none'
+ExecStart=/bin/sh -c '[ -f /sys/kernel/mm/transparent_hugepage/enabled ] && echo always > /sys/kernel/mm/transparent_hugepage/enabled || true; [ -f /sys/kernel/mm/transparent_hugepage/defrag ] && echo defer+madvise > /sys/kernel/mm/transparent_hugepage/defrag || true; [ -f /sys/kernel/mm/transparent_hugepage/khugepaged/max_ptes_none ] && echo 0 > /sys/kernel/mm/transparent_hugepage/khugepaged/max_ptes_none || true'
 
 [Install]
 WantedBy=basic.target

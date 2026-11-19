@@ -33,14 +33,15 @@ spec:
         {{- end }}
     spec:
       terminationGracePeriodSeconds: {{ default 30 .Values.terminationGracePeriodSeconds }}
+      {{- $hasNodeAffinity := and .Values.affinity .Values.affinity.nodeAffinity }}
+      {{- $hasPodAntiAffinity := .Values.podAntiAffinityPreset.enabled }}
+      {{- if or $hasNodeAffinity $hasPodAntiAffinity }}
       affinity:
-        {{- if .Values.affinity }}
-          {{- with .Values.affinity.nodeAffinity }}
+        {{- if $hasNodeAffinity }}
         nodeAffinity:
-            {{- tpl (toYaml .) $ | nindent 10 }}
-          {{- end }}
+          {{- tpl (toYaml .Values.affinity.nodeAffinity) $ | nindent 10 }}
         {{- end }}
-        {{- if .Values.podAntiAffinityPreset.enabled }}
+        {{- if $hasPodAntiAffinity }}
         podAntiAffinity:
           {{- if eq .Values.podAntiAffinityPreset.type "hard" }}
           requiredDuringSchedulingIgnoredDuringExecution:
@@ -58,12 +59,39 @@ spec:
               topologyKey: {{ default "kubernetes.io/hostname" .Values.podAntiAffinityPreset.topologyKey }}
           {{- end }}
         {{- end }}
+      {{- end }}
       securityContext:
         {{- toYaml .Values.podSecurityContext | nindent 8 }}
       initContainers:
+        - name: fix-keyfile-permissions
+          image: "{{ .Values.initContainer.image.repository }}:{{ .Values.initContainer.image.tag }}"
+          imagePullPolicy: {{ .Values.initContainer.image.pullPolicy | default "IfNotPresent" }}
+          securityContext:
+            runAsUser: 0
+            runAsGroup: 0
+          # 先于 bootstrap-root 执行: 分发 0400 keyfile 并保证 /data/db 属主为 999:999 (避免重启时重复递归 chown -R)
+          command:
+            - sh
+            - -c
+            - |
+              cp /tmp/secret/mongodb-keyfile /etc/mongo/keyfile/mongodb-keyfile
+              chown 999:999 /etc/mongo/keyfile/mongodb-keyfile
+              chmod 400 /etc/mongo/keyfile/mongodb-keyfile
+              if [ "$(stat -c '%u:%g' /data/db 2>/dev/null || echo '')" != "999:999" ]; then
+                chown -R 999:999 /data/db
+              fi
+          volumeMounts:
+            - name: keyfile-secret
+              mountPath: /tmp/secret
+            - name: keyfile-storage
+              mountPath: /etc/mongo/keyfile
+            - name: data
+              mountPath: /data/db
         - name: bootstrap-root
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
-          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          imagePullPolicy: {{ .Values.image.pullPolicy | default "IfNotPresent" }}
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
           env:
             - name: GLIBC_TUNABLES
               value: glibc.pthread.rseq=0
@@ -101,16 +129,16 @@ spec:
                 sleep 1
               done
 
-              mongosh --port "$MONGO_PORT" --quiet --eval "
-                const rootUser = '$MONGO_INITDB_ROOT_USERNAME';
-                const rootPwd = '$MONGO_INITDB_ROOT_PASSWORD';
-                const admin = db.getSiblingDB('admin');
+              mongosh --port "$MONGO_PORT" --quiet --eval '
+                const rootUser = process.env.MONGO_INITDB_ROOT_USERNAME;
+                const rootPwd = process.env.MONGO_INITDB_ROOT_PASSWORD;
+                const admin = db.getSiblingDB("admin");
                 if (admin.getUser(rootUser)) {
-                  admin.updateUser(rootUser, { pwd: rootPwd, roles: ['root'] });
+                  admin.updateUser(rootUser, { pwd: rootPwd, roles: ["root"] });
                 } else {
-                  admin.createUser({ user: rootUser, pwd: rootPwd, roles: ['root'] });
+                  admin.createUser({ user: rootUser, pwd: rootPwd, roles: ["root"] });
                 }
-              "
+              '
 
               mongosh --port "$MONGO_PORT" --quiet --eval "db.getSiblingDB('admin').shutdownServer()"
               wait $PID
@@ -118,33 +146,10 @@ spec:
           volumeMounts:
             - name: data
               mountPath: /data/db
-        - name: fix-keyfile-permissions
-          image: "{{ .Values.initContainer.image.repository }}:{{ .Values.initContainer.image.tag }}"
-          imagePullPolicy: {{ .Values.initContainer.image.pullPolicy }}
-          securityContext:
-            runAsUser: 0
-            runAsGroup: 0
-          # 仅当 /data/db 属主非 999:999 时修正, 避免重启时对成千上万个 .wt 文件执行递归 chown -R
-          command:
-            - sh
-            - -c
-            - |
-              cp /tmp/secret/mongodb-keyfile /etc/mongo/keyfile/mongodb-keyfile
-              chown 999:999 /etc/mongo/keyfile/mongodb-keyfile
-              chmod 400 /etc/mongo/keyfile/mongodb-keyfile
-              if [ "$(stat -c '%u:%g' /data/db 2>/dev/null || echo '')" != "999:999" ]; then
-                chown -R 999:999 /data/db
-              fi
-          volumeMounts:
-            - name: keyfile-secret
-              mountPath: /tmp/secret
-            - name: keyfile-storage
-              mountPath: /etc/mongo/keyfile
-            - name: data
-              mountPath: /data/db
       containers:
         - name: mongo
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy | default "IfNotPresent" }}
           ports:
             - name: mongo
               containerPort: {{ .Values.config.net.port }}
@@ -153,13 +158,6 @@ spec:
           env:
             - name: GLIBC_TUNABLES
               value: glibc.pthread.rseq=0
-            - name: MONGO_INITDB_ROOT_USERNAME
-              value: {{ .Values.auth.rootUsername }}
-            - name: MONGO_INITDB_ROOT_PASSWORD
-              valueFrom:
-                secretKeyRef:
-                  name: {{ $authSecret }}
-                  key: root-password
           command: ["mongod", "--config", "/etc/mongo/mongod.conf"]
           # 内核级 TCP 探针: 0 进程派生, 0 内存尖峰, 防止重负载 Checkpoint 时误杀主库
           startupProbe:
@@ -204,8 +202,10 @@ spec:
     - metadata:
         name: data
       spec:
-        accessModes: [ "ReadWriteOnce" ]
-        storageClassName: {{ .Values.persistence.storageClass }}
+        accessModes: [ {{ .Values.persistence.accessMode | default "ReadWriteOnce" | quote }} ]
+        {{- if .Values.persistence.storageClass }}
+        storageClassName: {{ .Values.persistence.storageClass | quote }}
+        {{- end }}
         resources:
           requests:
             storage: {{ .Values.persistence.size }}

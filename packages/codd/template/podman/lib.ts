@@ -102,12 +102,16 @@ export const getConfiguredApps = (): AppDbSpec[] => {
   return [primary, ...parseExtraApps(process.env.MONGO_EXTRA_APPS, primary.db)];
 };
 
-export const intEnv = (name: string, fallback: number): number => {
+export const intEnv = (name: string, fallback: number, min = 1): number => {
   const raw = process.env[name];
-  if (!raw) return fallback;
+  if (raw === undefined || raw === '') return fallback;
   const n = Number(raw);
-  if (!Number.isInteger(n) || n < 1) {
-    throw new FatalError(`${name} 必须是正整数, 当前为 ${raw}`);
+  if (!Number.isInteger(n) || n < min) {
+    throw new FatalError(
+      min === 0
+        ? `${name} 必须是非负整数 (>= 0), 当前为 ${raw}`
+        : `${name} 必须是 >= ${min} 的整数, 当前为 ${raw}`,
+    );
   }
   return n;
 };

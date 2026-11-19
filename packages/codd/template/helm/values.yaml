@@ -40,7 +40,6 @@ resources:
     memory: 2Gi
 
 persistence:
-  enabled: true
   # 起步申请 32Gi; 扩容需底层 StorageClass 开启 allowVolumeExpansion 并直接 patch 已有 PVC
   size: 32Gi
   storageClass: ""
@@ -57,15 +56,6 @@ updateStrategy:
 # Pod 标签和注解
 podLabels: {}
 podAnnotations: {}
-
-# 监控配置
-metrics:
-  enabled: false
-  # ServiceMonitor 配置 (需要 Prometheus Operator)
-  serviceMonitor:
-    enabled: false
-    interval: 30s
-    scrapeTimeout: 10s
 
 config:
   net:

@@ -1,2 +1,5 @@
+# 容器内构建 mongo-tools 时的 Bun 配置。
+# 默认使用国内淘宝 npm 镜像 (registry.npmmirror.com) 加速服务器构建;
+# 如部署在海外服务器, 可注释下方 registry 行回退官方源。
 [install]
 registry = "https://registry.npmmirror.com"

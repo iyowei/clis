@@ -130,17 +130,41 @@ const drillOneArchive = async (
     log(`恢复结果 [${targetDb}] (集合: 文档数, 沙箱索引数 / 线上索引数)`);
     let total = 0;
     const mismatched: string[] = [];
+    const liveIndexErrors: string[] = [];
     for (const c of cols) {
       const docs = await drill.collection(c).countDocuments({});
       const idx = (await drill.collection(c).indexes()).length;
-      const liveIdx = await live
-        .collection(c)
-        .indexes()
-        .then((x) => x.length)
-        .catch(() => 0);
+      let liveIdx: number | null = null;
+      let missingOnLive = false;
+      try {
+        liveIdx = (await live.collection(c).indexes()).length;
+      } catch (err) {
+        const codeName =
+          typeof err === 'object' && err !== null && 'codeName' in err
+            ? String((err as { codeName?: unknown }).codeName)
+            : '';
+        if (codeName === 'NamespaceNotFound') {
+          missingOnLive = true;
+          log(
+            `  [提示] 线上库 ${targetDb} 已不存在集合 ${c}, 跳过索引数量比对`,
+          );
+        } else {
+          const detail = err instanceof Error ? err.message : String(err);
+          log(`  [警告] 读取线上集合 ${targetDb}.${c} 索引失败: ${detail}`);
+          liveIndexErrors.push(`${c} (${detail})`);
+        }
+      }
       total += docs;
-      if (liveIdx !== 0 && liveIdx !== idx) mismatched.push(c);
-      log(`  ${c}: ${docs} 文档, ${idx} 索引 / ${liveIdx}`);
+      if (liveIdx !== null && liveIdx !== idx) mismatched.push(c);
+      let liveSummary = String(liveIdx);
+      if (missingOnLive) liveSummary = '线上无此集合';
+      else if (liveIdx === null) liveSummary = '读取失败';
+      log(`  ${c}: ${docs} 文档, ${idx} 索引 / ${liveSummary}`);
+    }
+    if (liveIndexErrors.length > 0) {
+      throw new FatalError(
+        `读取线上索引失败 [${targetDb}]: ${liveIndexErrors.join('; ')}`,
+      );
     }
     if (mismatched.length > 0) {
       throw new FatalError(

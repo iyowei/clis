@@ -1,0 +1,346 @@
+/**
+ * template/ 常驻 CI 完整性回归测试:
+ * 1) 单元测试 template/podman/lib.ts 纯函数 (无需真 Mongo)
+ * 2) 校验 deploy.schema.json 与 deploy-2c2g.json 双向有效
+ * 3) 校验 Podman / K8s 生成产物零未替换占位符、良构 XML、关键安全与 Helm 模板守卫
+ * 4) 非 Windows 下 sh -n 校验全部 shell 脚本语法; 本机存在 helm 时附跑 helm lint 与 helm template
+ */
+import { describe, expect, test } from 'bun:test';
+
+import { spawnSync } from 'node:child_process';
+import { mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { dirname, join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+import {
+  FatalError,
+  buildMongoUri,
+  intEnv,
+  parseBackupDb,
+  parseExtraApps,
+  parseRsMembersList,
+  validateAlnumSecret,
+  validateDbName,
+} from '../template/podman/lib.ts';
+import {
+  type DeployManifest,
+  generateBundle,
+  validateManifest,
+} from './index.ts';
+
+const SOURCE_TEMPLATE_ROOT = resolve(
+  dirname(fileURLToPath(import.meta.url)),
+  '../template',
+);
+
+const applyTempEnv = (
+  patch: Record<string, string | undefined>,
+): (() => void) => {
+  const prev: Record<string, string | undefined> = {};
+  for (const [k, v] of Object.entries(patch)) {
+    prev[k] = process.env[k];
+    if (v === undefined) delete process.env[k];
+    else process.env[k] = v;
+  }
+  return () => {
+    for (const [k, v] of Object.entries(prev)) {
+      if (v === undefined) delete process.env[k];
+      else process.env[k] = v;
+    }
+  };
+};
+
+describe('template/podman/lib.ts 纯函数单测', () => {
+  test('intEnv 默认 min=1 拦截 0, 传 min=0 放行 0 (对齐 keepWeekly: 0)', () => {
+    const restore = applyTempEnv({ KEEP_WEEKLY: '0', KEEP_DAILY: '0' });
+    try {
+      expect(intEnv('KEEP_WEEKLY', 4, 0)).toBe(0);
+      expect(() => intEnv('KEEP_DAILY', 7)).toThrow(FatalError);
+
+      process.env.KEEP_WEEKLY = '-1';
+      expect(() => intEnv('KEEP_WEEKLY', 4, 0)).toThrow(FatalError);
+
+      process.env.KEEP_WEEKLY = 'abc';
+      expect(() => intEnv('KEEP_WEEKLY', 4, 0)).toThrow(FatalError);
+
+      delete process.env.KEEP_WEEKLY;
+      expect(intEnv('KEEP_WEEKLY', 4, 0)).toBe(4);
+    } finally {
+      restore();
+    }
+  });
+
+  test('凭据、库名、附加业务库、备份归档名与副本集 URI 解析正确', () => {
+    expect(validateAlnumSecret('abc123', 'PWD')).toBe('abc123');
+    expect(() => validateAlnumSecret('CHANGE_ME', 'PWD')).toThrow(FatalError);
+    expect(() => validateAlnumSecret('bad@1', 'PWD')).toThrow(FatalError);
+
+    expect(validateDbName('shop_v2', 'DB')).toBe('shop_v2');
+    expect(() => validateDbName('admin', 'DB')).toThrow(FatalError);
+
+    expect(
+      parseExtraApps('orders:orderu:pwd123,logs:logsu:pwd456', 'app'),
+    ).toEqual([
+      { db: 'orders', user: 'orderu', password: 'pwd123' },
+      { db: 'logs', user: 'logsu', password: 'pwd456' },
+    ]);
+    expect(() => parseExtraApps('app:u:p', 'app')).toThrow(FatalError);
+
+    expect(parseBackupDb('mongo-orders-20261119_033000.archive.gz')).toBe(
+      'orders',
+    );
+    expect(parseBackupDb('random.tar.gz')).toBeNull();
+
+    expect(parseRsMembersList('node1:27117,node2:27117')).toEqual([
+      'node1:27117',
+      'node2:27117',
+    ]);
+    const restoreRs = applyTempEnv({
+      RS_MEMBERS: 'n1:27117,n2:27117,n3:27117',
+      RS_NAME: 'rs0',
+    });
+    try {
+      expect(buildMongoUri('bak', 'sec', 'secondaryPreferred')).toBe(
+        'mongodb://bak:sec@n1:27117,n2:27117,n3:27117/?authSource=admin&replicaSet=rs0&readPreference=secondaryPreferred',
+      );
+    } finally {
+      restoreRs();
+    }
+    const restoreSingle = applyTempEnv({
+      RS_MEMBERS: '',
+      MONGO_HOST: 'mongo',
+      MONGO_PORT: '27117',
+    });
+    try {
+      expect(buildMongoUri('bak', 'sec')).toBe(
+        'mongodb://bak:sec@mongo:27117/?authSource=admin&directConnection=true',
+      );
+    } finally {
+      restoreSingle();
+    }
+  });
+});
+
+describe('Schema 与模板源码结构守卫', () => {
+  test('deploy.schema.json 与 deploy-2c2g.json 合法且通过校验与生成', () => {
+    const tplRoot = SOURCE_TEMPLATE_ROOT;
+    const schema = JSON.parse(
+      readFileSync(join(tplRoot, 'schema/deploy.schema.json'), 'utf8'),
+    ) as {
+      $schema?: string;
+      required?: string[];
+      properties?: Record<string, unknown>;
+    };
+    const sample = JSON.parse(
+      readFileSync(join(tplRoot, 'schema/deploy-2c2g.json'), 'utf8'),
+    ) as DeployManifest;
+
+    expect(schema.$schema).toContain('draft-07');
+    expect(schema.required).toEqual(['mode', 'name', 'apps']);
+    expect(schema.properties?.keepWeekly).toBeDefined();
+    expect(() => validateManifest(sample)).not.toThrow();
+
+    const ws = mkdtempSync(join(tmpdir(), 'codd-tpl-sample-'));
+    try {
+      const res = generateBundle({
+        workDir: ws,
+        templateDir: SOURCE_TEMPLATE_ROOT,
+        manifest: sample,
+      });
+      expect(res.bundleDirs.length).toBe(1);
+    } finally {
+      rmSync(ws, { recursive: true, force: true });
+    }
+  });
+
+  test('Helm 与 Podman 模板保留所有关键安全与正确性守卫', () => {
+    const tplRoot = SOURCE_TEMPLATE_ROOT;
+    const sts = readFileSync(
+      join(tplRoot, 'helm/templates/statefulset.yaml'),
+      'utf8',
+    );
+    expect(sts).toContain('{{- if .Values.persistence.storageClass }}');
+    expect(sts).toContain('{{- if or $hasNodeAffinity $hasPodAntiAffinity }}');
+    expect(sts.indexOf('name: fix-keyfile-permissions')).toBeLessThan(
+      sts.indexOf('name: bootstrap-root'),
+    );
+    expect(sts).toContain('imagePullPolicy:');
+    const mainContainerPart = sts.slice(sts.indexOf('containers:'));
+    expect(mainContainerPart).not.toContain('MONGO_INITDB_ROOT_PASSWORD');
+    expect(mainContainerPart).not.toContain('MONGO_INITDB_ROOT_USERNAME');
+
+    const secret = readFileSync(
+      join(tplRoot, 'helm/templates/secret.yaml'),
+      'utf8',
+    );
+    expect(secret).toContain('lookup "v1" "Secret"');
+
+    const values = readFileSync(join(tplRoot, 'helm/values.yaml'), 'utf8');
+    expect(values).not.toMatch(/^\s*metrics:/m);
+    const persistenceBlock = values.slice(
+      values.indexOf('persistence:'),
+      values.indexOf('# StatefulSet'),
+    );
+    expect(persistenceBlock).not.toMatch(/^\s+enabled:/m);
+    expect(persistenceBlock).toContain('accessMode:');
+
+    const makeTpl = readFileSync(join(tplRoot, 'podman/Makefile.tmpl'), 'utf8');
+    expect(makeTpl).not.toContain('bun run generate');
+    expect(makeTpl).toContain('请先使用 codd 生成部署目录');
+
+    const bunfig = readFileSync(join(tplRoot, 'podman/bunfig.toml'), 'utf8');
+    const activeLines = bunfig
+      .split('\n')
+      .filter((l) => l.trim() !== '' && !l.trim().startsWith('#'));
+    expect(
+      activeLines.some((l) =>
+        /^registry\s*=\s*["']https:\/\/registry\.npmmirror\.com["']$/.test(
+          l.trim(),
+        ),
+      ),
+    ).toBe(true);
+
+    const tuneSh = readFileSync(
+      join(tplRoot, 'podman/tune-linux-host.sh'),
+      'utf8',
+    );
+    expect(tuneSh).toContain(
+      '[ -f /sys/kernel/mm/transparent_hugepage/enabled ]',
+    );
+    expect(tuneSh).toContain(
+      '[ -f /sys/kernel/mm/transparent_hugepage/defrag ]',
+    );
+    expect(tuneSh).toContain(
+      '[ -f /sys/kernel/mm/transparent_hugepage/khugepaged/max_ptes_none ]',
+    );
+  });
+});
+
+describe('生成产物完整性、Shell 语法与可选 Helm 校验', () => {
+  test('Podman (macOS) 与 K8s (k8s-single / k8s-rs) 产物良构、零残留占位符且脚本通过 sh -n', () => {
+    const ws = mkdtempSync(join(tmpdir(), 'codd-tpl-e2e-'));
+    try {
+      const macRes = generateBundle({
+        workDir: ws,
+        templateDir: SOURCE_TEMPLATE_ROOT,
+        manifest: {
+          mode: 'single',
+          name: 'macbox',
+          apps: [{ db: 'app', user: 'appu' }],
+          nodes: [
+            {
+              os: 'macos',
+              backupDir: '/Users/alice/srv/backups',
+              stackDir: '/Users/alice/srv/stacks',
+            },
+          ],
+        },
+      });
+      const macDir = macRes.bundleDirs[0]!;
+      const plistName = readdirSync(macDir).find((f) => f.endsWith('.plist'));
+      expect(plistName).toBeDefined();
+      const plist = readFileSync(join(macDir, plistName!), 'utf8');
+      expect(plist).toContain('<?xml version="1.0" encoding="UTF-8"?>');
+      expect(plist).toContain('<plist version="1.0">');
+      expect(plist).toContain('</plist>');
+      expect(/&(?!(?:amp|lt|gt|quot|apos);)/.test(plist)).toBe(false);
+
+      const k1Res = generateBundle({
+        workDir: ws,
+        templateDir: SOURCE_TEMPLATE_ROOT,
+        manifest: {
+          mode: 'k8s-single',
+          name: 'k1',
+          apps: [{ db: 'app', user: 'appu' }],
+        },
+      });
+      const k3Res = generateBundle({
+        workDir: ws,
+        templateDir: SOURCE_TEMPLATE_ROOT,
+        manifest: {
+          mode: 'k8s-rs',
+          name: 'k3',
+          apps: [
+            { db: 'app', user: 'appu' },
+            { db: 'logs', user: 'logsu' },
+          ],
+          k8s: { namespace: 'prod', storageClass: 'gp3' },
+        },
+      });
+
+      const k1Dir = k1Res.bundleDirs[0]!;
+      const k3Dir = k3Res.bundleDirs[0]!;
+
+      for (const dir of [k1Dir, k3Dir]) {
+        for (const f of [
+          'values.generated.yaml',
+          'create-secret.sh',
+          'deploy.sh',
+        ]) {
+          const content = readFileSync(join(dir, f), 'utf8');
+          expect(/\{\{[A-Z0-9_]+\}\}/.test(content)).toBe(false);
+        }
+      }
+
+      if (process.platform !== 'win32') {
+        const shScripts = [
+          join(macDir, 'tune-linux-host.sh'),
+          join(k1Dir, 'create-secret.sh'),
+          join(k1Dir, 'deploy.sh'),
+          join(k3Dir, 'create-secret.sh'),
+          join(k3Dir, 'deploy.sh'),
+        ];
+        for (const script of shScripts) {
+          const check = spawnSync('sh', ['-n', script], { encoding: 'utf8' });
+          expect(check.status).toBe(0);
+        }
+      }
+
+      // 若运行环境已安装 helm, 附跑 helm lint 与 helm template 校验两套拓扑
+      const helmProbe = spawnSync('helm', ['version', '--short'], {
+        stdio: 'ignore',
+      });
+      if (helmProbe.status === 0) {
+        for (const [label, dir, expectEmptyAffinity] of [
+          ['k1', k1Dir, true],
+          ['k3', k3Dir, false],
+        ] as const) {
+          const lint = spawnSync(
+            'helm',
+            [
+              'lint',
+              join(dir, 'chart'),
+              '-f',
+              join(dir, 'values.generated.yaml'),
+            ],
+            { encoding: 'utf8' },
+          );
+          expect(lint.status).toBe(0);
+
+          const tpl = spawnSync(
+            'helm',
+            [
+              'template',
+              label,
+              join(dir, 'chart'),
+              '-f',
+              join(dir, 'values.generated.yaml'),
+            ],
+            { encoding: 'utf8' },
+          );
+          expect(tpl.status).toBe(0);
+          if (expectEmptyAffinity) {
+            expect(tpl.stdout).not.toMatch(/^\s+affinity:\s*$/m);
+            expect(tpl.stdout).not.toMatch(/^\s+storageClassName:\s*$/m);
+          } else {
+            expect(tpl.stdout).toContain('podAntiAffinity:');
+            expect(tpl.stdout).toContain('storageClassName: "gp3"');
+          }
+        }
+      }
+    } finally {
+      rmSync(ws, { recursive: true, force: true });
+    }
+  });
+});
