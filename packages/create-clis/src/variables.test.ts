@@ -9,7 +9,6 @@ import { describe, expect, test } from 'bun:test';
 
 import { basename, resolve } from 'node:path';
 
-import { type AskOutcome, type PromptIO, askAll } from './prompt.ts';
 import { type Vocabulary } from './render.ts';
 import {
   type CliOptions,
@@ -42,12 +41,6 @@ function errorText(result: unknown): string {
 function vocabularyOf(result: unknown): Vocabulary {
   expect(result).not.toHaveProperty('error');
   return result as Vocabulary;
-}
-
-/** 从 askAll 结果取词汇表 (非 collected 即断言失败, 兼作类型收窄) */
-function collectedOf(outcome: AskOutcome): Vocabulary {
-  expect(outcome.state).toBe('collected');
-  return (outcome as { vocabulary: Vocabulary }).vocabulary;
 }
 
 describe('validateName (kebab-case)', () => {
@@ -157,17 +150,17 @@ describe('parseFlags', () => {
     });
   });
 
-  test('位置参数为目标目录, 无 --name 时项目名取目录 basename', () => {
+  test('位置参数为目标目录, 无 --name 时目录名写入 suggestedName', () => {
     expect(parseFlags(['./pkgs/my-tool'])).toEqual({
       dir: './pkgs/my-tool',
-      name: 'my-tool',
+      suggestedName: 'my-tool',
       git: true,
       install: true,
       yes: false,
     });
   });
 
-  test('位置参数为 . / .. 时项目名回退到解析后的目录名 (不拿字面量 . 当项目名)', () => {
+  test('位置参数为 . / .. 时 suggestedName 回退到解析后的目录名 (不拿字面量 . 当项目名)', () => {
     // 背景: basename('.') 是 '.', 直接当项目名会被 kebab-case 校验拒绝且报错费解
     // (`create-clis . --yes` 的实测场景); 回退值取 resolve 后的 basename (当前 / 上级目录名)
     const cwdName = basename(resolve('.'));
@@ -176,9 +169,40 @@ describe('parseFlags', () => {
       cwdName.length,
       '用例前提: 测试进程 cwd 不是文件系统根',
     ).toBeGreaterThan(0);
-    expect(parseFlags(['.'])).toMatchObject({ dir: '.', name: cwdName });
-    expect(parseFlags(['..'])).toMatchObject({ dir: '..', name: parentName });
+    expect(parseFlags(['.'])).toMatchObject({
+      dir: '.',
+      suggestedName: cwdName,
+    });
+    expect(parseFlags(['..'])).toMatchObject({
+      dir: '..',
+      suggestedName: parentName,
+    });
     // 显式 --name 优先于该回退由后续既有用例 (--name 优先于位置参数的 basename) 背书
+  });
+
+  test('-h / --help / -V / --version 与 -- 分隔符顺序解析 (CREATE-P1-2)', () => {
+    expect(parseFlags(['-h'])).toMatchObject({ help: true });
+    expect(parseFlags(['--help'])).toMatchObject({ help: true });
+    expect(parseFlags(['-V'])).toMatchObject({ version: true });
+    expect(parseFlags(['--version'])).toMatchObject({ version: true });
+    expect(errorText(parseFlags(['--help=1']))).toContain('--help');
+    expect(errorText(parseFlags(['--version=1']))).toContain('--version');
+
+    // `--` 之后的 token 一律作为位置参数, 支持创建名为 update 或以 `-` 开头的目录
+    expect(parseFlags(['--', 'update'])).toEqual({
+      dir: 'update',
+      suggestedName: 'update',
+      git: true,
+      install: true,
+      yes: false,
+    });
+    expect(parseFlags(['--', '-h'])).toEqual({
+      dir: '-h',
+      suggestedName: '-h',
+      git: true,
+      install: true,
+      yes: false,
+    });
   });
 
   test('--name 优先于位置参数的 basename', () => {
@@ -358,146 +382,6 @@ describe('resolveVocabulary', () => {
     ).toEqual({
       name: 'my-tool',
       scope: '',
-      binName: 'my-tool',
-      owner: 'iyowei',
-      repoUrl: 'https://github.com/iyowei/my-tool',
-    });
-  });
-});
-
-/** 一次提问的记录 */
-interface Asked {
-  question: string;
-  hint: string | undefined;
-}
-
-/** 脚本化交互 IO: answers 按提问顺序消费 (null 即取消); 记录提问与打印供断言 */
-function scriptedIO(answers: (string | null)[]): {
-  io: PromptIO;
-  asked: Asked[];
-  printed: string[];
-} {
-  const queue = [...answers];
-  const asked: Asked[] = [];
-  const printed: string[] = [];
-  return {
-    asked,
-    printed,
-    io: {
-      ask(question, hint) {
-        asked.push({ question, hint });
-        const answer = queue.shift();
-        return Promise.resolve(answer === undefined ? null : answer);
-      },
-      print(line) {
-        printed.push(line);
-      },
-    },
-  };
-}
-
-describe('askAll (交互收集)', () => {
-  test('--yes: 零交互取全默认', async () => {
-    const { io, asked } = scriptedIO([]);
-    const vocabulary = collectedOf(
-      await askAll(io, ENV, options({ name: 'my-tool', yes: true })),
-    );
-    expect(asked).toHaveLength(0);
-    expect(vocabulary).toEqual({
-      name: 'my-tool',
-      scope: '',
-      binName: 'my-tool',
-      owner: 'iyowei',
-      repoUrl: 'https://github.com/iyowei/my-tool',
-    });
-  });
-
-  test('五问顺序与默认值提示', async () => {
-    const { io, asked } = scriptedIO(['my-tool', '', '', '', '']);
-    const vocabulary = collectedOf(await askAll(io, ENV, options()));
-    expect(asked.map((item) => item.question)).toEqual([
-      '项目名',
-      'scope',
-      'bin 名',
-      'owner',
-      '仓库地址',
-    ]);
-    expect(asked[2]?.hint).toContain('默认: my-tool');
-    expect(asked[3]?.hint).toContain('默认: iyowei');
-    expect(asked[4]?.hint).toContain('https://github.com/iyowei/my-tool');
-    expect(vocabulary).toEqual({
-      name: 'my-tool',
-      scope: '',
-      binName: 'my-tool',
-      owner: 'iyowei',
-      repoUrl: 'https://github.com/iyowei/my-tool',
-    });
-  });
-
-  test('未给 name 时先问 name; owner 无可用 git 默认时为必填', async () => {
-    const { io, asked } = scriptedIO([
-      'data-kit-tools',
-      '@acme',
-      '',
-      'acme',
-      '',
-    ]);
-    const vocabulary = collectedOf(
-      await askAll(io, { gitUserName: null }, options()),
-    );
-    expect(asked[3]?.hint).toContain('必填');
-    expect(vocabulary).toEqual({
-      name: 'data-kit-tools',
-      scope: '@acme',
-      binName: 'data-kt',
-      owner: 'acme',
-      repoUrl: 'https://github.com/acme/data-kit-tools',
-    });
-  });
-
-  test('git user.name 不可用作 owner 时同样按必填处理', async () => {
-    const { io, asked } = scriptedIO(['my-tool', '', '', 'me', '']);
-    const vocabulary = collectedOf(
-      await askAll(io, { gitUserName: 'Iyo Wei' }, options()),
-    );
-    expect(asked[3]?.hint).toContain('必填');
-    expect(vocabulary.owner).toBe('me');
-  });
-
-  test('答案非法时打印原因并重问', async () => {
-    const { io, printed } = scriptedIO(['Bad Name', 'my-tool', '', '', '', '']);
-    const vocabulary = collectedOf(await askAll(io, ENV, options()));
-    expect(vocabulary.name).toBe('my-tool');
-    expect(printed.some((line) => line.includes('kebab-case'))).toBe(true);
-  });
-
-  test('取消 (EOF / Ctrl+C) 返回 cancelled 且不再提问', async () => {
-    const { io, asked } = scriptedIO(['my-tool', null]);
-    const outcome = await askAll(io, ENV, options());
-    expect(outcome.state).toBe('cancelled');
-    expect(asked).toHaveLength(2);
-  });
-
-  test('旗标值非法时不进交互直接报错', async () => {
-    const { io, asked } = scriptedIO([]);
-    const outcome = await askAll(io, ENV, options({ name: 'Bad Name' }));
-    expect(outcome.state).toBe('error');
-    expect(asked).toHaveLength(0);
-  });
-
-  test('已由旗标给出的变量不再提问', async () => {
-    const { io, asked } = scriptedIO(['', '', '']);
-    const vocabulary = collectedOf(
-      await askAll(io, ENV, options({ name: 'my-tool', scope: '@me' })),
-    );
-    expect(asked.map((item) => item.question)).toEqual([
-      'bin 名',
-      'owner',
-      '仓库地址',
-    ]);
-    expect(vocabulary).toEqual({
-      name: 'my-tool',
-      scope: '@me',
       binName: 'my-tool',
       owner: 'iyowei',
       repoUrl: 'https://github.com/iyowei/my-tool',

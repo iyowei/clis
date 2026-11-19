@@ -27,6 +27,8 @@ export interface PromptIO {
   ask(question: string, hint?: string): Promise<string | null>;
   /** 输出一行普通信息 (校验失败原因等) */
   print(line: string): void;
+  /** 释放底层交互资源 (如 readline.Interface), 问答结束后归还 TTY */
+  close?: () => void;
 }
 
 /** 交互收集的三态出口: 收齐 / 用户取消 / 旗标值非法 */
@@ -99,110 +101,120 @@ export async function askAll(
   env: Environment,
   seed: CliOptions = { git: true, install: true, yes: false },
 ): Promise<AskOutcome> {
-  if (seed.yes) return collected(resolveVocabulary(seed, env));
+  try {
+    if (seed.yes) return collected(resolveVocabulary(seed, env));
 
-  const seedName = provided(seed.name);
-  const seedScope = provided(seed.scope);
-  const seedBin = provided(seed.bin);
-  const seedOwner = provided(seed.owner);
-  const seedRepo = provided(seed.repo);
+    const seedName = provided(seed.name);
+    const rawSuggested = provided(seed.suggestedName);
+    const seedScope = provided(seed.scope);
+    const seedBin = provided(seed.bin);
+    const seedOwner = provided(seed.owner);
+    const seedRepo = provided(seed.repo);
 
-  // 旗标值先整体校验, 不留到问答末尾才暴露
-  const seededChecks: readonly (readonly [
-    string | undefined,
-    (value: string) => string | null,
-  ])[] = [
-    [seedName, validateName],
-    [seedScope, validateScope],
-    [seedBin, validateBinName],
-    [seedOwner, validateOwner],
-    [seedRepo, validateRepoUrl],
-  ];
-  for (const [value, validate] of seededChecks) {
-    if (value === undefined) continue;
-    const error = validate(value);
-    if (error !== null) return { state: 'error', error };
-  }
+    // 显式旗标值先整体校验, 不留到问答末尾才暴露; 由目录推导的 suggestedName 非法时仅放弃默认照常提问
+    const seededChecks: readonly (readonly [
+      string | undefined,
+      (value: string) => string | null,
+    ])[] = [
+      [seedName, validateName],
+      [seedScope, validateScope],
+      [seedBin, validateBinName],
+      [seedOwner, validateOwner],
+      [seedRepo, validateRepoUrl],
+    ];
+    for (const [value, validate] of seededChecks) {
+      if (value === undefined) continue;
+      const error = validate(value);
+      if (error !== null) return { state: 'error', error };
+    }
 
-  io.print('create-clis: 依次回答以下问题 (方括号内为默认值, 回车采用)');
-
-  let name = seedName;
-  if (name === undefined) {
-    const answer = await askValidated(
-      io,
-      '项目名',
-      '必填, kebab-case, 如 my-tool',
-      undefined,
-      validateName,
-    );
-    if (answer === null) return { state: 'cancelled' };
-    name = answer;
-  }
-
-  let scope = seedScope;
-  if (scope === undefined) {
-    const answer = await askValidated(
-      io,
-      'scope',
-      '回车跳过 (裸包名; 带 scope 时以 @ 开头, 如 @me)',
-      '',
-      validateScope,
-    );
-    if (answer === null) return { state: 'cancelled' };
-    scope = answer;
-  }
-
-  let bin = seedBin;
-  if (bin === undefined) {
-    const fallback = deriveBinName(name);
-    const answer = await askValidated(
-      io,
-      'bin 名',
-      `默认: ${fallback}`,
-      fallback,
-      validateBinName,
-    );
-    if (answer === null) return { state: 'cancelled' };
-    bin = answer;
-  }
-
-  let owner = seedOwner;
-  if (owner === undefined) {
-    // git user.name 是展示名 (可能含空格), 不能作 owner 时按无默认处理并明示原因
-    const gitDefault =
-      env.gitUserName !== null && validateOwner(env.gitUserName) === null
-        ? env.gitUserName
+    const usableSuggested =
+      rawSuggested !== undefined && validateName(rawSuggested) === null
+        ? rawSuggested
         : undefined;
-    const answer = await askValidated(
-      io,
-      'owner',
-      gitDefault === undefined
-        ? '必填 (读不到可用的 git 全局 user.name)'
-        : `默认: ${gitDefault}`,
-      gitDefault,
-      validateOwner,
-    );
-    if (answer === null) return { state: 'cancelled' };
-    owner = answer;
-  }
 
-  let repo = seedRepo;
-  if (repo === undefined) {
-    const fallback = `https://github.com/${owner}/${name}`;
-    const answer = await askValidated(
-      io,
-      '仓库地址',
-      `默认: ${fallback}`,
-      fallback,
-      validateRepoUrl,
-    );
-    if (answer === null) return { state: 'cancelled' };
-    repo = answer;
-  }
+    io.print('create-clis: 依次回答以下问题 (方括号内为默认值, 回车采用)');
 
-  return collected(
-    resolveVocabulary({ ...seed, name, scope, bin, owner, repo }, env),
-  );
+    let name = seedName ?? usableSuggested;
+    if (name === undefined) {
+      const answer = await askValidated(
+        io,
+        '项目名',
+        '必填, kebab-case, 如 my-tool',
+        undefined,
+        validateName,
+      );
+      if (answer === null) return { state: 'cancelled' };
+      name = answer;
+    }
+
+    let scope = seedScope;
+    if (scope === undefined) {
+      const answer = await askValidated(
+        io,
+        'scope',
+        '回车跳过 (裸包名; 带 scope 时以 @ 开头, 如 @me)',
+        '',
+        validateScope,
+      );
+      if (answer === null) return { state: 'cancelled' };
+      scope = answer;
+    }
+
+    let bin = seedBin;
+    if (bin === undefined) {
+      const fallback = deriveBinName(name);
+      const answer = await askValidated(
+        io,
+        'bin 名',
+        `默认: ${fallback}`,
+        fallback,
+        validateBinName,
+      );
+      if (answer === null) return { state: 'cancelled' };
+      bin = answer;
+    }
+
+    let owner = seedOwner;
+    if (owner === undefined) {
+      // git user.name 是展示名 (可能含空格), 不能作 owner 时按无默认处理并明示原因
+      const gitDefault =
+        env.gitUserName !== null && validateOwner(env.gitUserName) === null
+          ? env.gitUserName
+          : undefined;
+      const answer = await askValidated(
+        io,
+        'owner',
+        gitDefault === undefined
+          ? '必填 (读不到可用的 git 全局 user.name)'
+          : `默认: ${gitDefault}`,
+        gitDefault,
+        validateOwner,
+      );
+      if (answer === null) return { state: 'cancelled' };
+      owner = answer;
+    }
+
+    let repo = seedRepo;
+    if (repo === undefined) {
+      const fallback = `https://github.com/${owner}/${name}`;
+      const answer = await askValidated(
+        io,
+        '仓库地址',
+        `默认: ${fallback}`,
+        fallback,
+        validateRepoUrl,
+      );
+      if (answer === null) return { state: 'cancelled' };
+      repo = answer;
+    }
+
+    return collected(
+      resolveVocabulary({ ...seed, name, scope, bin, owner, repo }, env),
+    );
+  } finally {
+    io.close?.();
+  }
 }
 
 /**
@@ -291,6 +303,16 @@ export function createPromptIO(): PromptIO {
     },
     print(line) {
       process.stdout.write(`${line}\n`);
+    },
+    close() {
+      ended = true;
+      buffered.length = 0;
+      if (rl !== null) {
+        const current = rl;
+        rl = null;
+        current.close();
+      }
+      setStdinRef(false);
     },
   };
 }

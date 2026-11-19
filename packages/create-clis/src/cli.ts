@@ -14,6 +14,7 @@ import { readPackageMeta, runSelfUpdate } from '@iyowei/cli-updater';
 import {
   type GenerateHooks,
   TargetRejectedError,
+  assertTargetAvailable,
   createGitInitHook,
   createInstallHook,
   generateProject,
@@ -128,19 +129,31 @@ async function main(): Promise<number> {
       argv: argv.slice(1),
     });
   }
-  if (argv.includes('--version') || argv.includes('-V')) {
-    process.stdout.write(`${readPackageMeta(import.meta.url).version}\n`);
-    return 0;
-  }
-  if (argv.includes('--help') || argv.includes('-h')) {
-    process.stdout.write(`${HELP_TEXT}\n`);
-    return 0;
-  }
 
   const parsed = parseFlags(argv);
   if ('error' in parsed) {
     process.stderr.write(`参数错误: ${parsed.error}\n`);
     return 1;
+  }
+  if (parsed.version) {
+    process.stdout.write(`${readPackageMeta(import.meta.url).version}\n`);
+    return 0;
+  }
+  if (parsed.help) {
+    process.stdout.write(`${HELP_TEXT}\n`);
+    return 0;
+  }
+
+  if (parsed.dir !== undefined) {
+    // 前置校验目标目录可用性: 目录已存在且非空时直接拒绝, 避免先答完五题再报错
+    const precheckDir = resolve(process.cwd(), parsed.dir);
+    try {
+      assertTargetAvailable(precheckDir);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      process.stderr.write(`生成失败: ${message}\n`);
+      return 1;
+    }
   }
 
   const env: Environment = { gitUserName: readGitUserName() };

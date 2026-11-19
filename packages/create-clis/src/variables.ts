@@ -16,10 +16,12 @@ import { basename, resolve } from 'node:path';
 import { type Vocabulary } from './render.ts';
 import { type Tier } from './tier.ts';
 
-/** 旗标解析结果: 五个变量全部可选 (缺省在 resolveVocabulary 派生), 三个开关与目标目录 */
+/** 旗标解析结果: 五个变量全部可选 (缺省在 resolveVocabulary 派生), 开关、帮助/版本与目标目录 */
 export interface CliOptions {
-  /** 项目名 (位置参数目录的 basename, 或 --name) */
+  /** 显式 --name 指定的项目名 */
   name?: string;
+  /** 由位置参数目录 basename 推导的项目名默认值 (交互态非法时忽略重问; --yes 时照常校验) */
+  suggestedName?: string;
   /** npm scope (如 @me); 缺省空串 (裸包名) */
   scope?: string;
   /** 主 bin 名; 缺省由 name 派生 */
@@ -36,6 +38,10 @@ export interface CliOptions {
   install: boolean;
   /** 全部取默认值, 零交互 */
   yes: boolean;
+  /** 显示帮助 (-h / --help) */
+  help?: boolean;
+  /** 显示版本号 (-V / --version) */
+  version?: boolean;
   /** 目标目录 (位置参数原样; 缺省由生成流程按项目名落到当前目录下) */
   dir?: string;
 }
@@ -214,11 +220,17 @@ function valueTokenAt(argv: string[], index: number): string | undefined {
  */
 export function parseFlags(argv: string[]): CliOptions | { error: string } {
   const options: CliOptions = { git: true, install: true, yes: false };
+  let afterDashDash = false;
 
   for (let index = 0; index < argv.length; index += 1) {
     const token = argv[index]!;
 
-    if (!token.startsWith('-')) {
+    if (!afterDashDash && token === '--') {
+      afterDashDash = true;
+      continue;
+    }
+
+    if (afterDashDash || !token.startsWith('-')) {
       if (options.dir !== undefined) {
         return {
           error: `只接受一个目标目录位置参数, 多余的: ${JSON.stringify(token)}`,
@@ -226,6 +238,15 @@ export function parseFlags(argv: string[]): CliOptions | { error: string } {
       }
       options.dir = token;
       continue;
+    }
+
+    if (token === '-h') {
+      options.help = true;
+      return options;
+    }
+    if (token === '-V') {
+      options.version = true;
+      return options;
     }
 
     if (!token.startsWith('--')) {
@@ -236,6 +257,13 @@ export function parseFlags(argv: string[]): CliOptions | { error: string } {
     const flag = inlineIndex === -1 ? token : token.slice(0, inlineIndex);
     const inline =
       inlineIndex === -1 ? undefined : token.slice(inlineIndex + 1);
+
+    if (flag === '--help' || flag === '--version') {
+      if (inline !== undefined) return { error: `开关旗标 ${flag} 不接受值` };
+      if (flag === '--help') options.help = true;
+      else options.version = true;
+      return options;
+    }
 
     if (flag === '--yes' || flag === '--no-git' || flag === '--no-install') {
       if (inline !== undefined) return { error: `开关旗标 ${flag} 不接受值` };
@@ -273,12 +301,13 @@ export function parseFlags(argv: string[]): CliOptions | { error: string } {
   if (options.name === undefined && options.dir !== undefined) {
     // `.` / `..` 的 basename 是自身而非目录名 (`create-clis . --yes` 会拿 `.` 当项目名, 报出
     // 费解的 kebab-case 错误): 特判回退到 resolve 后的 basename (当前 / 上级目录名)。
+    // 写入 suggestedName 而非 name, 以便交互模式在非 kebab-case 目录中放弃默认值照常提问。
     const derived = basename(options.dir);
     const fallback =
       derived === '.' || derived === '..'
         ? basename(resolve(options.dir))
         : derived;
-    if (fallback.length > 0) options.name = fallback;
+    if (fallback.length > 0) options.suggestedName = fallback;
   }
 
   return options;
@@ -313,7 +342,7 @@ export function resolveVocabulary(
   opts: CliOptions,
   env: Environment,
 ): Vocabulary | { error: string } {
-  const name = provided(opts.name);
+  const name = provided(opts.name) ?? provided(opts.suggestedName);
   if (name === undefined) {
     return {
       error: '缺少项目名: 用位置参数或 --name 提供 (kebab-case, 如 my-tool)',
