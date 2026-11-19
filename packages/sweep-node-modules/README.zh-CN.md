@@ -320,7 +320,7 @@ const { kind, reason } = classifyTarget(target, options?);
 
 - `targets` `string[]`
 - `options` `CrossDeviceOptions`:
-  - `roots` `string[]` (必填): 目标的所属根, 取包含它并且路径最长的那个根。
+  - `roots` `string[]` (必填): 目标的所属根, 按严格路径包含偏序取最内层的那个根 (仅在两根互不包含时回退较长路径)。
   - `style?` `PathStyle`: 路径风味; 默认平台原生。
   - `probe?` `DeviceProbe`: 设备号探针; 默认 `fsDeviceProbe` (注入它就能在单一文件系统上测跨设备流程)。
 - Returns: `Promise<CrossDeviceEntry[]>`: `{ target, kind }` 条目, 保持输入顺序; 没有跨设备目标时为空数组。
@@ -580,13 +580,13 @@ const outcome = await removeBatch(targets, { roots, staleTargets });
   - `code` `SweepErrorCode`: `CONFIG_READ_FAILED` / `CONFIG_CORRUPT_JSON` / `CONFIG_CORRUPT_SHAPE` / `CONFIG_ABSENT` / `INVALID_ARGUMENT` / `CANCELLED`。
   - `message` `string`: 给人读的文本 (规矩见下)。
   - `details?` `SweepErrorDetails`: 按 `code` 取值的判别联合: `{ path, errno? }`、`{ path }`、`{ path, field }`、`{ path, source }`、`{ field }`、`{ phase, partial? }`。
-- 构造: `new SweepError(code, message, details?)`。
+- 构造: `new SweepError(code, message, details?, options?)` (`options` 支持标准 `ErrorOptions`, 如 `{ cause }`)。
 - 包里唯一的类: 其余实例一律来自 `createXxx()` 工厂, 数据则一律是普通对象。
 
-### `isSweepError(value): value is SweepError`
+### `isSweepError(value): value is NarrowedSweepError` / `isSweepErrorCode(value, code)`
 
-- `value` `unknown`
-- Returns: `value is SweepError`: 按形状判断 (`name` 是 `SweepError`, 再加上已知的 `code`; 不要求具备 Error 的形状本身), 不是按类判断。
+- `isSweepError(value)`: 按形状判断 (`name === 'SweepError'`、已知 `code` 且 `typeof message === 'string'`; 不要求通过 `instanceof Error`), 并按 `code` 收窄 `details` 类型。
+- `isSweepErrorCode(value, code)`: 直接收窄为指定错误码的 `SweepError<C>` 及其对应的 `SweepErrorDetailsByCode[C]`。
 
 打包后或多实例环境里 (同一个进程可能并存两份库), `instanceof SweepError` 会出现假阴性; 跨实例场景一律用它。没预料到的内部异常不做包装, 原样冒泡。
 

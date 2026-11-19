@@ -320,7 +320,7 @@ The invariants are judged per target with early exit: the leaf must be exactly `
 
 - `targets` `string[]`
 - `options` `CrossDeviceOptions`:
-  - `roots` `string[]` (required): the owning root of a target is the most specific root that contains it.
+  - `roots` `string[]` (required): the owning root of a target is the innermost root containing it under strict path-containment order (falling back to the longer normalized path only when two roots are incomparable).
   - `style?` `PathStyle`: path flavor; native by default.
   - `probe?` `DeviceProbe`: the device-number probe; defaults to `fsDeviceProbe` (inject to test cross-device flows on one filesystem).
 - Returns: `Promise<CrossDeviceEntry[]>`: `{ target, kind }` entries in input order; an empty array when nothing is cross-device.
@@ -580,13 +580,13 @@ One rule decides the channel: **failures that can be listed are returned; failur
   - `code` `SweepErrorCode`: `CONFIG_READ_FAILED` / `CONFIG_CORRUPT_JSON` / `CONFIG_CORRUPT_SHAPE` / `CONFIG_ABSENT` / `INVALID_ARGUMENT` / `CANCELLED`.
   - `message` `string`: the readable text (see the code rules below).
   - `details?` `SweepErrorDetails`: a discriminated union keyed by `code`: `{ path, errno? }`, `{ path }`, `{ path, field }`, `{ path, source }`, `{ field }`, `{ phase, partial? }`.
-- Constructor: `new SweepError(code, message, details?)`.
+- Constructor: `new SweepError(code, message, details?, options?)` (`options` accepts standard `ErrorOptions`, e.g. `{ cause }`).
 - The only class in the package: every other instance comes from a `createXxx()` factory, and every domain datum is a plain object.
 
-### `isSweepError(value): value is SweepError`
+### `isSweepError(value): value is NarrowedSweepError` / `isSweepErrorCode(value, code)`
 
-- `value` `unknown`
-- Returns: `value is SweepError`: a shape-based check (a `name` of `SweepError` plus a known `code`; the `Error` shape itself is not required), not a class check.
+- `isSweepError(value)`: shape-based check (`name === 'SweepError'`, known `code`, and `typeof message === 'string'`; `instanceof Error` is not required), narrowing `details` by `code`.
+- `isSweepErrorCode(value, code)`: narrows `value` directly to `SweepError<C>` with its exact `SweepErrorDetailsByCode[C]`.
 
 In packaged or multi-instance environments (where two copies of the library can coexist in one process), `instanceof SweepError` gives false negatives; use the shape-based guard there. Unexpected internal exceptions are not wrapped: they bubble unchanged.
 

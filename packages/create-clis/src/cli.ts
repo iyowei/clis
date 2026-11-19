@@ -99,7 +99,7 @@ function nextSteps(
 /**
  * 入口主流程; 返回进程退出码 (0 成功, 1 任一失败路径)。
  *
- * 注: `--help` 在 parseFlags 之前拦截 (解析器视 `--help` 为未知旗标)。
+ * 注: `-h` / `--help`、`-V` / `--version` 与 `--` 均由 `parseFlags` 统一顺序解析 (支持 `create-clis -- update`)。
  *
  * ### 数据追踪示例
  * ```text
