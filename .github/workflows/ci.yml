@@ -8,6 +8,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
 jobs:
   verify:
     runs-on: ubuntu-latest
@@ -15,27 +19,47 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: package.json
       - uses: actions/setup-node@v7
         with:
-          node-version: 24
+          node-version-file: .nvmrc
       - name: Install
         run: bun install --frozen-lockfile
       # 验证组 (步骤集合的单一事实来源在 scripts/ci.ts, 与本地全链 / Release verify 同集合)
       - name: Verify (ci.ts --verify)
         run: bun run ci -- --verify
 
+  verify-windows:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: package.json
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+      - name: Install
+        run: bun install --frozen-lockfile
+      - name: Build, Typecheck & Test (Windows)
+        run: bun run build && bun run typecheck && bun run test
+
   # 转写验收 (逐字节金样本) 的语料为 macOS 文件系统口径录制 (du 磁盘占用含块分配差异:
   # 同一 fixture 在 APFS 计 8 KB, 在 ext4 因目录节点再计 4 KB → 12 KB), 故在 macOS runner
-  # 执行, 与语料录制环境同源; 它长期以来的运行环境即 macOS (手动双跑)。
+  # 执行, 与语料录制环境同源。
   conformance:
     runs-on: macos-latest
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
       - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: package.json
       - uses: actions/setup-node@v7
         with:
-          node-version: 24
+          node-version-file: .nvmrc
       - run: bun install --frozen-lockfile
       # 验收组 (含 build: node target 需 dist 前置, 理由见 scripts/ci.ts 的组注释)
       - name: Conformance (ci.ts --conformance)

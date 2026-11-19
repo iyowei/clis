@@ -19,17 +19,34 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: package.json
       - uses: actions/setup-node@v7
         with:
-          node-version: 24
+          node-version-file: .nvmrc
       - run: bun install --frozen-lockfile
       # 验证组 (步骤集合的单一事实来源在 scripts/ci.ts, 与 CI verify 同集合)
       - run: bun run ci -- --verify
 
+  # 与 CI 等价的金样本验收前置门禁: 缺此步则违背「发布自足」契约。
+  conformance:
+    runs-on: macos-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: package.json
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+      - run: bun install --frozen-lockfile
+      - run: bun run ci -- --conformance
+
   # 人工批准闸门 (environment: release, 配 required reviewers): 批准后才进入发布。
   # OIDC 发布: 不设任何 npm token; id-token: write 供 Trusted Publishing 换取短寿命凭据。
   release:
-    needs: verify
+    needs: [verify, conformance]
     runs-on: ubuntu-latest
     timeout-minutes: 30
     environment: release
@@ -43,9 +60,11 @@ jobs:
         with:
           fetch-depth: 0 # semantic-release 需要全历史与全部 tag
       - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: package.json
       - uses: actions/setup-node@v7
         with:
-          node-version: 24 # 自带 npm 11.x: OIDC 与 provenance 所需
+          node-version-file: .nvmrc # 自带 npm 11.x: OIDC 与 provenance 所需
           # 不设 registry-url: 它会生成带 NODE_AUTH_TOKEN 的 .npmrc, 压掉 OIDC 通道
       - run: bun install --frozen-lockfile
       # 发布凭据预检 (发布特有, 经 ci.ts 单源调用): OIDC 换证即与 npm 侧 Trusted Publisher
@@ -53,10 +72,6 @@ jobs:
       # 声明来自 job 的 environment, 无 environment 的 job 换证会被 npm 以误导性的 404 拒绝
       - run: bun run ci -- --only npm-trust
       - name: Release (multi-semantic-release, OIDC)
-        # 启动器用 bunx (与本地 dryrun 同链; 实测 --no-install 只经本地 devDep 启动);
-        # 「发布到 npm」的环节由 semrel 的 npm 插件内部 spawn 的 npm 本体承担 —— OIDC Trusted
-        # Publishing + provenance 需 npm 11, bun publish 未接该能力 (ADR 0010 决策 7),
-        # 与启动器选择无关
         run: bunx --no-install multi-semantic-release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
