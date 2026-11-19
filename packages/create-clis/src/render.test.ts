@@ -271,6 +271,30 @@ describe('containsResidual 残留检测', () => {
       containsResidual('残留 sweep-node-modules', ORIGINAL, sameOwner),
     ).toBe(true);
   });
+
+  test('目标词汇以超集包含原词汇子串 (如 iyowei-lab) 时不误报, 同文件真残留仍抓出', () => {
+    const supersetOwner: Vocabulary = {
+      name: 'my-sweep-nm-app',
+      scope: '@iyowei-org',
+      binName: 'msna',
+      owner: 'iyowei-lab',
+      repoUrl: 'https://github.com/iyowei-lab/my-sweep-nm-app',
+    };
+    expect(
+      containsResidual(
+        'author: iyowei-lab, pkg: @iyowei-org/my-sweep-nm-app',
+        ORIGINAL,
+        supersetOwner,
+      ),
+    ).toBe(false);
+    expect(
+      containsResidual(
+        'author: iyowei-lab, leak: iyowei',
+        ORIGINAL,
+        supersetOwner,
+      ),
+    ).toBe(true);
+  });
 });
 
 describe('行为级单源: 清单 generalize 面实扫零残留', () => {

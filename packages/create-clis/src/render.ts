@@ -193,10 +193,13 @@ export function containsResidual(
   if (target === undefined) {
     return forms.some((form) => content.includes(form.from));
   }
-  const targetForms = new Set(
-    buildForms(target, target).map((form) => form.from),
-  );
-  return forms.some(
-    (form) => !targetForms.has(form.from) && content.includes(form.from),
-  );
+  // 先从待检文本中按最长形态优先剔除所有合法目标词汇, 再检测剩余文本是否仍含原项目词汇:
+  // 既放行同名重合 (owner === 'iyowei') 与超集重合 (owner === 'iyowei-lab'),
+  // 又仍能精准抓住同一文件中混杂的真实残留。
+  const targetForms = buildForms(target, target).map((form) => form.from);
+  let remaining = content;
+  for (const tf of targetForms) {
+    if (tf.length > 0) remaining = remaining.split(tf).join('');
+  }
+  return forms.some((form) => remaining.includes(form.from));
 }
