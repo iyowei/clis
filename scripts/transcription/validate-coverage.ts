@@ -18,13 +18,11 @@ import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { REPO_ROOT } from '../lint-doc-shared.ts';
+import { CONTRACT_REL, CORPUS_REL, COVERAGE_REL } from './corpus.ts';
+import { CLAUSE_ID_SOURCE, SPEC_REF_PATTERN } from './validate.ts';
 
-const CONTRACT_MD = 'docs/sweep/protocol/behavior-contract.md';
-const COVERAGE_MD = 'docs/sweep/protocol/conformance/coverage.md';
-const CORPUS_DIR = 'docs/sweep/protocol/conformance/corpus';
-
-/** 条款号形态 (行首表格单元格): BC-01 / OF-15 / EC-08 */
-const CLAUSE_IN_CELL = /(?:BC|OF|EC)-\d+/g;
+/** 条款号形态 (行首表格单元格): 与 validate.ts 共享唯一正则源 */
+const CLAUSE_IN_CELL = new RegExp(CLAUSE_ID_SOURCE, 'g');
 
 /** 从行为契约主表提取全部条款号 (行首单元格以条款号开头的表格行) */
 export function extractContractNumbers(text: string): Set<string> {
@@ -32,7 +30,7 @@ export function extractContractNumbers(text: string): Set<string> {
   for (const line of text.split('\n')) {
     const cell = line.match(/^\|\s*([^|]*?)\s*\|/)?.[1];
     if (!cell) continue;
-    for (const m of cell.matchAll(/^(?:BC|OF|EC)-\d+$/g)) numbers.add(m[0]);
+    if (SPEC_REF_PATTERN.test(cell)) numbers.add(cell);
   }
   return numbers;
 }
@@ -99,12 +97,12 @@ export function validateCoverage(
   root: string = REPO_ROOT,
 ): CoverageReconciliation {
   const contract = extractContractNumbers(
-    readFileSync(join(root, CONTRACT_MD), 'utf8'),
+    readFileSync(join(root, CONTRACT_REL), 'utf8'),
   );
   const exempt = extractExemptNumbers(
-    readFileSync(join(root, COVERAGE_MD), 'utf8'),
+    readFileSync(join(root, COVERAGE_REL), 'utf8'),
   );
-  const referenced = collectCorpusRefs(join(root, CORPUS_DIR));
+  const referenced = collectCorpusRefs(join(root, CORPUS_REL));
   return reconcile(contract, referenced, exempt);
 }
 
