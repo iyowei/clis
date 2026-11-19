@@ -20,12 +20,15 @@ const DIST = join(ROOT, 'dist');
 
 /** 非公开内部实现模块产出的 .d.ts (不被 index.d.ts 链引用, 清理出发行面) */
 const INTERNAL_DTS_FILES: readonly string[] = [
+  'delete-review.d.ts',
   'runtime.d.ts',
   'scan-native.d.ts',
   'scan-parallel.d.ts',
   'scan-prune.d.ts',
+  'size-du-parse.d.ts',
   'size-du.d.ts',
   'size-js.d.ts',
+  'stale.d.ts',
 ];
 
 /** 递归收集目录下全部 .d.ts 文件的绝对路径 */
@@ -58,7 +61,7 @@ if (bundle.status !== 0) process.exit(bundle.status ?? 1);
 // 3. 类型声明: 独立 tsconfig (emitDeclarationOnly; 测试 / smoke / fixtures 已在 exclude)
 const types = spawnSync(
   'bunx',
-  ['tsc', '-p', join(ROOT, 'tsconfig.build.json')],
+  ['--no-install', 'tsc', '-p', join(ROOT, 'tsconfig.build.json')],
   {
     stdio: 'inherit',
   },

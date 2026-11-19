@@ -11,9 +11,12 @@
   "exclude": [
     "src/**/*.test.ts",
     "src/**/*smoke.ts",
+    "src/delete-review.ts",
     "src/fixtures.ts",
     "src/runtime.ts",
     "src/scan-native.ts",
-    "src/scan-prune.ts"
+    "src/scan-prune.ts",
+    "src/size-du-parse.ts",
+    "src/stale.ts"
   ]
 }
