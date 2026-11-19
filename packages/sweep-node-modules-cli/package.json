@@ -62,7 +62,7 @@
     "@iyowei/sweep-node-modules": "0.5.1"
   },
   "scripts": {
-    "build": "bun build src/cli.ts --target=node --outfile=dist/cli.js && bun scripts/write-dist-manifest.ts",
+    "build": "bun build src/cli.ts --target=node --minify-whitespace --minify-syntax --outfile=dist/cli.js && bun scripts/write-dist-manifest.ts",
     "prepublishOnly": "npm run build && npm run verify:release",
     "verify:release": "bun scripts/verify-release.ts",
     "typecheck": "tsc --noEmit",
