@@ -7,6 +7,7 @@ import { existsSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { stdin, stdout } from 'node:process';
 
+import { runSelfUpdate } from '@iyowei/cli-updater';
 import {
   type DeployManifest,
   copyTemplateFile,
@@ -41,6 +42,10 @@ const printUsage = (): void => {
     [
       'codd init',
       '在当前目录导出 deploy.schema.json、deploy-2c2g.json 参考清单与安全 .gitignore (等效于 --init-schema)',
+    ],
+    [
+      'codd update',
+      '自动识别当前安装器 (bun/npm/pnpm/yarn/volta) 升级到最新版 (--check 仅检查)',
     ],
     [
       'codd [配置文件.json]',
@@ -131,6 +136,13 @@ const main = async (): Promise<number> => {
     if (opts.help) {
       printUsage();
       return 0;
+    }
+    if (opts.update) {
+      return await runSelfUpdate({
+        binName: 'codd',
+        entryMetaUrl: import.meta.url,
+        argv: opts.updateArgs ?? [],
+      });
     }
 
     const workDir = resolve(process.cwd());

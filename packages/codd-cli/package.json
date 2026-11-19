@@ -46,6 +46,7 @@
     "registry": "https://registry.npmjs.org/"
   },
   "devDependencies": {
+    "@iyowei/cli-updater": "1.0.0",
     "@iyowei/codd": "1.0.0"
   },
   "scripts": {

@@ -36,6 +36,7 @@ describe('parseCliArgs 参数解析', () => {
       dryRun: false,
       wizard: false,
       initSchema: false,
+      update: false,
       help: false,
       version: false,
     });
@@ -125,6 +126,18 @@ describe('CLI 端到端行为 (源码直跑)', () => {
     });
     expect(verRes.status).toBe(0);
     expect(verRes.stdout.trim()).toBe(PKG_VERSION);
+
+    const updHelp = spawnSync('bun', [cliEntry, 'update', '--help'], {
+      encoding: 'utf8',
+    });
+    expect(updHelp.status).toBe(0);
+    expect(updHelp.stdout).toContain('codd update');
+
+    const updSrc = spawnSync('bun', [cliEntry, 'update', '--check'], {
+      encoding: 'utf8',
+    });
+    expect(updSrc.status).toBe(0);
+    expect(updSrc.stdout).toContain('本地源码工作树');
   });
 
   test('--init-schema 首次创建 .gitignore 并明确提示, 二次运行跳过且明确提示; --dry-run 零落盘', () => {
@@ -146,7 +159,10 @@ describe('CLI 端到端行为 (源码直跑)', () => {
         encoding: 'utf8',
       });
       expect(init2.status).toBe(0);
-      expect(init2.stdout).toContain('.gitignore 已存在, 已跳过写入');
+      // printAlert 按终端宽度自动折行, Windows 长临时路径会把提示词折成两行, 折叠空白再断言
+      expect(init2.stdout.replace(/\s+/g, ' ')).toContain(
+        '.gitignore 已存在, 已跳过写入',
+      );
 
       const dryRes = spawnSync(
         'bun',

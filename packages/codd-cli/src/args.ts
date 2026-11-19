@@ -11,6 +11,8 @@ export interface CliFlags {
   dryRun: boolean;
   wizard: boolean;
   initSchema: boolean;
+  update: boolean;
+  updateArgs?: string[];
   help: boolean;
   version: boolean;
 }
@@ -49,9 +51,17 @@ export const parseCliArgs = (argv: string[]): CliFlags => {
     dryRun: false,
     wizard: false,
     initSchema: false,
+    update: false,
     help: false,
     version: false,
   };
+
+  // update 子命令自带独立旗标面 (--check / --pm / --registry / --force / --help)
+  if (argv[0] === 'update') {
+    flags.update = true;
+    flags.updateArgs = argv.slice(1);
+    return flags;
+  }
 
   let afterDash = false;
   let i = 0;
