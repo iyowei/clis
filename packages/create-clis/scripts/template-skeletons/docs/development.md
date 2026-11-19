@@ -51,7 +51,7 @@ bun run safe-install
 
 ## 发布
 
-主路径是 CI 自动链 (`.github/workflows/release.yml`): 推送到 `main` 后, 前置门禁先跑与 CI 同套的检查, 通过后 `release` job 停在 `environment: release` 的人工批准闸门外, 批准后先经 `bun run ci -- --only npm-trust` 做 OIDC Trusted Publisher 预检, 通过即由 multi-semantic-release 执行免密发布。
+主路径是 CI 自动链 (`.github/workflows/release.yml`): 推送到 `main` 后, `checks` job 直接通过 `workflow_call` 复用 `.github/workflows/ci.yml` 的全部验证与兼容检查 (零双跑), 通过后 `release` job 停在 `environment: release` 的人工批准闸门外, 批准后先经 `bun run ci -- --only npm-trust` 做 OIDC Trusted Publisher 预检, 通过即由 multi-semantic-release 执行免密发布。
 
 - **本地凭据对账与修复**: `bun scripts/npm-trust-guard.ts check` 只读核对 npm Trusted Publisher 登记, `bun scripts/npm-trust-guard.ts fix` 自动创建或重建登记 (需 npm 登录态与交互式终端);
 - **待首发新包隔离**: 尚未首发的新包在自身 `package.json` 标 `"private": true`, 首发时移除并完成首次发布与 Trusted Publisher 登记;

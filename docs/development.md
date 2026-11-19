@@ -54,7 +54,7 @@ bun run safe-install
 
 ## 发布
 
-主路径是 CI 自动链 (`.github/workflows/release.yml`): 推送到 `main` 后, `verify` job 先跑与 CI 同套的检查 (构建 / 类型 / 测试 / lint / 格式 / 文档与仓库卫生四闸门), 通过后 `release` job 停在 `environment: release` 的人工批准闸门外, 批准即由 Lido multi-semantic-release 执行发布; npm 侧走 OIDC Trusted Publishing, 不设 token、无 OTP, 自动带 provenance 签名, 完成后打 tag 并建 GitHub Release。版本语义按提交判定 (angular 预设): `feat` 提 minor, `fix` 提 patch。发布链覆盖双包: CLI 包持续演进, API 包自 2026-09-29 公开面收口 (`packages/sweep-node-modules/docs/designs/api-surface.md` §9 Q17) 起以同链发布 (收口时曾从根 `package.json` 的 `multi-release.ignorePackages` 移除 API 包的豁免登记; 该字段经 2026-10-01 实测对包名形式不生效, 现已清空, 新包隔离以包自身 `"private": true` 为准, 生成器包 `create-clis` 首发前以同一字段隔离、不入自动发布链, 已于 2026-10-01 完成首发 (路径见下方「新包首发路径」); API 包首发 0.5.0)。
+主路径是 CI 自动链 (`.github/workflows/release.yml`): 推送到 `main` 后, `checks` job 直接通过 `workflow_call` 复用 `.github/workflows/ci.yml` 的三路检查 (`verify` Linux 权威全量 / `verify-windows` Windows OS 兼容 / `conformance` macOS 金样本验收, 消除 `main` 推送双跑并把 Windows 兼容正式纳入发版门禁), 通过后 `release` job 停在 `environment: release` 的人工批准闸门外, 批准即由 Lido multi-semantic-release 执行发布; npm 侧走 OIDC Trusted Publishing, 不设 token、无 OTP, 自动带 provenance 签名, 完成后打 tag 并建 GitHub Release。版本语义按提交判定 (angular 预设): `feat` 提 minor, `fix` 提 patch。发布链覆盖双包: CLI 包持续演进, API 包自 2026-09-29 公开面收口 (`packages/sweep-node-modules/docs/designs/api-surface.md` §9 Q17) 起以同链发布 (收口时曾从根 `package.json` 的 `multi-release.ignorePackages` 移除 API 包的豁免登记; 该字段经 2026-10-01 实测对包名形式不生效, 现已清空, 新包隔离以包自身 `"private": true` 为准, 生成器包 `create-clis` 首发前以同一字段隔离、不入自动发布链, 已于 2026-10-01 完成首发 (路径见下方「新包首发路径」); API 包首发 0.5.0)。
 
 OIDC 免密发布有一处仓库外依赖: npm 侧的 Trusted Publisher 登记表。换证时 npm 拿 GitHub OIDC 令牌与登记逐字段核对 (repository / workflow 文件名 / environment), 全对才发短期凭证; 仓库改名、换 workflow 文件名、换 environment 名都不会自动跟改登记, 且已存登记不支持就地修改, 只能 revoke 后重建。2026-09-30, 仓库由 `iyowei/sweep-node-modules` 改名为 `iyowei/clis`: 仓内引用 (徽章、两包 `package.json` 的 `repository` 字段、链接) 随改名提交同步了, npm 侧登记还留在旧仓库名上; 改名前的发布 run 还是绿的 (正常发出 0.5.1 与 0.3.0), 改名后每轮 Release run 都在 `release` job 的 npm 认证处失败, 报的却是误导性的 `ENONPMTOKEN No npm token specified` (OIDC 换证被拒后回落到 token 检查所致, 报错不指明真因); 失败自动建 issue 的通道又因仓库缺 `semantic-release` label 报 422, 真错因被掩埋。
 
@@ -90,7 +90,7 @@ bun run conformance -- --target "node packages/sweep-node-modules-cli/src/cli.ts
 由 lefthook 把关 (操作级细节以仓库根 `lefthook.yml` 为准):
 
 - **pre-commit** (增量): prettier 重暂存 + oxlint 扫暂存文件; 类型检查例外, 跑全项目 `tsc --noEmit`
-- **pre-push** (全量): 单条调用 `bun scripts/ci.ts` (全链 = 验证组 + 验收组); 步骤集合的单一事实来源在 `scripts/ci.ts`, CI 的两个 job 与 Release 的 verify job 共用同一套步骤定义 (Release 的 `release` job 获批后另加一步发布凭据预检, 见「发布」章; `bun scripts/ci.ts --help` 可查看步骤与分组)
+- **pre-push** (全量): 单条调用 `bun scripts/ci.ts` (全链 = 验证组 + 验收组); 步骤集合的单一事实来源在 `scripts/ci.ts`, CI 三路 job (`--verify` / `--verify-windows` / `--conformance`) 与 Release 前置门禁 (`workflow_call` 复用 `ci.yml`) 共用同一套步骤定义 (Release 的 `release` job 获批后另加一步发布凭据预检, 见「发布」章; `bun scripts/ci.ts --help` 可查看步骤与分组)
 
 > 本地预演全绿不等于 CI 会绿: `bun scripts/ci.ts` 只覆盖「同一台机器 + 命令清单」两个维度, CI 是唯一在「干净环境 + 全部配置 + 真实时序」下运行的地方; 后三样恰是本地预演的全盲区, 全绿给的是虚假的安全感。
 
@@ -101,7 +101,7 @@ bun run conformance -- --target "node packages/sweep-node-modules-cli/src/cli.ts
 - **并发时序**: 一条契约测试断言在并发下取值漂动, 时绿时红; semrel 往 main 推送版本提交被拒, 成因是两次 push 之间, 旧 run 被批准时分支已前进。
 - **仓库外状态** (跨平台登记): 仓库改名 (2026-09-30) 是平台动作, 不进 git diff; npm 侧 Trusted Publisher 登记在仓库外, 本地预演全盲, 改名后每轮 Release 都在 npm 认证处报出误导性的 `ENONPMTOKEN`。
 
-对应的防线均已落地: test 步骤改在隔离 HOME 下执行 (临时家目录经 `scripts/lib/tmp-root.ts` 的 `makeTmpRoot` 创建, 2026-09-30), 「本机常备而 CI 缺失」的环境态依赖不再被本地状态掩盖, 这类盲区本地预演即可抓住; 两个 workflow 的验证与验收步骤已全部经 `scripts/ci.ts` 单源调用 (`bun run ci -- --verify` / `--conformance`), yaml 里不再出现字面命令路径; `release.yml` 有 `concurrency` 排队, 并发漂动的断言已改为取批次序最前触发条; 仓库外登记的核对已由发布链预检把守 (Release 的 `release` job 在获批后先跑 `npm-trust` 步), 失配当场点名, 细节见「发布」章。
+对应的防线均已落地: test 步骤改在隔离 HOME 下执行 (临时家目录经 `scripts/lib/tmp-root.ts` 的 `makeTmpRoot` 创建, 2026-09-30), 「本机常备而 CI 缺失」的环境态依赖不再被本地状态掩盖, 这类盲区本地预演即可抓住; `ci.yml` 的三路验证与验收步骤全部经 `scripts/ci.ts` 单源调用 (`--verify` / `--verify-windows` / `--conformance`), `release.yml` 直接 `uses: ./.github/workflows/ci.yml` 复用, yaml 里不再出现字面命令路径或重复 job 定义; `release.yml` 有 `concurrency` 排队, 并发漂动的断言已改为取批次序最前触发条; 仓库外登记的核对已由发布链预检把守 (Release 的 `release` job 在获批后先跑 `npm-trust` 步), 失配当场点名, 细节见「发布」章。
 
 推前自检因此有四条: 写测试与脚本时不要假设本机常备状态 (家目录、已有产物、PATH 上的工具), 这类假设会在隔离 HOME 的 test 步骤当场暴露; 闸门步骤的增删只动 `scripts/ci.ts` 一处, 不往 workflow yaml 里写字面命令; push 连发时以最后一个 run 为准, 时绿时红的用例按并发缺陷处理, 修断言而非重跑; 遇到改名、换 workflow 文件名、换 environment 名这类平台动作时, npm 侧登记不会自动跟改, 顺手跑一次 `bun scripts/npm-trust-guard.ts check` 对账, 失配就 `fix`。
 

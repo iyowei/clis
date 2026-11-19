@@ -403,7 +403,8 @@ describe('真实模板端到端', () => {
     );
     expect(stdCiYml).not.toContain('\n  conformance:\n');
     expect(stdRelYml).not.toContain('\n  conformance:\n');
-    expect(stdRelYml).toContain('needs: verify');
+    expect(stdRelYml).toContain('uses: ./.github/workflows/ci.yml');
+    expect(stdRelYml).toContain('needs: checks');
 
     // core: 连标准档一并摘除
     const coreDir = buildTemplateCopy(root, 'core');
