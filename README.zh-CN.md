@@ -14,6 +14,7 @@
 - **`@iyowei/sweep-node-modules`**: `sweep-nm` 背后的可编程 API 包, 供自己的程序或脚本调用以扫描、统计与安全清理 `node_modules`; 用法见 [README](packages/sweep-node-modules/README.zh-CN.md)。
 - **`@iyowei/codd-cli`**: `codd` 命令行工具, 面向 Podman (Linux / macOS) 与 Kubernetes (Helm) 的模板化 MongoDB 9.0 部署装配 CLI (带交互式终端向导, 一键导出零命名冲突的上线部署包); 用法见 [README](packages/codd-cli/README.zh-CN.md)。
 - **`@iyowei/codd`**: `codd` 背后的可编程 API 与模板资产包, 暴露硬件配额公式、清单校验、状态管理与部署包生成接口, 便于被其他程序编程集成; 用法见 [README](packages/codd/README.zh-CN.md)。
+- **`@iyowei/cli-updater`** _(仓内私有共享库)_: 零外部依赖的跨包管理器自更新引擎 (`bun` / `npm` / `pnpm` / `yarn` / `volta`), 内联打包进仓内每个 CLI 的 `update` 子命令。
 
 ## 文档
 

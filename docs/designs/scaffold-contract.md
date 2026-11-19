@@ -42,7 +42,7 @@
 
 ## 旗标汇总
 
-`--name` `--scope` `--bin` `--owner` `--repo` `--tier` `--no-git` `--no-install` `--yes` (全部取默认值, 零交互)。
+`--name` `--scope` `--bin` `--owner` `--repo` `--tier` `--no-git` `--no-install` `--yes` (全部取默认值, 零交互) 与 `--version` / `-V`、`--help` / `-h`; 另提供子命令 `create-clis update [--check] [--pm <管理器>] [--registry <url>] [--force]` 支持全局安装场景自动识别安装器原地自更新。
 
 经 `npm create` 调用时, 旗标要写在 `--` 后面 (`npm create clis -- --name x`), 这是 npm 生态的既有行为, 生成器不用管。
 
