@@ -301,7 +301,7 @@ interface RootAnchor {
  *   分支对照 (根被换位): options.roots = ['/w'], 而 /w 已被换成指向 /evil 的符号链接 →
  *          anchors = [{ configured: '/w', real: '/evil', link: '/w' }];
  *          target '/w/zone/app/node_modules' 的 real = '/evil/zone/app/node_modules' 命中该锚点 →
- *          rejected = [{ target, reason: '根锚点被换位为符号链接 (根: /w; 符号链接: /w), …' }]
+ *          rejected = [{ target, code: 'GUARD_ROOT_ANCHOR_SYMLINK', message: '根锚点被换位为符号链接 (根: /w; 符号链接: /w), …' }]
  */
 export async function validateTargets(
   targets: string[],
@@ -540,8 +540,10 @@ export interface CrossDeviceEntry {
  *   onnm: 16777255 !== 16777233, 父目录 /w/onnm 为 16777233 → target-itself
  *
  * Output（数据契约）
- *   return Map { '/w/vol/proj/node_modules' → 'on-path',
- *                '/w/onnm/node_modules' → 'target-itself' }
+ *   return [
+ *     { target: '/w/vol/proj/node_modules', kind: 'on-path' },
+ *     { target: '/w/onnm/node_modules', kind: 'target-itself' },
+ *   ]
  * ```
  */
 export async function findCrossDeviceTargets(
