@@ -4,7 +4,7 @@
 > **日期**: 2026-11-18
 > **决策者**: 沈委
 > **标签**: [架构]
-> **影响范围**: [packages/codd/template/, docs/codd/]
+> **影响范围**: [packages/codd/template/, packages/codd/docs/]
 
 ## 上下文与问题 (Context & Problem)
 
@@ -20,7 +20,7 @@
 
 **[单机强起三节点副本集]**
 
-放弃理由: 违背单机轻量化定位, 成倍消耗 CPU / 内存与同盘写放大且零硬件容灾收益; 跨机高可用应按[三物理节点高可用分册](../../../../docs/codd/designs/podman-replica-set.md)部署在 3 台独立服务器上。
+放弃理由: 违背单机轻量化定位, 成倍消耗 CPU / 内存与同盘写放大且零硬件容灾收益; 跨机高可用应按[三物理节点高可用分册](../designs/podman-replica-set.md)部署在 3 台独立服务器上。
 
 ## 决策与理由 (Decision & Why)
 
@@ -40,7 +40,7 @@
 **代价**
 
 - 单节点副本集仍只有一个数据副本, 不抵御单盘或整机故障。
-- 迁移数据卷时必须按[通用运维与灾备手册](../../../../docs/codd/designs/operations-and-recovery.md)连同 `-key` 密钥卷成对导出导入。
+- 迁移数据卷时必须按[通用运维与灾备手册](../designs/operations-and-recovery.md)连同 `-key` 密钥卷成对导出导入。
 
 ## 验证方式与关联引用 (Validation & References)
 
@@ -51,4 +51,4 @@
 **关联引用**
 
 - 包级入口见[包文档](../README.md); 全局索引见 [ADR 索引](../../../../docs/adrs/README.md)。
-- 部署与运维见 [Podman 单副本分册](../../../../docs/codd/designs/podman-single.md) 与 [通用运维与灾备手册](../../../../docs/codd/designs/operations-and-recovery.md)。
+- 部署与运维见 [Podman 单副本分册](../designs/podman-single.md) 与 [通用运维与灾备手册](../designs/operations-and-recovery.md)。

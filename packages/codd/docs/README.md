@@ -1,12 +1,19 @@
-# codd (CLI 包) 文档
+# codd (API 主包与产品文档)
 
-> 文档类型: 包级文档入口 (三级分层的规则见[文档分层协议](../../../docs/designs/docs-layering.md))
+> 文档类型: 包级文档入口 (两级分层的规则见[文档分层协议](../../../docs/designs/docs-layering.md))
 
-`@iyowei/codd` 提供 `codd` 命令行工具: 根据硬件规格推导全套缓存、连接、oplog 与压缩参数, 输出 Podman (单机 / 3 物理节点) 与 Kubernetes (单副本 / 3 副本 Helm) 的零冲突自包含部署包。用法见[包 README](../README.md)。
+codd 是面向 Podman 与 Kubernetes 的模板化 MongoDB 9.0 高性能部署装配工具, 采用「API 主包 + CLI 薄壳包」双包架构:
 
-## 包内文档
+- **API 主包 (`@iyowei/codd`)**: 本包维护硬件推导公式、严格配置校验、状态锁、Podman / Kubernetes 渲染引擎与唯一参数化模板源 ([包 README](../README.md) / [中文 README](../README.zh-CN.md));
+- **CLI 薄壳包 (`@iyowei/codd-cli`)**: 提供 `codd` 命令行、交互式向导与双运行时启动器 ([CLI 文档](../../codd-cli/docs/README.md) / [CLI README](../../codd-cli/README.zh-CN.md))。
 
-(无: 本包的完整公式与各拓扑运维分册统一收录在产品区 `docs/codd/designs/` 下。)
+## 产品设计
+
+生成器公式与清单规格 / Podman 单机与三物理节点分册 / Kubernetes 单副本与三副本分册 / 日常运维灾备手册 / mongosh 指令速查, 入口见[产品设计索引](designs/README.md)。
+
+## 可视化看板
+
+8 列等宽全息导读看板 (含架构原理、拓扑决策与 Monaco 代码卡), 见[看板页](BOARD.html)。
 
 ## 包级 ADR
 
@@ -20,7 +27,7 @@
 | [0017](adrs/0017-single-replica-set-multi-db-isolation.md)          | 同副本集按业务库与独立账号隔离多业务                            |
 | [0018](adrs/0018-profile-engine-separation-and-bundle-generator.md) | 消除规格目录分叉, 统一为模板资产 + CLI 输出自包含零冲突部署包   |
 
-## 仓库级关联
+## 关联入口
 
-- [仓库文档索引](../../../docs/README.md) / [设计文档索引](../../../docs/designs/README.md);
-- 本包相关的产品区设计: [产品区入口](../../../docs/codd/README.md) / [产品设计索引](../../../docs/codd/designs/README.md) / [生成器与科学公式详解](../../../docs/codd/designs/generator-and-formulas.md) / [通用运维与灾备手册](../../../docs/codd/designs/operations-and-recovery.md)。
+- 仓库级: [文档总索引](../../../docs/README.md) / [设计文档索引](../../../docs/designs/README.md) / [仓级 ADR 索引](../../../docs/adrs/README.md);
+- CLI 薄壳包: [codd-cli 文档](../../codd-cli/docs/README.md) / [命令面设计](../../codd-cli/docs/designs/cli-surface.md)。

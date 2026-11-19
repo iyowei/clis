@@ -4,7 +4,7 @@
 > **日期**: 2026-11-18
 > **决策者**: 沈委
 > **标签**: [架构, 运维]
-> **影响范围**: [packages/codd/src/, packages/codd/template/, docs/codd/]
+> **影响范围**: [packages/codd/src/, packages/codd/template/, packages/codd/docs/]
 
 ## 上下文与问题 (Context & Problem)
 
@@ -43,7 +43,7 @@
 
 **代价**
 
-- 使用 `--new-fingerprint` 迁库时须按[通用运维与灾备手册](../../../../docs/codd/designs/operations-and-recovery.md)成对迁移 `-data` 与 `-key` 两个命名卷。
+- 使用 `--new-fingerprint` 迁库时须按[通用运维与灾备手册](../designs/operations-and-recovery.md)成对迁移 `-data` 与 `-key` 两个命名卷。
 
 ## 验证方式与关联引用 (Validation & References)
 
@@ -54,4 +54,4 @@
 **关联引用**
 
 - 包级入口见[包文档](../README.md); 全局索引见 [ADR 索引](../../../../docs/adrs/README.md)。
-- 详见 [生成器与科学公式详解](../../../../docs/codd/designs/generator-and-formulas.md) 与 [通用运维与灾备手册](../../../../docs/codd/designs/operations-and-recovery.md)。
+- 详见 [生成器与科学公式详解](../designs/generator-and-formulas.md) 与 [通用运维与灾备手册](../designs/operations-and-recovery.md)。

@@ -4,7 +4,7 @@
 > **日期**: 2026-11-18
 > **决策者**: 沈委
 > **标签**: [架构, 工程]
-> **影响范围**: [packages/codd/, docs/codd/]
+> **影响范围**: [packages/codd/, packages/codd-cli/]
 
 ## 上下文与问题 (Context & Problem)
 
@@ -50,4 +50,4 @@
 **关联引用**
 
 - 关联决策见 [ADR 0014](0014-fingerprint-resource-isolation.md) 与 [ADR 0015](0015-compact-2c2g-resource-budget.md)。
-- 生成器规范见 [生成器与科学公式详解](../../../../docs/codd/designs/generator-and-formulas.md)。
+- 生成器规范见 [生成器与科学公式详解](../designs/generator-and-formulas.md)。

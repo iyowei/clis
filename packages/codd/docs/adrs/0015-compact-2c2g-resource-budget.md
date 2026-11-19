@@ -4,7 +4,7 @@
 > **日期**: 2026-11-18
 > **决策者**: 沈委
 > **标签**: [架构, 性能]
-> **影响范围**: [packages/codd/src/, packages/codd/template/, docs/codd/]
+> **影响范围**: [packages/codd/src/, packages/codd/template/, packages/codd/docs/]
 
 ## 上下文与问题 (Context & Problem)
 
@@ -52,4 +52,4 @@
 **关联引用**
 
 - 前置决策见 [ADR 0012](0012-single-node-replica-set.md) 与 [ADR 0018](0018-profile-engine-separation-and-bundle-generator.md)。
-- 公式全表见 [生成器与科学公式详解](../../../../docs/codd/designs/generator-and-formulas.md)。
+- 公式全表见 [生成器与科学公式详解](../designs/generator-and-formulas.md)。

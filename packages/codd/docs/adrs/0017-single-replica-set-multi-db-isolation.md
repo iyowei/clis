@@ -4,7 +4,7 @@
 > **日期**: 2026-11-18
 > **决策者**: 沈委
 > **标签**: [架构, 安全, 运维]
-> **影响范围**: [packages/codd/template/, packages/codd/src/, docs/codd/]
+> **影响范围**: [packages/codd/template/, packages/codd/src/, packages/codd/docs/]
 
 ## 上下文与问题 (Context & Problem)
 
@@ -49,4 +49,4 @@
 **关联引用**
 
 - 前置安全决策见 [ADR 0016](0016-loopback-and-least-privilege-security.md)。
-- 扩库流程见 [通用运维与灾备手册](../../../../docs/codd/designs/operations-and-recovery.md)。
+- 扩库流程见 [通用运维与灾备手册](../designs/operations-and-recovery.md)。

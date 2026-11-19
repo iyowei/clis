@@ -4,7 +4,7 @@
 > **日期**: 2026-11-18
 > **决策者**: 沈委
 > **标签**: [架构, 安全]
-> **影响范围**: [packages/codd/template/, packages/codd/src/, docs/codd/]
+> **影响范围**: [packages/codd/template/, packages/codd/src/, packages/codd/docs/]
 
 ## 上下文与问题 (Context & Problem)
 
@@ -48,4 +48,4 @@
 **关联引用**
 
 - 关联决策见 [ADR 0014](0014-fingerprint-resource-isolation.md) 与 [ADR 0018](0018-profile-engine-separation-and-bundle-generator.md)。
-- 实操见 [Podman 单副本分册](../../../../docs/codd/designs/podman-single.md) 与 [通用运维与灾备手册](../../../../docs/codd/designs/operations-and-recovery.md)。
+- 实操见 [Podman 单副本分册](../designs/podman-single.md) 与 [通用运维与灾备手册](../designs/operations-and-recovery.md)。

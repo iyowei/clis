@@ -4,7 +4,7 @@
 > **日期**: 2026-11-18
 > **决策者**: 沈委
 > **标签**: [架构, 工具]
-> **影响范围**: [packages/codd/template/, packages/codd/src/, docs/codd/]
+> **影响范围**: [packages/codd/template/, packages/codd/src/, packages/codd/docs/]
 
 ## 上下文与问题 (Context & Problem)
 
@@ -26,7 +26,7 @@ MongoDB 部署伴随初始化 (`init.js`)、逻辑备份 (`backup.ts`)、恢复�
 
 ## 决策与理由 (Decision & Why)
 
-1. **按运行时天然边界分层**: [init.js](../../template/podman/init.js) 保留纯 JavaScript 直跑 `mongosh`; 备份、演练与恢复写在 [backup.ts](../../template/podman/backup.ts)、[drill.ts](../../template/podman/drill.ts)、[restore.ts](../../template/podman/restore.ts) 与 [lib.ts](../../template/podman/lib.ts), 由 [tools.package.json](../../template/podman/tools.package.json) 与 [tools.bun.lock](../../template/podman/tools.bun.lock) 锁定 `mongodb@7.9.0` 与 `bun >= 1.4.4`。
+1. **按运行时天然边界分层**: [init.js](../../template/podman/init.js) 保留纯 JavaScript 直跑 `mongosh`; 备份、演练与恢复写在 [backup.ts](../../template/podman/backup.ts)、[drill.ts](../../template/podman/drill.ts)、[restore.ts](../../template/podman/restore.ts) 与 [lib.ts](../../template/podman/lib.ts), 由 [tools.package.json](../../template/podman/tools.package.json) 与 [tools.bun.lock](../../template/podman/tools.bun.lock) 锁定 `mongodb@7.9.0` 与 `bun >= 1.4.2`。
 2. **工具镜像以同版本 `mongo` 为底并拷入 Bun**: [Dockerfile](../../template/podman/Dockerfile) 从 `${BUN_IMAGE}` 拷入 `/usr/local/bin/bun`, 基础镜像复用 `${MONGO_IMAGE}`, 宿主机零额外客户端依赖。
 3. **镜像版本坐标单点管控**: 生成器与 `.env` 中的 `MONGO_IMAGE_NAME` / `MONGO_IMAGE_TAG` (默认 `9.0.8`) 作为唯一版本源同步驱动主容器、初始化容器与工具容器。
 
