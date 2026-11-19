@@ -4,8 +4,24 @@
     {
       "type": "bun",
       "request": "launch",
-      "name": "调试 CLI (从源码运行)",
+      "name": "调试 sweep-nm (源码运行)",
       "program": "./packages/sweep-node-modules-cli/src/cli.ts",
+      "cwd": "${workspaceFolder}",
+      "runtime": "bun"
+    },
+    {
+      "type": "bun",
+      "request": "launch",
+      "name": "调试 codd (源码运行)",
+      "program": "./packages/codd-cli/src/cli.ts",
+      "cwd": "${workspaceFolder}",
+      "runtime": "bun"
+    },
+    {
+      "type": "bun",
+      "request": "launch",
+      "name": "调试 create-clis (源码运行)",
+      "program": "./packages/create-clis/src/cli.ts",
       "cwd": "${workspaceFolder}",
       "runtime": "bun"
     }

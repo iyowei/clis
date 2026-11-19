@@ -1,0 +1,45 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "CI: Full (bun run ci)",
+      "type": "shell",
+      "command": "bun run ci",
+      "group": {
+        "kind": "test",
+        "isDefault": true
+      },
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared"
+      }
+    },
+    {
+      "label": "CI: Verify (bun run ci -- --verify)",
+      "type": "shell",
+      "command": "bun run ci -- --verify",
+      "group": "test"
+    },
+    {
+      "label": "Build All Packages",
+      "type": "shell",
+      "command": "bun run build",
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      }
+    },
+    {
+      "label": "Typecheck All",
+      "type": "shell",
+      "command": "bun run typecheck",
+      "group": "test"
+    },
+    {
+      "label": "Test All",
+      "type": "shell",
+      "command": "bun run test",
+      "group": "test"
+    }
+  ]
+}
