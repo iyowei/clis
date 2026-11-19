@@ -287,7 +287,7 @@ describe('resolveNpmCommand 跨平台调用推导', () => {
     });
   });
 
-  test('Windows 找不到 npm-cli.js 时回退 ComSpec /d /s /c npm.cmd', () => {
+  test('Windows 找不到 npm-cli.js 时回退 ComSpec /d /s /c 单串命令并开启逐字参数透传', () => {
     expect(
       resolveNpmCommand(
         args,
@@ -297,7 +297,43 @@ describe('resolveNpmCommand 跨平台调用推导', () => {
       ),
     ).toEqual({
       command: 'C:\\Windows\\System32\\cmd.exe',
-      args: ['/d', '/s', '/c', 'npm.cmd', ...args],
+      args: [
+        '/d',
+        '/s',
+        '/c',
+        '""npm.cmd" pack --dry-run --json --ignore-scripts"',
+      ],
+      windowsVerbatimArguments: true,
     });
+  });
+
+  test('Windows 回退批处理安全保护含空格/括号/元字符的路径并拒绝引号与换行注入', () => {
+    const alwaysExists = () => true;
+    const neverExists = () => false;
+    expect(
+      resolveNpmCommand(
+        ['pack', '--cache', 'C:\\Program Files (x86)\\cache&100%'],
+        'win32',
+        { PATH: '/usr/bin;relative\\dir', ComSpec: 'cmd.exe' },
+        alwaysExists,
+      ),
+    ).toEqual({
+      command: 'cmd.exe',
+      args: [
+        '/d',
+        '/s',
+        '/c',
+        '""npm.cmd" pack --cache "C:\\Program Files (x86)\\cache&100"^^^%"',
+      ],
+      windowsVerbatimArguments: true,
+    });
+    expect(() =>
+      resolveNpmCommand(
+        ['pack', 'bad"arg'],
+        'win32',
+        { PATH: 'C:\\Windows' },
+        neverExists,
+      ),
+    ).toThrow(/不可安全转义/);
   });
 });

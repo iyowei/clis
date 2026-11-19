@@ -7,7 +7,7 @@
  * 再证产物就位 (存在 / 非空 / 可读), 然后让清单与提交、产物三者逐项对上, 专属判定,
  * 最后对发行面包内文件与白名单。
  */
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import {
   existsSync,
@@ -258,19 +258,74 @@ export const parsePackFiles = (raw: string): string[] | null => {
   return paths;
 };
 
+/** npm 子进程调用描述 */
+export interface NpmCommandInvocation {
+  command: string;
+  args: string[];
+  /** Windows 回退 ComSpec /d /s /c 调 npm.cmd 时为 true */
+  windowsVerbatimArguments?: boolean;
+}
+
+/** 校验 Windows 绝对路径 (仅允许盘符绝对路径或 UNC 路径, 拒绝相对路径与 /usr/bin) */
+const isWin32AbsolutePath = (dir: string): boolean =>
+  /^(?:[A-Za-z]:[/\\]|\\\\[^\\]+\\[^\\]+)/.test(dir);
+
+const CMD_META_OR_SPACE_RE = /[\s&|<>^()%!]/;
+const CMD_FORBIDDEN_RE = /[\r\n\0"]/;
+
+const wrapCmdDoubleQuotes = (segment: string): string =>
+  `"${segment.replace(/(\\+)$/, '$1$1')}"`;
+
+/** 转义传入 Windows .cmd 批处理的单个参数 (防御外层 cmd 与内部 %* 双层展开) */
+const escapeWin32BatchArg = (arg: string): string => {
+  if (CMD_FORBIDDEN_RE.test(arg)) {
+    throw new Error('Windows 批处理调用参数包含不可安全转义的字符');
+  }
+  if (arg === '') return '""';
+  if (!CMD_META_OR_SPACE_RE.test(arg)) return arg;
+  if (!/[%!]/.test(arg)) return wrapCmdDoubleQuotes(arg);
+
+  let out = '';
+  let buf = '';
+  for (const ch of arg) {
+    if (ch === '%' || ch === '!') {
+      if (buf !== '') {
+        out += wrapCmdDoubleQuotes(buf);
+        buf = '';
+      }
+      out += `^^^${ch}`;
+    } else {
+      buf += ch;
+    }
+  }
+  if (buf !== '') out += wrapCmdDoubleQuotes(buf);
+  return out;
+};
+
+/** 构造搭配 cmd.exe /d /s /c + windowsVerbatimArguments: true 的单串命令 */
+const buildNpmBatchCommandLine = (args: readonly string[]): string => {
+  const escapedArgs = args.map(escapeWin32BatchArg);
+  const inner =
+    escapedArgs.length === 0
+      ? '"npm.cmd"'
+      : `"npm.cmd" ${escapedArgs.join(' ')}`;
+  return `"${inner}"`;
+};
+
 /**
  * 推导 npm 子进程调用方式 (跨平台零 shell):
  * - POSIX 直接调 `npm`;
  * - Windows 优先绕开 `npm.cmd` 批处理壳层 (Bun 在 Windows 下经 `shell: true` 调 `.cmd`
  *   存在挂起与句柄占用风险, 亦规避 CVE-2024-27980 壳层转义问题), 定位 PATH 内的
- *   `node_modules/npm/bin/npm-cli.js` 并以原生 `node.exe` 直调; 极端定制环境再回退 `cmd.exe`。
+ *   `node_modules/npm/bin/npm-cli.js` 并以原生 `node.exe` 直调; 极端定制环境再回退
+ *   `cmd.exe /d /s /c` 单串命令并启用 `windowsVerbatimArguments: true`。
  */
 export const resolveNpmCommand = (
   args: readonly string[],
   platform: NodeJS.Platform = process.platform,
   env: NodeJS.ProcessEnv = process.env,
   pathExists: (path: string) => boolean = existsSync,
-): { command: string; args: string[] } => {
+): NpmCommandInvocation => {
   if (platform !== 'win32') return { command: 'npm', args: [...args] };
   const execPath = env.npm_execpath;
   if (
@@ -283,7 +338,7 @@ export const resolveNpmCommand = (
   const pathList = (env.PATH ?? env.Path ?? '')
     .split(';')
     .map((item) => item.trim().replace(/^"|"$/g, ''))
-    .filter((item) => item !== '');
+    .filter((item) => item !== '' && isWin32AbsolutePath(item));
   for (const dir of pathList) {
     const npmCli = win32.join(dir, 'node_modules', 'npm', 'bin', 'npm-cli.js');
     if (!pathExists(npmCli)) continue;
@@ -294,7 +349,11 @@ export const resolveNpmCommand = (
     };
   }
   const comspec = env.ComSpec ?? env.COMSPEC ?? 'cmd.exe';
-  return { command: comspec, args: ['/d', '/s', '/c', 'npm.cmd', ...args] };
+  return {
+    command: comspec,
+    args: ['/d', '/s', '/c', buildNpmBatchCommandLine(args)],
+    windowsVerbatimArguments: true,
+  };
 };
 
 /**
@@ -307,22 +366,23 @@ export const resolveNpmCommand = (
  */
 export const readPackFiles = (root: string): PackFacts => {
   const cacheDir = mkdtempSync(join(tmpdir(), 'npm-pack-cache-'));
-  const invocation = resolveNpmCommand([
-    'pack',
-    '--dry-run',
-    '--json',
-    '--ignore-scripts',
-    '--no-update-notifier',
-    '--cache',
-    cacheDir,
-  ]);
   let raw: string;
   try {
-    raw = execFileSync(invocation.command, invocation.args, {
+    const invocation = resolveNpmCommand([
+      'pack',
+      '--dry-run',
+      '--json',
+      '--ignore-scripts',
+      '--no-update-notifier',
+      '--cache',
+      cacheDir,
+    ]);
+    const result = spawnSync(invocation.command, invocation.args, {
       cwd: root,
       encoding: 'utf8',
       stdio: ['ignore', 'pipe', 'ignore'],
       maxBuffer: 32 * 1024 * 1024,
+      windowsVerbatimArguments: invocation.windowsVerbatimArguments,
       env: {
         ...process.env,
         NO_UPDATE_NOTIFIER: '1',
@@ -331,6 +391,13 @@ export const readPackFiles = (root: string): PackFacts => {
         npm_config_audit: 'false',
       },
     });
+    if (result.error !== undefined || result.status !== 0) {
+      return {
+        files: null,
+        issue: 'npm pack 跑不起来 (需要 npm: 不在 PATH 或非零退出)',
+      };
+    }
+    raw = result.stdout ?? '';
   } catch {
     return {
       files: null,
