@@ -16,7 +16,7 @@ This block is written and re-added by `turbo` before repository-scoped commands 
 ## 文档分层与读取路径
 
 - **仓库级文档**在 `docs/`: 先读 [文档总索引](docs/README.md); 仓库级设计的入口是 [设计文档索引](docs/designs/README.md);
-- **产品区文档**在 `docs/<product>/` (现为 `docs/sweep/`): 该产品的跨包与整体文档、验收套件都在这; 从 [产品区 README](docs/sweep/README.md) 进;
+- **产品区文档**在 `docs/<product>/` (现为 `docs/sweep/` 与 `docs/codd/`): 该产品的跨包与整体文档、验收套件都在这; 从各产品区入口 ([sweep](docs/sweep/README.md) / [codd](docs/codd/README.md)) 进;
 - **包级文档**在各包 `packages/<pkg>/docs/`, 入口固定是包内 `docs/README.md` (里面有该包的文档清单、包级 ADR 和指回上级的链接; 内部 `designs/`、`adrs/` 的组织方式与仓库级相同);
 - **ADR 编号全仓库共用一套, 不会重号**: 仓库级的在 `docs/adrs/`, 包级的在各包 `docs/adrs/`; 总索引 [docs/adrs/README.md](docs/adrs/README.md) 列出全部编号 (包级的条目直接链到包内文件);
 - **读取顺序**: 总索引 → 产品区或包入口 → 明细; 三级文档互相链接, 从任何一级都能找到另外两级 (仓库级 ↔ 产品区 ↔ 包级)。

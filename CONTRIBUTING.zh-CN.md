@@ -17,12 +17,14 @@
 
 ## 仓库结构
 
-本仓库是一个 monorepo, 里面有两个包:
+本仓库是一个 monorepo, 各个包位于 `packages/` 下:
 
+- `packages/create-clis`: 集合仓生成器, 发布为 `create-clis`。
 - `packages/sweep-node-modules-cli`: `sweep-nm` 命令行工具, 发布为 `@iyowei/sweep-node-modules-cli`。
-- `packages/sweep-node-modules`: 可编程 API 包, 发布为 `@iyowei/sweep-node-modules`。
+- `packages/sweep-node-modules`: `sweep-nm` 的可编程 API 包, 发布为 `@iyowei/sweep-node-modules`。
+- `packages/codd`: `codd` 模板化 MongoDB 9.0 部署装配 CLI (`@iyowei/codd`)。
 
-turbo 跨两个包编排构建、类型检查与测试任务。代码对 bun 与 node 一视同仁 (有 bun 走 bun, 否则走 node, 行为一致), 支持 Windows / macOS / Linux, 并保持零第三方运行时依赖。
+turbo 跨工作区各包编排构建、类型检查与测试任务。代码对 bun 与 node 一视同仁 (有 bun 走 bun, 否则走 node, 行为一致), 支持 Windows / macOS / Linux, 并保持零第三方运行时依赖。
 
 ## 环境准备
 

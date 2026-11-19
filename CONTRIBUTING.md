@@ -17,12 +17,14 @@ Look for issues labeled `good first issue` to get started.
 
 ## Repository layout
 
-The repository is a monorepo with two packages:
+The repository is a monorepo whose packages live under `packages/`:
 
+- `packages/create-clis`: the collection scaffolding generator, published as `create-clis`.
 - `packages/sweep-node-modules-cli`: the `sweep-nm` CLI, published as `@iyowei/sweep-node-modules-cli`.
-- `packages/sweep-node-modules`: the programmable API, published as `@iyowei/sweep-node-modules`.
+- `packages/sweep-node-modules`: the programmable API behind `sweep-nm`, published as `@iyowei/sweep-node-modules`.
+- `packages/codd`: the `codd` MongoDB 9.0 provisioning CLI (`@iyowei/codd`).
 
-turbo orchestrates the build, typecheck, and test tasks across both packages. The code treats bun and node as first-class runtimes (bun when available, node otherwise, identical behavior), runs on Windows, macOS, and Linux, and keeps zero third-party runtime dependencies.
+turbo orchestrates the build, typecheck, and test tasks across all workspace packages. The code treats bun and node as first-class runtimes (bun when available, node otherwise, identical behavior), runs on Windows, macOS, and Linux, and keeps zero third-party runtime dependencies.
 
 ## Development setup
 

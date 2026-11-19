@@ -1,6 +1,6 @@
 # 设计文档索引 (按推荐阅读顺序)
 
-> 本索引收录**仓库级设计** (仓库治理与脚手架, 跟具体产品无关); 各产品的设计与验收文档在各自的产品区 (sweep-node-modules: [产品区入口](../sweep/README.md) / [产品设计索引](../sweep/designs/README.md))。每篇文档只讲一个不能再拆的最小单元, 修订登记在文档内的「修订记录」里; 分层规则见[文档分层协议](docs-layering.md)。
+> 本索引收录**仓库级设计** (仓库治理与脚手架, 跟具体产品无关); 各产品的设计与验收文档在各自的产品区 (sweep-node-modules: [产品区入口](../sweep/README.md) / [产品设计索引](../sweep/designs/README.md); codd: [产品区入口](../codd/README.md) / [产品设计索引](../codd/designs/README.md))。每篇文档只讲一个不能再拆的最小单元, 修订登记在文档内的「修订记录」里; 分层规则见[文档分层协议](docs-layering.md)。
 
 ## 仓库级设计 (集合仓与脚手架)
 

@@ -10,11 +10,14 @@
 
 ## 包
 
+**create-clis (生成器包)**
+[生成器包文档入口](../packages/create-clis/docs/README.md) (生成新集合仓的文档入口与设计关联)。
+
 **sweep-node-modules (API 包与 CLI 包)**
 [API 包文档入口](../packages/sweep-node-modules/docs/README.md) (可编程 API 与包级 ADR) / [CLI 包文档入口](../packages/sweep-node-modules-cli/docs/README.md) (命令用法与输出)。
 
-**create-clis (生成器包)**
-[生成器包文档入口](../packages/create-clis/docs/README.md) (生成新集合仓的文档入口与设计关联)。
+**codd (CLI 包)**
+[CLI 包文档入口](../packages/codd/docs/README.md) (命令用法、包级 ADR 与产品区关联)。
 
 ## 决策与模板
 
@@ -31,6 +34,10 @@
 **产品区 (sweep-node-modules)**
 [产品区入口](sweep/README.md)
 sweep 的跨包文档: 产品设计 (总纲 / 配置 / 扫描 / 删除闸 / 加固 / 安全总账 / 双面覆盖 / 架构) 与转写契约套件 (明细条目见下面两节)。
+
+**产品区 (codd)**
+[产品区入口](codd/README.md)
+codd 的产品文档: 公式与清单设计、Podman 单机与三物理节点分册、Kubernetes 单副本与三副本分册、日常运维灾备手册与可视化看板。
 
 ## 安全防护
 
