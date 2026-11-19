@@ -423,11 +423,19 @@ describe('真实模板端到端', () => {
     expect(coreScripts.conformance).toBeUndefined();
     expect(typeof coreScripts.ci).toBe('string');
 
-    // 载体摘除在真实模板上生效: 只服务 conformance 步骤的坐标派生与导入不得残留
+    // 载体摘除在真实模板上生效: 只服务 conformance 步骤的坐标派生与导入不得残留,
+    // 同时文件头注释、其余 import 与 interface Step 必须完好无损 (防回溯吞噬前置代码)
     const prunedCi = readFileSync(join(coreDir, 'scripts/ci.ts'), 'utf8');
     expect(prunedCi).not.toContain('resolveConformanceCliSrc');
     expect(prunedCi).not.toContain('resolveProductPairs');
     expect(prunedCi).not.toContain('lint:deps');
+    expect(prunedCi).toContain(
+      "import { spawn, spawnSync } from 'node:child_process';",
+    );
+    expect(prunedCi).toContain('interface Step {');
+    expect(prunedCi).toContain(
+      "import { makeTmpRoot } from './lib/tmp-root.ts';",
+    );
 
     // 步骤表闭合 / 括号配平的实物验证: ci.ts 真跑一次 --help
     const help = spawnSync('bun', ['scripts/ci.ts', '--help'], {

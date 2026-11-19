@@ -14,7 +14,12 @@
 import { existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-import { pruneWorkflowJobs } from './tier-workflow.ts';
+import { codeChars } from './tier-lexer.ts';
+import {
+  findResidualWorkflowJobs,
+  listWorkflowJobs,
+  pruneWorkflowJobs,
+} from './tier-workflow.ts';
 
 /** 装备档位 */
 export type Tier = 'core' | 'standard' | 'full';
@@ -171,13 +176,41 @@ export function pruneTemplate(targetDir: string, rules: RemoveRule): void {
   const prunedWorkflows = new Map<string, string>();
   const workflowJobs = rules.workflowJobs ?? [];
   if (workflowJobs.length > 0) {
+    const foundWorkflows: { rel: string; path: string; source: string }[] = [];
     for (const rel of WORKFLOW_FILES) {
       const wfPath = join(targetDir, rel);
       if (!existsSync(wfPath)) continue;
-      prunedWorkflows.set(
-        wfPath,
-        pruneWorkflowJobs(readFileSync(wfPath, 'utf8'), workflowJobs),
+      foundWorkflows.push({
+        rel,
+        path: wfPath,
+        source: readFileSync(wfPath, 'utf8'),
+      });
+    }
+    if (foundWorkflows.length === 0) {
+      throw new Error(
+        `模板缺少 workflow 文件 (${WORKFLOW_FILES.join(' / ')}), 无法摘除 job: ${workflowJobs.join(', ')}`,
       );
+    }
+    const existingJobs = new Set<string>();
+    for (const wf of foundWorkflows) {
+      for (const name of listWorkflowJobs(wf.source)) existingJobs.add(name);
+    }
+    for (const job of workflowJobs) {
+      if (!existingJobs.has(job)) {
+        throw new Error(
+          `workflow job 不存在: '${job}' 未出现在模板 workflow 中 (裁剪规则与模板不同步)`,
+        );
+      }
+    }
+    for (const wf of foundWorkflows) {
+      const pruned = pruneWorkflowJobs(wf.source, workflowJobs);
+      const residuals = findResidualWorkflowJobs(pruned, workflowJobs);
+      if (residuals.length > 0) {
+        throw new Error(
+          `workflow 裁剪自检未过 (${wf.rel}): 仍残留 ${residuals.join(', ')}`,
+        );
+      }
+      prunedWorkflows.set(wf.path, pruned);
     }
   }
   for (const path of rules.deletePaths) {
@@ -416,13 +449,32 @@ const CLI_COORDINATE_BLOCK =
 const CLI_COORDINATE_IMPORT =
   /^import \{ resolveCliAndApi \} from '\.\/lib\/workspace\.ts';\n/m;
 
-/** 新形态惰性派生函数块 (scripts/ci.ts 的 resolveConformanceCliSrc) */
-const LAZY_CONFORMANCE_FN =
-  /\/\*\* 惰性派生转写验收 CLI 入口坐标[^\n]*\nfunction resolveConformanceCliSrc\(\): string \{[\s\S]*?\n\}\n\n?/;
+/** 新形态惰性派生函数声明锚点 (不硬耦合 JSDoc 中文文案, 靠括号配平精确定位函数体) */
+const LAZY_CONFORMANCE_DECL =
+  /^function resolveConformanceCliSrc\s*\([^)]*\)[^{]*\{/m;
 
 /** 新形态导入 */
 const LAZY_CONFORMANCE_IMPORT =
   /^import \{ resolveProductPairs \} from '\.\/lib\/workspace\.ts';\n/m;
+
+/** 向前回溯吞掉紧贴顶层声明的 JSDoc 块注释或连续行注释 (绝不跨过前方代码吞噬更早的 JSDoc) */
+function expandOverLeadingDocComment(
+  source: string,
+  declStart: number,
+): number {
+  const before = source.slice(0, declStart);
+  if (before.endsWith('*/\n')) {
+    const open = before.lastIndexOf('/**');
+    if (
+      open >= 0 &&
+      (open === 0 || before[open - 1] === '\n') &&
+      before.indexOf('*/', open + 3) === before.length - 3
+    ) {
+      return open;
+    }
+  }
+  return expandOverAttachedComments(source, declStart);
+}
 
 /** 术后载体摘除: 「只服务被摘步骤」的顶层声明与来源导入一并摘净 (兼顾新旧两种形态) */
 function pruneOrphanedCarriers(source: string): string {
@@ -437,9 +489,15 @@ function pruneOrphanedCarriers(source: string): string {
         : withoutImport;
     }
   }
-  const lazyBlock = LAZY_CONFORMANCE_FN.exec(out);
-  if (lazyBlock !== null) {
-    const withoutBlock = out.replace(lazyBlock[0], '');
+  const lazyDecl = LAZY_CONFORMANCE_DECL.exec(out);
+  if (lazyDecl !== null) {
+    const openBrace = lazyDecl.index + lazyDecl[0].length - 1;
+    const closeBrace = findMatchingBrace(out, openBrace);
+    let end = out.indexOf('\n', closeBrace);
+    end = end < 0 ? out.length : end + 1;
+    if (out[end] === '\n') end += 1;
+    const start = expandOverLeadingDocComment(out, lazyDecl.index);
+    const withoutBlock = out.slice(0, start) + out.slice(end);
     if (!withoutBlock.includes('resolveConformanceCliSrc')) {
       const withoutImport = withoutBlock.replace(LAZY_CONFORMANCE_IMPORT, '');
       out = withoutImport.includes('resolveProductPairs')
@@ -501,7 +559,7 @@ function assertBracketsBalanced(source: string): void {
   }
 }
 
-/** 定位配对闭合括号 (从 openIndex 指向的 `{` 起; 引号与注释内的括号不计) */
+/** 定位配对闭合括号 (从 openIndex 指向的 `{` 起; 引号 / 正则 / 模板文本与注释内的括号不计) */
 function findMatchingBrace(source: string, openIndex: number): number {
   let depth = 0;
   for (const { char, index } of codeChars(source, openIndex)) {
@@ -514,41 +572,4 @@ function findMatchingBrace(source: string, openIndex: number): number {
   throw new Error(
     `${CI_SCRIPT} 形态预期不符: 第 ${openIndex} 字符起的 \`{\` 未闭合`,
   );
-}
-
-/** 代码字符走查: 跳过字符串 / 模板字面量 / 注释内内容 (括号判定与定位共用一处口径) */
-function* codeChars(
-  source: string,
-  from = 0,
-): Generator<{ char: string; index: number }> {
-  let index = from;
-  while (index < source.length) {
-    const char = source[index]!;
-    const next = source[index + 1];
-    if (char === '/' && next === '/') {
-      const eol = source.indexOf('\n', index);
-      if (eol < 0) return;
-      index = eol + 1;
-      continue;
-    }
-    if (char === '/' && next === '*') {
-      const end = source.indexOf('*/', index + 2);
-      if (end < 0) return;
-      index = end + 2;
-      continue;
-    }
-    if (char === "'" || char === '"' || char === '`') {
-      index += 1;
-      while (index < source.length) {
-        if (source[index] === '\\') index += 2;
-        else if (source[index] === char) {
-          index += 1;
-          break;
-        } else index += 1;
-      }
-      continue;
-    }
-    yield { char, index };
-    index += 1;
-  }
 }
