@@ -1,23 +1,57 @@
 #!/bin/sh
-# create-clis 启动器: 挑选运行时 (Bun 优先, 其次 Node) 后交给 npm 分发入口 (bin/create-clis.mjs)。
-# 循环 readlink 解析多级符号链接 (BSD / GNU 皆可); 选中 Bun 时强制附加隔离配置。
+# create-clis 启动器 (POSIX): 仅按 `/` 开头绝对 PATH 解析运行时 (Bun 优先, 其次 Node),
+# 解析符号链接 (上限 40 跳防循环), 选中 Bun 时强制附加隔离配置并透传 CLIS_BUN_ISOLATED=1。
 
 target=$0
+hops=0
 while [ -L "$target" ]; do
+  hops=$((hops + 1))
+  if [ "$hops" -gt 40 ]; then
+    echo "create-clis: 启动器符号链接层级过深 (> 40 跳), 疑似存在循环链接" >&2
+    exit 1
+  fi
   link=$(readlink "$target" 2>/dev/null) || break
   case "$link" in
     /*) target=$link ;;
     *) target="$(dirname "$target")/$link" ;;
   esac
 done
-root=$(cd "$(dirname "$target")/.." && pwd)
+root=$(CDPATH= cd -- "$(dirname "$target")/.." && pwd)
 
-if command -v bun >/dev/null 2>&1; then
-  exec bun --config="$root/bin/bunfig.toml" --no-env-file "$root/bin/create-clis.mjs" "$@"
+resolve_exec() {
+  name=$1
+  old_ifs=$IFS
+  IFS=:
+  set -f
+  for dir in $PATH; do
+    case "$dir" in
+      /*)
+        candidate="${dir%/}/$name"
+        if [ -f "$candidate" ] && [ -x "$candidate" ]; then
+          set +f
+          IFS=$old_ifs
+          printf '%s\n' "$candidate"
+          return 0
+        fi
+        ;;
+    esac
+  done
+  set +f
+  IFS=$old_ifs
+  return 1
+}
+
+if bun_bin=$(resolve_exec bun); then
+  if [ ! -f "$root/bin/bunfig.toml" ]; then
+    echo "create-clis: 缺少启动器隔离配置 (bin/bunfig.toml), 为防工作目录 bunfig.toml 劫持已拒绝执行。" >&2
+    exit 1
+  fi
+  export CLIS_BUN_ISOLATED=1
+  exec "$bun_bin" --config="$root/bin/bunfig.toml" --no-env-file "$root/bin/create-clis.mjs" "$@"
 fi
 
-if command -v node >/dev/null 2>&1; then
-  exec node "$root/bin/create-clis.mjs" "$@"
+if node_bin=$(resolve_exec node); then
+  exec "$node_bin" "$root/bin/create-clis.mjs" "$@"
 fi
 
 echo "create-clis: 未找到 bun 或 node, 请至少安装其一" >&2

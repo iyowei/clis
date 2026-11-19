@@ -2,22 +2,23 @@
 /**
  * npm / bun / pnpm / yarn 通用分发启动器 (@iyowei/codd-cli):
  * 1) shebang 固定为 node 以确保四大包管理器在 Unix 与 Windows 下均生成兼容 shim/软链;
- * 2) 按绝对 PATH 安全挑选运行时 (Bun 优先, Node >= 22.18 回退, 跳过空与相对目录防当前目录劫持);
+ * 2) 按绝对 PATH 安全挑选运行时 (Bun 优先, Node >= 22.18 回退, 严判盘符/UNC 绝对路径防劫持);
  * 3) 对 dist/cli.js 执行 dist/manifest.json SHA-256 摘要自证, 校验独立隔离配置 bin/bunfig.toml;
- * 4) 若当前进程已是最终选定运行时则直接同进程 import 执行 (消除 bin/codd -> bin/codd.mjs 双重派生),
- *    跨运行时切换时才 spawnSync 并完整透传 error / signal / status。
+ * 4) 同运行时且已隔离时直接同进程 import 执行 (零多余派生); 跨运行时走异步 spawn + SIGINT 隔离。
  */
-import { spawnSync } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { existsSync, readFileSync, realpathSync, statSync } from 'node:fs';
-import { dirname, join, posix, win32 } from 'node:path';
+import { dirname, join, posix, resolve, win32 } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const CLI_FILE = 'cli.js';
 const MANIFEST_FILE = 'manifest.json';
 const WIN32_EXEC_EXTS = ['.com', '.exe'];
+const WIN32_ABS_DIR_RE = /^(?:[A-Za-z]:[/\\]|\\\\[^\\]+\\[^\\]+)/;
 const MIN_NODE_MAJOR = 22;
 const MIN_NODE_MINOR = 18;
+const BUN_ISOLATED_ENV = 'CLIS_BUN_ISOLATED';
 
 /** 校验 Node.js 版本是否满足 >= 22.18.0 下限 */
 export const isSupportedNodeVersion = (rawVersion) => {
@@ -53,44 +54,59 @@ const isFileAt = (path) => {
   }
 };
 
-export const resolveWin32Executable = (name, pathEnv, fileProbe) => {
+/** 仅接受带盘符 (C:\...) 或 UNC (\\host\share) 绝对目录, 排除 /usr/bin 盘根相对路径劫持, 返回全部候选 */
+export const resolveWin32Executables = (name, pathEnv, fileProbe) => {
+  const found = [];
+  const seen = new Set();
   for (const raw of pathEnv.split(';')) {
     const dir =
       raw.length > 1 && raw.startsWith('"') && raw.endsWith('"')
         ? raw.slice(1, -1)
         : raw;
-    if (dir === '' || !win32.isAbsolute(dir)) continue;
+    if (dir === '' || !WIN32_ABS_DIR_RE.test(dir)) continue;
     for (const ext of WIN32_EXEC_EXTS) {
       const candidate = win32.join(dir, name + ext);
-      if (fileProbe(candidate)) return candidate;
+      const key = candidate.toLowerCase();
+      if (seen.has(key)) continue;
+      if (fileProbe(candidate)) {
+        seen.add(key);
+        found.push(candidate);
+      }
     }
   }
-  return null;
+  return found;
 };
 
 export const resolvePosixExecutables = (name, pathEnv, fileProbe) => {
   const found = [];
+  const seen = new Set();
   for (const dir of pathEnv.split(':')) {
     if (dir === '' || !dir.startsWith('/')) continue;
     const candidate = posix.join(dir, name);
-    if (fileProbe(candidate)) found.push(candidate);
+    if (seen.has(candidate)) continue;
+    if (fileProbe(candidate)) {
+      seen.add(candidate);
+      found.push(candidate);
+    }
   }
   return found;
 };
 
 export const pickRuntime = ({
   platform = process.platform,
-  pathEnv = process.env.PATH ?? '',
+  pathEnv = platform === 'win32'
+    ? (process.env.PATH ?? process.env.Path ?? '')
+    : (process.env.PATH ?? ''),
   fileProbe = isFileAt,
   probe = available,
+  names = ['bun', 'node'],
 } = {}) => {
-  for (const name of ['bun', 'node']) {
-    if (platform === 'win32') {
-      const resolved = resolveWin32Executable(name, pathEnv, fileProbe);
-      if (resolved !== null && probe(resolved)) return resolved;
-      continue;
-    }
-    for (const candidate of resolvePosixExecutables(name, pathEnv, fileProbe)) {
+  for (const name of names) {
+    const candidates =
+      platform === 'win32'
+        ? resolveWin32Executables(name, pathEnv, fileProbe)
+        : resolvePosixExecutables(name, pathEnv, fileProbe);
+    for (const candidate of candidates) {
       if (probe(candidate)) return candidate;
     }
   }
@@ -128,11 +144,11 @@ const artifactProblem = (distDir) => {
 };
 
 const normalizeEntryPath = (p, platform = process.platform) => {
-  let resolved = p;
+  let resolved = resolve(p);
   try {
-    resolved = realpathSync(p);
+    resolved = realpathSync(resolved);
   } catch {
-    // realpath 不可用时保留原路径做字面比对
+    // realpath 不可用时保留规范绝对路径做字面比对
   }
   return platform === 'win32' ? resolved.toLowerCase() : resolved;
 };
@@ -149,6 +165,46 @@ export const isEntry = (
     normalizeEntryPath(self, platform)
   );
 };
+
+/** 跨运行时异步派生子进程: 挂起父进程 SIGINT 防 Ctrl+C 杀父留孤儿, 完整透传信号与退出码 */
+const execChildRuntime = (command, args, extraEnv) =>
+  new Promise((resolveExit) => {
+    const ignoreSigint = () => {};
+    process.on('SIGINT', ignoreSigint);
+    const child = spawn(command, args, {
+      stdio: 'inherit',
+      env: extraEnv ? { ...process.env, ...extraEnv } : process.env,
+    });
+    let settled = false;
+    const finish = (cb) => {
+      if (settled) return;
+      settled = true;
+      process.off('SIGINT', ignoreSigint);
+      cb();
+      resolveExit();
+    };
+    child.once('error', (err) => {
+      finish(() => {
+        process.stderr.write(
+          `codd: 启动运行时失败 (${command}): ${err.message}\n`,
+        );
+        process.exit(1);
+      });
+    });
+    child.once('close', (code, signal) => {
+      finish(() => {
+        if (signal) {
+          try {
+            process.kill(process.pid, signal);
+          } catch {
+            process.exit(1);
+          }
+          return;
+        }
+        process.exit(code ?? 1);
+      });
+    });
+  });
 
 const main = async () => {
   const root = dirname(dirname(fileURLToPath(import.meta.url)));
@@ -179,57 +235,51 @@ const main = async () => {
     process.exit(1);
   }
 
-  // 当前进程已是 Bun (例如经 bin/codd 或 bin/codd.cmd 以 --config/--no-env-file 拉起): 直接同进程加载产物, 零二次派生
+  // 当前已是 Bun 且已处于隔离启动态 (CLIS_BUN_ISOLATED=1): 同进程直载, 零二次派生
   if (typeof process.versions.bun === 'string') {
-    await import(pathToFileURL(entry).href);
-    return;
-  }
-
-  const runtime = pickRuntime();
-  if (runtime !== null && isBunExecutable(runtime)) {
-    const res = spawnSync(
-      runtime,
+    if (process.env[BUN_ISOLATED_ENV] === '1') {
+      await import(pathToFileURL(entry).href);
+      return;
+    }
+    await execChildRuntime(
+      process.execPath,
       [
         `--config=${isolatedBunfig}`,
         '--no-env-file',
         entry,
         ...process.argv.slice(2),
       ],
-      { stdio: 'inherit' },
+      { [BUN_ISOLATED_ENV]: '1' },
     );
-    if (res.error) {
-      process.stderr.write(
-        `codd: 启动运行时失败 (${runtime}): ${res.error.message}\n`,
-      );
-      process.exit(1);
-    }
-    if (res.signal) {
-      process.kill(process.pid, res.signal);
-      return;
-    }
-    process.exit(res.status ?? 1);
+    return;
   }
 
-  // 回退 Node 运行时: 优先校验当前 Node 进程版本 >= 22.18 并同进程执行
-  if (isSupportedNodeVersion(process.versions.node)) {
+  // 当前是 Node: 若本机满足 >= 22.18, 仅探 PATH 中 bun (免去多余 node --version 子进程)
+  const currentNodeOk = isSupportedNodeVersion(process.versions.node);
+  const bunRuntime = pickRuntime({ names: ['bun'] });
+  if (bunRuntime !== null && isBunExecutable(bunRuntime)) {
+    await execChildRuntime(
+      bunRuntime,
+      [
+        `--config=${isolatedBunfig}`,
+        '--no-env-file',
+        entry,
+        ...process.argv.slice(2),
+      ],
+      { [BUN_ISOLATED_ENV]: '1' },
+    );
+    return;
+  }
+
+  if (currentNodeOk) {
     await import(pathToFileURL(entry).href);
     return;
   }
-  if (runtime !== null) {
-    const res = spawnSync(runtime, [entry, ...process.argv.slice(2)], {
-      stdio: 'inherit',
-    });
-    if (res.error) {
-      process.stderr.write(
-        `codd: 启动运行时失败 (${runtime}): ${res.error.message}\n`,
-      );
-      process.exit(1);
-    }
-    if (res.signal) {
-      process.kill(process.pid, res.signal);
-      return;
-    }
-    process.exit(res.status ?? 1);
+
+  const nodeRuntime = pickRuntime({ names: ['node'] });
+  if (nodeRuntime !== null) {
+    await execChildRuntime(nodeRuntime, [entry, ...process.argv.slice(2)]);
+    return;
   }
 
   process.stderr.write(

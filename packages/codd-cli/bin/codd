@@ -1,26 +1,56 @@
 #!/bin/sh
-# codd 启动器 (POSIX): 挑选运行时 (Bun 优先, 其次 Node) 后交给分发入口 (bin/codd.mjs)。
-# 支持多级符号链接解析 (如 ~/.local/bin/codd -> ...); 显式固定 --config 与 --no-env-file
-# 防止用户工作目录中损坏的 bunfig.toml 或 .env 干扰启动; bin/codd.mjs 在目标运行时内直接 import
-# 产物而不二次派生子进程。
+# codd 启动器 (POSIX): 仅从绝对 PATH 目录安全挑选运行时 (Bun 优先, 其次 Node) 后交给 bin/codd.mjs。
+# - 清空 CDPATH 防止 cd 跳错目录; 软链解析限制最多 40 跳防死循环
+# - 跳过 PATH 中空段与相对路径 (如 '.'), 杜绝当前目录恶意 ./bun 劫持
+# - 显式固定 --config / --no-env-file 与 CLIS_BUN_ISOLATED=1 供 bin/codd.mjs 零二次派生直载
 
+CDPATH=
 target="$0"
+hops=0
 while [ -L "$target" ]; do
+  if [ "$hops" -ge 40 ]; then
+    echo "codd: 符号链接层级超过 40 跳, 已中止解析" >&2
+    exit 1
+  fi
   link=$(readlink "$target" 2>/dev/null) || break
   case "$link" in
     /*) target="$link" ;;
     *) target="$(dirname "$target")/$link" ;;
   esac
+  hops=$((hops + 1))
 done
 root=$(cd "$(dirname "$target")/.." && pwd)
 
-if command -v bun >/dev/null 2>&1; then
-  exec bun --config="$root/bin/bunfig.toml" --no-env-file "$root/bin/codd.mjs" "$@"
-fi
+find_in_abs_path() {
+  bin_name="$1"
+  old_ifs="$IFS"
+  IFS=:
+  set -f
+  for dir in $PATH; do
+    case "$dir" in
+      /*)
+        cand="${dir%/}/$bin_name"
+        if [ -f "$cand" ] && [ -x "$cand" ]; then
+          set +f
+          IFS="$old_ifs"
+          printf '%s\n' "$cand"
+          return 0
+        fi
+        ;;
+    esac
+  done
+  set +f
+  IFS="$old_ifs"
+  return 1
+}
 
-if command -v node >/dev/null 2>&1; then
-  exec node "$root/bin/codd.mjs" "$@"
-fi
+bun_bin=$(find_in_abs_path bun) && {
+  CLIS_BUN_ISOLATED=1 exec "$bun_bin" --config="$root/bin/bunfig.toml" --no-env-file "$root/bin/codd.mjs" "$@"
+}
 
-echo "codd: 未找到 bun 或 node, 请至少安装其一" >&2
+node_bin=$(find_in_abs_path node) && {
+  exec "$node_bin" "$root/bin/codd.mjs" "$@"
+}
+
+echo "codd: bun or node not found in PATH" >&2
 exit 1

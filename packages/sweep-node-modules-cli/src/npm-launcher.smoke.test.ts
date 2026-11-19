@@ -268,6 +268,46 @@ describe('npm 启动器 · 产物自证', () => {
       pkg.cleanup();
     }
   });
+
+  test('双缺失 (dist/cli.js 与 src/cli.ts 均不存在) → 友好重装指引并退 1 (X-P0-1)', () => {
+    const pkg = makePackage();
+    try {
+      const { status, stderr } = runPackaged(pkg, '--help');
+
+      expect(status).toBe(1);
+      expect(stderr).toContain('缺少可执行入口');
+      expect(stderr).toContain('重装本包');
+    } finally {
+      pkg.cleanup();
+    }
+  });
+
+  test('纯 Node (>= 22.18, PATH 无 bun) → 同进程直接 import 并保留原始 argv[1] (X-P0-1)', () => {
+    const nodePathRes = spawnSync(
+      'node',
+      ['-e', 'process.stdout.write(process.execPath)'],
+      { encoding: 'utf8' },
+    );
+    if (nodePathRes.status !== 0) return;
+    const nodeExecPath = nodePathRes.stdout.trim();
+
+    const pkg = makePackage();
+    try {
+      writeArtifact(
+        pkg,
+        'process.stdout.write(`ARGV1=${process.argv[1]}\\n`);\n',
+      );
+      const res = spawnSync(nodeExecPath, [pkg.launcher, '--help'], {
+        encoding: 'utf8',
+        env: { ...process.env, PATH: '' },
+      });
+
+      expect(res.status, res.stderr).toBe(0);
+      expect(res.stdout).toContain(`ARGV1=${pkg.launcher}`);
+    } finally {
+      pkg.cleanup();
+    }
+  });
 });
 
 describe('npm 启动器 · 工作目录配置与环境变量隔离', () => {
