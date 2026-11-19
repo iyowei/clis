@@ -409,7 +409,7 @@ function formatSample(sample: StressSample): string {
 }
 
 // 直接执行 (bun packages/sweep-node-modules/bench/stress.bench.ts) 时跑全量; 被 bench/run.ts 导入时只导出 runStressBench
-if (process.argv[1] === join(import.meta.dir, 'stress.bench.ts')) {
+if (import.meta.main) {
   const labelIndex = process.argv.indexOf('--label');
   const label =
     labelIndex >= 0
