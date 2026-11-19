@@ -330,7 +330,7 @@ describe('发布前置闸门 · 字段级判定 (注入事实)', () => {
       reason: '该项检查需要 npm',
     },
     {
-      name: '发行面包内多出文件 (如仓库根备份被 npm 一并收进包)',
+      name: '发行面包内多出文件 (如包根备份被 npm 一并收进包)',
       facts: {
         ...cleanFacts,
         pack: {
@@ -381,7 +381,7 @@ describe('发行面白名单 · 注入式 (喂假 pack 输出, 一次 npm 都不
   test('解析 npm pack --json 的输出: 取首个元素的 files[].path', () => {
     const raw = JSON.stringify([
       {
-        filename: 'iyowei-sweep-node-modules-0.3.0.tgz',
+        filename: 'iyowei-sweep-node-modules-cli-0.3.0.tgz',
         files: [
           { path: 'LICENSE', size: 1063 },
           { path: 'dist/cli.js', size: 51965 },
