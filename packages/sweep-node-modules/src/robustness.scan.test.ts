@@ -170,7 +170,7 @@ describe('鲁棒性 [parallel] 根病因分流', () => {
     ]);
   });
 
-  test('路径中间段是文件: 与上条同落「不是目录」(realpath 侧 ENOTDIR)', async () => {
+  test('路径中间段是文件: POSIX 落「不是目录」(ENOTDIR), Windows 落「不存在」(ENOENT)', async () => {
     const { root } = await make({ projects: [] });
     const file = join(root, 'plain.txt');
     await writeFile(file, 'x');
@@ -182,13 +182,20 @@ describe('鲁棒性 [parallel] 根病因分流', () => {
       include: [],
     });
 
-    expect(result.warnings).toEqual([
-      {
-        code: 'SCAN_ROOT_NOT_DIR',
-        message: `根不是目录, 已跳过: ${throughFile}`,
-        path: throughFile,
-      },
-    ]);
+    // POSIX realpath 对 plain.txt/sub 返回 ENOTDIR; Win32 CreateFileW 返回 ERROR_PATH_NOT_FOUND → ENOENT
+    const expected =
+      process.platform === 'win32'
+        ? ({
+            code: 'SCAN_ROOT_MISSING',
+            message: `根不存在, 已跳过: ${throughFile}`,
+            path: throughFile,
+          } as const)
+        : ({
+            code: 'SCAN_ROOT_NOT_DIR',
+            message: `根不是目录, 已跳过: ${throughFile}`,
+            path: throughFile,
+          } as const);
+    expect(result.warnings).toEqual([expected]);
   });
 
   test.skipIf(runningAsRoot)(

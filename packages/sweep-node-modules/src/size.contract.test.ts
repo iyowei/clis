@@ -165,15 +165,17 @@ for (const candidate of candidates) {
     });
 
     it('怪名 target (空格 / 引号 / 中文): 路径解析逐字保真', async () => {
+      // Windows NTFS 禁止文件名含双引号 `"`, 改用单引号 `'` 保持全平台覆盖空格 / 引号 / 中文
+      const quotedSeg = process.platform === 'win32' ? "quo'te" : 'quo"te';
       const { root } = await make({
         projects: [
-          { dir: 'sp ace/quo"te/中文 目录', files: 2, bytesPerFile: 256 },
+          { dir: `sp ace/${quotedSeg}/中文 目录`, files: 2, bytesPerFile: 256 },
         ],
       });
       const target = join(
         root,
         'sp ace',
-        'quo"te',
+        quotedSeg,
         '中文 目录',
         'node_modules',
       );

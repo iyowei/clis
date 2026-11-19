@@ -92,9 +92,11 @@ describe('Podman 单节点、密码轮换与 P0/P1 修复验证', () => {
         `/Users/alice/srv/backups/mongo-core-${r1.fingerprint}`,
       ]);
       expect(readFileSync(join(ws.stateDir, '.gitignore'), 'utf8')).toBe('*\n');
+      const expectedRemoteDir = `/Users/alice/custom-stacks/mongo-core-${r1.fingerprint}`;
       expect(r1.nextSteps[0]).toContain(
-        `/Users/alice/custom-stacks/mongo-core-${r1.fingerprint}/`,
+        process.platform === 'win32' ? `scp -r` : `${expectedRemoteDir}/`,
       );
+      expect(r1.nextSteps[0]).toContain(expectedRemoteDir);
 
       const b1 = r1.bundleDirs[0]!;
       expect(existsSync(join(b1, '.dockerignore'))).toBe(true);
