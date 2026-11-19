@@ -1,0 +1,136 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "mongo.fullname" . }}-init-script
+  labels:
+    {{- include "mongo.labels" . | nindent 4 }}
+    app.kubernetes.io/component: init
+data:
+  init.sh: |
+    #!/bin/bash
+    set -euo pipefail
+
+    HOST_0="${MONGO_POD_PREFIX}-0.${MONGO_HEADLESS_SVC}.${MONGO_NAMESPACE}.svc.cluster.local"
+    echo ">>> [Init] 目标主引导节点: ${HOST_0}:${MONGO_PORT}, 副本数: ${MONGO_REPLICA_COUNT}"
+
+    # 1) 等待全部 StatefulSet Pod 在各自 headless FQDN 就绪 (最多等 5 分钟)
+    for ((i = 0; i < MONGO_REPLICA_COUNT; i++)); do
+      target="${MONGO_POD_PREFIX}-${i}.${MONGO_HEADLESS_SVC}.${MONGO_NAMESPACE}.svc.cluster.local"
+      ok=0
+      for _ in $(seq 1 150); do
+        if MONGOSH_NO_TERMINAL_USAGE=1 mongosh --quiet --norc \
+          "mongodb://${target}:${MONGO_PORT}/admin?directConnection=true" \
+          --eval "db.adminCommand('ping').ok" >/dev/null 2>&1; then
+          ok=1
+          break
+        fi
+        sleep 2
+      done
+      if [ "$ok" -ne 1 ]; then
+        echo "错误: Pod ${target}:${MONGO_PORT} 响应超时"
+        exit 1
+      fi
+      echo ">>> [Init] Pod ${target} 已响应"
+    done
+
+    # 2) 用纯 Node/mongosh JS 执行幂等初始化、多成员配置与按库最小权限建号
+    cat <<'EOF' > /tmp/k8s-init.js
+    const env = process.env;
+    const count = Number(env.MONGO_REPLICA_COUNT || '1');
+    const prefix = env.MONGO_POD_PREFIX;
+    const svc = env.MONGO_HEADLESS_SVC;
+    const ns = env.MONGO_NAMESPACE;
+    const port = env.MONGO_PORT || '27117';
+    const rsName = env.MONGO_RS_NAME || 'rs0';
+    const RESERVED = { admin: true, local: true, config: true };
+
+    const fqdn = (i) => `${prefix}-${i}.${svc}.${ns}.svc.cluster.local:${port}`;
+    const members = [];
+    for (let i = 0; i < count; i += 1) {
+      members.push(
+        count > 1
+          ? { _id: i, host: fqdn(i), priority: i === 0 ? 2 : 1 }
+          : { _id: 0, host: fqdn(0) }
+      );
+    }
+
+    const uri = `mongodb://${env.MONGO_INITDB_ROOT_USERNAME}:${env.MONGO_INITDB_ROOT_PASSWORD}@${fqdn(0)}/admin?authSource=admin&directConnection=true`;
+    const admin = new Mongo(uri).getDB('admin');
+
+    let needInit = false;
+    try {
+      admin.adminCommand({ replSetGetStatus: 1 });
+      print('副本集已初始化, 跳过');
+    } catch (e) {
+      if (e.codeName === 'NotYetInitialized') {
+        needInit = true;
+      } else {
+        throw e;
+      }
+    }
+
+    if (needInit) {
+      print(`初始化副本集 ${rsName}, 成员数: ${members.length}`);
+      printjson(admin.adminCommand({ replSetInitiate: { _id: rsName, members } }));
+    }
+
+    let primaryUri = uri;
+    let ready = false;
+    for (let i = 0; i < 60; i += 1) {
+      try {
+        const h = admin.hello();
+        if (h.isWritablePrimary) {
+          ready = true;
+          break;
+        }
+        if (h.primary) {
+          primaryUri = `mongodb://${env.MONGO_INITDB_ROOT_USERNAME}:${env.MONGO_INITDB_ROOT_PASSWORD}@${h.primary}/admin?authSource=admin&directConnection=true`;
+          ready = true;
+          break;
+        }
+      } catch (e) {}
+      sleep(1000);
+    }
+    if (!ready) {
+      print('错误: 等待 PRIMARY 超时');
+      quit(1);
+    }
+
+    const conn = new Mongo(primaryUri);
+    function upsertUser(dbName, user, pwd, roles) {
+      const target = conn.getDB(dbName);
+      if (target.getUser(user)) {
+        target.updateUser(user, { pwd, roles });
+        print(`用户 ${user}@${dbName} 已更新`);
+      } else {
+        target.createUser({ user, pwd, roles });
+        print(`用户 ${user}@${dbName} 已创建`);
+      }
+    }
+
+    const apps = [{
+      db: env.MONGO_APP_DATABASE,
+      user: env.MONGO_APP_USER,
+      pwd: env.MONGO_APP_PASSWORD,
+    }];
+    const extra = env.MONGO_EXTRA_APPS || '';
+    for (const raw of extra.split(',')) {
+      const item = raw.trim();
+      if (!item) continue;
+      const parts = item.split(':');
+      if (parts.length !== 3 || RESERVED[parts[0]]) {
+        print(`非法 MONGO_EXTRA_APPS 条目: ${item}`);
+        quit(1);
+      }
+      apps.push({ db: parts[0], user: parts[1], pwd: parts[2] });
+    }
+
+    for (const a of apps) {
+      upsertUser(a.db, a.user, a.pwd, [{ role: 'readWrite', db: a.db }]);
+    }
+    upsertUser('admin', env.MONGO_BACKUP_USER || 'backup', env.MONGO_BACKUP_PASSWORD, [{ role: 'backup', db: 'admin' }]);
+    print('Kubernetes MongoDB 初始化完成');
+    EOF
+
+    MONGOSH_NO_TERMINAL_USAGE=1 mongosh --nodb --quiet --file /tmp/k8s-init.js
+    rm -f /tmp/k8s-init.js

@@ -1,0 +1,7 @@
+.env
+.env.*
+*.modified
+*.deleted
+*.plist
+*.plist.example
+node_modules

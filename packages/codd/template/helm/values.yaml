@@ -1,0 +1,123 @@
+# Default values for mongo.
+# 副本数配置: 单副本设为 1, 真高可用多副本 (1 主 + 2 从 PSS) 设为 3
+replicaCount: 1
+
+terminationGracePeriodSeconds: 30
+
+image:
+  repository: mongo
+  tag: "9.0.8"
+  pullPolicy: IfNotPresent
+
+auth:
+  # 若外部已预先建好 Secret (含 root-password / mongodb-keyfile / app-password / backup-password / extra-apps), 填 Secret 名以免 helm upgrade 重生成随机口令
+  existingSecret: ""
+  rootUsername: root
+  rootPassword: ""
+  keyFileContent: ""
+  backupUsername: backup
+  backupPassword: ""
+
+# 业务用户配置 (初始化 Job 使用; extraApps 优先从 Secret extra-apps 键读取避免明文落盘)
+app:
+  database: "app"
+  username: "app"
+  password: ""
+  extraApps: ""
+
+service:
+  # 集群内直连推荐 ClusterIP; 确需宿主机或外部节点测试访问可用 NodePort (配防火墙白名单)
+  type: ClusterIP
+  port: 27117
+  nodePort: 30117
+
+resources:
+  limits:
+    cpu: 2
+    memory: 2Gi
+  requests:
+    cpu: 2
+    memory: 2Gi
+
+persistence:
+  enabled: true
+  # 起步申请 32Gi; 扩容需底层 StorageClass 开启 allowVolumeExpansion 并直接 patch 已有 PVC
+  size: 32Gi
+  storageClass: ""
+  accessMode: ReadWriteOnce
+  # PVC 保留策略: StatefulSet 删除时保留 PVC, 避免数据丢失
+  retainPolicy: Retain
+
+# StatefulSet 更新策略
+updateStrategy:
+  type: RollingUpdate
+  rollingUpdate:
+    partition: 0
+
+# Pod 标签和注解
+podLabels: {}
+podAnnotations: {}
+
+# 监控配置
+metrics:
+  enabled: false
+  # ServiceMonitor 配置 (需要 Prometheus Operator)
+  serviceMonitor:
+    enabled: false
+    interval: 30s
+    scrapeTimeout: 10s
+
+config:
+  net:
+    port: 27117
+    bindIpAll: true
+    maxIncomingConnections: 100
+    compression:
+      compressors: snappy,zstd
+  storage:
+    wiredTiger:
+      collectionConfig:
+        blockCompressor: zstd
+      engineConfig:
+        cacheSizeGB: 0.5
+        journalCompressor: snappy
+      indexConfig:
+        prefixCompression: true
+  replication:
+    replSetName: rs0
+    # 990MB 为 WiredTiger 官方标注的最小 oplogSizeMB, 与 mongod.conf 保持一致
+    oplogSizeMB: 990
+  operationProfiling:
+    mode: slowOp
+    slowOpThresholdMs: 100
+  security:
+    authorization: enabled
+    keyFile: /etc/mongo/keyfile/mongodb-keyfile
+  # 日志配置: 不再指定 destination: file, 默认输出到控制台
+  systemLog:
+    verbosity: 0
+
+initContainer:
+  image:
+    repository: alpine
+    tag: "3.19"
+    pullPolicy: IfNotPresent
+
+podSecurityContext:
+  fsGroup: 999
+
+securityContext:
+  runAsUser: 999
+  runAsGroup: 999
+
+# 默认不绑定自定义节点标签, 确保标准 K8s 集群开箱可调度; 如需绑定专用 NVMe 节点可按需配置 nodeAffinity
+affinity: {}
+
+# Pod 反亲和性预设: 自动生成基于 Release Name 的反亲和性规则确保高可用打散
+podAntiAffinityPreset:
+  enabled: true
+  # 类型: soft (偏好) / hard (强制)
+  type: soft
+  weight: 100
+  # 拓扑键: 通常是 kubernetes.io/hostname (节点) 或 topology.kubernetes.io/zone (可用区)
+  topologyKey: kubernetes.io/hostname

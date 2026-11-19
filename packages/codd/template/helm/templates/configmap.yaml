@@ -1,0 +1,36 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "mongo.fullname" . }}-config
+data:
+  mongod.conf: |
+    # MongoDB K8S 高性能配置
+    systemLog:
+      # 不指定 destination: file, 默认输出到 stdout
+      verbosity: {{ .Values.config.systemLog.verbosity }}
+    storage:
+      dbPath: /data/db
+      wiredTiger:
+        collectionConfig:
+          blockCompressor: {{ default "zstd" .Values.config.storage.wiredTiger.collectionConfig.blockCompressor }}
+        engineConfig:
+          cacheSizeGB: {{ .Values.config.storage.wiredTiger.engineConfig.cacheSizeGB }}
+          journalCompressor: {{ default "snappy" (dig "engineConfig" "journalCompressor" "snappy" .Values.config.storage.wiredTiger) }}
+        indexConfig:
+          prefixCompression: {{ if hasKey (default dict .Values.config.storage.wiredTiger.indexConfig) "prefixCompression" }}{{ .Values.config.storage.wiredTiger.indexConfig.prefixCompression }}{{ else }}true{{ end }}
+    net:
+      port: {{ .Values.config.net.port }}
+      bindIpAll: {{ .Values.config.net.bindIpAll }}
+      ipv6: false
+      maxIncomingConnections: {{ default 100 .Values.config.net.maxIncomingConnections }}
+      compression:
+        compressors: {{ default "snappy,zstd" (dig "compression" "compressors" "snappy,zstd" .Values.config.net) }}
+    security:
+      authorization: {{ .Values.config.security.authorization }}
+      keyFile: {{ .Values.config.security.keyFile }}
+    replication:
+      replSetName: {{ .Values.config.replication.replSetName }}
+      oplogSizeMB: {{ .Values.config.replication.oplogSizeMB }}
+    operationProfiling:
+      mode: {{ .Values.config.operationProfiling.mode }}
+      slowOpThresholdMs: {{ .Values.config.operationProfiling.slowOpThresholdMs }}

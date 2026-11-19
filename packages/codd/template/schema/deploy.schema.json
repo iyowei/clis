@@ -1,0 +1,312 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Codd MongoDB Deploy Manifest",
+  "description": "面向容器化 Podman 与 Kubernetes 的通用 MongoDB 部署输入清单。仅 mode, name, apps 为必填 (Podman 模式另需 nodes), 其余均为选填且各自具备确定默认行为。所有宿主级目录, 容器, 卷, 网络与定时任务均自动嵌入唯一 fingerprint 实现 100% 零命名冲突; 发现手写 fingerprint / overrides 或未定义字段将直接报错拒收。",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["mode", "name", "apps"],
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "description": "[选填] JSON Schema 校验引用。不填不影响生成命令运行, 但会失去编辑器的字段联想, 必填提醒与红线校验。"
+    },
+    "mode": {
+      "type": "string",
+      "enum": ["single", "replica-set", "k8s-single", "k8s-rs"],
+      "description": "[必填] 部署拓扑形态 (无默认值): single (Podman 单副本), replica-set (Podman 3 物理节点高可用), k8s-single (K8s 单副本), k8s-rs (K8s 3 副本高可用)。"
+    },
+    "name": {
+      "type": "string",
+      "pattern": "^[a-z0-9-]+$",
+      "minLength": 1,
+      "maxLength": 32,
+      "description": "[必填] 实例逻辑名称 (无默认值, 仅小写字母, 数字与连字符, <= 32 字符)。生成器自动将 <stackPrefix>-<name>-<fingerprint> 组合进 dist/ 交付目录, 服务器栈目录与备份目录, 确保同机部署同名实例也 100% 不冲突。"
+    },
+    "stackPrefix": {
+      "type": "string",
+      "pattern": "^[a-z0-9-]+$",
+      "default": "mongo",
+      "description": "[选填] 容器, 网络, 卷与工具镜像命名前缀。不填默认使用 \"mongo\" (<stackPrefix>-<fingerprint>)。"
+    },
+    "hardware": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["cpuCores", "memoryGb", "diskGb"],
+      "description": "[选填] 目标宿主机或 Pod 硬件配额。不填整个对象时, 默认按通用 2C / 2G RAM / 32G Disk / balanced 起步基线推导参数 (WT_CACHE_GB=0.5G, 100 连接, 990MB oplog, zstd), 并打印一条提示警告。",
+      "properties": {
+        "cpuCores": {
+          "type": "number",
+          "minimum": 1,
+          "maximum": 256,
+          "description": "[填入 hardware 时必填] CPU 核数 (1-256)。>= 2 核自动启用 zstd 高压缩并按核数动态设置备份并发度, 单核降为 snappy; K8s 超过 2 核时 requests CPU 按 50% 弹性留余。"
+        },
+        "memoryGb": {
+          "type": "number",
+          "minimum": 1,
+          "maximum": 1024,
+          "description": "[填入 hardware 时必填] 内存配额 GB (1-1024)。自动推导 WT_CACHE_GB (<=8G 按 50%, >8G 按 55%), 软保护线 MEMORY_RESERVATION, K8s 等额 memory requests/limits, 优雅停机窗口及最大入站连接上限。"
+        },
+        "diskGb": {
+          "type": "number",
+          "minimum": 10,
+          "maximum": 65536,
+          "description": "[填入 hardware 时必填] 预计可用数据盘容量 GB (10-65536)。用于推导 oplogSizeMB, 日志轮转单文件上限 (>=100G 设为 100m, 否则 50m) 及 K8s PVC 容量。"
+        },
+        "workload": {
+          "type": "string",
+          "enum": ["balanced", "write-heavy", "read-heavy"],
+          "default": "balanced",
+          "description": "[选填] 业务读写特征。不填默认 \"balanced\" (3% 磁盘预留给 oplog, 100ms 慢查询阈值); write-heavy 为 8% / 80ms, read-heavy 为 2% / 100ms。"
+        },
+        "expectedAppConnections": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "[选填] 业务应用预期总并发连接数。不填默认仅按非缓存内存预算推导 (clamp(floor50((RAM - WT) * 80), 100, 5000)); 填入后会按 1.25x 上浮目标上限, 超出当前内存安全天花板时降回上限并告警。"
+        }
+      }
+    },
+    "imageName": {
+      "type": "string",
+      "default": "mongo",
+      "description": "[选填] MongoDB 镜像仓库名。不填默认使用 \"mongo\"。"
+    },
+    "imageTag": {
+      "type": "string",
+      "default": "9.0.8",
+      "description": "[选填] MongoDB 镜像版本标签。不填默认使用 \"9.0.8\" (主库, mongo-init 与 mongo-tools 统一沿用同一版本)。"
+    },
+    "bunImage": {
+      "type": "string",
+      "default": "oven/bun:1-slim",
+      "description": "[选填] 构建 mongo-tools 运维容器所提取 Bun 二进制的基础镜像。不填默认使用 \"oven/bun:1-slim\"。"
+    },
+    "tz": {
+      "type": "string",
+      "default": "Asia/Shanghai",
+      "description": "[选填] 容器运行时区 (TZ)。不填默认使用 \"Asia/Shanghai\"。"
+    },
+    "port": {
+      "type": "integer",
+      "minimum": 1024,
+      "maximum": 65535,
+      "default": 27117,
+      "description": "[选填] MongoDB 容器或 Pod 监听端口 (1024-65535)。不填默认使用安全非默认端口 27117 (若填入 27017/27018/27019 或 >=32768 会触发安全提示警告)。"
+    },
+    "hostPort": {
+      "type": "integer",
+      "minimum": 1024,
+      "maximum": 65535,
+      "description": "[选填] 宿主机映射端口。不填默认等于 port; 同宿主机多实例部署时可设不同端口错开; replica-set 或 networkMode=host 时必须与 port 一致否则报错。"
+    },
+    "rsName": {
+      "type": "string",
+      "minLength": 1,
+      "default": "rs0",
+      "description": "[选填] MongoDB 副本集名称。不填默认使用 \"rs0\"。"
+    },
+    "networkMode": {
+      "type": "string",
+      "enum": ["bridge", "host"],
+      "default": "bridge",
+      "description": "[选填, 仅 Linux Podman 有效] 容器网络模式。不填默认使用隔离桥接网 \"bridge\" (<stackPrefix>-<fingerprint>-net); Linux 裸金属高并发跨机场景可设 \"host\" 消除 slirp4netns/pasta NAT 转发开销 (macOS 节点禁止设 host)。"
+    },
+    "multiNetAlias": {
+      "type": "boolean",
+      "default": false,
+      "description": "[选填, 仅 single + bridge 有效] 同机业务容器需同时挂载多个隔离网时设为 true。不填默认 false (RS_MEMBER_HOST 留空并由 init.js 默认按 mongo:<port> 宣告); true 时改为 <stackPrefix>-<fingerprint>:<port>。"
+    },
+    "keepDaily": {
+      "type": "integer",
+      "minimum": 1,
+      "default": 7,
+      "description": "[选填] 按每个业务库独立保留的每日逻辑备份份数。不填默认保留 7 份。"
+    },
+    "keepWeekly": {
+      "type": "integer",
+      "minimum": 0,
+      "default": 4,
+      "description": "[选填] 按每个业务库独立保留的周日长期归档份数 (weekly 子目录)。不填默认保留 4 份。"
+    },
+    "apps": {
+      "type": "array",
+      "minItems": 1,
+      "description": "[必填] 业务数据库与最小权限 readWrite 账号列表 (至少填 1 项, 第 1 项为主库, 其余自动拆入 extraApps)。",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["db", "user"],
+        "properties": {
+          "db": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_-]+$",
+            "description": "[必填] 业务数据库名 (禁止 admin, local, config)。"
+          },
+          "user": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9]+$",
+            "description": "[必填] 该业务库专属账号 (仅允许字母与数字)。"
+          },
+          "password": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9]+$",
+            "description": "[选填] 显式指定密码 (仅字母数字且不可为 CHANGE_ME)。不填则首次随机生成 24 位字母数字并锁存进 .codd-state/, 后续重跑自动复用直到显式传 --rotate / --rotate-all。"
+          }
+        }
+      }
+    },
+    "auth": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "[选填] 高阶认证覆盖。不填整个对象时, 默认启用用户名 \"root\" 与 \"backup\", 全部密码及 keyFile 由生成器自动随机生成并锁存进 .codd-state/ (推荐留空交给生成器管)。",
+      "properties": {
+        "rootUsername": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9]+$",
+          "default": "root",
+          "description": "[选填] 管理员用户名 (仅字母数字)。不填默认延用状态锁记录, 首次默认 \"root\"。"
+        },
+        "rootPassword": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9]+$",
+          "description": "[选填] 固定 root 密码 (仅字母数字)。不填则首次随机生成 24 位并锁存, 仅传 --rotate-all 时重置。"
+        },
+        "backupUsername": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9]+$",
+          "default": "backup",
+          "description": "[选填] 只读备份账号用户名 (仅字母数字)。不填默认延用状态锁记录, 首次默认 \"backup\"。"
+        },
+        "backupPassword": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9]+$",
+          "description": "[选填] 固定备份密码 (仅字母数字)。不填则首次随机生成 24 位并锁存, 传 --rotate 或 --rotate-all 时重置。"
+        },
+        "keyFile": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9+/=]+$",
+          "minLength": 16,
+          "maxLength": 1024,
+          "description": "[选填] 副本集内部认证 keyFile (16-1024 位单行 base64)。不填则自动随机 756B base64 并锁存 (single 模式留空且由主容器首次启动自动生入密钥卷, replica-set / k8s 自动跨节点统一分发)。"
+        },
+        "existingSecret": {
+          "type": "string",
+          "description": "[选填, 仅 k8s-* 生效] 复用既有 Kubernetes Secret 名。不填时先回落查 k8s.existingSecret, 都未填默认使用 \"<releaseName>-auth\"。"
+        }
+      }
+    },
+    "nodes": {
+      "type": "array",
+      "description": "[条件必填] single 模式必填恰好 1 项, replica-set 模式必填恰好 3 项 (第 1 项为引导主节点); k8s-single / k8s-rs 模式选填且会被完全忽略 (建议不填)。",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["os", "backupDir"],
+        "properties": {
+          "name": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9._-]+$",
+            "description": "[选填] 节点逻辑名, 决定 dist/ 节点目录后缀。不填时 single 默认 \"main\", replica-set 按顺序默认 \"node1\", \"node2\", \"node3\"。"
+          },
+          "os": {
+            "type": "string",
+            "enum": ["linux", "macos"],
+            "description": "[必填] 目标宿主机系统。选 macos 时额外强制校验 backupDir 须位于 /Users/ 或 /private/, 并附带生成唯一指纹 LaunchAgent .plist。"
+          },
+          "bindIp": {
+            "type": "string",
+            "description": "[条件必填] replica-set 必填私网或 WireGuard IPv4 (严禁 127.0.0.1 / 0.0.0.0, 不填报错); single 选填, 不填默认回环绑定 \"127.0.0.1\" (云公网主机推荐保持 127.0.0.1 并用 Compass 内置 Proxy/SSH 隧道免命令连接; 若是家里路由器后的内网主机需在局域网或 WireGuard 下让本地代码与 Compass 免隧道直连, 可填 \"0.0.0.0\")。"
+          },
+          "host": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9._-]+$",
+            "description": "[选填] 副本集成员互访主机名或 IP (写入 RS_SELF_HOST 与连接串)。不填时 single 默认 \"127.0.0.1\", replica-set 默认同当前节点 name。"
+          },
+          "sshTarget": {
+            "type": "string",
+            "pattern": "^[^;|`$&()<>'\"\\\\\\r\\n]+$",
+            "description": "[选填] SSH 目标地址、~/.ssh/config 主机别名或完整 ssh 命令 (如 \"root@192.168.1.10\", \"myserver\", \"ssh myserver\", \"ssh -p 2222 ops@10.0.0.2\")。生成器会自动提取目标主机与端口并过滤掉多余前缀或隧道参数。不填不影响产物生成, 仅收尾提示里的 rsync 目标改用本地路径形式 \"~/srv/stacks/<dirName>/\"。"
+          },
+          "backupDir": {
+            "type": "string",
+            "pattern": "^/",
+            "description": "[必填] 目标服务器上的备份根目录或路径 (真实绝对路径, 无默认值, 禁含 CHANGE_ME; macOS 必须位于 /Users/ 或 /private/ 下)。生成器会自动幂等追加带唯一指纹的子目录 (如 /Users/ops/srv/backups/mongo-app-<fingerprint>), 并在服务器 make check-env 时自动以 0700 权限创建, 彻底杜绝同机同名冲突。"
+          },
+          "stackDir": {
+            "type": "string",
+            "pattern": "^/",
+            "description": "[选填, 仅 os=macos 生效] .plist WorkingDirectory 部署绝对路径。不填则从 backupDir 的 /Users/<用户> 自动推导带指纹的 \"/Users/<用户>/srv/stacks/<dirName>\", 幂等防撞名。"
+          },
+          "podmanBin": {
+            "type": "string",
+            "default": "/opt/homebrew/bin/podman",
+            "description": "[选填, 仅 os=macos 生效] LaunchAgent .plist 注入 PATH 所优先检索的 podman 绝对路径。不填默认使用 \"/opt/homebrew/bin/podman\"。"
+          }
+        }
+      }
+    },
+    "k8s": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "[选填, 仅 k8s-single / k8s-rs 生效] Kubernetes Helm 参数区 (Podman 模式忽略)。不填整个对象时, 默认以 namespace=\"data\", releaseName=\"<stackPrefix>-<name>-<fingerprint>\", storageClass=\"\", ClusterIP, k8s-rs 硬反亲和生成包含完整 chart/ 子目录的可移植 K8s 部署包。",
+      "properties": {
+        "namespace": {
+          "type": "string",
+          "default": "data",
+          "description": "[选填] 目标 Kubernetes Namespace。不填默认 \"data\"。"
+        },
+        "releaseName": {
+          "type": "string",
+          "description": "[选填] Helm Release 名称。不填默认自动嵌入唯一指纹 \"<stackPrefix>-<name>-<fingerprint>\" 确保同 Namespace 零冲突; 若显式填入固定名称则集群内使用该名称, 同时本地 dist/ 目录仍带指纹后缀隔离。"
+        },
+        "storageClass": {
+          "type": "string",
+          "description": "[选填] StatefulSet PVC 使用的 StorageClass。不填默认空字符串 \"\" (使用集群默认 StorageClass)。"
+        },
+        "serviceType": {
+          "type": "string",
+          "enum": ["ClusterIP", "NodePort"],
+          "default": "ClusterIP",
+          "description": "[选填] Kubernetes Service 类型。不填默认集群内部 \"ClusterIP\"。"
+        },
+        "nodePort": {
+          "type": "integer",
+          "minimum": 30000,
+          "maximum": 32767,
+          "default": 30117,
+          "description": "[选填] NodePort 暴露端口号 (30000-32767)。不填默认 30117 (仅当 serviceType=\"NodePort\" 时对外生效)。"
+        },
+        "podAntiAffinity": {
+          "type": "string",
+          "enum": ["hard", "soft"],
+          "description": "[选填] Pod 反亲和性强度。不填时 k8s-rs 默认启用 \"hard\" (强制打散跨物理节点), k8s-single 默认 \"soft\" 且保持 disabled。"
+        },
+        "existingSecret": {
+          "type": "string",
+          "description": "[选填] 既有 Secret 名称。不填先回落取 auth.existingSecret, 均未填时默认使用 \"<releaseName>-auth\"。"
+        }
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "mode": { "const": "single" } } },
+      "then": {
+        "required": ["nodes"],
+        "properties": { "nodes": { "minItems": 1, "maxItems": 1 } }
+      }
+    },
+    {
+      "if": { "properties": { "mode": { "const": "replica-set" } } },
+      "then": {
+        "required": ["nodes"],
+        "properties": {
+          "nodes": {
+            "minItems": 3,
+            "maxItems": 3,
+            "items": { "required": ["os", "backupDir", "bindIp"] }
+          }
+        }
+      }
+    }
+  ]
+}

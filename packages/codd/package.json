@@ -1,0 +1,54 @@
+{
+  "name": "@iyowei/codd",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Template-driven MongoDB 9.0 provisioning CLI for Podman (Linux / macOS) and Kubernetes (Helm): deterministic hardware sizing formulas, 100% collision-free fingerprint isolation, and interactive terminal wizard. 模板化 MongoDB 9.0 高性能部署装配 CLI。",
+  "keywords": [
+    "cli",
+    "cli-tool",
+    "mongodb",
+    "mongo",
+    "podman",
+    "podman-compose",
+    "kubernetes",
+    "helm",
+    "replica-set",
+    "wiredtiger",
+    "devops",
+    "provisioning",
+    "generator"
+  ],
+  "author": "iTonyYo (https://github.com/iTonyYo)",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/iyowei/clis.git"
+  },
+  "homepage": "https://github.com/iyowei/clis#readme",
+  "bugs": {
+    "url": "https://github.com/iyowei/clis/issues"
+  },
+  "type": "module",
+  "bin": {
+    "codd": "bin/codd.mjs"
+  },
+  "files": [
+    "bin",
+    "dist",
+    "assets"
+  ],
+  "engines": {
+    "node": ">=22.18.0"
+  },
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  },
+  "scripts": {
+    "build": "bun scripts/build-assets.ts && bun build src/cli.ts --target=node --outfile=dist/cli.js && bun scripts/write-dist-manifest.ts",
+    "prepublishOnly": "npm run build && npm run verify:release",
+    "verify:release": "bun scripts/verify-release.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "bun test --path-ignore-patterns=assets/** --path-ignore-patterns=template/**"
+  }
+}

@@ -1,0 +1,144 @@
+# 由 Codd 生成器 ({{DEPLOY_ID}} / {{NODE_NAME}}) 渲染
+# 公式推导: {{FORMULA_SUMMARY}}
+# 所有容器, 网络, 数据卷与密钥卷统一由 STACK_PREFIX + FINGERPRINT 派生。
+name: {{STACK_PREFIX}}-${FINGERPRINT:?请在 .env 设置 FINGERPRINT}
+
+services:
+  mongo:
+    image: ${MONGO_IMAGE_NAME:?请在 .env 设置 MONGO_IMAGE_NAME}:${MONGO_IMAGE_TAG:?请在 .env 设置 MONGO_IMAGE_TAG}
+    container_name: {{STACK_PREFIX}}-${FINGERPRINT}
+    restart: unless-stopped
+    stop_grace_period: {{STOP_GRACE_PERIOD}}s
+    environment:
+      TZ: ${TZ:-{{TZ}}}
+      GLIBC_TUNABLES: glibc.pthread.rseq=0
+      MONGO_PORT: ${MONGO_PORT:-{{MONGO_PORT}}}
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_INITDB_ROOT_USERNAME:?请在 .env 设置 MONGO_INITDB_ROOT_USERNAME}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_INITDB_ROOT_PASSWORD:?请在 .env 设置 MONGO_INITDB_ROOT_PASSWORD}
+      RS_ROLE: ${RS_ROLE:-{{RS_ROLE}}}
+      MONGO_KEYFILE: ${MONGO_KEYFILE:-}
+    # 单机在命名卷空时自动生成 keyfile; 多节点写入共享 MONGO_KEYFILE, 从节点跳过本地 root 以免阻塞初始同步
+    entrypoint:
+      - sh
+      - -c
+      - |
+        f=/etc/mongo/keyfile/mongodb-keyfile
+        if [ -n "$$MONGO_KEYFILE" ]; then
+          printf '%s' "$$MONGO_KEYFILE" > "$$f"
+        elif [ ! -s "$$f" ]; then
+          head -c 756 /dev/urandom | base64 | tr -d '\n' > "$$f"
+          echo "keyfile generated"
+        fi
+        chown mongodb:mongodb "$$f" && chmod 400 "$$f"
+        if [ "$$RS_ROLE" = "secondary" ]; then
+          unset MONGO_INITDB_ROOT_USERNAME MONGO_INITDB_ROOT_PASSWORD
+        fi
+        exec docker-entrypoint.sh "$$@"
+      - --
+    command:
+      - --config
+      - /etc/mongo/mongod.conf
+      - --port
+      - "${MONGO_PORT:-{{MONGO_PORT}}}"
+      - --wiredTigerCacheSizeGB
+      - "${WT_CACHE_GB:-{{WT_CACHE_GB}}}"
+    extra_hosts:
+      - "${RS_PEER_1:-unused-peer1.invalid:127.0.0.1}"
+      - "${RS_PEER_2:-unused-peer2.invalid:127.0.0.1}"
+    volumes:
+      - mongo-data:/data/db
+      - ./mongod.conf:/etc/mongo/mongod.conf:ro
+      - mongo-key:/etc/mongo/keyfile
+    mem_limit: ${MEMORY_LIMIT:-{{MEMORY_LIMIT}}}
+    mem_reservation: ${MEMORY_RESERVATION:-{{MEMORY_RESERVATION}}}
+    cpus: ${CPU_LIMIT:-{{CPU_LIMIT}}}
+    # 轻量内核 TCP 探针: 避开每 5s 拉起 Node/V8 mongosh 造成的 ~100MB RSS 内存尖峰, 同时等待临时 initdb 阶段结束
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c '[ ! -f /tmp/docker-entrypoint-temp-mongod.pid ] && exec 3<>/dev/tcp/127.0.0.1/$${MONGO_PORT:-{{MONGO_PORT}}}'"]
+      interval: 10s
+      timeout: 3s
+      retries: 12
+      start_period: 10s
+    ulimits:
+      nofile:
+        soft: {{NOFILE_ULIMIT}}
+        hard: {{NOFILE_ULIMIT}}
+      nproc:
+        soft: {{NPROC_ULIMIT}}
+        hard: {{NPROC_ULIMIT}}
+    logging:
+      driver: k8s-file
+      options:
+        max-size: {{LOG_MAX_SIZE}}
+{{MONGO_NETWORK_SECTION}}
+
+  mongo-init:
+    image: ${MONGO_IMAGE_NAME}:${MONGO_IMAGE_TAG}
+    container_name: {{STACK_PREFIX}}-${FINGERPRINT}-init
+    restart: "no"
+    depends_on:
+      mongo:
+        condition: service_healthy
+    extra_hosts:
+      - "${RS_PEER_1:-unused-peer1.invalid:127.0.0.1}"
+      - "${RS_PEER_2:-unused-peer2.invalid:127.0.0.1}"
+    environment:
+      MONGO_HOST: {{MONGO_CLIENT_HOST}}
+      MONGO_PORT: "${MONGO_PORT:-{{MONGO_PORT}}}"
+      RS_NAME: ${RS_NAME:-{{RS_NAME}}}
+      RS_ROLE: ${RS_ROLE:-{{RS_ROLE}}}
+      RS_MEMBER_HOST: ${RS_MEMBER_HOST:-}
+      RS_MEMBERS: ${RS_MEMBERS:-}
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_INITDB_ROOT_USERNAME}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_INITDB_ROOT_PASSWORD}
+      MONGO_APP_DATABASE: ${MONGO_APP_DATABASE:?请在 .env 设置 MONGO_APP_DATABASE}
+      MONGO_APP_USER: ${MONGO_APP_USER:?请在 .env 设置 MONGO_APP_USER}
+      MONGO_APP_PASSWORD: ${MONGO_APP_PASSWORD:?请在 .env 设置 MONGO_APP_PASSWORD}
+      MONGO_EXTRA_APPS: ${MONGO_EXTRA_APPS:-}
+      MONGO_BACKUP_USER: ${MONGO_BACKUP_USER:?请在 .env 设置 MONGO_BACKUP_USER}
+      MONGO_BACKUP_PASSWORD: ${MONGO_BACKUP_PASSWORD:?请在 .env 设置 MONGO_BACKUP_PASSWORD}
+    volumes:
+      - ./init.js:/init/init.js:ro
+    entrypoint: ["mongosh", "--nodb", "--quiet", "--file", "/init/init.js"]
+{{CLIENT_NETWORK_SECTION}}
+
+  mongo-tools:
+    profiles: ["tools"]
+    image: ${TOOLS_IMAGE_NAME:-{{TOOLS_IMAGE_NAME}}}:${MONGO_IMAGE_TAG}
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        MONGO_IMAGE: ${MONGO_IMAGE_NAME}:${MONGO_IMAGE_TAG}
+        BUN_IMAGE: ${BUN_IMAGE:?请在 .env 设置 BUN_IMAGE}
+    restart: "no"
+    extra_hosts:
+      - "${RS_PEER_1:-unused-peer1.invalid:127.0.0.1}"
+      - "${RS_PEER_2:-unused-peer2.invalid:127.0.0.1}"
+    environment:
+      TZ: ${TZ:-{{TZ}}}
+      GLIBC_TUNABLES: glibc.pthread.rseq=0
+      MONGO_HOST: {{MONGO_CLIENT_HOST}}
+      MONGO_PORT: "${MONGO_PORT:-{{MONGO_PORT}}}"
+      RS_NAME: ${RS_NAME:-{{RS_NAME}}}
+      RS_MEMBERS: ${RS_MEMBERS:-}
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_INITDB_ROOT_USERNAME}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_INITDB_ROOT_PASSWORD}
+      MONGO_APP_DATABASE: ${MONGO_APP_DATABASE}
+      MONGO_APP_USER: ${MONGO_APP_USER}
+      MONGO_APP_PASSWORD: ${MONGO_APP_PASSWORD}
+      MONGO_EXTRA_APPS: ${MONGO_EXTRA_APPS:-}
+      MONGO_BACKUP_USER: ${MONGO_BACKUP_USER}
+      MONGO_BACKUP_PASSWORD: ${MONGO_BACKUP_PASSWORD}
+      BACKUP_CONCURRENCY: ${BACKUP_CONCURRENCY:-{{BACKUP_CONCURRENCY}}}
+      KEEP_DAILY: ${KEEP_DAILY:-{{KEEP_DAILY}}}
+      KEEP_WEEKLY: ${KEEP_WEEKLY:-{{KEEP_WEEKLY}}}
+    volumes:
+      - ${BACKUP_DIR:?请在 .env 设置 BACKUP_DIR (绝对路径)}:/backup
+{{CLIENT_NETWORK_SECTION}}
+{{TOP_NETWORKS_SECTION}}
+volumes:
+  mongo-data:
+    name: {{STACK_PREFIX}}-${FINGERPRINT}-data
+  mongo-key:
+    name: {{STACK_PREFIX}}-${FINGERPRINT}-key

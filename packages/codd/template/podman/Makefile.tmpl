@@ -1,0 +1,138 @@
+# 由 Codd 生成器 ({{DEPLOY_ID}}) 渲染的通用管理入口
+
+ENV ?= .env
+ENV_SRC := $(if $(filter /%,$(ENV)),$(ENV),./$(ENV))
+COMPOSE_FILE := podman-compose.yml
+COMPOSE := podman-compose --env-file $(ENV) -f $(COMPOSE_FILE)
+TOOLS := $(COMPOSE) --profile tools run --rm --no-deps mongo-tools
+STACK_PREFIX ?= $(shell . "$(ENV_SRC)" 2>/dev/null; echo $${STACK_PREFIX:-{{STACK_PREFIX}}})
+FINGERPRINT ?= $(shell . "$(ENV_SRC)" 2>/dev/null; echo $${FINGERPRINT})
+MONGO_IMAGE_TAG ?= $(shell . "$(ENV_SRC)" 2>/dev/null; echo $${MONGO_IMAGE_TAG})
+TOOLS_IMAGE_NAME ?= $(shell . "$(ENV_SRC)" 2>/dev/null; echo $${TOOLS_IMAGE_NAME:-{{TOOLS_IMAGE_NAME}}})
+TOOLS_IMAGE := $(TOOLS_IMAGE_NAME):$(MONGO_IMAGE_TAG)
+BACKUP_DIR ?= $(shell . "$(ENV_SRC)" 2>/dev/null; echo $${BACKUP_DIR})
+MONGO_EXTRA_APPS ?= $(shell . "$(ENV_SRC)" 2>/dev/null; echo $${MONGO_EXTRA_APPS})
+MONGO_BIND_IP ?= $(shell . "$(ENV_SRC)" 2>/dev/null; echo $${MONGO_BIND_IP})
+MONGO_PORT ?= $(shell . "$(ENV_SRC)" 2>/dev/null; echo $${MONGO_PORT:-{{MONGO_PORT}}})
+MONGO_HOST_PORT ?= $(shell . "$(ENV_SRC)" 2>/dev/null; echo $${MONGO_HOST_PORT:-{{MONGO_HOST_PORT}}})
+RS_ROLE ?= $(shell . "$(ENV_SRC)" 2>/dev/null; echo $${RS_ROLE})
+MONGO_KEYFILE ?= $(shell . "$(ENV_SRC)" 2>/dev/null; echo $${MONGO_KEYFILE})
+RS_SELF_HOST ?= $(shell . "$(ENV_SRC)" 2>/dev/null; echo $${RS_SELF_HOST})
+RS_MEMBERS ?= $(shell . "$(ENV_SRC)" 2>/dev/null; echo $${RS_MEMBERS})
+RS_PEER_1 ?= $(shell . "$(ENV_SRC)" 2>/dev/null; echo $${RS_PEER_1})
+RS_PEER_2 ?= $(shell . "$(ENV_SRC)" 2>/dev/null; echo $${RS_PEER_2})
+CONTAINER := $(STACK_PREFIX)-$(FINGERPRINT)
+
+.PHONY: help up down logs status init tools backup drill restore stats shell check-env check-perf tune-host
+
+help:
+	@echo "可用命令 (可通过 ENV=.env.other 指定环境文件, 默认 .env):"
+	@echo "  make tune-host  - 一键开启并持久化内核 THP / swappiness 调优 (Linux 宿主机或 macOS Podman VM)"
+	@echo "  make up         - 启动并自动初始化 (副本集, 全业务库账号, 自动建 0700 指纹备份目录)"
+	@echo "  make down       - 停止并移除容器 (数据卷保留)"
+	@echo "  make logs       - 查看实时日志"
+	@echo "  make status     - 容器状态与资源占用"
+	@echo "  make check-perf - 检查内核 THP / swappiness / ulimit 及 MongoDB 启动告警"
+	@echo "  make init       - 重跑副本集与全业务库账号初始化 (幂等, 新增库或轮换密码后执行)"
+	@echo "  make tools      - 构建工具镜像 (备份, 恢复, 演练依赖它)"
+	@echo "  make backup     - 立即备份所有已配置业务库 (主库 + MONGO_EXTRA_APPS, 从节点优先读取)"
+	@echo "  make drill      - 零污染恢复演练 (在容器内拉起独立沙箱 mongod 恢复并核对线上索引)"
+	@echo "  make restore FILE=<备份文件名> CONFIRM=yes - 按归档文件名自动识别库名并真恢复"
+	@echo "  make stats      - 内存和 CPU 实时占用"
+	@echo "  make shell      - 进入 mongosh (root)"
+	@echo "说明: 没有 reset 这类删卷命令, 删卷请手动执行 podman volume rm, 防止误操作。"
+
+check-env:
+	@command -v podman >/dev/null 2>&1 || { echo "错误: 未找到 podman, macOS 请执行 brew install podman"; exit 1; }
+	@command -v podman-compose >/dev/null 2>&1 || { echo "错误: 未找到 podman-compose, macOS 请执行 brew install podman-compose (Linux 用包管理器或 pipx 安装)"; exit 1; }
+	@[ -f "$(ENV)" ] || { echo "缺少 $(ENV), 请先使用生成器 bun run generate 生成部署目录"; exit 1; }
+	@! grep -q 'CHANGE_ME' "$(ENV)" || { echo "错误: $(ENV) 里仍有模板占位值 CHANGE_ME, 请先全部替换"; exit 1; }
+	@printf '%s' "$(STACK_PREFIX)" | grep -Eq '^[a-z0-9-]+$$' || { echo "错误: STACK_PREFIX 只允许小写字母, 数字和连字符, 当前为 '$(STACK_PREFIX)'"; exit 1; }
+	@printf '%s' "$(FINGERPRINT)" | grep -Eq '^[a-z0-9-]+$$' || { echo "错误: FINGERPRINT 只允许小写字母, 数字和连字符, 当前为 '$(FINGERPRINT)'"; exit 1; }
+	@[ -n "$(MONGO_IMAGE_TAG)" ] || { echo "错误: 请在 $(ENV) 设置 MONGO_IMAGE_TAG"; exit 1; }
+	@case "$(BACKUP_DIR)" in /path/to/*|'') echo "错误: 请设置 BACKUP_DIR 为真实绝对路径"; exit 1 ;; /*) ;; *) echo "错误: BACKUP_DIR 必须是绝对路径, 当前为 '$(BACKUP_DIR)'"; exit 1 ;; esac
+	@if [ "$$(uname -s)" = "Darwin" ]; then \
+		case "$(BACKUP_DIR)" in /Users/*|/private/*|/var/folders/*) ;; *) echo "错误: macOS 下 BACKUP_DIR 必须位于 /Users/ 或 /private/ 下以便 Podman VM 挂载, 当前为 '$(BACKUP_DIR)'"; exit 1 ;; esac; \
+	fi
+	@if [ ! -d "$(BACKUP_DIR)" ]; then \
+		mkdir -p "$(BACKUP_DIR)" && chmod 700 "$(BACKUP_DIR)" || { echo "错误: 无法创建备份目录 $(BACKUP_DIR), 请检查父目录权限"; exit 1; }; \
+	fi
+	@if [ -n "$(MONGO_EXTRA_APPS)" ]; then \
+		printf '%s\n' "$(MONGO_EXTRA_APPS)" | tr ',' '\n' | while IFS= read -r item; do \
+			[ -z "$$item" ] && continue; \
+			printf '%s' "$$item" | grep -Eq '^[A-Za-z0-9_-]+:[A-Za-z0-9]+:[A-Za-z0-9]+$$' || { echo "错误: MONGO_EXTRA_APPS 条目不合法 (须为 库名:字母数字用户:字母数字密码): $$item"; exit 1; }; \
+		done; \
+	fi
+	@for p in "$(MONGO_PORT)" "$(MONGO_HOST_PORT)"; do \
+		printf '%s' "$$p" | grep -Eq '^[0-9]{4,5}$$' && [ "$$p" -ge 1024 ] && [ "$$p" -le 65535 ] || { echo "错误: MONGO_PORT / MONGO_HOST_PORT 须为 1024-65535 整数 (推荐 27117), 当前为 '$$p'"; exit 1; }; \
+	done
+	@if [ -n "$(MONGO_BIND_IP)" ]; then \
+		printf '%s' "$(MONGO_BIND_IP)" | grep -Eq '^[0-9]{1,3}(\.[0-9]{1,3}){3}$$' || { echo "错误: MONGO_BIND_IP 必须是合法 IPv4 地址 (如 127.0.0.1 或内网 IP): $(MONGO_BIND_IP)"; exit 1; }; \
+	fi
+	@[ -z "$(RS_ROLE)" ] || [ "$(RS_ROLE)" = "primary" ] || [ "$(RS_ROLE)" = "secondary" ] || { echo "错误: RS_ROLE 只允许 primary 或 secondary, 当前为 '$(RS_ROLE)'"; exit 1; }
+	@if [ -n "$(MONGO_KEYFILE)" ]; then \
+		kf="$(MONGO_KEYFILE)"; \
+		printf '%s' "$$kf" | grep -Eq '^[A-Za-z0-9+/=]+$$' && [ "$${#kf}" -ge 16 ] && [ "$${#kf}" -le 1024 ] || { echo "错误: MONGO_KEYFILE 格式不合法 (须为 16-1024 位单行 base64 字符串)"; exit 1; }; \
+	fi
+	@if [ -n "$(RS_SELF_HOST)" ]; then \
+		printf '%s' "$(RS_SELF_HOST)" | grep -Eq '^[A-Za-z0-9._-]+$$' || { echo "错误: RS_SELF_HOST 只允许主机名或域名字符: $(RS_SELF_HOST)"; exit 1; }; \
+	fi
+	@if [ -n "$(RS_MEMBERS)" ]; then \
+		printf '%s\n' "$(RS_MEMBERS)" | tr ',' '\n' | while IFS= read -r item; do \
+			[ -z "$$item" ] && continue; \
+			printf '%s' "$$item" | grep -Eq '^[A-Za-z0-9._-]+:[0-9]{1,5}$$' || { echo "错误: RS_MEMBERS 条目格式不合法 (须为 主机:端口): $$item"; exit 1; }; \
+		done; \
+		case "$(RS_MEMBERS)" in *,*) [ -n "$(MONGO_KEYFILE)" ] || { echo "错误: 多节点副本集 (RS_MEMBERS 含多个成员) 必须在 $(ENV) 设置三机一致的 MONGO_KEYFILE"; exit 1; } ;; esac; \
+	fi
+	@for peer in "$(RS_PEER_1)" "$(RS_PEER_2)"; do \
+		[ -z "$$peer" ] && continue; \
+		printf '%s' "$$peer" | grep -Eq '^[A-Za-z0-9._-]+:[0-9]{1,3}(\.[0-9]{1,3}){3}$$' || { echo "错误: RS_PEER_1 / RS_PEER_2 格式必须为 <主机名>:<IPv4>: $$peer"; exit 1; }; \
+	done
+
+tune-host:
+	@if [ "$$(uname -s)" = "Linux" ] && [ "$$(id -u)" -ne 0 ]; then \
+		sudo sh ./tune-linux-host.sh --apply "$(CONTAINER)" "$(ENV_SRC)"; \
+	else \
+		sh ./tune-linux-host.sh --apply "$(CONTAINER)" "$(ENV_SRC)"; \
+	fi
+
+check-perf: check-env
+	@sh ./tune-linux-host.sh --check "$(CONTAINER)" "$(ENV_SRC)"
+
+up: check-env
+	$(COMPOSE) up -d
+	@echo ">>> 实例 $(CONTAINER) 初始化由 mongo-init 自动执行, 用 make logs 查看进度"
+
+down:
+	$(COMPOSE) down --remove-orphans
+
+logs:
+	$(COMPOSE) logs -f
+
+status: check-env
+	@podman ps -a --filter name="^$(CONTAINER)$$" --format "table {{.Names}}\t{{.Status}}"
+	@podman stats --no-stream $(CONTAINER)
+
+init: check-env
+	$(COMPOSE) run --rm --no-deps mongo-init
+
+tools: check-env
+	@podman image exists $(TOOLS_IMAGE) || $(COMPOSE) --profile tools build mongo-tools
+
+backup: check-env tools
+	$(TOOLS) bun run backup.ts
+
+drill: check-env tools
+	$(TOOLS) bun run drill.ts $(if $(FILE),"$(FILE)")
+
+restore: check-env tools
+	@[ -n "$(FILE)" ] || { echo "用法: make restore FILE=<备份文件名> CONFIRM=yes"; exit 1; }
+	$(TOOLS) bun run restore.ts "$(FILE)" $(if $(filter yes,$(CONFIRM)),--yes)
+
+stats: check-env
+	podman stats $(CONTAINER)
+
+shell: check-env
+	@set -a; . "$(ENV_SRC)"; set +a; \
+	podman exec -it $(CONTAINER) mongosh \
+	  "mongodb://$$MONGO_INITDB_ROOT_USERNAME:$$MONGO_INITDB_ROOT_PASSWORD@127.0.0.1:$${MONGO_PORT:-{{MONGO_PORT}}}/admin?authSource=admin&directConnection=true"

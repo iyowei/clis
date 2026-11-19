@@ -1,0 +1,34 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "mongo.fullname" . }}-headless
+  labels:
+    {{- include "mongo.labels" . | nindent 4 }}
+spec:
+  clusterIP: None
+  # 允许 StatefulSet Pod 就绪前即解析各节点 FQDN, 保证初始化时 3 成员互连与选主
+  publishNotReadyAddresses: true
+  ports:
+    - name: mongo
+      port: {{ .Values.config.net.port }}
+      targetPort: {{ .Values.config.net.port }}
+  selector:
+    {{- include "mongo.selectorLabels" . | nindent 4 }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "mongo.fullname" . }}
+  labels:
+    {{- include "mongo.labels" . | nindent 4 }}
+spec:
+  type: {{ .Values.service.type }}
+  ports:
+    - name: mongo
+      port: {{ .Values.service.port }}
+      targetPort: {{ .Values.config.net.port }}
+      {{- if and (eq .Values.service.type "NodePort") .Values.service.nodePort }}
+      nodePort: {{ .Values.service.nodePort }}
+      {{- end }}
+  selector:
+    {{- include "mongo.selectorLabels" . | nindent 4 }}

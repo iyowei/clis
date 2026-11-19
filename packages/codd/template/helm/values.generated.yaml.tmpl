@@ -1,0 +1,66 @@
+# 由 Codd 生成器 ({{DEPLOY_ID}}) 基于硬件与负载公式渲染
+# 硬件与负载基线: {{HARDWARE_SUMMARY}}
+# 公式计算结果:   {{FORMULA_SUMMARY}}
+# 所有口令 (含附加业务库 extra-apps) 均存入 Kubernetes Secret, 本文件不含任何密码明文。
+
+replicaCount: {{REPLICA_COUNT}}
+
+terminationGracePeriodSeconds: {{STOP_GRACE_PERIOD}}
+
+image:
+  repository: {{IMAGE_REPOSITORY}}
+  tag: "{{IMAGE_TAG}}"
+
+auth:
+  existingSecret: "{{EXISTING_SECRET}}"
+  rootUsername: {{ROOT_USERNAME}}
+  backupUsername: {{BACKUP_USERNAME}}
+
+app:
+  database: "{{APP_DATABASE}}"
+  username: "{{APP_USERNAME}}"
+
+service:
+  type: {{SERVICE_TYPE}}
+  port: {{PORT}}
+  nodePort: {{NODE_PORT}}
+
+resources:
+  limits:
+    cpu: {{CPU_LIMIT}}
+    memory: {{K8S_LIMIT_MEMORY}}
+  requests:
+    cpu: {{K8S_REQUEST_CPU}}
+    memory: {{K8S_REQUEST_MEMORY}}
+
+persistence:
+  size: {{PERSISTENCE_SIZE}}
+  storageClass: "{{STORAGE_CLASS}}"
+
+podAntiAffinityPreset:
+  enabled: {{ANTI_AFFINITY_ENABLED}}
+  type: {{ANTI_AFFINITY_TYPE}}
+  weight: 100
+  topologyKey: kubernetes.io/hostname
+
+config:
+  net:
+    port: {{PORT}}
+    maxIncomingConnections: {{MAX_INCOMING_CONNECTIONS}}
+    compression:
+      compressors: snappy,zstd
+  storage:
+    wiredTiger:
+      collectionConfig:
+        blockCompressor: {{BLOCK_COMPRESSOR}}
+      engineConfig:
+        cacheSizeGB: {{WT_CACHE_GB}}
+        journalCompressor: snappy
+      indexConfig:
+        prefixCompression: true
+  replication:
+    replSetName: {{RS_NAME}}
+    oplogSizeMB: {{OPLOG_SIZE_MB}}
+  operationProfiling:
+    mode: slowOp
+    slowOpThresholdMs: {{SLOW_OP_THRESHOLD_MS}}

@@ -1,0 +1,28 @@
+{
+  "$schema": "./deploy.schema.json",
+  "mode": "single",
+  "name": "app",
+  "hardware": {
+    "cpuCores": 2,
+    "memoryGb": 2,
+    "diskGb": 32,
+    "workload": "balanced"
+  },
+  "port": 27117,
+  "apps": [
+    {
+      "db": "app",
+      "user": "app"
+    }
+  ],
+  "nodes": [
+    {
+      "name": "main",
+      "os": "linux",
+      "bindIp": "127.0.0.1",
+      "host": "127.0.0.1",
+      "sshTarget": "user@target-host",
+      "backupDir": "/home/user/srv/backups"
+    }
+  ]
+}

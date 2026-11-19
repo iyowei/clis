@@ -1,0 +1,37 @@
+# 由 Codd 生成器 ({{DEPLOY_ID}} / {{NODE_NAME}}) 渲染
+# - blockCompressor: {{BLOCK_COMPRESSOR_REASON}}
+# - maxIncomingConnections: {{MAX_CONNS_FORMULA}}
+# - oplogSizeMB: {{OPLOG_FORMULA}}
+
+systemLog:
+  verbosity: 0
+
+storage:
+  dbPath: /data/db
+  wiredTiger:
+    engineConfig:
+      journalCompressor: snappy
+    collectionConfig:
+      blockCompressor: {{BLOCK_COMPRESSOR}}
+    indexConfig:
+      prefixCompression: true
+
+net:
+  # 监听端口由 compose --port 参数注入, 避免两处配置冲突
+  bindIpAll: true
+  ipv6: false
+  maxIncomingConnections: {{MAX_INCOMING_CONNECTIONS}}
+  compression:
+    compressors: snappy,zstd
+
+security:
+  authorization: enabled
+  keyFile: /etc/mongo/keyfile/mongodb-keyfile
+
+replication:
+  replSetName: {{RS_NAME}}
+  oplogSizeMB: {{OPLOG_SIZE_MB}}
+
+operationProfiling:
+  mode: slowOp
+  slowOpThresholdMs: {{SLOW_OP_THRESHOLD_MS}}

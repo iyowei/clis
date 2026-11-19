@@ -1,0 +1,7 @@
+apiVersion: v2
+name: mongo-replica
+description: 通用单/多节点 MongoDB 9.0 副本集 Helm Chart (基于公式引擎参数化调度, 支持 PSS 3 节点与多库隔离)
+type: application
+version: 0.4.0
+appVersion: "9.0.8"
+kubeVersion: ">=1.25.0-0"

@@ -1,0 +1,211 @@
+{{- $authSecret := default (printf "%s-auth" (include "mongo.fullname" .)) .Values.auth.existingSecret -}}
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ include "mongo.fullname" . }}
+spec:
+  serviceName: {{ include "mongo.fullname" . }}-headless
+  podManagementPolicy: OrderedReady
+  replicas: {{ .Values.replicaCount }}
+  {{- if .Values.updateStrategy }}
+  updateStrategy:
+    {{- toYaml .Values.updateStrategy | nindent 4 }}
+  {{- end }}
+  {{- if .Values.persistence.retainPolicy }}
+  persistentVolumeClaimRetentionPolicy:
+    whenDeleted: {{ .Values.persistence.retainPolicy }}
+    whenScaled: {{ .Values.persistence.retainPolicy }}
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "mongo.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+      {{- with .Values.podAnnotations }}
+        {{- tpl (toYaml .) $ | nindent 8 }}
+      {{- end }}
+      labels:
+        {{- include "mongo.selectorLabels" . | nindent 8 }}
+        {{- with .Values.podLabels }}
+        {{- tpl (toYaml .) $ | nindent 8 }}
+        {{- end }}
+    spec:
+      terminationGracePeriodSeconds: {{ default 30 .Values.terminationGracePeriodSeconds }}
+      affinity:
+        {{- if .Values.affinity }}
+          {{- with .Values.affinity.nodeAffinity }}
+        nodeAffinity:
+            {{- tpl (toYaml .) $ | nindent 10 }}
+          {{- end }}
+        {{- end }}
+        {{- if .Values.podAntiAffinityPreset.enabled }}
+        podAntiAffinity:
+          {{- if eq .Values.podAntiAffinityPreset.type "hard" }}
+          requiredDuringSchedulingIgnoredDuringExecution:
+          - labelSelector:
+              matchLabels:
+                {{- include "mongo.selectorLabels" . | nindent 16 }}
+            topologyKey: {{ default "kubernetes.io/hostname" .Values.podAntiAffinityPreset.topologyKey }}
+          {{- else }}
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: {{ default 100 .Values.podAntiAffinityPreset.weight }}
+            podAffinityTerm:
+              labelSelector:
+                matchLabels:
+                  {{- include "mongo.selectorLabels" . | nindent 18 }}
+              topologyKey: {{ default "kubernetes.io/hostname" .Values.podAntiAffinityPreset.topologyKey }}
+          {{- end }}
+        {{- end }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      initContainers:
+        - name: bootstrap-root
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          env:
+            - name: GLIBC_TUNABLES
+              value: glibc.pthread.rseq=0
+            - name: MONGO_PORT
+              value: "{{ .Values.config.net.port }}"
+            - name: MONGO_INITDB_ROOT_USERNAME
+              value: {{ .Values.auth.rootUsername }}
+            - name: MONGO_INITDB_ROOT_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $authSecret }}
+                  key: root-password
+          command:
+            - bash
+            - -c
+            - |
+              # 只有 0 号主引导 Pod 在全新空白数据卷时预建 root; 其余从节点保持空库等待初始同步复制
+              case "$(hostname)" in
+                *-0) ;;
+                *)
+                  echo ">>> [Bootstrap] 从节点 $(hostname) 跳过本地 root 预建, 等待主节点同步"
+                  exit 0
+                  ;;
+              esac
+              if [ -f /data/db/WiredTiger.wt ]; then
+                echo ">>> [Bootstrap] 数据卷已初始化, 跳过重复引导"
+                exit 0
+              fi
+
+              echo ">>> [Bootstrap] Starting temporary mongod on port $MONGO_PORT..."
+              mongod --port "$MONGO_PORT" --dbpath /data/db --bind_ip 127.0.0.1 --noauth --oplogSize 10 &
+              PID=$!
+
+              until mongosh --port "$MONGO_PORT" --quiet --eval "db.hello()" &>/dev/null; do
+                sleep 1
+              done
+
+              mongosh --port "$MONGO_PORT" --quiet --eval "
+                const rootUser = '$MONGO_INITDB_ROOT_USERNAME';
+                const rootPwd = '$MONGO_INITDB_ROOT_PASSWORD';
+                const admin = db.getSiblingDB('admin');
+                if (admin.getUser(rootUser)) {
+                  admin.updateUser(rootUser, { pwd: rootPwd, roles: ['root'] });
+                } else {
+                  admin.createUser({ user: rootUser, pwd: rootPwd, roles: ['root'] });
+                }
+              "
+
+              mongosh --port "$MONGO_PORT" --quiet --eval "db.getSiblingDB('admin').shutdownServer()"
+              wait $PID
+              echo ">>> [Bootstrap] Done."
+          volumeMounts:
+            - name: data
+              mountPath: /data/db
+        - name: fix-keyfile-permissions
+          image: "{{ .Values.initContainer.image.repository }}:{{ .Values.initContainer.image.tag }}"
+          imagePullPolicy: {{ .Values.initContainer.image.pullPolicy }}
+          securityContext:
+            runAsUser: 0
+            runAsGroup: 0
+          # 仅当 /data/db 属主非 999:999 时修正, 避免重启时对成千上万个 .wt 文件执行递归 chown -R
+          command:
+            - sh
+            - -c
+            - |
+              cp /tmp/secret/mongodb-keyfile /etc/mongo/keyfile/mongodb-keyfile
+              chown 999:999 /etc/mongo/keyfile/mongodb-keyfile
+              chmod 400 /etc/mongo/keyfile/mongodb-keyfile
+              if [ "$(stat -c '%u:%g' /data/db 2>/dev/null || echo '')" != "999:999" ]; then
+                chown -R 999:999 /data/db
+              fi
+          volumeMounts:
+            - name: keyfile-secret
+              mountPath: /tmp/secret
+            - name: keyfile-storage
+              mountPath: /etc/mongo/keyfile
+            - name: data
+              mountPath: /data/db
+      containers:
+        - name: mongo
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          ports:
+            - name: mongo
+              containerPort: {{ .Values.config.net.port }}
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          env:
+            - name: GLIBC_TUNABLES
+              value: glibc.pthread.rseq=0
+            - name: MONGO_INITDB_ROOT_USERNAME
+              value: {{ .Values.auth.rootUsername }}
+            - name: MONGO_INITDB_ROOT_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $authSecret }}
+                  key: root-password
+          command: ["mongod", "--config", "/etc/mongo/mongod.conf"]
+          # 内核级 TCP 探针: 0 进程派生, 0 内存尖峰, 防止重负载 Checkpoint 时误杀主库
+          startupProbe:
+            tcpSocket:
+              port: mongo
+            periodSeconds: 2
+            timeoutSeconds: 2
+            failureThreshold: 60
+          livenessProbe:
+            tcpSocket:
+              port: mongo
+            periodSeconds: 15
+            timeoutSeconds: 3
+            failureThreshold: 4
+          readinessProbe:
+            tcpSocket:
+              port: mongo
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          volumeMounts:
+            - name: data
+              mountPath: /data/db
+            - name: config
+              mountPath: /etc/mongo/mongod.conf
+              subPath: mongod.conf
+            - name: keyfile-storage
+              mountPath: /etc/mongo/keyfile
+              readOnly: true
+      volumes:
+        - name: config
+          configMap:
+            name: {{ include "mongo.fullname" . }}-config
+        - name: keyfile-secret
+          secret:
+            secretName: {{ $authSecret }}
+        - name: keyfile-storage
+          emptyDir: {}
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: [ "ReadWriteOnce" ]
+        storageClassName: {{ .Values.persistence.storageClass }}
+        resources:
+          requests:
+            storage: {{ .Values.persistence.size }}
