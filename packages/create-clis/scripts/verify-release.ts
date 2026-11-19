@@ -10,6 +10,7 @@ import {
   PROFILE,
   type PackExpectation,
   type PackFacts,
+  checkBundleSizeAt,
   readPackExpectation,
   readPackFiles,
 } from './release-artifact.ts';
@@ -21,7 +22,10 @@ export const verifyRelease = (
   io: ReleaseIo,
   packFacts: PackFacts = readPackFiles(root),
   expectation: PackExpectation = readPackExpectation(root),
-): number => runVerifyReleaseCli(root, PROFILE, io, packFacts, expectation);
+): number =>
+  runVerifyReleaseCli(root, PROFILE, io, packFacts, expectation, () =>
+    checkBundleSizeAt(root),
+  );
 
 if (import.meta.main) {
   process.exitCode = verifyRelease(PACKAGE_ROOT, {

@@ -7,7 +7,7 @@
  */
 import { describe, expect, test } from 'bun:test';
 
-import { existsSync } from 'node:fs';
+import { existsSync, statSync } from 'node:fs';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
@@ -15,8 +15,11 @@ import {
   ASSET_DIR,
   ASSET_MANIFEST_FILE,
   ASSET_TEMPLATE_DIR,
+  CLI_FILE,
+  MAX_CLI_BUNDLE_BYTES,
   NPM_UNSHIPPABLE_BASENAMES,
   PACKAGE_ROOT,
+  judgeBundleSize,
   judgePackFiles,
   parsePackFiles,
   readPackExpectation,
@@ -196,5 +199,15 @@ describe('发行面白名单 · 真实 npm 对齐 (本仓库实测)', () => {
       expect(verdict.ok ? '' : verdict.reason).toBe('');
     },
     30_000,
+  );
+
+  test.skipIf(!hasDist)(
+    '本仓库真实构建产物 dist/create-clis.js 体积不超过上限 (防误内联 prettier 回归)',
+    () => {
+      const size = statSync(join(PACKAGE_ROOT, 'dist', CLI_FILE)).size;
+      expect(judgeBundleSize(size)).toBeNull();
+      expect(size).toBeGreaterThan(0);
+      expect(size).toBeLessThanOrEqual(MAX_CLI_BUNDLE_BYTES);
+    },
   );
 });

@@ -43,7 +43,7 @@
     "registry": "https://registry.npmjs.org/"
   },
   "scripts": {
-    "build": "bun scripts/build-template.ts && bun build src/cli.ts --target=node --outfile=dist/create-clis.js && bun scripts/write-dist-manifest.ts",
+    "build": "bun scripts/build-template.ts && bun build src/cli.ts --target=node --minify-whitespace --minify-syntax --external prettier --external @trivago/prettier-plugin-sort-imports --outfile=dist/create-clis.js && bun scripts/write-dist-manifest.ts",
     "prepublishOnly": "npm run build && npm run verify:release && npm run heavy-smoke",
     "verify:release": "bun scripts/verify-release.ts",
     "heavy-smoke": "bun scripts/heavy-smoke.ts",

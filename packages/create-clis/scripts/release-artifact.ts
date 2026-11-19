@@ -2,7 +2,8 @@
  * 发布自证闸门 (create-clis 生成器包) 的声明式适配层:
  * 通用逻辑全部收拢于仓根 scripts/lib/release-cli.ts 与 scripts/lib/release-verify.ts。
  */
-import { dirname, resolve } from 'node:path';
+import { statSync } from 'node:fs';
+import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import {
@@ -30,6 +31,8 @@ export const PACKAGE_ROOT = resolve(
 );
 
 export const CLI_FILE = 'create-clis.js';
+/** 产物单文件体积上限 (256 KiB): 防止未来重构漏掉 --external 重新内联 prettier 等重依赖 */
+export const MAX_CLI_BUNDLE_BYTES = 256 * 1024;
 export const MANIFEST_FILE = 'manifest.json';
 export const MANIFEST_SCHEMA_VERSION = 1;
 export const ASSET_DIR = 'assets';
@@ -109,10 +112,26 @@ export const judgePackFiles = (
 ): { ok: true } | { ok: false; reason: string } =>
   judgePackFilesCommon(files, expected);
 
+export const judgeBundleSize = (entrySize: number): string | null =>
+  entrySize > MAX_CLI_BUNDLE_BYTES
+    ? `产物 dist/${CLI_FILE} 体积超限 (${entrySize} B > 上限 ${MAX_CLI_BUNDLE_BYTES} B), 疑似误内联重依赖 (检查 build 脚本的 --external 配置)`
+    : null;
+
+export const checkBundleSizeAt = (root: string): string | null => {
+  try {
+    return judgeBundleSize(statSync(join(root, 'dist', CLI_FILE)).size);
+  } catch {
+    return null;
+  }
+};
+
 export const judgeRelease = (
   facts: ReleaseFacts,
   expectation: PackExpectation,
-): ReleaseVerdict => judgeCliRelease(facts, PROFILE, expectation);
+): ReleaseVerdict =>
+  judgeCliRelease(facts, PROFILE, expectation, () =>
+    judgeBundleSize(facts.dist.entrySize),
+  );
 
 export const buildManifest = (fields: {
   cliSha256: string;

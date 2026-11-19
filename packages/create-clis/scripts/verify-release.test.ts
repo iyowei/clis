@@ -18,6 +18,7 @@ import {
   CLI_FILE,
   type DistState,
   MANIFEST_FILE,
+  MAX_CLI_BUNDLE_BYTES,
   type PackExpectation,
   type PackFacts,
   type ReleaseFacts,
@@ -229,6 +230,28 @@ describe('发布前置闸门 · 临时检出端到端', () => {
       await repo.cleanup();
     }
   });
+
+  test('产物 dist/create-clis.js 体积超限 (> 256 KiB) → 拒绝 (防误内联重依赖回归)', async () => {
+    const repo = await makeTempRepo('create-clis-release-oversize-');
+    try {
+      await stageTemplateAssets(repo.root);
+      await mkdir(join(repo.root, 'dist'), { recursive: true });
+      const cliPath = join(repo.root, 'dist', CLI_FILE);
+      await writeFile(cliPath, 'x'.repeat(MAX_CLI_BUNDLE_BYTES + 1));
+      writeDistManifest(
+        join(repo.root, 'dist'),
+        collectGitFacts(repo.root),
+        '2026-10-01T00:00:00.000Z',
+      );
+      const { io, out, err } = capture();
+
+      expect(verifyRelease(repo.root, io, PACK_OK)).toBe(1);
+      expect(err.join('\n')).toContain('体积超限');
+      expect(out).toEqual([]);
+    } finally {
+      await repo.cleanup();
+    }
+  });
 });
 
 /** 一条字段级拒绝用例: 以干净事实为基准注入一处病灶 */
@@ -351,10 +374,16 @@ const fieldCases = (): { clean: ReleaseFacts; rejects: FieldCase[] } => {
         reason: '不一致',
       },
       {
-        name: '摘要与清单记录不符',
+        name: '产物摘要与清单记录不符',
         facts: distPatch({ entrySha256: 'c'.repeat(64) }),
         expectation: EXPECTATION_OK,
         reason: '摘要与清单记录不符',
+      },
+      {
+        name: '产物单文件体积超限 (防误内联 prettier 回归)',
+        facts: distPatch({ entrySize: MAX_CLI_BUNDLE_BYTES + 1 }),
+        expectation: EXPECTATION_OK,
+        reason: '体积超限',
       },
       {
         name: '资产清单不可用 (白名单无从建立, 在发行面检查段拒绝)',
