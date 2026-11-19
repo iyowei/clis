@@ -19,7 +19,7 @@ export interface CliFlags {
 
 const takeFlagValue = (argv: string[], index: number, flag: string): string => {
   const next = argv[index + 1];
-  if (next === undefined || next === '' || next.startsWith('-')) {
+  if (next === undefined || next.trim() === '' || next.startsWith('-')) {
     throw new ConfigError(
       `参数 ${flag} 缺少取值 (正确用法: ${flag} <路径>), 请运行 codd --help 查看说明`,
     );
@@ -29,19 +29,53 @@ const takeFlagValue = (argv: string[], index: number, flag: string): string => {
 
 const takeInlineValue = (arg: string, prefix: string): string => {
   const val = arg.slice(prefix.length);
-  if (val === '') {
+  if (val.trim() === '') {
     throw new ConfigError(`参数 ${prefix.slice(0, -1)} 缺少取值`);
   }
   return val;
 };
 
-const assignPositional = (flags: CliFlags, token: string): void => {
+const assignManifestPath = (
+  flags: CliFlags,
+  token: string,
+  source: string,
+): void => {
+  if (token.trim() === '') {
+    throw new ConfigError(
+      `${source} 不能为空字符串, 请提供有效的 JSON 清单路径`,
+    );
+  }
   if (flags.manifestPath !== undefined) {
     throw new ConfigError(
-      `多余的位置参数「${token}」(已指定清单「${flags.manifestPath}」), 请运行 codd --help 查看用法`,
+      `重复指定配置文件路径「${token}」(已指定「${flags.manifestPath}」), 请仅指定一份清单或运行 codd --help 查看用法`,
     );
   }
   flags.manifestPath = token;
+};
+
+const validateExclusiveModes = (flags: CliFlags): void => {
+  if (flags.help || flags.version) return;
+  if (flags.initSchema && flags.wizard) {
+    throw new ConfigError(
+      'init 与 wizard 为互斥子命令, 请分别执行 codd init 或 codd wizard',
+    );
+  }
+  if (flags.initSchema && flags.manifestPath !== undefined) {
+    throw new ConfigError(
+      `init 子命令仅用于导出参考模板, 不能与清单路径「${flags.manifestPath}」同时使用`,
+    );
+  }
+  if (
+    flags.initSchema &&
+    (flags.dryRun ||
+      flags.outDir !== undefined ||
+      flags.rotate !== 'none' ||
+      flags.newFingerprint)
+  ) {
+    throw new ConfigError(
+      'init 子命令会直接导出 schema/参考清单, 不支持与 --dry-run / --out / --rotate / --new-fingerprint 组合使用',
+    );
+  }
 };
 
 export const parseCliArgs = (argv: string[]): CliFlags => {
@@ -69,7 +103,7 @@ export const parseCliArgs = (argv: string[]): CliFlags => {
   while (i < argv.length) {
     const arg = argv[i]!;
     if (afterDash) {
-      assignPositional(flags, arg);
+      assignManifestPath(flags, arg, '位置参数');
       i += 1;
       continue;
     }
@@ -77,6 +111,11 @@ export const parseCliArgs = (argv: string[]): CliFlags => {
       afterDash = true;
       i += 1;
       continue;
+    }
+    if (arg === 'update') {
+      throw new ConfigError(
+        'update 必须作为首个子命令使用 (正确用法: codd update [--check | --force])',
+      );
     }
     if (arg === '--help' || arg === '-h') {
       flags.help = true;
@@ -87,11 +126,11 @@ export const parseCliArgs = (argv: string[]): CliFlags => {
     } else if (arg === 'init' || arg === '--init-schema') {
       flags.initSchema = true;
     } else if (arg === '--config' || arg === '-c') {
-      flags.manifestPath = takeFlagValue(argv, i, arg);
+      assignManifestPath(flags, takeFlagValue(argv, i, arg), arg);
       i += 2;
       continue;
     } else if (arg.startsWith('--config=')) {
-      flags.manifestPath = takeInlineValue(arg, '--config=');
+      assignManifestPath(flags, takeInlineValue(arg, '--config='), '--config');
     } else if (arg === '--out' || arg === '-o') {
       flags.outDir = takeFlagValue(argv, i, arg);
       i += 2;
@@ -107,7 +146,7 @@ export const parseCliArgs = (argv: string[]): CliFlags => {
     } else if (arg === '--dry-run') {
       flags.dryRun = true;
     } else if (!arg.startsWith('-')) {
-      assignPositional(flags, arg);
+      assignManifestPath(flags, arg, '位置参数');
     } else {
       throw new ConfigError(
         `不认识的参数「${arg}」, 请运行 codd --help 查看全部可用选项`,
@@ -116,5 +155,6 @@ export const parseCliArgs = (argv: string[]): CliFlags => {
     i += 1;
   }
 
+  validateExclusiveModes(flags);
   return flags;
 };

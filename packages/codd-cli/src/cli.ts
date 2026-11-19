@@ -5,7 +5,7 @@
  */
 import { existsSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
-import { stdin, stdout } from 'node:process';
+import { stderr, stdin, stdout } from 'node:process';
 
 import { runSelfUpdate } from '@iyowei/cli-updater';
 import {
@@ -164,8 +164,10 @@ const main = async (): Promise<number> => {
       manifest = await runWizard(workDir, opts.manifestPath, opts.dryRun);
     } else {
       printHeader(
-        'MongoDB 部署包生成',
-        '已读取配置文件并自动为你测算参数与生成唯一实例指纹。',
+        opts.dryRun ? 'MongoDB 配置校验与参数预览' : 'MongoDB 部署包生成',
+        opts.dryRun
+          ? '已读取配置文件并完成干跑校验与参数测算 (不会写出任何磁盘文件)。'
+          : '已读取配置文件并自动为你测算参数与生成唯一实例指纹。',
       );
     }
 
@@ -188,16 +190,29 @@ const main = async (): Promise<number> => {
       printAlert('warn', w);
     }
 
+    const summaryTitle = opts.dryRun
+      ? '配置校验与参数预览 (Dry Run · 未写入磁盘)'
+      : '安装包已准备就绪';
+    const credRow: [string, string] = opts.dryRun
+      ? [
+          '计划凭证文件 (未落盘)',
+          `${res.credentialsFile} (正式生成时按 0600 写出)`,
+        ]
+      : [
+          '账号密码与连接串',
+          `${res.credentialsFile} (仅本机可读 0600, 请勿上传服务器)`,
+        ];
+    const stateRow: [string, string] = opts.dryRun
+      ? ['计划状态锁文件 (未落盘)', res.stateFile]
+      : ['本机状态锁文件', res.stateFile];
+
     printSummaryCard(
-      '安装包已准备就绪',
+      summaryTitle,
       `${res.deployId} · 指纹 ${res.fingerprint}`,
       [
         ['唯一实例指纹', `${res.fingerprint} (已自动嵌入目录、卷与网络防重名)`],
-        [
-          '账号密码与连接串',
-          `${res.credentialsFile} (仅本机可读 0600, 请勿上传服务器)`,
-        ],
-        ['本机状态锁文件', res.stateFile],
+        credRow,
+        stateRow,
         ...res.bundleDirs.map(
           (d, i) =>
             [
@@ -220,7 +235,9 @@ const main = async (): Promise<number> => {
     );
 
     console.log('');
-    console.log(`  ${palette.title('接下来只需按顺序执行:')}`);
+    console.log(
+      `  ${palette.title(opts.dryRun ? '预览结论:' : '接下来只需按顺序执行:')}`,
+    );
     for (let idx = 0; idx < res.nextSteps.length; idx += 1) {
       console.log(
         `    ${palette.blue(`${idx + 1}.`, true)}  ${palette.mono(res.nextSteps[idx]!)}`,
@@ -235,15 +252,15 @@ const main = async (): Promise<number> => {
     return 0;
   } catch (err) {
     if (isPromptCancelledError(err)) {
-      console.log('');
+      stderr.write('\n');
       printAlert('err', err.message || '已取消配置向导');
-      console.log('');
+      stderr.write('\n');
       return 130;
     }
     const msg = err instanceof Error ? err.message : String(err);
-    console.log('');
+    stderr.write('\n');
     printAlert('err', msg);
-    console.log('');
+    stderr.write('\n');
     return 1;
   }
 };

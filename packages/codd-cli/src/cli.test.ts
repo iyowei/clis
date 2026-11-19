@@ -89,19 +89,32 @@ describe('parseCliArgs 参数解析', () => {
     });
   });
 
-  test('拦截 -c / -o 缺值、紧跟另一 flag、空内联值、重复位置参数与未知选项', () => {
+  test('拦截 -c / -o 缺值、紧跟另一 flag、空值、重复清单、模式互斥、非首位 update 与未知选项', () => {
     const badInputs: string[][] = [
       ['-c'],
       ['--config'],
       ['-c', '--dry-run'],
       ['--config='],
+      ['-c', '   '],
       ['-o'],
       ['--out', '--dry-run'],
       ['--out='],
       ['a.json', 'b.json'],
       ['-c', 'a.json', 'b.json'],
-      ['--unknown-flag'],
+      ['a.json', '-c', 'b.json'],
+      ['-c', 'a.json', '-c', 'b.json'],
+      ['--config=a.json', '-c', 'b.json'],
+      ['--', ''],
       ['--', 'a.json', 'b.json'],
+      ['init', '--dry-run'],
+      ['init', 'wizard'],
+      ['deploy.json', 'init'],
+      ['init', '-c', 'a.json'],
+      ['init', '--out', './x'],
+      ['init', '--rotate'],
+      ['--dry-run', 'update'],
+      ['wizard', 'update'],
+      ['--unknown-flag'],
     ];
     for (const argv of badInputs) {
       expect(() => parseCliArgs(argv)).toThrow(ConfigError);
@@ -170,14 +183,73 @@ describe('CLI 端到端行为 (源码直跑)', () => {
         { cwd: workDir, encoding: 'utf8' },
       );
       expect(dryRes.status).toBe(0);
+      expect(dryRes.stdout).toContain('配置校验与参数预览');
+      expect(dryRes.stdout).not.toContain('安装包已准备就绪');
       expect(existsSync(join(workDir, 'dist'))).toBe(false);
       expect(existsSync(join(workDir, '.codd-state'))).toBe(false);
 
+      // 致命错误应走 stderr 而非 stdout (CODDCLI-P1-1)
       const badRes = spawnSync('bun', [cliEntry, '-c', '--dry-run'], {
         cwd: workDir,
         encoding: 'utf8',
       });
       expect(badRes.status).toBe(1);
+      expect(badRes.stderr).toContain('缺少取值');
+      expect(badRes.stdout.trim()).toBe('');
+
+      // 管道输入完整跑完多题向导 (CODDCLI-P0-1 端到端回归: 不在第 2 题 EOF 退 130)
+      const pipeAnswers = [
+        '1', // mode: single
+        'pipeapp', // name
+        '27117', // port
+        '1', // hardware preset 2c2g
+        '1', // workload balanced
+        'app:appu', // apps
+        '1', // os: linux
+        '127.0.0.1', // bindIp
+        '/home/ops/srv/backups', // backupDir
+        '', // sshTarget skip
+      ].join('\n');
+      const pipeRes = spawnSync('bun', [cliEntry, 'wizard', '--dry-run'], {
+        cwd: workDir,
+        input: `${pipeAnswers}\n`,
+        encoding: 'utf8',
+      });
+      expect(pipeRes.status).toBe(0);
+      expect(pipeRes.stdout).toContain('single-pipeapp');
+      expect(pipeRes.stdout).toContain('配置校验与参数预览');
+      expect(existsSync(join(workDir, 'dist'))).toBe(false);
+
+      // replica-set 管道向导拦截重复 bindIp 并允许纠错重填后通过 (CODDCLI-P1-3)
+      const rsPipeAnswers = [
+        '2', // mode: replica-set
+        'rsha', // name
+        '27117', // port
+        '1', // 2c2g
+        '1', // balanced
+        'app:appu', // apps
+        '1', // node1 linux
+        '10.8.0.11', // node1 ip
+        '/home/ops/srv/backups', // node1 backup
+        '', // node1 ssh
+        '1', // node2 linux
+        '10.8.0.11', // node2 duplicate ip -> 应拦截提示
+        '10.8.0.12', // node2 corrected ip
+        '/home/ops/srv/backups', // node2 backup
+        '', // node2 ssh
+        '1', // node3 linux
+        '10.8.0.13', // node3 ip
+        '/home/ops/srv/backups', // node3 backup
+        '', // node3 ssh
+      ].join('\n');
+      const rsPipeRes = spawnSync('bun', [cliEntry, 'wizard', '--dry-run'], {
+        cwd: workDir,
+        input: `${rsPipeAnswers}\n`,
+        encoding: 'utf8',
+      });
+      expect(rsPipeRes.status).toBe(0);
+      expect(rsPipeRes.stdout).toContain('已被前一台节点使用');
+      expect(rsPipeRes.stdout).toContain('replica-set-rsha');
     } finally {
       rmSync(workDir, {
         recursive: true,
