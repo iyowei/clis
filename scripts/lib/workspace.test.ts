@@ -8,7 +8,11 @@ import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 
 import { makeTmpRoot } from './tmp-root.ts';
-import { listWorkspacePackages, resolveCliAndApi } from './workspace.ts';
+import {
+  listWorkspacePackages,
+  resolveCliAndApi,
+  resolveProductPairs,
+} from './workspace.ts';
 
 const roots: string[] = [];
 function makeRoot(files: Record<string, unknown>): string {
@@ -88,5 +92,36 @@ describe('resolveCliAndApi', () => {
       'package.json': { workspaces: ['apps/**'] },
     });
     expect(() => listWorkspacePackages(root)).toThrow(/暂不支持派生/);
+  });
+
+  test('多组双包产品并存时: resolveProductPairs 全量返回, resolveCliAndApi 须显式指定', () => {
+    const root = makeRoot({
+      'package.json': { workspaces: ['packages/*'] },
+      'packages/alpha/package.json': { name: '@x/alpha' },
+      'packages/alpha-cli/package.json': {
+        name: '@x/alpha-cli',
+        bin: { alpha: 'bin/alpha.mjs' },
+        devDependencies: { '@x/alpha': '1.0.0' },
+      },
+      'packages/beta/package.json': { name: '@x/beta' },
+      'packages/beta-cli/package.json': {
+        name: '@x/beta-cli',
+        bin: { beta: 'bin/beta.mjs' },
+        dependencies: { '@x/beta': '1.0.0' },
+      },
+    });
+    const pairs = resolveProductPairs(root);
+    expect(pairs.map((p) => `${p.cli.name}->${p.api.name}`)).toEqual([
+      '@x/alpha-cli->@x/alpha',
+      '@x/beta-cli->@x/beta',
+    ]);
+    expect(() => resolveCliAndApi(root)).toThrow(/请传入 productHint/);
+    expect(resolveCliAndApi(root, '@x/beta').cli.name).toBe('@x/beta-cli');
+    expect(resolveCliAndApi(root, 'packages/alpha-cli').api.name).toBe(
+      '@x/alpha',
+    );
+    expect(() => resolveCliAndApi(root, '@x/missing')).toThrow(
+      /未找到匹配 @x\/missing/,
+    );
   });
 });
