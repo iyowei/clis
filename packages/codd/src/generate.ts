@@ -13,6 +13,7 @@ import { resolveServerBackupDir } from './ssh.ts';
 import {
   loadOrUpdateState,
   prepareStateDir,
+  withStateLock,
   writeSecretFile,
 } from './state.ts';
 import {
@@ -20,6 +21,7 @@ import {
   type DeployManifest,
   type GenerateOptions,
   type GenerateResult,
+  type GenerateState,
   type RotateMode,
 } from './types.ts';
 import { validateManifest } from './validate.ts';
@@ -54,11 +56,66 @@ const loadManifestInput = (
   }
 };
 
+const buildBackupDirs = (
+  manifest: DeployManifest,
+  stackPrefix: string,
+  fingerprint: string,
+): string[] => {
+  const backupDirs: string[] = [];
+  if (manifest.mode !== 'single' && manifest.mode !== 'replica-set') {
+    return backupDirs;
+  }
+  const nodes = manifest.nodes!;
+  for (let i = 0; i < nodes.length; i += 1) {
+    const n = nodes[i]!;
+    const fallbackName = manifest.mode === 'single' ? 'main' : `node${i + 1}`;
+    const nodeName = n.name || fallbackName;
+    const nodeSuffix = manifest.mode === 'replica-set' ? nodeName : undefined;
+    backupDirs.push(
+      resolveServerBackupDir(
+        n.backupDir,
+        stackPrefix,
+        manifest.name,
+        fingerprint,
+        nodeSuffix,
+      ),
+    );
+  }
+  return backupDirs;
+};
+
+const buildBaseCredLines = (
+  deployId: string,
+  port: number,
+  sizing: ReturnType<typeof computeSizing>,
+  manifest: DeployManifest,
+  state: GenerateState,
+): string[] => [
+  `# Codd 生成凭证 (${deployId})`,
+  `HARDWARE=${sizing.hardwareSummary}`,
+  `FORMULAS=${sizing.formulaSummary}`,
+  `FINGERPRINT=${state.fingerprint}`,
+  `PORT=${port}`,
+  `ROOT_USER=${state.rootUsername}`,
+  `ROOT_PASSWORD=${state.rootPassword}`,
+  `BACKUP_USER=${state.backupUsername}`,
+  `BACKUP_PASSWORD=${state.backupPassword}`,
+  '',
+  '# 各业务库账号与密码:',
+  ...manifest.apps.map(
+    (a) => `- ${a.db}: user=${a.user} password=${state.appPasswords[a.db]}`,
+  ),
+  '',
+];
+
 export const generateBundle = (
   options: GenerateOptions = {},
 ): GenerateResult => {
   const workDir = resolve(options.workDir ?? options.rootDir ?? process.cwd());
-  const templateRoot = resolveTemplateRoot(options.templateDir);
+  const resolvedTemplateOverride = options.templateDir
+    ? resolve(workDir, options.templateDir)
+    : undefined;
+  const templateRoot = resolveTemplateRoot(resolvedTemplateOverride);
   const podmanTplDir = join(templateRoot, 'podman');
 
   const outDir = resolve(workDir, options.outDir ?? 'dist');
@@ -79,65 +136,29 @@ export const generateBundle = (
   const deployId = `${manifest.mode}-${manifest.name}`;
   const stateFile = join(stateDir, `${deployId}.state.json`);
   const credentialsFile = join(stateDir, `${deployId}.credentials.txt`);
-
-  const state = loadOrUpdateState(
-    stateFile,
-    manifest,
-    rotate,
-    Boolean(options.newFingerprint),
-  );
-
   const stackPrefix = manifest.stackPrefix ?? 'mongo';
   const port = manifest.port ?? 27117;
-  const bundleDirs: string[] = [];
-  const backupDirs: string[] = [];
-  const nextSteps: string[] = [];
-
-  const credLines: string[] = [
-    `# Codd 生成凭证 (${deployId})`,
-    `HARDWARE=${sizing.hardwareSummary}`,
-    `FORMULAS=${sizing.formulaSummary}`,
-    `FINGERPRINT=${state.fingerprint}`,
-    `PORT=${port}`,
-    `ROOT_USER=${state.rootUsername}`,
-    `ROOT_PASSWORD=${state.rootPassword}`,
-    `BACKUP_USER=${state.backupUsername}`,
-    `BACKUP_PASSWORD=${state.backupPassword}`,
-    '',
-    '# 各业务库账号与密码:',
-    ...manifest.apps.map(
-      (a) => `- ${a.db}: user=${a.user} password=${state.appPasswords[a.db]}`,
-    ),
-    '',
-  ];
-
-  if (manifest.mode === 'single' || manifest.mode === 'replica-set') {
-    const nodes = manifest.nodes!;
-    for (let i = 0; i < nodes.length; i += 1) {
-      const n = nodes[i]!;
-      const fallbackName = manifest.mode === 'single' ? 'main' : `node${i + 1}`;
-      const nodeName = n.name || fallbackName;
-      const nodeSuffix = manifest.mode === 'replica-set' ? nodeName : undefined;
-      backupDirs.push(
-        resolveServerBackupDir(
-          n.backupDir,
-          stackPrefix,
-          manifest.name,
-          state.fingerprint,
-          nodeSuffix,
-        ),
-      );
-    }
-  }
 
   if (options.dryRun) {
+    const hadPrevState = existsSync(stateFile);
+    if (rotate === 'all' && hadPrevState) {
+      warnings.push(
+        '已启用 --rotate-all 重置管理员 root 密码与 keyFile, 若目标服务器已有运行中的数据库卷, 请勿直接重启覆盖, 应先在旧集群内完成改密或仅用于全新部署',
+      );
+    }
+    const state = loadOrUpdateState(
+      stateFile,
+      manifest,
+      rotate,
+      Boolean(options.newFingerprint),
+    );
     return {
       deployId,
       mode: manifest.mode,
       fingerprint: state.fingerprint,
       sizing,
       bundleDirs: [],
-      backupDirs,
+      backupDirs: buildBackupDirs(manifest, stackPrefix, state.fingerprint),
       stateFile,
       credentialsFile,
       warnings,
@@ -148,47 +169,83 @@ export const generateBundle = (
   mkdirSync(outDir, { recursive: true });
   prepareStateDir(stateDir);
 
-  if (manifest.mode === 'single' || manifest.mode === 'replica-set') {
-    emitPodmanBundles({
-      podmanTplDir,
-      outDir,
-      deployId,
+  return withStateLock(stateFile, () => {
+    const hadPrevState = existsSync(stateFile);
+    if (rotate === 'all' && hadPrevState) {
+      warnings.push(
+        '已启用 --rotate-all 重置管理员 root 密码与 keyFile, 若目标服务器已有运行中的数据库卷, 请勿直接重启覆盖, 应先在旧集群内完成改密或仅用于全新部署',
+      );
+    }
+    const state = loadOrUpdateState(
+      stateFile,
       manifest,
-      hw,
+      rotate,
+      Boolean(options.newFingerprint),
+    );
+    const bundleDirs: string[] = [];
+    const backupDirs = buildBackupDirs(
+      manifest,
+      stackPrefix,
+      state.fingerprint,
+    );
+    const nextSteps: string[] = [];
+    const credLines = buildBaseCredLines(
+      deployId,
+      port,
       sizing,
+      manifest,
       state,
+    );
+
+    if (manifest.mode === 'single' || manifest.mode === 'replica-set') {
+      emitPodmanBundles({
+        podmanTplDir,
+        outDir,
+        deployId,
+        manifest,
+        hw,
+        sizing,
+        state,
+        backupDirs,
+        bundleDirs,
+        credLines,
+        nextSteps,
+        warnings,
+      });
+    } else {
+      emitK8sBundle({
+        helmTplDir: join(templateRoot, 'helm'),
+        outDir,
+        deployId,
+        manifest,
+        sizing,
+        state,
+        bundleDirs,
+        credLines,
+        nextSteps,
+      });
+    }
+
+    writeSecretFile(stateFile, `${JSON.stringify(state, null, 2)}\n`, 0o600);
+    writeSecretFile(credentialsFile, `${credLines.join('\n')}\n`, 0o600);
+
+    if (process.platform === 'win32') {
+      warnings.push(
+        '当前在 Windows 环境写出敏感凭证文件 (.env / .codd-state / create-secret.sh), POSIX 0600/0700 权限不会在 NTFS 上强制生效, 请通过 icacls 核查目录 ACL 仅限当前用户访问',
+      );
+    }
+
+    return {
+      deployId,
+      mode: manifest.mode,
+      fingerprint: state.fingerprint,
+      sizing,
+      bundleDirs,
       backupDirs,
-      bundleDirs,
-      credLines,
+      stateFile,
+      credentialsFile,
+      warnings,
       nextSteps,
-    });
-  } else {
-    emitK8sBundle({
-      helmTplDir: join(templateRoot, 'helm'),
-      outDir,
-      deployId,
-      manifest,
-      sizing,
-      state,
-      bundleDirs,
-      credLines,
-      nextSteps,
-    });
-  }
-
-  writeSecretFile(stateFile, `${JSON.stringify(state, null, 2)}\n`, 0o600);
-  writeSecretFile(credentialsFile, `${credLines.join('\n')}\n`, 0o600);
-
-  return {
-    deployId,
-    mode: manifest.mode,
-    fingerprint: state.fingerprint,
-    sizing,
-    bundleDirs,
-    backupDirs,
-    stateFile,
-    credentialsFile,
-    warnings,
-    nextSteps,
-  };
+    };
+  });
 };

@@ -20,8 +20,17 @@ export const ASSET_CARRIERS: Readonly<Record<string, string>> = {
 
 const MAX_PACKAGE_ASCENT = 8;
 
+const hasBuiltTemplateAnchor = (dir: string): boolean =>
+  existsSync(join(dir, 'assets/manifest.json')) &&
+  existsSync(join(dir, 'assets/template/podman/podman-compose.yml.tmpl')) &&
+  existsSync(join(dir, 'assets/template/helm/Chart.yaml'));
+
+const hasSourceTemplateAnchor = (dir: string): boolean =>
+  existsSync(join(dir, 'template/podman/podman-compose.yml.tmpl')) &&
+  existsSync(join(dir, 'template/helm/Chart.yaml'));
+
 const hasTemplateDir = (dir: string): boolean =>
-  existsSync(join(dir, 'assets/template')) || existsSync(join(dir, 'template'));
+  hasBuiltTemplateAnchor(dir) || hasSourceTemplateAnchor(dir);
 
 export const resolvePackageRoot = (
   moduleUrl: string = import.meta.url,
@@ -53,11 +62,11 @@ export const resolveTemplateRoot = (
 
   const pkgRoot = resolvePackageRoot(moduleUrl);
   const builtAssetsDir = join(pkgRoot, 'assets/template');
-  if (existsSync(builtAssetsDir)) {
+  if (hasBuiltTemplateAnchor(pkgRoot)) {
     return builtAssetsDir;
   }
   const sourceTemplateDir = join(pkgRoot, 'template');
-  if (existsSync(sourceTemplateDir)) {
+  if (hasSourceTemplateAnchor(pkgRoot)) {
     return sourceTemplateDir;
   }
   throw new Error(
