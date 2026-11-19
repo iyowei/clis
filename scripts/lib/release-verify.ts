@@ -260,8 +260,10 @@ export const parsePackFiles = (raw: string): string[] | null => {
  * 采集失败 (npm 不在 PATH / 非零退出 / 输出非 JSON) 一律落 issue, 不抛: 判定层按「采不到就拒」处理。
  */
 export const readPackFiles = (root: string): PackFacts => {
-  // Windows 的 npm 是 npm.cmd, execFile 不走 shell 时不会自动补扩展名
-  const npm = process.platform === 'win32' ? 'npm.cmd' : 'npm';
+  // Windows 的 npm 是 npm.cmd: CVE-2024-27980 之后直接 execFileSync 执行 .cmd 必须显式传
+  // shell: true (否则抛 EINVAL); 下方参数全部为固定字面量, 零外部输入拼接
+  const isWin = process.platform === 'win32';
+  const npm = isWin ? 'npm.cmd' : 'npm';
   let raw: string;
   try {
     raw = execFileSync(
@@ -272,6 +274,7 @@ export const readPackFiles = (root: string): PackFacts => {
         encoding: 'utf8',
         stdio: ['ignore', 'pipe', 'ignore'],
         maxBuffer: 32 * 1024 * 1024,
+        shell: isWin,
       },
     );
   } catch {

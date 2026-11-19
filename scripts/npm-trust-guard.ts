@@ -91,6 +91,7 @@ function runNpmCaptured(
     const child = spawn(wrapped.command, wrapped.args, {
       stdio: ['inherit', 'pipe', 'inherit'],
       env: { ...process.env, NO_COLOR: '1' },
+      shell: process.platform === 'win32',
     });
     let captured = '';
     child.stdout?.on('data', (chunk: Buffer) => {
