@@ -1,6 +1,6 @@
 /**
  * 发布凭据闸门单测: 纯函数层 (远端 URL 派生 / npm trust 输出解析 / 登记对账 / OIDC 环境判定 /
- * 预检核对面过滤)。
+ * 预检核对面过滤 / ID 白名单 / Linux PTY 转义)。
  */
 import { describe, expect, test } from 'bun:test';
 
@@ -10,6 +10,8 @@ import {
   deriveRepoFromRemoteUrl,
   diffTrust,
   filterPublishable,
+  isValidTrustId,
+  parseTrustListEntries,
   parseTrustListOutput,
   ptyWrapArgs,
 } from './npm-trust-guard.ts';
@@ -111,6 +113,46 @@ describe('parseTrustListOutput', () => {
       environment: null,
     });
   });
+
+  test('多条登记按段独立解析, 字段不串味', () => {
+    const raw = [
+      'type: github',
+      'id: id-1',
+      'repository: iyowei/old',
+      'file: old.yml',
+      '',
+      'type: github',
+      'id: id-2',
+      'repository: iyowei/clis',
+      'file: release.yml',
+      'environment: release',
+    ].join('\n');
+    expect(parseTrustListEntries(raw)).toEqual([
+      {
+        type: 'github',
+        id: 'id-1',
+        file: 'old.yml',
+        repository: 'iyowei/old',
+        environment: null,
+      },
+      {
+        type: 'github',
+        id: 'id-2',
+        file: 'release.yml',
+        repository: 'iyowei/clis',
+        environment: 'release',
+      },
+    ]);
+  });
+});
+
+describe('isValidTrustId', () => {
+  test('UUID 与常规标识符通过, 含 Shell 元字符或空白拒绝', () => {
+    expect(isValidTrustId('625b8bc6-f738-4aac-9a92-70ba2f01ce80')).toBe(true);
+    expect(isValidTrustId('id; rm -rf /')).toBe(false);
+    expect(isValidTrustId('$(whoami)')).toBe(false);
+    expect(isValidTrustId('')).toBe(false);
+  });
 });
 
 describe('diffTrust', () => {
@@ -136,8 +178,6 @@ describe('diffTrust', () => {
   });
 
   test('repository 失配逐条列出 (改名事故的典型形态)', () => {
-    // 失配样本刻意取中性名 (不与仓库自身的名字重合): 它是「另一个仓库名」的任意代表,
-    // 判定链只比较两值是否相等, 取值本身无语义; 与仓库重名反而会让模板侧的两个值塌缩成同一个
     const problems = diffTrust(
       {
         type: 'github',
@@ -192,19 +232,28 @@ describe('classifyOidcEnv', () => {
 });
 
 describe('ptyWrapArgs', () => {
-  test('darwin 用 script -q /dev/null 包裹 (退出码透传已实测)', () => {
+  test('darwin 用 script -q /dev/null 包裹', () => {
     expect(ptyWrapArgs('darwin', 'npm', ['trust', 'list', '@x/y'])).toEqual({
       command: 'script',
       args: ['-q', '/dev/null', 'npm', 'trust', 'list', '@x/y'],
     });
   });
 
-  test('linux 用 script -qec 命令串 (实用输入受控无空白)', () => {
+  test('linux 用 script -qec 命令串 (安全字符集保洁净)', () => {
     expect(
       ptyWrapArgs('linux', 'npm', ['trust', 'github', '--repo', 'iyowei/clis']),
     ).toEqual({
       command: 'script',
       args: ['-qec', 'npm trust github --repo iyowei/clis', '/dev/null'],
+    });
+  });
+
+  test('linux 对含 Shell 元字符的参数做严格单引号转义防注入', () => {
+    expect(
+      ptyWrapArgs('linux', 'npm', ['trust', 'revoke', '--id=$(pwn);echo hi']),
+    ).toEqual({
+      command: 'script',
+      args: ['-qec', "npm trust revoke '--id=$(pwn);echo hi'", '/dev/null'],
     });
   });
 
@@ -217,14 +266,13 @@ describe('ptyWrapArgs', () => {
 });
 
 describe('filterPublishable', () => {
-  /** 最小 WorkspacePackage 夹具 (过滤只看 manifest.private) */
   const pkg = (name: string, isPrivate = false): WorkspacePackage => ({
     name,
     dir: `packages/${name}`,
     manifest: isPrivate ? { name, private: true } : { name },
   });
 
-  test('private 包被排除, 非 private 包保留 (核对面与发布链 ignorePrivate 同源)', () => {
+  test('private 包被排除, 非 private 包保留', () => {
     const packages = [
       pkg('@x/api'),
       pkg('@x/cli'),
@@ -236,7 +284,7 @@ describe('filterPublishable', () => {
     ]);
   });
 
-  test('private 字段缺失或非 true (如 false) 均视为可发布, 不误伤', () => {
+  test('private 字段缺失或非 true 均视为可发布, 不误伤', () => {
     const packages: WorkspacePackage[] = [
       pkg('@x/api'),
       {

@@ -26,12 +26,42 @@
  */
 import { spawn } from 'node:child_process';
 
+import {
+  type OidcEnvVerdict,
+  type TrustEntry,
+  type TrustExpectation,
+  classifyOidcEnv,
+  cleanText,
+  deriveRepoFromRemoteUrl,
+  diffTrust,
+  filterPublishable,
+  isValidTrustId,
+  parseTrustListEntries,
+  parseTrustListOutput,
+  ptyWrapArgs,
+  stripCsi,
+  stripPtyNoise,
+} from './lib/npm-trust-parse.ts';
 import { readGitText } from './lib/release-verify.ts';
 import {
   type WorkspacePackage,
   listWorkspacePackages,
 } from './lib/workspace.ts';
 import { REPO_ROOT } from './lint-doc-shared.ts';
+
+export {
+  type OidcEnvVerdict,
+  type TrustEntry,
+  type TrustExpectation,
+  classifyOidcEnv,
+  deriveRepoFromRemoteUrl,
+  diffTrust,
+  filterPublishable,
+  isValidTrustId,
+  parseTrustListEntries,
+  parseTrustListOutput,
+  ptyWrapArgs,
+};
 
 /** npm 官方 registry (OIDC 换证与 trust 管理端点只存在于官方源, 镜像源没有) */
 const OFFICIAL_REGISTRY = 'https://registry.npmjs.org/';
@@ -44,140 +74,6 @@ const RELEASE_ENVIRONMENT = 'release';
 
 /** OIDC 令牌 audience: npm 约定值, 与发布链 @semantic-release/npm 的换证请求一致 */
 const OIDC_AUDIENCE = 'npm:registry.npmjs.org';
-
-/** npm trust list 解析出的登记条目 (缺行字段落成 null) */
-export interface TrustEntry {
-  type: string | null;
-  id: string | null;
-  file: string | null;
-  environment: string | null;
-  repository: string;
-}
-
-/** 期望的登记形态 (owner/repo 从 git origin 派生, 其余为常量) */
-export interface TrustExpectation {
-  repository: string;
-  file: string;
-  environment: string;
-}
-
-/** OIDC 运行环境判定: ready = 可预检; missing-permission = Actions 里漏配 id-token; not-ci = 本地 */
-export type OidcEnvVerdict = 'ready' | 'missing-permission' | 'not-ci';
-
-/** 剥终端 CSI 序列 (颜色着色与 spinner 的光标控制; 参数段 [0-9;?]*, 末字符为任意字母) */
-const stripCsi = (text: string): string =>
-  text.replace(
-    new RegExp(String.fromCharCode(27) + '\\[[0-9;?]*[A-Za-z]', 'g'),
-    '',
-  );
-
-/** 剥控制字符并收拢空白 (npm 输出属低信任输入, 落进人读文案前先降噪) */
-const cleanText = (text: string): string =>
-  text.replace(/[\p{Cc}]+/gu, ' ').trim();
-
-/**
- * 剥 pty 伪影: `script` 开场的 ^D + 退格序列、CRLF 行尾与孤立终端控制符。
- * 须在 stripCsi 之后调用: 本函数的控制符剥离面覆盖 ESC 本身, 先把完整 CSI 序列剥掉再除残留。
- */
-const stripPtyNoise = (text: string): string =>
-  text
-    .replace(/\r/g, '')
-    // eslint-disable-next-line no-control-regex -- 此处刻意匹配 pty 残留控制符 (script 开场的 ^D 与退格), 属预期匹配
-    .replace(/[\x00-\x08\x0b\x0c\x0e-\x1f]/g, '');
-
-/** 从 git remote 原文派生 owner/repo; 非 GitHub 远端或形状不符返回 null */
-export function deriveRepoFromRemoteUrl(raw: string): string | null {
-  const cleaned = raw.trim().replace(/\.git$/, '');
-  const match = cleaned.match(/github\.com[:/]([^/\s]+)\/([^/\s]+)$/);
-  if (match === null || match[1] === undefined || match[2] === undefined) {
-    return null;
-  }
-  return `${match[1]}/${match[2]}`;
-}
-
-/**
- * 解析 `npm trust list` 的人读输出 (键值行形态)。
- * 噪音行 (认证提示、npm notice) 天然不含键名冒号行, 不干扰解析; 未见 repository 行时返回 null
- * (认不出核心字段即视为形状不符, 不猜测)。
- */
-export function parseTrustListOutput(raw: string): TrustEntry | null {
-  const text = stripPtyNoise(stripCsi(raw));
-  const pick = (key: string): string | null => {
-    const match = new RegExp(`^${key}:[ \\t]*(.+)$`, 'm').exec(text);
-    if (match === null || match[1] === undefined) return null;
-    return cleanText(match[1]);
-  };
-  const repository = pick('repository');
-  if (repository === null || repository === '') return null;
-  return {
-    type: pick('type'),
-    id: pick('id'),
-    file: pick('file'),
-    environment: pick('environment'),
-    repository,
-  };
-}
-
-/** 登记比对 (纯函数): 逐字段列出与期望值的差异, 全一致返回空列表 */
-export function diffTrust(
-  actual: TrustEntry,
-  expected: TrustExpectation,
-): string[] {
-  const problems: string[] = [];
-  if (actual.repository !== expected.repository) {
-    problems.push(
-      `repository: ${actual.repository} → 期望 ${expected.repository}`,
-    );
-  }
-  if (actual.file !== expected.file) {
-    problems.push(
-      `workflow 文件: ${actual.file ?? '(未设置)'} → 期望 ${expected.file}`,
-    );
-  }
-  if (actual.environment !== expected.environment) {
-    problems.push(
-      `environment: ${actual.environment ?? '(未设置)'} → 期望 ${expected.environment}`,
-    );
-  }
-  return problems;
-}
-
-/** OIDC 环境判定 (纯函数): 三分支各自对应不同出口, 防「权限漏配」被静默放过 */
-export function classifyOidcEnv(
-  env: Record<string, string | undefined>,
-): OidcEnvVerdict {
-  if (env.GITHUB_ACTIONS !== 'true') return 'not-ci';
-  return env.ACTIONS_ID_TOKEN_REQUEST_URL !== undefined &&
-    env.ACTIONS_ID_TOKEN_REQUEST_TOKEN !== undefined
-    ? 'ready'
-    : 'missing-permission';
-}
-
-/**
- * 生成经 pty 包装的 npm 调用坐标。npm 的 web 认证交互 (npm 源码 lib/utils/auth.js 的 otplease)
- * 要求 stdin 与 stdout 都是 TTY, 非 TTY 会直接把 EOTP 抛给调用方 (附 URL 让你自己去认证, 会话内
- * 无法完成); `script` 起 pty 后既保交互又保捕获。
- * - darwin: `script -q /dev/null <cmd...>` (退出码透传, Darwin 25 实测);
- * - linux: `script -qec "<cmd 串>" /dev/null` (util-linux 语法; 调用点参数值全部受控:
- *   包名 / UUID / 常量, 无空白字符);
- * - 其余平台 (如 win32) 无 script, 降级直跑 (会话内认证可能不可用, 由 mainLocal 的预警兜底)。
- */
-export function ptyWrapArgs(
-  platform: NodeJS.Platform,
-  npm: string,
-  args: string[],
-): { command: string; args: string[] } {
-  if (platform === 'darwin') {
-    return { command: 'script', args: ['-q', '/dev/null', npm, ...args] };
-  }
-  if (platform === 'linux') {
-    return {
-      command: 'script',
-      args: ['-qec', [npm, ...args].join(' '), '/dev/null'],
-    };
-  }
-  return { command: npm, args };
-}
 
 /** npm 可执行名 (Windows 是 npm.cmd, execFile/spawn 不走 shell 时不会自动补扩展名) */
 const npmBin = (): string => (process.platform === 'win32' ? 'npm.cmd' : 'npm');
@@ -206,20 +102,6 @@ function runNpmCaptured(
     );
     child.on('close', (status) => resolve({ status, stdout: captured }));
   });
-}
-
-/**
- * 预检核对面 (纯函数): 可发布 (非 private) 的包。
- * 核对面与发布链 (multi-semantic-release) 的「可发布包」定义保持单源一致: mrs 默认开启
- * ignorePrivate, private 包不进它的加载面。旧设计曾按根 package.json 的
- * multi-release.ignorePackages 豁免预检, 依据是「与发布链同源」; 该依据经 2026-10-01 实测
- * 证伪: mrs 把名单映射为 topo 的 workspacesExtra 负 glob (形如 !<包名>), 对包名形式不生效,
- * 被列入的包照旧被加载处理。包隔离以 npm 原生字段 private: true 为准 (首发前的新包即以此隔离)。
- */
-export function filterPublishable(
-  packages: readonly WorkspacePackage[],
-): WorkspacePackage[] {
-  return packages.filter((pkg) => pkg.manifest.private !== true);
 }
 
 /** 可发布的 workspace 包 (预检核对面, 见 filterPublishable) */
@@ -348,9 +230,11 @@ async function mainVerifyOidc(): Promise<void> {
   process.exitCode = 1;
 }
 
-/** 本地读单包登记: ok = 解析成功; error = npm 跑不起来 / 退出非零 / 输出形状不符 */
+/** 本地读单包登记: ok = 解析成功; not-found = 尚未登记; error = 执行失败或输出异常 */
 type TrustRead =
-  { kind: 'ok'; entry: TrustEntry } | { kind: 'error'; detail: string };
+  | { kind: 'ok'; entry: TrustEntry }
+  | { kind: 'not-found' }
+  | { kind: 'error'; detail: string };
 
 /** 跑 `npm trust list` 读登记 (经 pty 包装, 见 runNpmCaptured) */
 async function readTrustEntry(pkgName: string): Promise<TrustRead> {
@@ -374,6 +258,14 @@ async function readTrustEntry(pkgName: string): Promise<TrustRead> {
   }
   const entry = parseTrustListOutput(result.stdout);
   if (entry === null) {
+    const plain = stripPtyNoise(stripCsi(result.stdout));
+    if (
+      /no trusted publish/i.test(plain) ||
+      plain.trim() === '' ||
+      !/npm error/i.test(plain)
+    ) {
+      return { kind: 'not-found' };
+    }
     return {
       kind: 'error',
       detail: 'npm trust list 输出无法解析 (未见 repository 行)',
@@ -400,28 +292,12 @@ async function runNpmInteractive(args: string[]): Promise<boolean> {
   return true;
 }
 
-/**
- * 重建单包登记: 先 revoke 旧记录 (npm 侧一条包只支持一份登记, 不支持就地修改), 再按期望值创建。
- * 新登记取最小权限: 仅 publish (stage publish 未使用, 不勾)。
- */
-async function repairPackage(
+/** 创建单包 Trusted Publisher 登记 (最小权限: 仅 --allow-publish) */
+async function createTrustEntry(
   pkgName: string,
-  entry: TrustEntry,
   expected: TrustExpectation,
 ): Promise<boolean> {
-  process.stdout.write(`  → 重建 ${pkgName} 的 Trusted Publisher 登记:\n`);
-  // 两个动作都执行 (revoke 失败仍尝试 create), 结果取合
-  const revoked =
-    entry.id === null
-      ? true
-      : await runNpmInteractive([
-          'trust',
-          'revoke',
-          pkgName,
-          `--id=${entry.id}`,
-          `--registry=${OFFICIAL_REGISTRY}`,
-        ]);
-  const created = await runNpmInteractive([
+  return runNpmInteractive([
     'trust',
     'github',
     pkgName,
@@ -434,12 +310,62 @@ async function repairPackage(
     '--allow-publish',
     `--registry=${OFFICIAL_REGISTRY}`,
   ]);
+}
+
+/**
+ * 重建或新建单包登记: 已有旧记录时先 revoke (ID 须通过白名单校验), 再按期望值创建。
+ * 首次登记 (entry === null) 时直接创建。
+ */
+async function repairPackage(
+  pkgName: string,
+  entry: TrustEntry | null,
+  expected: TrustExpectation,
+): Promise<boolean> {
+  const verb = entry === null ? '新建' : '重建';
+  process.stdout.write(`  → ${verb} ${pkgName} 的 Trusted Publisher 登记:\n`);
+  let revoked = true;
+  if (entry !== null && entry.id !== null) {
+    if (!isValidTrustId(entry.id)) {
+      process.stderr.write(
+        `  ✘ 拒绝 revoke: 登记 ID 含非法字符 (${cleanText(entry.id)})\n`,
+      );
+      return false;
+    }
+    revoked = await runNpmInteractive([
+      'trust',
+      'revoke',
+      pkgName,
+      `--id=${entry.id}`,
+      `--registry=${OFFICIAL_REGISTRY}`,
+    ]);
+  }
+  const created = await createTrustEntry(pkgName, expected);
   return revoked && created;
+}
+
+/** 执行单包修复并复查是否与期望一致, 返回是否最终通过 */
+async function applyRepairAndVerify(
+  pkgName: string,
+  entry: TrustEntry | null,
+  expected: TrustExpectation,
+  label: string,
+): Promise<boolean> {
+  const repaired = await repairPackage(pkgName, entry, expected);
+  const after = await readTrustEntry(pkgName);
+  const verified =
+    after.kind === 'ok' && diffTrust(after.entry, expected).length === 0;
+  if (verified) {
+    process.stdout.write(`  ✔ ${pkgName}: ${label}复查通过\n`);
+    return repaired;
+  }
+  process.stderr.write(
+    `  ✘ ${pkgName}: ${label}复查未通过, 请人工检查 npm 侧配置\n`,
+  );
+  return false;
 }
 
 /** 本地对账 (check) 与修复 (fix) 的主流程 */
 async function mainLocal(command: 'check' | 'fix'): Promise<void> {
-  // npm 的认证交互要求 TTY; 非交互环境 (管道 / 钩子) 里会卡在等待输入, 先在入口预警
   if (process.stdin.isTTY !== true || process.stdout.isTTY !== true) {
     process.stderr.write(
       '提示: 当前不是交互式终端; npm 的网页认证需要 TTY, 请在交互式终端重跑本命令\n',
@@ -466,6 +392,16 @@ async function mainLocal(command: 'check' | 'fix'): Promise<void> {
       failed = true;
       continue;
     }
+    if (read.kind === 'not-found') {
+      process.stderr.write(`✘ ${pkg.name}: npm 侧尚未配置 Trusted Publisher\n`);
+      if (
+        command === 'check' ||
+        !(await applyRepairAndVerify(pkg.name, null, expected, '首次登记'))
+      ) {
+        failed = true;
+      }
+      continue;
+    }
     const problems = diffTrust(read.entry, expected);
     if (problems.length === 0) {
       process.stdout.write(`✔ ${pkg.name}: npm 侧登记与当前仓库一致\n`);
@@ -473,20 +409,10 @@ async function mainLocal(command: 'check' | 'fix'): Promise<void> {
     }
     process.stderr.write(`✘ ${pkg.name}: npm 侧登记与当前仓库不一致:\n`);
     for (const problem of problems) process.stderr.write(`    ${problem}\n`);
-    if (command === 'check') {
-      failed = true;
-      continue;
-    }
-    if (!(await repairPackage(pkg.name, read.entry, expected))) {
-      failed = true;
-    }
-    const after = await readTrustEntry(pkg.name);
-    if (after.kind === 'ok' && diffTrust(after.entry, expected).length === 0) {
-      process.stdout.write(`  ✔ ${pkg.name}: 重建后复查通过\n`);
-    } else {
-      process.stderr.write(
-        `  ✘ ${pkg.name}: 重建后复查未通过, 请人工检查 npm 侧配置\n`,
-      );
+    if (
+      command === 'check' ||
+      !(await applyRepairAndVerify(pkg.name, read.entry, expected, '重建后'))
+    ) {
       failed = true;
     }
   }
@@ -499,8 +425,11 @@ async function mainLocal(command: 'check' | 'fix'): Promise<void> {
   process.exitCode = 1;
 }
 
-/** 用法说明 */
-function printUsage(): void {
+/** 入口: 分发子命令 (未知命令打用法并退 2) */
+async function main(): Promise<void> {
+  const command = process.argv[2];
+  if (command === 'verify-oidc') return mainVerifyOidc();
+  if (command === 'check' || command === 'fix') return mainLocal(command);
   process.stderr.write(
     [
       '发布凭据闸门: 核对 npm 侧 Trusted Publisher 登记与当前仓库形态是否一致',
@@ -512,20 +441,6 @@ function printUsage(): void {
       '',
     ].join('\n'),
   );
-}
-
-/** 入口: 分发子命令 (未知命令打用法并退 2) */
-async function main(): Promise<void> {
-  const command = process.argv[2];
-  if (command === 'verify-oidc') {
-    await mainVerifyOidc();
-    return;
-  }
-  if (command === 'check' || command === 'fix') {
-    await mainLocal(command);
-    return;
-  }
-  printUsage();
   process.exitCode = 2;
 }
 
