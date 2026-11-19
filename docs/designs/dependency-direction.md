@@ -30,9 +30,9 @@
 - **脚手架可裁剪**: 生成新项目时按档裁剪包, 方向单一的依赖图裁剪后仍自洽 (见[能力分档](capability-tiers.md));
 - **认知负担**: 单向依赖让「谁可以动、动了影响谁」一看便知。
 
-## 执行 (规划)
+## 执行 (已落地)
 
-在本仓实现一道**依赖方向闸门**: 扫描各包 `package.json` 的 workspace 依赖 (含 devDependencies), 对照上表核对方向; 违规就亮红灯。与现有四道闸门同属一类, 挂进统一闸门链 (挂载方式见[能力分档](capability-tiers.md)的裁剪点约定)。
+本仓已实现物理**依赖方向闸门** (`scripts/lint-dependency-direction.ts` 与单测 `scripts/lint-dependency-direction.test.ts`): 扫描全仓 `package.json` 的内部依赖 (含 `dependencies` 与 `devDependencies`), 对照上表核对方向、无环约束与公开库最大深度 2, 违规即亮红灯。该闸门已作为 `lint:deps` 挂载进 `scripts/ci.ts` 验证组, 在标准档 / 增强档启用、核心档按裁剪点摘除 (见[能力分档](capability-tiers.md))。
 
 ## 例外
 

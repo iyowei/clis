@@ -33,7 +33,7 @@
    - **另有登记 (2026-09-27)**: 守卫脚本在 win32 上以 `shell: true` 直接用命令名 (不带路径) 执行 `git` / `lefthook` / `bunx` (Node 在 Windows 上执行 `.cmd` / `.bat` 必须经 shell 解析), 这个解析范围包含当前工作目录 (官方 path 文档: the current directory is always searched before the directories specified in the command path); 而它执行时所在的目录是本包自己或包副本的目录 (属于开发工具链范围), 不在 [ADR 0007](../../packages/sweep-node-modules/docs/adrs/0007-platform-portability.md) 决策第 4 条定下的 EC-08 三个入口解析防御范围之内。
 2. **Lint 用 oxlint, 格式用 prettier** (配 `@trivago/prettier-plugin-sort-imports` 的 import 排序); `.oxlintrc.json` 继承我已有项目的严格规则集 (max-depth / max-lines / import 族 / unicorn 族等)。
 3. **分层门禁**: pre-commit 增量 (prettier `--write` 后自动重暂存 + oxlint 只扫暂存文件; type-check 是例外, 不传 `{staged_files}`, 直接全项目跑 `tsc --noEmit`); pre-push 全量只读 (typecheck / test / oxlint / prettier `--check`, 不设 `stage_fixed`)。
-   > **修订指引 (2026-09-30)**: pre-push 现在是六步 (typecheck / build / test / oxlint / prettier `--check` / conformance 双 target), 与 `bun scripts/ci.ts` 是同一套步骤、逐项执行 (lefthook 里逐条列命令, 只有 conformance 一步经 ci.ts); 其中 `build` 会写产物, 原来说的「全量只读」只对检查类步骤成立。
+   > **修订指引 (2026-11-19)**: pre-push 已收口为单条 `bun run ci` (详见 `lefthook.yml`, 由 `scripts/ci.ts` 单源编排验证组 + 验收组全部步骤); pre-commit 的 `type-check` 同样单源复用根 `bun run typecheck`。其中 `build` 会写产物, 原来说的「全量只读」只对检查类步骤成立。
 4. **`.editorconfig`** 与我另外两个项目一致: 2 空格 / LF / UTF-8 / 去行尾空格 / 文件末换行, `*.md` 例外不去尾空格。
 5. **依赖版本精确锁定**: 全部 devDependencies 不带 `^` / `~` 范围符号, 安装后从 `node_modules` 读回实际装到的版本做校准 (见配置治理规范)。
 
