@@ -18,6 +18,7 @@ import { readFileSync, readdirSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 
 import {
+  type PackFacts,
   type ReleaseFacts,
   type ReleaseVerdict,
   type VerifyProfile,
@@ -103,14 +104,17 @@ const dtsHits = (distDir: string): string[] => {
  * 采事实: 两条只读 git 命令 + 读 dist 产物与清单 + d.ts 复查 + 一次只读的 npm pack。
  * 外部副作用：无 (全部只读)。
  */
-export const collectFacts = (root: string): VerifyFacts => {
+export const collectFacts = (
+  root: string,
+  packOverride?: PackFacts,
+): VerifyFacts => {
   const distDir = join(root, 'dist');
   return {
     gitStatus: readGitText(root, ['status', '--porcelain']),
     gitHead: normalizeCommit(readGitText(root, ['rev-parse', 'HEAD'])),
     dist: readDistState(distDir, PROFILE),
     dtsTsSpecifierHits: dtsHits(distDir),
-    pack: readPackFiles(root),
+    pack: packOverride ?? readPackFiles(root),
   };
 };
 

@@ -7,6 +7,7 @@
  */
 import { join } from 'node:path';
 
+import type { PackFacts } from '../../../scripts/lib/release-verify.ts';
 import {
   PACKAGE_ROOT,
   type PackExpectation,
@@ -26,14 +27,17 @@ export interface ReleaseIo {
   err: (line: string) => void;
 }
 
-export const collectFacts = (root: string): VerifyFacts => {
+export const collectFacts = (
+  root: string,
+  packOverride?: PackFacts,
+): VerifyFacts => {
   const distDir = join(root, 'dist');
   return {
     gitStatus: readGitText(root, ['status', '--porcelain']),
     gitHead: normalizeCommit(readGitText(root, ['rev-parse', 'HEAD'])),
     dist: readDistState(distDir),
     dtsTsSpecifierHits: findDtsTsSpecifiers(distDir),
-    pack: readPackFiles(root),
+    pack: packOverride ?? readPackFiles(root),
   };
 };
 
