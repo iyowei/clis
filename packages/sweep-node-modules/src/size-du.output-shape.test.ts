@@ -17,6 +17,8 @@ import {
   assessDuOutput,
   chunkTargetsByBytes,
   createDuSizer,
+  parseDuErrorLine,
+  unescapeGnuShellQuoted,
 } from './size-du.ts';
 import type { MeasureProgressEvent } from './types.ts';
 
@@ -299,4 +301,86 @@ describe('du 分批切分与探针缺失完备性', () => {
     expect(result.warnings.map((w) => w.code)).toEqual(['SIZE_DU_UNAVAILABLE']);
     expect(events.map((e) => e.kind)).toEqual(['unmeasured', 'unmeasured']);
   });
+});
+
+describe('GNU du shell-escape stderr 解码与子进程异常降级 (SWEEP-P0-5)', () => {
+  test('unescapeGnuShellQuoted & parseDuErrorLine: 还原中文八进制、双引号单引号与单引号拼接路径', () => {
+    // LC_ALL=C 下 GNU du 对 "中文" 输出的 UTF-8 八进制序列
+    const cnLine =
+      "du: cannot read directory '/ws/'$'\\344\\270\\255\\346\\226\\207''/node_modules': Permission denied";
+    expect(parseDuErrorLine(cnLine)).toEqual({
+      path: '/ws/中文/node_modules',
+      detail: 'Permission denied',
+    });
+
+    // 路径含单引号时 GNU du 用双引号包裹
+    const sqLine =
+      '/usr/bin/du: cannot access "/ws/sq\'uote/node_modules": Permission denied';
+    expect(parseDuErrorLine(sqLine)).toEqual({
+      path: "/ws/sq'uote/node_modules",
+      detail: 'Permission denied',
+    });
+
+    // 单引号拼接转义 '\''
+    expect(unescapeGnuShellQuoted("'/ws/a'\\''b/node_modules'")).toBe(
+      "/ws/a'b/node_modules",
+    );
+    // 含制表与 ESC 的 ANSI-C 序列
+    expect(unescapeGnuShellQuoted("'/ws/t'$'\\t\\033''end'")).toBe(
+      '/ws/t\t\x1bend',
+    );
+  });
+
+  test.skipIf(!canRunShell)(
+    '注入 GNU du 中文不可读 stderr: 剔除 4 KiB 假体积并归入 unmeasured',
+    async () => {
+      const target = `${ROOT}/中文/node_modules`;
+      // 模拟 GNU du 在 LC_ALL=C 下的真实行为: 既向 stdout 报 4 KiB 目录块大小, 又向 stderr 写八进制转义错误
+      const bin = await makeFakeDu(
+        `printf '4\\t%s\\n' "$3"\n` +
+          `printf "du: cannot read directory '%s/'$'\\\\344\\\\270\\\\255\\\\346\\\\226\\\\207''/node_modules': Permission denied\\n" "${ROOT}" >&2\n` +
+          'exit 1\n',
+      );
+
+      const result = await createDuSizer(bin).measure([target]);
+
+      expect(result.entries).toEqual([]);
+      expect(result.unmeasured).toEqual([
+        {
+          target,
+          code: 'SIZE_UNMEASURED_PERMISSION',
+          reason: '权限不足, 无法读取',
+        },
+      ]);
+    },
+  );
+
+  test('spawnError (不存在的 du 二进制): 整批降级 unmeasured 且发 SIZE_DU_UNAVAILABLE 告警, 不误拆 path=Error', async () => {
+    const target = `${ROOT}/aa/node_modules`;
+    const result = await createDuSizer('/no/such/du-binary-xyz').measure([
+      target,
+    ]);
+
+    expect(result.entries).toEqual([]);
+    expect(result.unmeasured).toHaveLength(1);
+    expect(result.unmeasured[0]?.target).toBe(target);
+    expect(result.warnings).toHaveLength(1);
+    expect(result.warnings[0]?.code).toBe('SIZE_DU_UNAVAILABLE');
+    expect(result.warnings[0]?.path).toBeUndefined();
+  });
+
+  test.skipIf(!canRunShell)(
+    '子进程被信号中止: 整批降级 unmeasured 且发 SIZE_DU_UNAVAILABLE 告警',
+    async () => {
+      const bin = await makeFakeDu('kill -9 $$\n');
+      const target = `${ROOT}/sig/node_modules`;
+
+      const result = await createDuSizer(bin).measure([target]);
+
+      expect(result.entries).toEqual([]);
+      expect(result.unmeasured).toHaveLength(1);
+      expect(result.warnings[0]?.code).toBe('SIZE_DU_UNAVAILABLE');
+      expect(result.warnings[0]?.message).toContain('SIGKILL');
+    },
+  );
 });
