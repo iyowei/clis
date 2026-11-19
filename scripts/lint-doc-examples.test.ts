@@ -118,11 +118,11 @@ describe('checkTsExamples 集成', () => {
   test('非本仓虚构模块判跳过, 本仓 scope 模块找不到直接判真断裂', () => {
     const root = makeRoot({
       'package.json': JSON.stringify({ workspaces: ['packages/*'] }),
-      'packages/demo/package.json': JSON.stringify({ name: '@iyowei/demo' }),
+      'packages/demo/package.json': JSON.stringify({ name: '@acme/demo' }),
       'tsconfig.json': '{"compilerOptions":{"noEmit":true}}',
       'docs/a.md': "```ts\nimport { nope } from 'nowhere-pkg';\nnope();\n```\n",
       'docs/b.md':
-        "```ts\nimport { gone } from '@iyowei/renamed-pkg';\ngone();\n```\n",
+        "```ts\nimport { gone } from '@acme/renamed-pkg';\ngone();\n```\n",
     });
     const { real, fragments } = checkTsExamples(root);
     expect(fragments).toHaveLength(1);
@@ -142,7 +142,7 @@ describe('checkCliExamples 集成', () => {
       'packages/sweep-node-modules-cli/src/cli.ts':
         "console.log(['sweep-nm --yes  执行删除', 'sweep-nm config  查看配置'].join('\\n'));\n",
       'packages/extra-cli/package.json': JSON.stringify({
-        name: '@iyowei/extra-cli',
+        name: '@acme/extra-cli',
         bin: { extra: 'bin/extra.mjs' },
       }),
       'packages/extra-cli/src/cli.ts':
