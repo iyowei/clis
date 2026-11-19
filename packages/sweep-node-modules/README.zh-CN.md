@@ -4,7 +4,7 @@
 [![npm version](https://img.shields.io/npm/v/@iyowei/sweep-node-modules)](https://www.npmjs.com/package/@iyowei/sweep-node-modules)
 [![npm downloads](https://img.shields.io/npm/dm/@iyowei/sweep-node-modules)](https://www.npmjs.com/package/@iyowei/sweep-node-modules)
 ![node](https://img.shields.io/node/v/@iyowei/sweep-node-modules)
-![bun](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Fiyowei%2Fsweep-node-modules%2Fmain%2Fpackage.json&query=%24.packageManager&label=bun)
+![bun](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Fiyowei%2Fclis%2Fmain%2Fpackage.json&query=%24.packageManager&label=bun)
 
 [English](README.md) | **中文**
 
@@ -30,8 +30,8 @@
 ## 要求
 
 - **双运行时**: 有 bun 走 bun, 否则 node (功能一致, bun 启动更快); node 版本下限 `>= 22.18.0` (本包 `engines` 字段)。
-- 零第三方运行时依赖: 只用运行时内置能力 (见 [ADR 0003](docs/adrs/0003-zero-runtime-deps.md))。
-- 平台: Windows / macOS / Linux 都能运行 (见 [ADR 0007](docs/adrs/0007-platform-portability.md))。
+- 零第三方运行时依赖: 只用运行时内置能力 (见 [ADR 0003](https://github.com/iyowei/clis/blob/main/packages/sweep-node-modules/docs/adrs/0003-zero-runtime-deps.md))。
+- 平台: Windows / macOS / Linux 都能运行 (见 [ADR 0007](https://github.com/iyowei/clis/blob/main/packages/sweep-node-modules/docs/adrs/0007-platform-portability.md))。
 - 源码是 TypeScript; 类型声明随包一起分发。
 
 ## 安装
@@ -592,7 +592,7 @@ const outcome = await removeBatch(targets, { roots, staleTargets });
 
 ### code 家族
 
-包里的 code 按家族列出 (每个 code 的完整触发表见 [可编程 API 面设计](docs/designs/api-surface.md)):
+包里的 code 按家族列出 (每个 code 的完整触发表见 [可编程 API 面设计](https://github.com/iyowei/clis/blob/main/packages/sweep-node-modules/docs/designs/api-surface.md)):
 
 ```text
 安全闸 (validateTargets → rejected[].code)
@@ -666,10 +666,11 @@ const outcome = await removeBatch(targets, { roots, staleTargets });
 
 ## 开发
 
-环境准备、常用命令、双运行时验证与提交钩子, 见 [开发指南](../../docs/development.md); 本包位于该仓库的 `packages/sweep-node-modules` 目录。
+环境准备、常用命令、双运行时验证与提交钩子, 见 [开发指南](https://github.com/iyowei/clis/blob/main/docs/development.md); 本包位于该仓库的 `packages/sweep-node-modules` 目录。
 
 ## 文档
 
-- [工程技术文档总索引](../../docs/README.md)
-- [可编程 API 面设计](docs/designs/api-surface.md): 本页背后的权威导出面、错误码与行为契约
-- [安全防护保障](../../docs/sweep/designs/safety-guardrails.md): 全量版 (含已知残余风险的诚实账)
+- [工程技术文档总索引](https://github.com/iyowei/clis/blob/main/docs/README.md)
+- [产品文档与包级 ADR](https://github.com/iyowei/clis/blob/main/packages/sweep-node-modules/docs/README.md)
+- [可编程 API 面设计](https://github.com/iyowei/clis/blob/main/packages/sweep-node-modules/docs/designs/api-surface.md): 本页背后的权威导出面、错误码与行为契约
+- [安全防护保障](https://github.com/iyowei/clis/blob/main/packages/sweep-node-modules/docs/designs/safety-guardrails.md): 全量版 (含已知残余风险的诚实账)

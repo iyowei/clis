@@ -4,7 +4,7 @@
 [![npm version](https://img.shields.io/npm/v/@iyowei/sweep-node-modules)](https://www.npmjs.com/package/@iyowei/sweep-node-modules)
 [![npm downloads](https://img.shields.io/npm/dm/@iyowei/sweep-node-modules)](https://www.npmjs.com/package/@iyowei/sweep-node-modules)
 ![node](https://img.shields.io/node/v/@iyowei/sweep-node-modules)
-![bun](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Fiyowei%2Fsweep-node-modules%2Fmain%2Fpackage.json&query=%24.packageManager&label=bun)
+![bun](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Fiyowei%2Fclis%2Fmain%2Fpackage.json&query=%24.packageManager&label=bun)
 
 **English** | [中文](README.zh-CN.md)
 
@@ -30,8 +30,8 @@ Programmable API to sweep `node_modules` across workspace roots: scan, measure, 
 ## Requirements
 
 - **Dual runtime**: bun first, node fallback (identical behavior; bun starts faster). Node floor: `>= 22.18.0` (this package's `engines` field).
-- Zero third-party runtime dependencies: built-in runtime capabilities only (see [ADR 0003](docs/adrs/0003-zero-runtime-deps.md)).
-- Windows, macOS, and Linux (see [ADR 0007](docs/adrs/0007-platform-portability.md)).
+- Zero third-party runtime dependencies: built-in runtime capabilities only (see [ADR 0003](https://github.com/iyowei/clis/blob/main/packages/sweep-node-modules/docs/adrs/0003-zero-runtime-deps.md)).
+- Windows, macOS, and Linux (see [ADR 0007](https://github.com/iyowei/clis/blob/main/packages/sweep-node-modules/docs/adrs/0007-platform-portability.md)).
 - Written in TypeScript; type declarations ship with the package.
 
 ## Installation
@@ -592,7 +592,7 @@ In packaged or multi-instance environments (where two copies of the library can 
 
 ### Code families
 
-Domain codes by family (the full trigger table per code lives in the [API surface design](docs/designs/api-surface.md)):
+Domain codes by family (the full trigger table per code lives in the [API surface design](https://github.com/iyowei/clis/blob/main/packages/sweep-node-modules/docs/designs/api-surface.md)):
 
 ```text
 Guard (validateTargets → rejected[].code)
@@ -666,10 +666,11 @@ The library has no `watch()` async iterator: the CLI consumes callbacks directly
 
 ## Development
 
-Environment setup, common commands, dual-runtime verification, and commit hooks: see the [development guide](../../docs/development.md). This package lives in the `packages/sweep-node-modules` directory of that repository.
+Environment setup, common commands, dual-runtime verification, and commit hooks: see the [development guide](https://github.com/iyowei/clis/blob/main/docs/development.md). This package lives in the `packages/sweep-node-modules` directory of that repository.
 
 ## Documentation
 
-- [Engineering documentation index](../../docs/README.md)
-- [API surface design](docs/designs/api-surface.md): the authoritative export surface, error codes, and behavior contracts behind this page
-- [Safety guardrails](../../docs/sweep/designs/safety-guardrails.md), the full account (in Chinese)
+- [Engineering documentation index](https://github.com/iyowei/clis/blob/main/docs/README.md)
+- [Product docs & ADRs](https://github.com/iyowei/clis/blob/main/packages/sweep-node-modules/docs/README.md)
+- [API surface design](https://github.com/iyowei/clis/blob/main/packages/sweep-node-modules/docs/designs/api-surface.md): the authoritative export surface, error codes, and behavior contracts behind this page
+- [Safety guardrails](https://github.com/iyowei/clis/blob/main/packages/sweep-node-modules/docs/designs/safety-guardrails.md), the full account (in Chinese)
