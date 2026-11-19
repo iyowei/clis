@@ -24,7 +24,6 @@
  * 并保留配置里的原始拼写供链头判定 (见 TrustRoot)。
  */
 import { lstat, realpath, rm } from 'node:fs/promises';
-import { isAbsolute, join, relative, sep } from 'node:path';
 
 import type { AbortCode, RemoveFailureCode } from './codes.ts';
 import { SweepError } from './errors.ts';
@@ -32,6 +31,8 @@ import {
   type PathMapping,
   type PathStyle,
   type RejectedTarget,
+  insideAnyRoot,
+  nativeStyle,
   validateTargets,
 } from './guard.ts';
 
@@ -70,7 +71,7 @@ export interface RemovalResult {
   missing: string[];
   /** 删除失败与复核未完成 (组件消失 / 不可核验) 的目标及原因 (保输入顺序); 后者未执行删除 */
   failed: TargetFailure[];
-  /** 安全复核未通过即中止整批, 其间条目一律不删; 未触发时缺省 */
+  /** 安全复核未通过即中止整批 (触发后停止派发新条目, 并发窗口内已派发条目会完成并如实报告); 未触发时缺省 */
   aborted?: AbortedBatch;
 }
 
@@ -97,6 +98,8 @@ export interface RemovalOptions {
    * `configured` 供链头判定。目标不在任何根之下时无可信复核, 整批中止。
    */
   roots: TrustRoot[];
+  /** 路径判定风味 (win32 大小写折叠与分隔符语义); 缺省随当前平台 */
+  style?: PathStyle;
   /** 取消信号; 只在条目之间检查, 绝不在单条 rm 中途中断 (那会制造新的半删状态) */
   signal?: AbortSignal;
   /** 进度回调; 粒度: 每条目标出桶即发一条 */
@@ -183,23 +186,28 @@ function describeSurvivor(target: string, state: GoneState): string {
   return `ENOENT: 删除中途失败 (${review}) (目标: ${target}; ${PARTIAL_DELETION_HINT})`;
 }
 
-/** 严格包含判定 (path.relative 语义, 与 guard 的 insideAnyRoot 同型): 等于根本体或越界均不通过 */
-function isUnder(root: string, target: string): boolean {
-  const rel = relative(root, target);
-  if (rel === '' || isAbsolute(rel)) return false;
-  return rel !== '..' && !rel.startsWith(`..${sep}`);
+/** 严格包含判定 (复用 guard 的 insideAnyRoot, 与 PathStyle 大小写折叠同源): 等于根本体或越界均不通过 */
+function isUnder(root: string, target: string, style: PathStyle): boolean {
+  return insideAnyRoot(target, [root], style);
 }
 
 /**
- * 复核链: 自 root 至 target 父目录 (root 含, target 本体不含)。
+ * 复核链: 自 root 至 target 父目录 (root 含, target 本体不含), 复用 PathStyle 的大小写折叠与分隔符语义。
  * 末段不查: 若 target 本体是符号链接, fs.rm 按 lstat 语义只删链接、不跟进, 本已安全。
  * 例: root=/w, target=/w/a/b/node_modules → ['/w', '/w/a', '/w/a/b']
  */
-function componentChain(root: string, target: string): string[] {
+function componentChain(
+  root: string,
+  target: string,
+  style: PathStyle,
+): string[] {
+  const fold = (p: string): string =>
+    style.caseInsensitive ? p.toLowerCase() : p;
+  const rel = style.ops.relative(fold(root), fold(target));
   const chain = [root];
   let cursor = root;
-  for (const part of relative(root, target).split(sep).slice(0, -1)) {
-    cursor = join(cursor, part);
+  for (const part of rel.split(style.ops.sep).slice(0, -1)) {
+    cursor = style.ops.join(cursor, part);
     chain.push(cursor);
   }
   return chain;
@@ -257,6 +265,32 @@ type RemovalSlot =
   | { kind: 'failed'; failure: TargetFailure }
   | { kind: 'aborted' };
 
+/** 排空后按批次索引重排组装结果: 桶恒保输入顺序, 与并发完成序无关 */
+function assembleRemovalResult(
+  slots: readonly (RemovalSlot | undefined)[],
+  aborted: AbortedBatch | undefined,
+): RemovalResult {
+  const result: RemovalResult = { removed: [], missing: [], failed: [] };
+  for (const slot of slots) {
+    if (slot === undefined) continue;
+    switch (slot.kind) {
+      case 'removed':
+        result.removed.push(slot.target);
+        break;
+      case 'missing':
+        result.missing.push(slot.target);
+        break;
+      case 'failed':
+        result.failed.push(slot.failure);
+        break;
+      case 'aborted':
+        break;
+    }
+  }
+  if (aborted !== undefined) result.aborted = aborted;
+  return result;
+}
+
 /**
  * 逐条复核并删除目标, 失败不中断整批, 复核不通过则整批中止, 按结果分桶
  * (removed / missing / failed 均保输入顺序)。
@@ -292,6 +326,7 @@ export async function removeTargets(
 ): Promise<RemovalResult> {
   // 防 JS 调用方漏传选项: 无信任根即无可信复核, 一律中止 (保守)
   const roots = options?.roots ?? [];
+  const style = options?.style ?? nativeStyle();
   const signal = options?.signal;
   /** 进度事件发射器 (options 省略时零开销) */
   const emit = options?.onProgress;
@@ -326,8 +361,9 @@ export async function removeTargets(
     resolveDrained = resolve;
   });
 
-  /** 已中止或已取消 (停止派发新条) */
-  const halted = (): boolean => cancelled || aborted !== undefined;
+  /** 已中止、已取消或遇到未预期异常 (如 onProgress 抛错): 立即停止派发新条 */
+  const halted = (): boolean =>
+    cancelled || aborted !== undefined || failures.length > 0;
 
   /** 补齐并发空位; 排空 (无在飞且无待派发) 时释放等待方 */
   function pump(): void {
@@ -355,7 +391,9 @@ export async function removeTargets(
         cancelled = true;
         return;
       }
-      const root = roots.find((candidate) => isUnder(candidate.real, target));
+      const root = roots.find((candidate) =>
+        isUnder(candidate.real, target, style),
+      );
       if (root === undefined) {
         const info: AbortedBatch = {
           target,
@@ -384,13 +422,16 @@ export async function removeTargets(
       }
 
       // 复核紧跟删除: 尽可能压缩两者之间的替换窗口
-      const finding = await reviewComponents(componentChain(root.real, target));
+      const finding = await reviewComponents(
+        componentChain(root.real, target, style),
+      );
       if (finding !== null) {
         if (finding.kind === 'vanished') {
           // 组件消失 ≠ 目标消失 (可能只是被 mv 走): 归 missing 会伪报成功, 必须交回人工复查
           const vanished: TargetFailure = {
             target,
             code: 'REVIEW_COMPONENT_VANISHED',
+            errno: 'ENOENT',
             message: describeVanishedReview(target, finding.path),
             partialRisk: false,
           };
@@ -414,6 +455,7 @@ export async function removeTargets(
         const unverified: TargetFailure = {
           target,
           code: 'REVIEW_UNVERIFIED',
+          errno: (finding.error as FsError | null)?.code,
           message: describeReviewError(target, finding.path, finding.error),
           partialRisk: false,
         };
@@ -422,40 +464,49 @@ export async function removeTargets(
         return;
       }
 
+      let rmError: unknown;
+      let rmFailed = false;
       try {
         await rm(target, { recursive: true, force: false });
+      } catch (error) {
+        rmError = error;
+        rmFailed = true;
+      }
+      // onProgress 移出 rm 的 try/catch: 避免回调抛错被误判为 rm 失败、污染 slot 并重复发射事件
+      if (!rmFailed) {
         slots[index] = { kind: 'removed', target };
         emit?.({ kind: 'removed', target });
-      } catch (error) {
-        if ((error as FsError | null)?.code === 'ENOENT') {
-          // 不以错误码本身定论: Bun 侧会把内部条目 ENOENT 冒泡为顶层拒绝且形态与顶层缺失同形
-          // (实测见文件头注释), 须复核目标本体后再分桶
-          const state = await checkGone(target);
-          if (state === 'gone') {
-            slots[index] = { kind: 'missing', target };
-            emit?.({ kind: 'missing', target });
-            return;
-          }
-          const survivor: TargetFailure = {
-            target,
-            code: 'REMOVE_ENOENT_SURVIVOR',
-            message: describeSurvivor(target, state),
-            partialRisk: true,
-          };
-          slots[index] = { kind: 'failed', failure: survivor };
-          emit?.({ kind: 'failed', failure: survivor });
+        return;
+      }
+      if ((rmError as FsError | null)?.code === 'ENOENT') {
+        // 不以错误码本身定论: Bun 侧会把内部条目 ENOENT 冒泡为顶层拒绝且形态与顶层缺失同形
+        // (实测见文件头注释), 须复核目标本体后再分桶
+        const state = await checkGone(target);
+        if (state === 'gone') {
+          slots[index] = { kind: 'missing', target };
+          emit?.({ kind: 'missing', target });
           return;
         }
-        const failure: TargetFailure = {
+        const survivor: TargetFailure = {
           target,
-          code: 'REMOVE_FAILED',
-          errno: (error as { code?: string } | null)?.code,
-          message: describeRemovalError(target, error),
+          code: 'REMOVE_ENOENT_SURVIVOR',
+          errno: 'ENOENT',
+          message: describeSurvivor(target, state),
           partialRisk: true,
         };
-        slots[index] = { kind: 'failed', failure };
-        emit?.({ kind: 'failed', failure });
+        slots[index] = { kind: 'failed', failure: survivor };
+        emit?.({ kind: 'failed', failure: survivor });
+        return;
       }
+      const failure: TargetFailure = {
+        target,
+        code: 'REMOVE_FAILED',
+        errno: (rmError as FsError | null)?.code,
+        message: describeRemovalError(target, rmError),
+        partialRisk: true,
+      };
+      slots[index] = { kind: 'failed', failure };
+      emit?.({ kind: 'failed', failure });
     } catch (error) {
       // 取首个未预期异常为准 (复核函数自身的意外抛错等), 抛点推迟到池排空之后
       if (failures.length === 0) failures.push(error);
@@ -473,24 +524,7 @@ export async function removeTargets(
   if (failures.length > 0) throw failures[0];
 
   // 排空后按批次索引重排组装: 桶恒保输入顺序, 与并发完成序无关
-  const result: RemovalResult = { removed: [], missing: [], failed: [] };
-  for (const slot of slots) {
-    if (slot === undefined) continue;
-    switch (slot.kind) {
-      case 'removed':
-        result.removed.push(slot.target);
-        break;
-      case 'missing':
-        result.missing.push(slot.target);
-        break;
-      case 'failed':
-        result.failed.push(slot.failure);
-        break;
-      case 'aborted':
-        break;
-    }
-  }
-  if (aborted !== undefined) result.aborted = aborted;
+  const result = assembleRemovalResult(slots, aborted);
   // 取消: 已出桶的结果 (含检出时在飞、随后跑完的条目) 随错交回; 未派发条目从未尝试, 不入桶
   if (cancelled) {
     throw new SweepError('CANCELLED', '删除在条目间检查点被取消', {
@@ -595,6 +629,7 @@ export async function removeBatch(
 
   const removal = await removeTargets(validation.accepted, {
     roots: await toTrustRoots(options.roots),
+    style: options.style,
     signal: options.signal,
     onProgress: options.onProgress,
   });

@@ -282,6 +282,8 @@ describe('组件级安全复核 (中间路径组件替换 → root 外删除)', 
     expect(result.missing).toEqual([]);
     expect(result.failed.map((entry) => entry.target)).toEqual([target]);
     const [entry] = result.failed;
+    expect(entry?.code).toBe('REVIEW_COMPONENT_VANISHED');
+    expect(entry?.errno).toBe('ENOENT');
     expect(entry?.message).toContain('路径组件消失');
     expect(entry?.message).toContain('请复查目标是否仍存在');
     expect(entry?.message).toContain('未执行删除');
@@ -325,6 +327,8 @@ describe('组件级安全复核 (中间路径组件替换 → root 外删除)', 
       });
 
       expect(result.failed.map((entry) => entry.target)).toEqual([blocked]);
+      expect(result.failed[0]?.code).toBe('REVIEW_UNVERIFIED');
+      expect(result.failed[0]?.errno).toBe('EACCES');
       expect(result.failed[0]?.message).toContain('安全复核未完成');
       expect(result.failed[0]?.message).toContain('未执行删除');
       expect(result.aborted).toBeUndefined();
@@ -366,6 +370,32 @@ describe('链头替换 (信任根被换成符号链接 → 删除导向他树)',
     // 链接指向的树必须原样活着: 放任下去, 删除就会导向它
     expect(await exists(target)).toBe(true);
     expect(await exists(later)).toBe(true);
+  });
+});
+
+describe('删除池异常停泵 (onProgress 抛错)', () => {
+  test('onProgress 抛错后立刻停泵: 尚未派发的后续目标保持完好', async () => {
+    // 10 个目标远超 REMOVAL_CONCURRENCY (4): 首批最多派发 4 条, 第 1 次回调抛错后
+    // 队列剩余目标 (索引 4..9) 不得再被派发与删除
+    const names = Array.from({ length: 10 }, (_, i) => `p-${i}`);
+    const { root } = await make({
+      projects: names.map((dir) => ({ dir })),
+    });
+    const targets = names.map((dir) => join(root, dir, 'node_modules'));
+
+    await expect(
+      removeTargets(targets, {
+        roots: [trustRoot(root)],
+        onProgress: () => {
+          throw new Error('stop-delete-now');
+        },
+      }),
+    ).rejects.toThrow('stop-delete-now');
+
+    // 未派发的后续目标 (索引 4..9) 必须完好无损
+    for (const untouched of targets.slice(4)) {
+      expect(await exists(untouched)).toBe(true);
+    }
   });
 });
 
