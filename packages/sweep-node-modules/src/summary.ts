@@ -34,6 +34,9 @@ export function isSuccessOutcome(outcome: EntryOutcome): boolean {
  * 结果计数摘要: 成功侧 / 未处理 / 真失败 / 整批中止四档, 口径与 §2.7 的严格档配方
  * 同源 (CLI 包即按该档落退出码)。计数表以显式字面量初始化: 新增 kind 时 TS
  * 会在本处报缺键, 强制显式归类。
+ * 注: not-attempted 覆盖两类未执行删除的批次内条目 —— 删除阶段复核整批中止后未派发条目
+ * (AbortCode), 以及安全闸整批拒绝时同批通过闸门但连带未删的健康条目 ('BATCH_REJECTED');
+ * 二者同归 unprocessed, 而 aborted 布尔仍由 removal.aborted 存在与否唯一判定。
  *
  * ### 数据追踪示例
  * ```text

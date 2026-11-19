@@ -120,6 +120,7 @@ describe('编排层域类型的实际调用形态', () => {
         },
       },
       { kind: 'not-attempted', code: 'REVIEW_HEAD_SYMLINK' },
+      { kind: 'not-attempted', code: 'BATCH_REJECTED' },
       { kind: 'not-expected' },
       { kind: 'skipped', reason: 'suspect-install-tree' },
     ];
@@ -131,6 +132,7 @@ describe('编排层域类型的实际调用形态', () => {
       '失败: EACCES: 权限不足',
       '拒绝: realpath 后不在任何 root 之下',
       '未尝试: REVIEW_HEAD_SYMLINK',
+      '未尝试: BATCH_REJECTED',
       '不在期望批次',
       '跳过: suspect-install-tree',
     ]);

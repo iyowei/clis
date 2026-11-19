@@ -29,7 +29,7 @@ import {
   toTrustRoots,
 } from './delete.ts';
 import { SweepError } from './errors.ts';
-import type { RejectedTarget, ValidationResult } from './guard.ts';
+import type { PathMapping, RejectedTarget, ValidationResult } from './guard.ts';
 import {
   crossDeviceIndex,
   findCrossDeviceTargets,
@@ -113,14 +113,16 @@ function assertShape(options: SweepOptions): void {
 
 /**
  * 合并缺省并取只读快照: 名单过 mergeNames 收口 (去重 + 静默剔除永不生效名, BC-34),
- * 数组拷贝隔离调用方后续改动, 顶层 freeze 固化快照语义。
+ * 数组拷贝并深冻结以隔离外部 .push() 等篡改, 顶层 freeze 固化快照语义。
  */
 function resolveOptions(options: SweepOptions): Readonly<ResolvedSweepOptions> {
   assertShape(options);
   return Object.freeze({
-    roots: [...options.roots],
-    exclude: mergeNames(options.exclude ?? [...DEFAULT_EXCLUDE], []),
-    include: mergeNames(options.include ?? [], []),
+    roots: Object.freeze([...options.roots]),
+    exclude: Object.freeze(
+      mergeNames(options.exclude ?? [...DEFAULT_EXCLUDE], []),
+    ),
+    include: Object.freeze(mergeNames(options.include ?? [], [])),
     home: options.home === undefined ? homedir() : options.home,
     style: options.style ?? nativeStyle(),
     policy: Object.freeze({
@@ -202,13 +204,13 @@ async function executePlan(
   signal: AbortSignal | undefined,
 ): Promise<SweepPlan> {
   const emit = options?.onProgress;
-  const roots = resolved.roots;
+  const roots = [...resolved.roots];
 
   const scanResult = await withPhase('scan', emit, signal, async () => {
     const result = await createScanner().scan({
-      roots,
-      exclude: resolved.exclude,
-      include: resolved.include,
+      roots: [...roots],
+      exclude: [...resolved.exclude],
+      include: [...resolved.include],
       signal,
       onProgress: (event) => emit?.(event),
     });
@@ -326,12 +328,13 @@ async function executePlan(
       roots: [...resolved.roots],
       exclude: [...resolved.exclude],
       include: [...resolved.include],
-      policy,
+      policy: { releaseSuspects: policy.releaseSuspects },
       // 体积口径单值: 与逐条 entry.basis 同源; 无任何条目时缺省
       basis: entries.length > 0 ? sizeResult.basis : undefined,
       entries,
       batch,
       skipped: [...book.entries],
+      trailer: [...book.trailer],
       warnings: [...scanResult.warnings, ...sizeResult.warnings],
       nameMatches: {
         exclude: scanResult.excludeMatches,
@@ -368,15 +371,22 @@ function buildOutcomeEntries(
   expectedSet: ReadonlySet<string> | undefined,
   stale: readonly string[],
   rejected: readonly RejectedTarget[],
+  mappings: readonly PathMapping[],
   removal: RemovalResult | undefined,
 ): SweepOutcomeEntry[] {
   const staleSet = new Set(stale);
-  const rejectedMap =
-    rejected.length > 0
-      ? new Map(
-          rejected.map((item): [string, RejectedTarget] => [item.target, item]),
-        )
-      : undefined;
+  let rejectedMap: Map<string, RejectedTarget> | undefined;
+  if (rejected.length > 0) {
+    rejectedMap = new Map<string, RejectedTarget>();
+    for (const item of rejected) {
+      if (!rejectedMap.has(item.target)) rejectedMap.set(item.target, item);
+    }
+  }
+  // removeTargets 接收的是安全闸已 realpath 化的 accepted 路径, 其返回分桶中存的是 real 形态;
+  // 按 validation.mappings 把原拼写映射到 real 后再查桶, 消除 original !== real 时查桶失配崩溃
+  const realOf = new Map(
+    mappings.map((item): [string, string] => [item.original, item.real]),
+  );
   const removedSet = new Set(removal?.removed ?? []);
   const missingSet = new Set(removal?.missing ?? []);
   const failedMap = new Map(
@@ -394,16 +404,22 @@ function buildOutcomeEntries(
       return { kind: 'not-expected' };
     // 安全闸前已消失, 按 staleTargets: 'missing' 摘出 (从未进入删除面)
     if (staleSet.has(entry.target)) return { kind: 'stale' };
-    // 整批拒绝: 删除面内非 stale 条目必带拒绝理由 (零删除, BC-22)
-    if (rejectedMap !== undefined)
-      return { kind: 'rejected', rejection: rejectedMap.get(entry.target)! };
-    // 已执行: 按删除桶给出
-    if (removedSet.has(entry.target)) return { kind: 'removed' };
-    if (missingSet.has(entry.target)) return { kind: 'missing' };
-    const failure = failedMap.get(entry.target);
+    // 整批拒绝 (BC-22): 直接被安全闸拒收的条目归 rejected (必带拒绝理由);
+    // 同批通过闸门、因整批零删除而连带未删的健康条目归 not-attempted ('BATCH_REJECTED')
+    if (rejectedMap !== undefined) {
+      const rejection = rejectedMap.get(entry.target);
+      return rejection !== undefined
+        ? { kind: 'rejected', rejection }
+        : { kind: 'not-attempted', code: 'BATCH_REJECTED' };
+    }
+    // 已执行: 按 real 路径查删除桶
+    const realTarget = realOf.get(entry.target) ?? entry.target;
+    if (removedSet.has(realTarget)) return { kind: 'removed' };
+    if (missingSet.has(realTarget)) return { kind: 'missing' };
+    const failure = failedMap.get(realTarget);
     if (failure !== undefined) return { kind: 'failed', failure };
-    // 未出桶的批次内条目只可能是整批中止点及其之后 (从未被尝试):
-    // removeTargets 对已尝试条目保证出桶, 故此处中止信息必在 (完备性见 delete.ts 循环)
+    // 未出桶的批次内条目只可能是整批中止触发条或其后未派发的条目
+    // (并发窗口内已派发条目均会完成并出桶, 完备性见 delete.ts 循环)
     return { kind: 'not-attempted', code: removal!.aborted!.code };
   };
 
@@ -468,7 +484,7 @@ async function executeRun(
   if (face.length > 0) {
     const raw = await withPhase('validate', emit, signal, () =>
       validateTargets(face, {
-        roots: resolved.roots,
+        roots: [...resolved.roots],
         home: resolved.home,
         style: resolved.style,
         signal,
@@ -488,7 +504,8 @@ async function executeRun(
     if (rejected.length === 0) {
       removal = await withPhase('remove', emit, signal, async () =>
         removeTargets(raw.accepted, {
-          roots: await toTrustRoots(resolved.roots),
+          roots: await toTrustRoots([...resolved.roots]),
+          style: resolved.style,
           signal,
           onProgress: (event) => {
             // removed / missing 在编排事件面合并为一条 removed (outcome 区分); failed / aborted 同形透传
@@ -519,6 +536,7 @@ async function executeRun(
     expectedSet,
     stale,
     rejected,
+    validation?.mappings ?? [],
     removal,
   );
   // 释放量 = 成功侧 (removed + missing + stale) 的体积累计, 口径与 CLI 汇总行同源

@@ -6,7 +6,13 @@
  */
 import { afterEach, describe, expect, test } from 'bun:test';
 
-import { rmSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  renameSync,
+  rmSync,
+  symlinkSync,
+} from 'node:fs';
 import { join } from 'node:path';
 
 import {
@@ -71,6 +77,10 @@ describe('构造期', () => {
     });
 
     expect(Object.isFrozen(sweeper.options)).toBe(true);
+    expect(Object.isFrozen(sweeper.options.roots)).toBe(true);
+    expect(Object.isFrozen(sweeper.options.exclude)).toBe(true);
+    expect(Object.isFrozen(sweeper.options.include)).toBe(true);
+    expect(Object.isFrozen(sweeper.options.policy)).toBe(true);
     expect(sweeper.options.roots).toEqual([root]);
     expect(sweeper.options.exclude).toEqual(['custom']);
     expect(sweeper.options.include).toEqual([]);
@@ -140,8 +150,11 @@ describe('只读面 (plan)', () => {
     expect(locked.skipReason).toBe('unmeasured');
     expect(locked.skipNote?.startsWith('体积统计失败: ')).toBe(true);
 
-    // 批次与跳过集册
+    // 批次与跳过集册 (含 trailer 透出)
     expect(plan.batch).toEqual([alpha.target]);
+    expect(plan.trailer).toEqual([
+      '疑似安装树 1 处默认跳过 (加 --force 一并清理)',
+    ]);
     expect(plan.skipped.map((item) => item.target).sort()).toEqual(
       [lib.target, locked.target].sort(),
     );
@@ -261,6 +274,81 @@ describe('执行面 (run)', () => {
     expect(report.validation?.rejected[0]?.code).toBe('GUARD_TARGET_MISSING');
     expect(report.entries[0]?.outcome.kind).toBe('rejected');
     expect(report.stale).toEqual([]);
+  });
+
+  test('rejected (多目标部分被拒): 拒收条为 rejected, 同批健康条为 not-attempted (BATCH_REJECTED) 且零删除', async () => {
+    const { root } = await make({
+      projects: [{ dir: 'alpha' }, { dir: 'beta' }],
+    });
+    const alpha = join(root, 'alpha/node_modules');
+    const beta = join(root, 'beta/node_modules');
+    const sweeper = createSweeper({ roots: [root], exclude: [] });
+    const report = await sweeper.run({
+      onProgress: (event) => {
+        // 计划成型之后、安全闸之前仅删掉 alpha: alpha 被拒、beta 通过闸门但整批零删除
+        if (
+          event.kind === 'phase' &&
+          event.phase === 'plan' &&
+          event.status === 'done'
+        )
+          rmSync(alpha, { recursive: true, force: true });
+      },
+    });
+
+    expect(report.status).toBe('rejected');
+    expect(report.removal).toBeUndefined();
+    expect(report.releasedBytes).toBe(0);
+    expect(existsSync(beta)).toBe(true);
+
+    const alphaEntry = report.entries.find((entry) => entry.target === alpha)!;
+    expect(alphaEntry.outcome.kind).toBe('rejected');
+    if (alphaEntry.outcome.kind === 'rejected') {
+      expect(alphaEntry.outcome.rejection.code).toBe('GUARD_TARGET_MISSING');
+    }
+
+    const betaEntry = report.entries.find((entry) => entry.target === beta)!;
+    expect(betaEntry.outcome).toEqual({
+      kind: 'not-attempted',
+      code: 'BATCH_REJECTED',
+    });
+
+    const summary = summarizeReport(report);
+    expect(summary.counts.rejected).toBe(1);
+    expect(summary.counts['not-attempted']).toBe(1);
+    expect(summary.succeeded).toBe(0);
+    expect(summary.unprocessed).toBe(2);
+    expect(summary.aborted).toBe(false);
+  });
+
+  test('original !== real (根内符号链接目标): 经 validation.mappings 映射查桶, 不崩溃且正常归 removed', async () => {
+    const { root } = await make({ projects: [{ dir: 'alpha' }] });
+    const original = join(root, 'alpha/node_modules');
+    const realParent = join(root, 'real-dir');
+    const realTarget = join(realParent, 'node_modules');
+    const sweeper = createSweeper({ roots: [root], exclude: [] });
+    const report = await sweeper.run({
+      onProgress: (event) => {
+        // 计划成型之后、安全闸之前把原目录搬到根内另一处并在原位放符号链接 (使 original !== real 且均在 root 内)
+        if (
+          event.kind === 'phase' &&
+          event.phase === 'plan' &&
+          event.status === 'done'
+        ) {
+          mkdirSync(realParent, { recursive: true });
+          renameSync(original, realTarget);
+          symlinkSync(realTarget, original, 'dir');
+        }
+      },
+    });
+
+    expect(report.status).toBe('executed');
+    expect(report.validation?.mappings).toEqual([
+      { original, real: realTarget },
+    ]);
+    expect(report.removal?.removed).toEqual([realTarget]);
+    expect(report.entries[0]?.outcome).toEqual({ kind: 'removed' });
+    expect(report.releasedBytes).toBeGreaterThan(0);
+    expect(existsSync(realTarget)).toBe(false);
   });
 
   test('staleTargets: missing: 已消失目标摘出, 健康目标照删', async () => {

@@ -65,6 +65,9 @@ export type AbortCode =
   | 'REVIEW_HEAD_SYMLINK'
   | 'REVIEW_COMPONENT_REPLACED';
 
+/** 批次内未尝试码: 删除阶段复核整批中止 (AbortCode), 或安全闸整批拒绝连带未删 ('BATCH_REJECTED') */
+export type NotAttemptedCode = AbortCode | 'BATCH_REJECTED';
+
 /** 库抛出的错误码 (配置 / 参数 / 取消三档共用, 见 errors.ts 的 SweepError) */
 export type SweepErrorCode =
   | 'CONFIG_READ_FAILED'

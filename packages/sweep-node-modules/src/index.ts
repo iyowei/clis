@@ -8,6 +8,7 @@
 export {
   type AbortCode,
   type GuardCode,
+  type NotAttemptedCode,
   type RemoveFailureCode,
   type ScanWarningCode,
   type SizeBasis,

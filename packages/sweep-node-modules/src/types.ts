@@ -4,7 +4,7 @@
  */
 import type { TargetKind } from './classify.ts';
 import type {
-  AbortCode,
+  NotAttemptedCode,
   SizeBasis,
   SkipReason,
   SweepPhase,
@@ -233,13 +233,13 @@ export interface SweepOptions {
 
 /** 本次实际生效的选项 (合并缺省后的只读快照, 供审计与日志) */
 export interface ResolvedSweepOptions {
-  roots: string[];
+  readonly roots: readonly string[];
   /** 已过 mergeNames 收口的生效名单 (去重 + 静默剔除永不生效名, BC-34) */
-  exclude: string[];
-  include: string[];
-  home: string | null;
-  style: PathStyle;
-  policy: SweepPolicy;
+  readonly exclude: readonly string[];
+  readonly include: readonly string[];
+  readonly home: string | null;
+  readonly style: PathStyle;
+  readonly policy: Readonly<SweepPolicy>;
 }
 
 /** 只读面调用选项 (plan) */
@@ -325,6 +325,8 @@ export interface SweepPlan {
   batch: string[];
   /** 批次外目标与原因 (含未测到体积的条目) */
   skipped: SkippedTarget[];
+  /** 清单末行说明 (与 SkipBook.trailer 同源: 按类与形态各一行, 只在出现时出; 无跳过说明时为空数组) */
+  trailer?: string[];
   /** 扫描与体积的非致命告警 (两段合并, 保各自次序) */
   warnings: SweepWarning[];
   /** 两份名单的命中统计 (供 CLI 出名单回执与未命中告警, BC-09 / BC-33) */
@@ -354,8 +356,12 @@ export type EntryOutcome =
   | { kind: 'stale' }
   | { kind: 'failed'; failure: TargetFailure }
   | { kind: 'rejected'; rejection: RejectedTarget }
-  /** 批次内但未轮到 (整批中止时中止点及其之后) */
-  | { kind: 'not-attempted'; code: AbortCode }
+  /**
+   * 批次内但未尝试:
+   * - 删除阶段复核整批中止时未被派发的条目 (AbortCode; 并发窗口内已派发条目会完成并如实报告, 之后不再派发新条目);
+   * - 安全闸整批拒绝时同批通过闸门、因整批零删除而连带未删的健康条目 ('BATCH_REJECTED')。
+   */
+  | { kind: 'not-attempted'; code: NotAttemptedCode }
   /**
    * 在期望批次之外 (提供了 expectedBatch, 且本目标不在其中)。
    * 与 skipped 的区别: skipped 是安全策略挡下, not-expected 是调用方给的范围挡下。
