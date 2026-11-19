@@ -381,15 +381,15 @@ export async function compareApiCase(
     }
   } else {
     const error = isPlainRecord(outcome.error) ? outcome.error : null;
-    if (expect.result !== undefined) {
+    if (expect.error === undefined) {
+      // 未声明 expect.error 时任何抛错都属未预期异常, 即便用例仅声明了 fs / events 也必须判 FAIL (杜绝静默 PASS)
       const code = typeof error?.code === 'string' ? error.code : '?';
       const message = typeof error?.message === 'string' ? error.message : '';
       failures.push({
         kind: 'error',
-        message: `期望成功返回, 实际抛错: ${code} ${message}`.trim(),
+        message: `未预期抛错: ${code} ${message}`.trim(),
       });
-    }
-    if (expect.error !== undefined) {
+    } else {
       const actualCode = error?.code;
       if (actualCode !== expect.error.code) {
         failures.push({

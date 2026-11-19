@@ -17,7 +17,9 @@ const asRecord = (value: unknown): Record<string, unknown> | null =>
     : null;
 
 const ID_PATTERN = /^[a-z0-9]+(-[a-z0-9]+)*$/;
-const SPEC_REF_PATTERN = /^[A-Z]{2,4}-[0-9]+$/;
+/** 契约条款编号统一形态 (单源: validate.ts 与 validate-coverage.ts 共用) */
+export const CLAUSE_ID_SOURCE = '(?:BC|OF|EC)-\\d+';
+export const SPEC_REF_PATTERN = new RegExp(`^${CLAUSE_ID_SOURCE}$`);
 
 /** 相对路径判定: 非空、非绝对 (含 win 盘符)、不含反斜杠与 '..' 段 */
 function isSafeRelPath(value: unknown): value is string {
@@ -279,6 +281,20 @@ function validateApiExpect(expect: unknown, problems: string[]): void {
     }
   }
   const result = record.result;
+  const error = record.error;
+  if (result !== undefined && error !== undefined) {
+    problems.push('expect.result 与 expect.error 互斥, 不能同时声明');
+  }
+  if (
+    result === undefined &&
+    error === undefined &&
+    record.events === undefined &&
+    record.fs === undefined
+  ) {
+    problems.push(
+      'api case 的 expect 须至少含 result / error / events / fs 之一',
+    );
+  }
   if (result !== undefined) {
     const shape = asRecord(result);
     const hasExact = shape !== null && 'exact' in shape;
@@ -287,7 +303,6 @@ function validateApiExpect(expect: unknown, problems: string[]): void {
       problems.push('expect.result 须恰含 exact 或 subset 之一');
     }
   }
-  const error = record.error;
   if (error !== undefined) {
     const shape = asRecord(error);
     if (shape === null || typeof shape.code !== 'string' || shape.code === '') {
