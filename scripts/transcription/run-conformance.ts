@@ -10,9 +10,9 @@
  * - fixture.ts  fixture 建树 / setup 预置 / 最小 env / 执行 / 清理 (cli 与 api 两类 case);
  * - compare.ts  逐项比对 (cli: 退出码 / stdout 与 stderr 的子串含与禁含 / fs 终态; api: 返回值 / 抛错 / 事件);
  * - report.ts   报告数据结构与人读 / JSON 渲染;
- * - api-harness.ts 参考 API harness (独立入口; 协议见 docs/sweep/protocol/conformance/api-harness-protocol.md)。
+ * - api-harness.ts 参考 API harness (独立入口; 协议见 packages/sweep-node-modules/docs/protocol/conformance/api-harness-protocol.md)。
  *
- * 语料权威: docs/sweep/protocol/conformance/corpus.schema.json (字段语义以 schema 为准; 手写校验是
+ * 语料权威: packages/sweep-node-modules/docs/protocol/conformance/corpus.schema.json (字段语义以 schema 为准; 手写校验是
  * schema 的物化子集, 只为尽早给出可读报错, 不复刻 schema 的全部约束)。
  *
  * 用法: bun scripts/transcription/run-conformance.ts --target "bun packages/sweep-node-modules-cli/src/cli.ts" [--api-target "bun scripts/transcription/api-harness.ts"] [--corpus <dir>] [--filter <id 子串>]
@@ -21,13 +21,13 @@
  * 退出码: 0 全部通过; 1 存在失败用例; 2 用法 / 语料 / 环境错误 (runner 自身问题, 非被测缺陷)。
  */
 import { existsSync } from 'node:fs';
-import { mkdir, mkdtemp, realpath } from 'node:fs/promises';
-import { homedir } from 'node:os';
+import { realpath } from 'node:fs/promises';
 import { dirname, isAbsolute, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { makeTmpRoot } from '../lib/tmp-root.ts';
 import { compareApiCase, compareCase } from './compare.ts';
-import { type CorpusCase, loadCorpus } from './corpus.ts';
+import { CORPUS_REL, type CorpusCase, loadCorpus } from './corpus.ts';
 import {
   type ExecOutcome,
   type RunContext,
@@ -46,26 +46,20 @@ import {
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 /**
- * 默认语料目录: 语料的权威落点在协议区 (docs/sweep/protocol/conformance/corpus), 脚本不随身携带语料。
- * 脚本现居 scripts/transcription/, 自 HERE 上溯 2 级到仓库根再取 docs。
+ * 默认语料目录: 从 corpus.ts 的唯一协议根常量 (PROTOCOL_ROOT) 派生, 避免路径硬编码散落。
  */
-const DEFAULT_CORPUS_DIR = join(
-  HERE,
-  '..',
-  '..',
-  'docs',
-  'sweep',
-  'protocol',
-  'conformance',
-  'corpus',
-);
+const DEFAULT_CORPUS_DIR = join(HERE, '..', '..', CORPUS_REL);
 const DEFAULT_TIMEOUT_MS = 15000;
-/** 默认 API harness: 随套件提供的参考 harness (import API 包单源; 见 api-harness.ts 文件头) */
-const DEFAULT_API_TARGET = `bun ${join(HERE, 'api-harness.ts')}`;
+/** 默认 API harness 命令数组: 直接以 argv 形态构造, 不对含绝对路径的命令做空白 split */
+const DEFAULT_API_TARGET_ARGV: readonly string[] = [
+  'bun',
+  join(HERE, 'api-harness.ts'),
+];
 
 interface CliOptions {
   target: string;
-  apiTarget: string;
+  /** 显式传入的 --api-target 字符串; 缺省时直接使用 DEFAULT_API_TARGET_ARGV 数组 */
+  apiTarget?: string;
   corpusDir: string;
   filter?: string;
   timeoutMs: number;
@@ -84,9 +78,9 @@ type ParseOutcome =
 const HELP_TEXT = [
   '用法: bun scripts/transcription/run-conformance.ts --target "<被测命令>" [选项]',
   '',
-  '  --target <cmd>    被测进程命令 (如 "bun packages/sweep-node-modules-cli/src/cli.ts", 或 PATH 中的 "sweep-nm" / 绝对路径形态); 按空白拆分, 不支持含空格的路径',
+  '  --target <cmd>    被测进程命令 (如 "bun packages/sweep-node-modules-cli/src/cli.ts", 或 PATH 中的 "sweep-nm" / 绝对路径形态); 按空白拆分, 支持用单 / 双引号包裹含空格的路径',
   '  --api-target <cmd> API 用例的被测 harness 命令 (缺省: 随套件参考 harness, 即 "bun <仓库根>/scripts/transcription/api-harness.ts"); 拆分与绝对化规则同 --target',
-  '  --corpus <dir>    语料目录 (默认: docs/sweep/protocol/conformance/corpus)',
+  `  --corpus <dir>    语料目录 (默认: ${CORPUS_REL})`,
   '  --filter <text>   只跑 id 含该子串的用例',
   '  --timeout <ms>    单条用例执行超时 (默认 15000), 到期即判失败 (超时守卫)',
   '  --json            输出结构化 JSON 报告 (stdout 仅 JSON, 诊断走 stderr)',
@@ -113,7 +107,7 @@ const HELP_TEXT = [
  */
 function parseArgs(argv: string[]): ParseOutcome {
   let target: string | undefined;
-  let apiTarget = DEFAULT_API_TARGET;
+  let apiTarget: string | undefined;
   let corpusDir = DEFAULT_CORPUS_DIR;
   let filter: string | undefined;
   let timeoutMs = DEFAULT_TIMEOUT_MS;
@@ -201,6 +195,38 @@ function parseArgs(argv: string[]): ParseOutcome {
 }
 
 /**
+ * 将命令行字符串切分为 argv 数组: 支持单 / 双引号包裹含空格的路径,
+ * 避免直接 `.split(/\s+/)` 撕裂含空格的绝对路径。
+ */
+function splitCommand(raw: string): string[] {
+  const parts: string[] = [];
+  let current = '';
+  let quote: string | null = null;
+  for (let index = 0; index < raw.length; index += 1) {
+    const ch = raw[index]!;
+    if (quote !== null) {
+      if (ch === quote) quote = null;
+      else current += ch;
+      continue;
+    }
+    if (ch === '"' || ch === "'") {
+      quote = ch;
+      continue;
+    }
+    if (/\s/.test(ch)) {
+      if (current !== '') {
+        parts.push(current);
+        current = '';
+      }
+      continue;
+    }
+    current += ch;
+  }
+  if (current !== '') parts.push(current);
+  return parts;
+}
+
+/**
  * 把 target 命令里按启动目录写的相对路径绝对化。
  * 必要原因: 被测进程的 cwd 会被设为 fixture 目录 (用例可声明), 而 `--target "bun packages/sweep-node-modules-cli/src/cli.ts"`
  * 里 `src/cli.ts` 是相对 runner 启动目录书写的; 不绝对化就会在 fixture cwd 下解析而找不到文件。
@@ -208,7 +234,7 @@ function parseArgs(argv: string[]): ParseOutcome {
  * 的路径串, 其余原样透传。
  */
 function absolutizeTargetArgv(
-  targetArgv: string[],
+  targetArgv: readonly string[],
   launchDir: string,
 ): string[] {
   return targetArgv.map((part, index) => {
@@ -231,7 +257,7 @@ async function runCase(
   ctx: RunContext,
 ): Promise<CaseReport> {
   const startedAt = Date.now();
-  const rawRoot = await mkdtemp(join(ctx.workBase, 'sweep-conformance-'));
+  const rawRoot = makeTmpRoot('sweep-conformance-');
   // realpath 归一: macOS 上 /var 与 /private/var 是同一位置的两种拼写, 统一用 realpath 形态
   // 作 $FIXTURE 的替换值, 使期望文本与 process.cwd() / realpath 化输出一致。
   const root = await realpath(rawRoot);
@@ -285,13 +311,13 @@ async function main(): Promise<number> {
   }
 
   const targetArgv = absolutizeTargetArgv(
-    options.target.trim().split(/\s+/),
+    splitCommand(options.target),
     process.cwd(),
   );
-  const apiTargetArgv = absolutizeTargetArgv(
-    options.apiTarget.trim().split(/\s+/),
-    process.cwd(),
-  );
+  const apiTargetArgv =
+    options.apiTarget === undefined
+      ? [...DEFAULT_API_TARGET_ARGV]
+      : absolutizeTargetArgv(splitCommand(options.apiTarget), process.cwd());
   let cases: CorpusCase[];
   try {
     cases = await loadCorpus(resolve(options.corpusDir));
@@ -311,14 +337,11 @@ async function main(): Promise<number> {
     return 2;
   }
 
-  const workBase = join(homedir(), 'tmp');
-  await mkdir(workBase, { recursive: true });
   const ctx: RunContext = {
     targetArgv,
     apiTargetArgv,
     timeoutMs: options.timeoutMs,
     keep: options.keep,
-    workBase,
   };
 
   const reports: CaseReport[] = [];

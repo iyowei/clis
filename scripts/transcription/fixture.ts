@@ -51,14 +51,12 @@ const BASE_ENV_KEYS = [
 
 /** 一次运行期的固定上下文 (由调用方解析 CLI 后组装) */
 export interface RunContext {
-  /** 被测命令 argv (由 --target 拆分而来) */
+  /** 被测命令 argv (已按数组传入, 含绝对路径时不经空白二次切分) */
   targetArgv: string[];
-  /** API harness 命令 argv (由 --api-target 拆分而来; api 用例用) */
+  /** API harness 命令 argv (api 用例用) */
   apiTargetArgv: string[];
   timeoutMs: number;
   keep: boolean;
-  /** fixture 根基座 (调用方保证已存在) */
-  workBase: string;
 }
 
 export interface ExecOutcome {
