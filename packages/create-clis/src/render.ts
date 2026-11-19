@@ -122,6 +122,15 @@ function buildForms(target: Vocabulary, source: Vocabulary): Form[] {
     packageName(target.scope, target.name),
   );
   add(source.name, target.name);
+  if (source.scope.length > 0) {
+    // 带斜杠的 npm scope 前缀: 目标无 scope 时连同尾部 `/` 一起省略, 防出现非法 `/pkg`
+    add(`${source.scope}/`, target.scope.length > 0 ? `${target.scope}/` : '');
+    // 仅当 source.scope 与 `@${source.owner}` 不同名 (如独立占位 `{{SCOPE}}` 或异名组织 scope)
+    // 才注册裸 scope, 防把 GitHub @mention (`@owner`) 误当 npm scope 清空或错换
+    if (source.scope !== `@${source.owner}`) {
+      add(source.scope, target.scope);
+    }
+  }
   add(source.binName, target.binName);
   if (source.author !== undefined)
     add(source.author, target.author ?? target.owner);
@@ -193,13 +202,19 @@ export function containsResidual(
   if (target === undefined) {
     return forms.some((form) => content.includes(form.from));
   }
-  // 先从待检文本中按最长形态优先剔除所有合法目标词汇, 再检测剩余文本是否仍含原项目词汇:
-  // 既放行同名重合 (owner === 'iyowei') 与超集重合 (owner === 'iyowei-lab'),
-  // 又仍能精准抓住同一文件中混杂的真实残留。
-  const targetForms = buildForms(target, target).map((form) => form.from);
+  // 仅对包含任一原词汇形态的合法目标形态 (同名或超集重合) 用不可匹配哨兵 '\0' 遮蔽:
+  // 1) 短目标词 (如 --name node / --owner i) 与原形态无包含关系, 不做遮蔽, 防切碎真残留致失明;
+  // 2) 用 '\0' 而非空串, 防止左右残留字符拼接出伪原词汇导致误报;
+  // 3) 长形态优先遮蔽, 放行同名 (owner === 'iyowei') 与超集 (owner === 'iyowei-lab'),
+  //    又仍能精准抓住同一文件中混杂的真实残留。
+  const targetForms = buildForms(target, target)
+    .map((form) => form.from)
+    .filter(
+      (tf) => tf.length > 0 && forms.some((form) => tf.includes(form.from)),
+    );
   let remaining = content;
   for (const tf of targetForms) {
-    if (tf.length > 0) remaining = remaining.split(tf).join('');
+    remaining = remaining.replaceAll(tf, '\0');
   }
   return forms.some((form) => remaining.includes(form.from));
 }

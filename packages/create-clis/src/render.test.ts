@@ -228,6 +228,38 @@ describe('renderTemplate 词汇形态', () => {
     const clean = '# Contributing\n\n普通文本, 无原词汇。\n';
     expect(renderTemplate(clean, TARGET, ORIGINAL)).toBe(clean);
   });
+
+  test('独立 scope 与 scope/ 前缀形态正确替换, 不误伤裸包斜杠与 GitHub @owner (CREATE-P0-6)', () => {
+    expect(
+      renderTemplate('scope: {{SCOPE}}', TARGET, TEMPLATE_VOCABULARY),
+    ).toBe('scope: @me');
+    const bare: Vocabulary = { ...TARGET, scope: '' };
+    expect(renderTemplate('scope: {{SCOPE}}', bare, TEMPLATE_VOCABULARY)).toBe(
+      'scope: ',
+    );
+    // 无 scope 生成时 {{SCOPE}}/pkg 连斜杠一起去除, 不留下非法 /pkg
+    expect(renderTemplate('{{SCOPE}}/demo', bare, TEMPLATE_VOCABULARY)).toBe(
+      'demo',
+    );
+    // GitHub @mention (@owner) 走 owner 通道而非 scope 通道, 无 scope 时仍保留 @me
+    expect(renderTemplate('mentioning @iyowei', bare, ORIGINAL)).toBe(
+      'mentioning @me',
+    );
+    // 异名组织 scope (@org != @alice) 独立裸形态照常替换与检残留
+    const diffOrg: Vocabulary = {
+      ...ORIGINAL,
+      scope: '@org',
+      owner: 'alice',
+    };
+    expect(renderTemplate('org @org and @org/x', TARGET, diffOrg)).toBe(
+      'org @me and @me/x',
+    );
+    expect(containsResidual('scope: {{SCOPE}}', TEMPLATE_VOCABULARY)).toBe(
+      true,
+    );
+    expect(containsResidual('org @org', diffOrg)).toBe(true);
+    expect(containsResidual('org @iyowei', ORIGINAL)).toBe(true);
+  });
 });
 
 describe('containsResidual 残留检测', () => {
@@ -294,6 +326,35 @@ describe('containsResidual 残留检测', () => {
         supersetOwner,
       ),
     ).toBe(true);
+  });
+
+  test('短目标词汇 (--name node / --owner i) 不切碎真实残留致失明, 哨兵防拼缝误报 (CREATE-P0-6)', () => {
+    const shortTarget: Vocabulary = {
+      name: 'node',
+      scope: '',
+      binName: 'n',
+      owner: 'i',
+      repoUrl: 'https://github.com/i/node',
+    };
+    expect(
+      containsResidual('leak: sweep-node-modules', ORIGINAL, shortTarget),
+    ).toBe(true);
+    expect(containsResidual('leak: iyowei', ORIGINAL, shortTarget)).toBe(true);
+    expect(containsResidual('ok: node and i', ORIGINAL, shortTarget)).toBe(
+      false,
+    );
+
+    const sameOwner: Vocabulary = {
+      name: 'my-tool',
+      scope: '@me',
+      binName: 'mt',
+      owner: 'iyowei',
+      repoUrl: 'https://github.com/iyowei/my-tool',
+    };
+    // 若使用空串剔除 iyowei, 左右碎片会粘连拼出伪残留 sweep-node-modules; 哨兵 '\0' 阻断拼接误报
+    expect(
+      containsResidual('sweeiyoweip-node-modules', ORIGINAL, sameOwner),
+    ).toBe(false);
   });
 });
 
