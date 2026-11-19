@@ -10,7 +10,7 @@
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { existsSync, readFileSync, statSync } from 'node:fs';
-import { join } from 'node:path';
+import { join, win32 } from 'node:path';
 
 import { cleanGitEnv } from './git-env.ts';
 
@@ -252,6 +252,45 @@ export const parsePackFiles = (raw: string): string[] | null => {
 };
 
 /**
+ * 推导 npm 子进程调用方式 (跨平台零 shell):
+ * - POSIX 直接调 `npm`;
+ * - Windows 优先绕开 `npm.cmd` 批处理壳层 (Bun 在 Windows 下经 `shell: true` 调 `.cmd`
+ *   存在挂起与句柄占用风险, 亦规避 CVE-2024-27980 壳层转义问题), 定位 PATH 内的
+ *   `node_modules/npm/bin/npm-cli.js` 并以原生 `node.exe` 直调; 极端定制环境再回退 `cmd.exe`。
+ */
+export const resolveNpmCommand = (
+  args: readonly string[],
+  platform: NodeJS.Platform = process.platform,
+  env: NodeJS.ProcessEnv = process.env,
+  pathExists: (path: string) => boolean = existsSync,
+): { command: string; args: string[] } => {
+  if (platform !== 'win32') return { command: 'npm', args: [...args] };
+  const execPath = env.npm_execpath;
+  if (
+    typeof execPath === 'string' &&
+    /npm-cli\.js$/i.test(execPath) &&
+    pathExists(execPath)
+  ) {
+    return { command: 'node', args: [execPath, ...args] };
+  }
+  const pathList = (env.PATH ?? env.Path ?? '')
+    .split(';')
+    .map((item) => item.trim().replace(/^"|"$/g, ''))
+    .filter((item) => item !== '');
+  for (const dir of pathList) {
+    const npmCli = win32.join(dir, 'node_modules', 'npm', 'bin', 'npm-cli.js');
+    if (!pathExists(npmCli)) continue;
+    const nodeExe = win32.join(dir, 'node.exe');
+    return {
+      command: pathExists(nodeExe) ? nodeExe : 'node',
+      args: [npmCli, ...args],
+    };
+  }
+  const comspec = env.ComSpec ?? env.COMSPEC ?? 'cmd.exe';
+  return { command: comspec, args: ['/d', '/s', '/c', 'npm.cmd', ...args] };
+};
+
+/**
  * 跑 `npm pack --dry-run --json --ignore-scripts` 收发行面包内文件清单 (只读, 不落 tarball)。
  *
  * 两个旗标各有硬理由: --dry-run 不写盘; --ignore-scripts 必须带, 否则 pack 过程会再进一次
@@ -260,23 +299,20 @@ export const parsePackFiles = (raw: string): string[] | null => {
  * 采集失败 (npm 不在 PATH / 非零退出 / 输出非 JSON) 一律落 issue, 不抛: 判定层按「采不到就拒」处理。
  */
 export const readPackFiles = (root: string): PackFacts => {
-  // Windows 的 npm 是 npm.cmd: CVE-2024-27980 之后直接 execFileSync 执行 .cmd 必须显式传
-  // shell: true (否则抛 EINVAL); 下方参数全部为固定字面量, 零外部输入拼接
-  const isWin = process.platform === 'win32';
-  const npm = isWin ? 'npm.cmd' : 'npm';
+  const invocation = resolveNpmCommand([
+    'pack',
+    '--dry-run',
+    '--json',
+    '--ignore-scripts',
+  ]);
   let raw: string;
   try {
-    raw = execFileSync(
-      npm,
-      ['pack', '--dry-run', '--json', '--ignore-scripts'],
-      {
-        cwd: root,
-        encoding: 'utf8',
-        stdio: ['ignore', 'pipe', 'ignore'],
-        maxBuffer: 32 * 1024 * 1024,
-        shell: isWin,
-      },
-    );
+    raw = execFileSync(invocation.command, invocation.args, {
+      cwd: root,
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'ignore'],
+      maxBuffer: 32 * 1024 * 1024,
+    });
   } catch {
     return {
       files: null,
