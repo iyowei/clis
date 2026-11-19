@@ -91,12 +91,15 @@ export function listWorkspacePackages(root: string): WorkspacePackage[] {
 
 /**
  * 派生仓内全部「CLI → API」双包产品对 (稳定排序)。
- * 判据: CLI 包带 `bin`, 且在 dependencies 或 devDependencies 中引用某个仓内无 `bin` 包。
+ * 判据: CLI 包带 `bin`, 且在 dependencies 或 devDependencies 中引用某个专属产品 API 包 (无 `bin`)。
+ * 跨 CLI 共享私有库 (`clisRole: 'shared-lib'` 或被多个 CLI 共同依赖的 `private: true` 无 bin 库)
+ * 不视为单一产品的 API 主包; 存在多候选时优先匹配对称命名 (`<api>-cli`)。
  */
 export function resolveProductPairs(root: string): ProductPair[] {
   const packages = listWorkspacePackages(root);
   const byName = new Map(packages.map((pkg) => [pkg.name, pkg]));
-  const pairs: ProductPair[] = [];
+  const cliInDegree = new Map<string, number>();
+
   for (const pkg of packages) {
     if (pkg.manifest.bin === undefined) continue;
     for (const depName of listDeclaredDeps(pkg)) {
@@ -106,10 +109,39 @@ export function resolveProductPairs(root: string): ProductPair[] {
         target !== pkg &&
         target.manifest.bin === undefined
       ) {
-        pairs.push({ cli: pkg, api: target });
-        break;
+        cliInDegree.set(target.name, (cliInDegree.get(target.name) ?? 0) + 1);
       }
     }
+  }
+
+  const isSharedLib = (pkg: WorkspacePackage): boolean => {
+    if (pkg.manifest.clisRole === 'shared-lib') return true;
+    return (
+      pkg.manifest.private === true && (cliInDegree.get(pkg.name) ?? 0) > 1
+    );
+  };
+
+  const pairs: ProductPair[] = [];
+  for (const pkg of packages) {
+    if (pkg.manifest.bin === undefined) continue;
+    const candidates: WorkspacePackage[] = [];
+    for (const depName of listDeclaredDeps(pkg)) {
+      const target = byName.get(depName);
+      if (
+        target !== undefined &&
+        target !== pkg &&
+        target.manifest.bin === undefined &&
+        !isSharedLib(target)
+      ) {
+        candidates.push(target);
+      }
+    }
+    if (candidates.length === 0) continue;
+    const symmetric = candidates.find(
+      (target) =>
+        pkg.name === `${target.name}-cli` || pkg.dir === `${target.dir}-cli`,
+    );
+    pairs.push({ cli: pkg, api: symmetric ?? candidates[0]! });
   }
   return pairs;
 }

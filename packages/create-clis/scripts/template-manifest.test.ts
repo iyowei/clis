@@ -64,7 +64,8 @@ function walkRepo(root: string): string[] {
       if (entry.isDirectory()) {
         if (!SKIP_DIRS.has(entry.name)) walk(join(dir, entry.name));
       } else if (!isJunk(entry.name)) {
-        out.push(relative(root, join(dir, entry.name)));
+        // 清单路径统一 POSIX 分隔符, Windows 上 relative 产出反斜杠需先归一再比对
+        out.push(relative(root, join(dir, entry.name)).replaceAll('\\', '/'));
       }
     }
   };

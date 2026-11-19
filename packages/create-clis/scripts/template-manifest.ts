@@ -214,6 +214,10 @@ export const TEMPLATE_MANIFEST: readonly ManifestEntry[] = [
   excl('bun.lock', '锁文件生成物; 新项目 bun install 重建'),
   excl('packages/create-clis/', '生成器自身; 生成物不含生成器'),
   excl(
+    'packages/cli-updater/',
+    '本仓多 CLI 共享自更新私有库; 生成物示例包保持最小 greet 骨架, 不进模板',
+  ),
+  excl(
     'packages/codd/',
     'MongoDB 模板化装配 API 主包与文档 (本仓领域工具); 不进模板',
   ),

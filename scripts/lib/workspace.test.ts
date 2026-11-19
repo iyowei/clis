@@ -124,4 +124,31 @@ describe('resolveCliAndApi', () => {
       /未找到匹配 @x\/missing/,
     );
   });
+
+  test('仓内存在多 CLI 共享私有库时, 双包配对精准锚定专属 API 包且单包 CLI 不误配', () => {
+    const root = makeRoot({
+      'package.json': { workspaces: ['packages/*'] },
+      'packages/shared-utils/package.json': {
+        name: '@x/shared-utils',
+        private: true,
+        clisRole: 'shared-lib',
+      },
+      'packages/create-x/package.json': {
+        name: 'create-x',
+        bin: { 'create-x': 'bin/create-x.mjs' },
+        devDependencies: { '@x/shared-utils': '1.0.0' },
+      },
+      'packages/tool/package.json': { name: '@x/tool' },
+      'packages/tool-cli/package.json': {
+        name: '@x/tool-cli',
+        bin: { tool: 'bin/tool.mjs' },
+        devDependencies: { '@x/shared-utils': '1.0.0', '@x/tool': '1.0.0' },
+      },
+    });
+    const pairs = resolveProductPairs(root);
+    expect(pairs.map((p) => `${p.cli.name}->${p.api.name}`)).toEqual([
+      '@x/tool-cli->@x/tool',
+    ]);
+    expect(resolveCliAndApi(root).api.name).toBe('@x/tool');
+  });
 });
