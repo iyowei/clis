@@ -23,16 +23,15 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { fileURLToPath } from 'node:url';
+
+import type { Workspace } from '@iyowei/sweep-node-modules/testing';
 
 import {
-  type Workspace,
-  type WorkspaceSpec,
-  makeWorkspace,
-} from '@iyowei/sweep-node-modules/testing';
-
-const CLI = fileURLToPath(new URL('./cli.ts', import.meta.url));
-const RUNNERS = ['bun', 'node'];
+  RUNNER_AVAILABILITY,
+  createWorkspaceTracker,
+  runCli,
+  writeConfig,
+} from './cli.e2e.fixtures.ts';
 
 /** 造挂载点的第一道门 (命令在不在): macOS 的 hdiutil 可用 (Linux 挂载需 root, 不在此列) */
 const MOUNTABLE =
@@ -40,7 +39,7 @@ const MOUNTABLE =
   spawnSync('hdiutil', ['info'], { stdio: 'ignore', timeout: 10_000 })
     .status === 0;
 
-const workspaces: Workspace[] = [];
+const { make, cleanup } = createWorkspaceTracker();
 /** 本用例已挂载的挂载点, 收尾时逐个卸载 */
 const mounted: string[] = [];
 /** afterEach 重试后仍未卸载的挂载点, afterAll 再给一次机会 */
@@ -82,12 +81,6 @@ async function detachWithRetry(point: string): Promise<boolean> {
   return false;
 }
 
-async function make(spec: WorkspaceSpec): Promise<Workspace> {
-  const workspace = await makeWorkspace(spec);
-  workspaces.push(workspace);
-  return workspace;
-}
-
 afterEach(async () => {
   // 卸载必须先于 fixture 清理: 挂载点未卸载时 rm 会穿透到挂载卷内, 且挂载点自身删不掉 (EBUSY)。
   // 卸载失败重试后降级为警告并继续: 绝不抛断本钩子, 否则其后的数组复位不执行, 现场跨用例累积。
@@ -98,12 +91,7 @@ afterEach(async () => {
       `[Warning] 磁盘映像卸载失败 (已重试 ${DETACH_ATTEMPTS} 次), 请人工卸载: ${point}\n`,
     );
   }
-  try {
-    await Promise.all(workspaces.map((workspace) => workspace.cleanup()));
-  } finally {
-    // 单个工作区清理失败已由 cleanup 内部降级为警告; 此处兜底复位, 防跨用例重复清理同一现场
-    workspaces.length = 0;
-  }
+  await cleanup();
 });
 
 afterAll(async () => {
@@ -134,27 +122,6 @@ afterAll(async () => {
     );
   }
 });
-
-/** 跑一次 CLI: 清宿主 SWEEP_NM_CONFIG, 固定 NO_COLOR (断言面为降级纯文本) */
-function runCli(runner: string, args: string[]) {
-  const env: Record<string, string> = {
-    ...(process.env as Record<string, string>),
-    NO_COLOR: '1',
-  };
-  delete env.SWEEP_NM_CONFIG;
-  return spawnSync(runner, [CLI, ...args], {
-    encoding: 'utf8',
-    env,
-    timeout: 10_000,
-  });
-}
-
-/** 写配置 (exclude 显式写空数组 = 用户接管, 内置默认名单不参与) */
-function writeConfig(workspace: Workspace, roots: string[]): string {
-  const file = join(workspace.root, 'sweep-config.json');
-  writeFileSync(file, JSON.stringify({ roots, exclude: [], include: [] }));
-  return file;
-}
 
 /** 映像文件全程只建一次 (create 约 1s, 是本组用例的主要成本), 逐用例现挂现卸 */
 let imageDir: string | null = null;
@@ -403,7 +370,6 @@ if (probeFailure !== '') {
 }
 const MOUNT_READY = MOUNTABLE && probeFailure === '';
 
-for (const runner of RUNNERS) {
-  const available = spawnSync(runner, ['-v'], { timeout: 10_000 }).status === 0;
+for (const { runner, available } of RUNNER_AVAILABILITY) {
   defineCrossDeviceCases(runner, available);
 }

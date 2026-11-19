@@ -155,7 +155,29 @@ async function runWorker(name: string, configPath: string): Promise<void> {
   try {
     const result = await runInit({
       configPath,
-      fileExists: async (path) => existsSync(path),
+      configExists: async (path) => {
+        try {
+          lstatSync(path);
+          return true;
+        } catch {
+          return false;
+        }
+      },
+      rootExists: async (path) => {
+        try {
+          lstatSync(path);
+          return true;
+        } catch {
+          return false;
+        }
+      },
+      rootIsDirectory: async (path) => {
+        try {
+          return lstatSync(path).isDirectory();
+        } catch {
+          return false;
+        }
+      },
       firstSymlinkOnRoot,
       firstSymlinkOnTarget,
       writeFile: async (path, text) => {

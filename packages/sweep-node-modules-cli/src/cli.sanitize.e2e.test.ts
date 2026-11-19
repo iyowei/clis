@@ -8,14 +8,11 @@
  */
 import { afterAll, describe, expect, test } from 'bun:test';
 
-import { spawnSync } from 'node:child_process';
 import { mkdirSync, mkdtempSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { fileURLToPath } from 'node:url';
 
-const CLI = fileURLToPath(new URL('./cli.ts', import.meta.url));
-const RUNNERS = ['bun', 'node'];
+import { RUNNER_AVAILABILITY, runCli } from './cli.e2e.fixtures.ts';
 
 /** 含控制字节的目录名在 win32 上无法创建, 该面用例只在 posix 跑 (用例自身的宿主约束, 非被测行为) */
 const POSIX = process.platform !== 'win32';
@@ -45,26 +42,6 @@ function sandboxDir(name: string): string {
 
 /** 净化样本: ESC (清屏序列) + 换行 (劈行注入) + RLO (视觉反转) 三形并置 */
 const EVIL = '/nowhere/evil\u001b[2Jname\u202e.json';
-
-/** 跑一次 CLI: 宿主变量不得泄漏进用例 (SWEEP_NM_CONFIG 一律先清), 非 TTY + NO_COLOR 稳定断言 */
-function runCli(
-  runner: string,
-  args: string[],
-  options: { cwd?: string; env?: Record<string, string> } = {},
-) {
-  const env: Record<string, string> = {
-    ...(process.env as Record<string, string>),
-    ...options.env,
-  };
-  delete env.SWEEP_NM_CONFIG;
-  env.NO_COLOR = '1';
-  return spawnSync(runner, [CLI, ...args], {
-    encoding: 'utf8',
-    env,
-    cwd: options.cwd,
-    timeout: 10_000,
-  });
-}
 
 /** 输出面净化用例组, 逐 runner 注册 */
 function defineSanitizeCases(runner: string, available: boolean): void {
@@ -148,7 +125,6 @@ function defineSanitizeCases(runner: string, available: boolean): void {
   });
 }
 
-for (const runner of RUNNERS) {
-  const available = spawnSync(runner, ['-v']).status === 0;
+for (const { runner, available } of RUNNER_AVAILABILITY) {
   defineSanitizeCases(runner, available);
 }

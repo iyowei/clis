@@ -5,56 +5,20 @@
  */
 import { afterEach, describe, expect, test } from 'bun:test';
 
-import { spawnSync } from 'node:child_process';
 import { existsSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { fileURLToPath } from 'node:url';
+
+import type { Workspace } from '@iyowei/sweep-node-modules/testing';
 
 import {
-  type Workspace,
-  type WorkspaceSpec,
-  makeWorkspace,
-} from '@iyowei/sweep-node-modules/testing';
+  RUNNER_AVAILABILITY,
+  createWorkspaceTracker,
+  runCli,
+  writeConfig,
+} from './cli.e2e.fixtures.ts';
 
-const CLI = fileURLToPath(new URL('./cli.ts', import.meta.url));
-const RUNNERS = ['bun', 'node'];
-
-const workspaces: Workspace[] = [];
-async function make(spec: WorkspaceSpec): Promise<Workspace> {
-  const workspace = await makeWorkspace(spec);
-  workspaces.push(workspace);
-  return workspace;
-}
-
-afterEach(async () => {
-  await Promise.all(workspaces.map((workspace) => workspace.cleanup()));
-  workspaces.length = 0;
-});
-
-/** 跑一次 CLI: 清宿主 SWEEP_NM_CONFIG, 固定 NO_COLOR (断言面为降级纯文本) */
-function runCli(
-  runner: string,
-  args: string[],
-  options: { env?: Record<string, string> } = {},
-) {
-  const base: Record<string, string> = {
-    ...(process.env as Record<string, string>),
-  };
-  delete base.SWEEP_NM_CONFIG;
-  Object.assign(base, options.env ?? {}, { NO_COLOR: '1' });
-  return spawnSync(runner, [CLI, ...args], {
-    encoding: 'utf8',
-    env: base,
-    timeout: 10_000,
-  });
-}
-
-/** 写配置 (exclude 显式写空数组 = 用户接管, 内置默认名单不参与) */
-function writeConfig(workspace: Workspace, roots: string[]): string {
-  const file = join(workspace.root, 'sweep-config.json');
-  writeFileSync(file, JSON.stringify({ roots, exclude: [], include: [] }));
-  return file;
-}
+const { make, cleanup } = createWorkspaceTracker();
+afterEach(cleanup);
 
 /** 只写 roots 的配置 (无 exclude 字段 → 取内置默认排除名单) */
 function writeRootsOnlyConfig(workspace: Workspace): string {
@@ -163,7 +127,6 @@ function defineSuspectCases(runner: string, available: boolean): void {
   });
 }
 
-for (const runner of RUNNERS) {
-  const available = spawnSync(runner, ['-v']).status === 0;
+for (const { runner, available } of RUNNER_AVAILABILITY) {
   defineSuspectCases(runner, available);
 }

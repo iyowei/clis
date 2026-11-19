@@ -6,14 +6,11 @@
  */
 import { afterEach, describe, expect, test } from 'bun:test';
 
-import { spawnSync } from 'node:child_process';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { fileURLToPath } from 'node:url';
 
-const CLI = fileURLToPath(new URL('./cli.ts', import.meta.url));
-const RUNNERS = ['bun', 'node'];
+import { RUNNER_AVAILABILITY, runCli } from './cli.e2e.fixtures.ts';
 
 const dirs: string[] = [];
 
@@ -40,32 +37,13 @@ afterEach(() => {
 });
 
 /** 写一份真实形状的配置 (查询面不装载内容, 只探存在性; 内容取正常形态免误导) */
-function writeConfig(dir: string): string {
+function writeConfigFile(dir: string): string {
   const file = join(dir, 'sweep-config.json');
   writeFileSync(
     file,
     JSON.stringify({ roots: [dir], exclude: [], include: [] }),
   );
   return file;
-}
-
-/** 跑一次 CLI: 宿主变量不得泄漏进用例 (SWEEP_NM_CONFIG 一律先清, 需要时经 env 显式给) */
-function runCli(
-  runner: string,
-  args: string[],
-  options: { env?: Record<string, string> } = {},
-) {
-  const env: Record<string, string> = {
-    ...(process.env as Record<string, string>),
-  };
-  delete env.SWEEP_NM_CONFIG;
-  env.NO_COLOR = '1';
-  Object.assign(env, options.env);
-  return spawnSync(runner, [CLI, ...args], {
-    encoding: 'utf8',
-    env,
-    timeout: 10_000,
-  });
 }
 
 /** config 查询面 (命令 `config` 与旗标 `--config` 形近义反) 的用例组, 逐 runner 注册 */
@@ -91,8 +69,8 @@ function defineQueryCases(runner: string, available: boolean): void {
     test.skipIf(!available)(
       'config: --config 指定时报 flag 来源与该路径 (优先于环境变量)',
       () => {
-        const flagConfig = writeConfig(tempDir());
-        const envConfig = writeConfig(tempDir());
+        const flagConfig = writeConfigFile(tempDir());
+        const envConfig = writeConfigFile(tempDir());
 
         const result = runCli(runner, ['--config', flagConfig, 'config'], {
           env: { SWEEP_NM_CONFIG: envConfig },
@@ -109,7 +87,7 @@ function defineQueryCases(runner: string, available: boolean): void {
     test.skipIf(!available)(
       'config: 环境变量来源报 SWEEP_NM_CONFIG 与该路径, 退出码 0',
       () => {
-        const config = writeConfig(tempDir());
+        const config = writeConfigFile(tempDir());
 
         const result = runCli(runner, ['config'], {
           env: { SWEEP_NM_CONFIG: config },
@@ -126,7 +104,6 @@ function defineQueryCases(runner: string, available: boolean): void {
   });
 }
 
-for (const runner of RUNNERS) {
-  const available = spawnSync(runner, ['-v']).status === 0;
+for (const { runner, available } of RUNNER_AVAILABILITY) {
   defineQueryCases(runner, available);
 }

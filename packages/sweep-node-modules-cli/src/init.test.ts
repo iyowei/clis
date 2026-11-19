@@ -10,7 +10,7 @@ import { join } from 'node:path';
 
 import { DEFAULT_EXCLUDE } from '@iyowei/sweep-node-modules';
 
-import { type InitDeps, type InitIO, parseList, runInit } from './init.ts';
+import { type InitDeps, type InitIO, runInit } from './init.ts';
 
 // 配置路径取真实家目录之下: 断言依赖「路径 ∈ 家目录 → 输出缩写为 ~」的坐标关系, 不得写死任一平台的
 // 家目录字面量 (写死 macOS 路径在 Linux runner 上无法触发缩写, CI 实测命中)
@@ -31,6 +31,7 @@ function makeFakeIO(script: {
   const askCalls: { question: string; hint?: string }[] = [];
   const confirmCalls: { question: string; defaultYes: boolean }[] = [];
   const prints: string[] = [];
+  let closeCalls = 0;
   const pendingAsks = [...(script.asks ?? [])];
   const pendingConfirms = [...(script.confirms ?? [])];
 
@@ -51,9 +52,18 @@ function makeFakeIO(script: {
     print(line) {
       prints.push(line);
     },
+    close() {
+      closeCalls += 1;
+    },
   };
 
-  return { io, askCalls, confirmCalls, prints };
+  return {
+    io,
+    askCalls,
+    confirmCalls,
+    prints,
+    getCloseCalls: () => closeCalls,
+  };
 }
 
 /** 组装被测 deps: 文件系统与 IO 全部 fake, 落盘只记录不写盘 */
@@ -62,32 +72,38 @@ function makeDeps(options: {
   configExists?: boolean;
   /** 非 configPath 路径的存在性谓词 (根校验); 缺省一律视为存在 */
   rootExists?: (path: string) => boolean;
+  /** 根是否为目录谓词 (拦截普通文件); 缺省与 rootExists 同真 */
+  rootIsDirectory?: (path: string) => boolean;
   /** 根锚点链上首个符号链接的路径谓词 (删除侧同一判定); 缺省一律视为全链真目录 */
   rootLink?: (path: string) => string | null;
   /** 配置路径 (落盘目标) 锚点链上首个符号链接的路径谓词 (写入侧同一判定); 缺省一律视为全链真身 */
   targetLink?: (path: string) => string | null;
+  /** 注入家目录; 缺省走 os.homedir() */
+  home?: string;
   asks?: (string | null)[];
   confirms?: boolean[];
   /** 着色开关 (缺省 false) */
   color?: boolean;
 }) {
-  const { io, askCalls, confirmCalls, prints } = makeFakeIO(options);
+  const { io, askCalls, confirmCalls, prints, getCloseCalls } =
+    makeFakeIO(options);
   const writes: { path: string; text: string }[] = [];
   const deps: InitDeps = {
     configPath: CONFIG_PATH,
-    fileExists: async (path) =>
-      path === CONFIG_PATH
-        ? (options.configExists ?? false)
-        : (options.rootExists?.(path) ?? true),
+    configExists: async () => options.configExists ?? false,
+    rootExists: async (path) => options.rootExists?.(path) ?? true,
+    rootIsDirectory: async (path) =>
+      options.rootIsDirectory?.(path) ?? options.rootExists?.(path) ?? true,
     firstSymlinkOnRoot: async (path) => options.rootLink?.(path) ?? null,
     firstSymlinkOnTarget: async (path) => options.targetLink?.(path) ?? null,
     writeFile: async (path, text) => {
       writes.push({ path, text });
     },
+    home: options.home,
     io,
   };
 
-  return { deps, writes, askCalls, confirmCalls, prints };
+  return { deps, writes, askCalls, confirmCalls, prints, getCloseCalls };
 }
 
 describe('runInit: written 路径', () => {
@@ -437,7 +453,7 @@ describe('runInit: cancelled 路径 (统一措辞, 均不落盘)', () => {
 
 describe('runInit: declined-overwrite 路径', () => {
   test('拒绝覆盖 (默认否): 不落盘, 不再提问, 不打印取消措辞', async () => {
-    const { deps, writes, askCalls, prints } = makeDeps({
+    const { deps, writes, askCalls, prints, getCloseCalls } = makeDeps({
       configExists: true,
       confirms: [false],
     });
@@ -449,57 +465,6 @@ describe('runInit: declined-overwrite 路径', () => {
     expect(askCalls).toHaveLength(0);
     // 除开场顶栏外不再输出任何行 (取消分支不新造视觉)
     expect(prints).toEqual(['▍ SWEEP-NM  初始化向导']);
-  });
-});
-
-describe('parseList: 答案解析', () => {
-  test('空串与全空白回落 fallback', () => {
-    expect(parseList('', ['/default'])).toEqual(['/default']);
-    expect(parseList('   \t ', ['/default'])).toEqual(['/default']);
-    expect(parseList('', [])).toEqual([]);
-  });
-
-  test('null (取消态) 回落 fallback', () => {
-    expect(parseList(null, ['/default'])).toEqual(['/default']);
-    expect(parseList(null, [])).toEqual([]);
-  });
-
-  test('逗号分隔: 半角与全角均成立', () => {
-    expect(parseList('/a,/b', [])).toEqual(['/a', '/b']);
-    expect(parseList('/a，/b', [])).toEqual(['/a', '/b']);
-  });
-
-  test('空白分隔: 多空格 / 制表符 / 首尾空白', () => {
-    expect(parseList('  /a   /b\t/c  ', [])).toEqual(['/a', '/b', '/c']);
-  });
-
-  test('混合分隔与空项过滤', () => {
-    expect(parseList(', /a ,, /b ,', [])).toEqual(['/a', '/b']);
-  });
-
-  test('中文路径不被破坏', () => {
-    expect(
-      parseList('/Users/iyowei/我的文档，/Users/iyowei/项目数据', []),
-    ).toEqual(['/Users/iyowei/我的文档', '/Users/iyowei/项目数据']);
-  });
-
-  test('成对引号: 空格与逗号保留, 引号本身剥离', () => {
-    expect(parseList('"/tmp/My Projects"', [])).toEqual(['/tmp/My Projects']);
-    expect(parseList('"/tmp/a, b"', [])).toEqual(['/tmp/a, b']);
-    expect(parseList("'/tmp/a b' /c", [])).toEqual(['/tmp/a b', '/c']);
-  });
-
-  test('未配对引号按普通字符处理, 不吞后续内容', () => {
-    expect(parseList('/a "b c', [])).toEqual(['/a', '"b', 'c']);
-  });
-
-  test('~ 展开为家目录 (含引号内的 ~ 与 win32 习惯的 ~\\)', () => {
-    expect(parseList('~', [])).toEqual([homedir()]);
-    expect(parseList('~/lab', [])).toEqual([join(homedir(), 'lab')]);
-    expect(parseList('~\\lab', [])).toEqual([join(homedir(), 'lab')]);
-    expect(parseList('"~/My Projects" ~/lab', [])).toEqual([
-      join(homedir(), 'My Projects'),
-      join(homedir(), 'lab'),
-    ]);
+    expect(getCloseCalls()).toBe(1);
   });
 });

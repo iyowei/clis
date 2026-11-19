@@ -26,6 +26,8 @@ export interface InitIO {
   confirm(question: string, defaultYes: boolean): Promise<boolean>;
   /** 输出一行普通信息 */
   print(line: string): void;
+  /** 可选: 结束会话时释放底层资源 (如关闭 readline interface 并解挂 SIGINT 监听) */
+  close?(): void;
   /** 着色开关 (非 TTY / NO_COLOR 为 false): 本次向导的问句提示与回执按它着色, 与清单同一降级契约 */
   color: boolean;
 }
@@ -34,12 +36,19 @@ export interface InitIO {
 export interface InitDeps {
   /** 配置文件目标路径 */
   configPath: string;
-  fileExists(path: string): Promise<boolean>;
+  /** 配置文件是否已存在 (lstat 语义: 悬空符号链接也算已存在, 触发覆盖保护) */
+  configExists(path: string): Promise<boolean>;
+  /** 扫描根是否为真实目录 (lstat + isDirectory: 不存在、普通文件与符号链接均返 false) */
+  rootIsDirectory(path: string): Promise<boolean>;
+  /** 可选: 扫描根路径是否存在 (lstat 语义); 提供时可精确区分「根不存在」与「根不是目录」 */
+  rootExists?(path: string): Promise<boolean>;
   /** 根锚点链上首个符号链接的路径 (null 即全链为真目录); 判定口径由删除侧同一实现供给 (guard.ts), 本模块不自判 */
   firstSymlinkOnRoot(root: string): Promise<string | null>;
   /** 配置路径 (落盘目标) 锚点链上首个符号链接的路径; 与根的判定同一实现, 判的是「写入会不会跟随链接改写其目标」 */
   firstSymlinkOnTarget(target: string): Promise<string | null>;
   writeFile(path: string, text: string): Promise<void>;
+  /** 家目录 (默认根、~ 展开与回显缩写用); 缺省 os.homedir() */
+  home?: string;
   io: InitIO;
 }
 
@@ -53,10 +62,10 @@ export interface InitResult {
 const WHITESPACE = /\s/;
 
 /** 家目录展开: 仅认 ~ 与 ~/... / ~\... (后者是 win32 习惯; 不解析 ~user: 跨平台语义不一) */
-function expandHome(token: string): string {
-  if (token === '~') return homedir();
+function expandHome(token: string, home: string): string {
+  if (token === '~') return home;
   if (token.startsWith('~/') || token.startsWith('~\\'))
-    return join(homedir(), token.slice(2));
+    return join(home, token.slice(2));
   return token;
 }
 
@@ -105,7 +114,7 @@ function splitAnswer(answer: string): string[] {
 }
 
 /**
- * 答案解析: 切分 (见 splitAnswer) → 家目录展开; 空答案 (含 null) 回落 fallback。
+ * 路径列表解析 (用于扫描根 roots): 切分 (见 splitAnswer) → 家目录展开; 空答案 (含 null) 回落 fallback。
  *
  * ### 数据追踪示例
  *
@@ -122,39 +131,91 @@ function splitAnswer(answer: string): string[] {
  * Output（数据契约）
  *   return ['/Users/iyowei/My Projects', '/Users/iyowei/lab']
  */
-export function parseList(answer: string | null, fallback: string[]): string[] {
+export function parsePathList(
+  answer: string | null,
+  fallback: string[],
+  home: string = homedir(),
+): string[] {
   if (answer === null) return [...fallback];
-  const items = splitAnswer(answer).map(expandHome);
+  const items = splitAnswer(answer).map((token) => expandHome(token, home));
   return items.length > 0 ? items : [...fallback];
 }
 
 /**
+ * 目录名列表解析 (用于 exclude / include): 仅切分, 不做 ~ 家目录展开 (目录名按精确名匹配,
+ * 展开 ~ 会把字面目录名改写成绝对路径); 空答案 (含 null) 回落 fallback。
+ */
+export function parseNameList(
+  answer: string | null,
+  fallback: string[],
+): string[] {
+  if (answer === null) return [...fallback];
+  const items = splitAnswer(answer);
+  return items.length > 0 ? items : [...fallback];
+}
+
+/** 目录名是否包含路径分隔符 (单级目录名精确匹配下含分隔符永远无法命中) */
+const hasPathSeparator = (name: string): boolean =>
+  name.includes('/') || name.includes('\\');
+
+/** 逐根校验结果 */
+interface RootCheckResult {
+  missing: string[];
+  notDir: string[];
+  symlinked: { root: string; link: string }[];
+}
+
+/**
+ * 逐根校验: 存在性 → 根锚点链无符号链接 → 目标为目录 (拦截普通文件路径写入 roots)。
+ * 抽成独立函数以保持 runInit 扁平且清晰。
+ */
+async function checkRoots(
+  roots: readonly string[],
+  deps: Pick<InitDeps, 'rootExists' | 'rootIsDirectory' | 'firstSymlinkOnRoot'>,
+): Promise<RootCheckResult> {
+  const missing: string[] = [];
+  const notDir: string[] = [];
+  const symlinked: { root: string; link: string }[] = [];
+
+  for (const root of roots) {
+    if (deps.rootExists !== undefined && !(await deps.rootExists(root))) {
+      missing.push(root);
+      // 不存在的根已足以下判: 不再叠报形态问题 (同一根只给一条提示)
+      continue;
+    }
+    // 判在解析后的拼写上 (即写进配置的形态), 与删除侧的判据同一坐标
+    const link = await deps.firstSymlinkOnRoot(root);
+    if (link !== null) {
+      symlinked.push({ root, link });
+      continue;
+    }
+    if (!(await deps.rootIsDirectory(root))) {
+      if (deps.rootExists !== undefined) notDir.push(root);
+      else missing.push(root);
+    }
+  }
+  return { missing, notDir, symlinked };
+}
+
+/**
  * 装配配置并落盘 (2 空格缩进 + 末尾换行)。
- * 外部副作用：经 deps.writeFile 写入 configPath。
+ * 外部副作用：经 deps.writeFile 写入 configPath; 结束时在 finally 经 io.close?.() 释放交互资源。
  *
  * 执行步骤：
  * 1. 顶栏先出 (与清单同一视觉语言), 配置已存在则再确认覆盖 (默认否), 拒绝即返回 declined-overwrite;
- * 2. 开场提示后问扫描根 (默认值为家目录而非 cwd: 工作区级清理与唤起目录无关, 提示里的默认值经
- *    家目录缩写): 逐根校验存在性与根锚点形态 (口径见 deps.firstSymlinkOnRoot), 不存在或落在符号链接
- *    路径上的根以红色 ✗ 提示后重问该问 (后者提前暴露删除侧整批拒绝, 见 guard.ts 不变量 ⑤);
- * 3. 依次问排除名单与包含名单 (均可留空; 排除名单的空答取内置默认名单, 不让「一路回车」把默认保护丢掉),
- *    回显解析结果 (人话计数) 并确认 (默认写入);
+ * 2. 开场提示后问扫描根 (默认值为家目录而非 cwd): 逐根校验存在性、根锚点形态与目录类型,
+ *    不存在、普通文件或落在符号链接路径上的根以红色 ✗ 提示后重问该问;
+ * 3. 依次问排除名单与包含名单 (不做 ~ 展开; 含路径分隔符时提示), 回显解析结果并确认 (默认写入);
  * 4. 中途取消与回显拒绝统一返回 cancelled 且不落盘 (取消文案保持原样, 不带视觉标记);
- * 5. 确认写入后、任何写动作 (含建目标目录) 之前做落盘前锚点检查 (口径见 deps.firstSymlinkOnTarget,
- *    与删除侧根锚点同一实现): 配置路径及其祖先链任一级为符号链接 (含悬空链接) 即以红色 ✗ 提示并
- *    重问该问, 路径修好前不写一个字节 (写入会跟随链接改写其目标, 而回执报的仍是配置里的拼写);
+ * 5. 确认写入后、任何写动作 (含建目标目录) 之前做落盘前锚点检查 (口径见 deps.firstSymlinkOnTarget);
  * 6. 落盘后回显 (写入路径带家目录缩写与绿色 ✓; 落盘全文内容与文件一致、整体缩进 2), 返回 written。
  */
 export async function runInit(deps: InitDeps): Promise<InitResult> {
-  const {
-    configPath,
-    fileExists,
-    firstSymlinkOnRoot,
-    firstSymlinkOnTarget,
-    writeFile,
-    io,
-  } = deps;
+  const { configPath, configExists, firstSymlinkOnTarget, writeFile, io } =
+    deps;
   const { color } = io;
+  // 默认取注入家目录或 os.homedir(): 工作区级清理与唤起目录无关; 非 TTY 回退按 cwd, 见 cli.ts
+  const home = deps.home ?? homedir();
 
   /** 统一取消出口: 中途取消与回显拒绝共用同一措辞 */
   function cancelled(): InitResult {
@@ -162,113 +223,107 @@ export async function runInit(deps: InitDeps): Promise<InitResult> {
     return { state: 'cancelled' };
   }
 
-  io.print(bannerLine('初始化向导', color));
+  try {
+    io.print(bannerLine('初始化向导', color));
 
-  if (await fileExists(configPath)) {
-    const overwrite = await io.confirm(
-      `配置已存在 (${sanitizeLine(configPath)}), 是否覆盖?`,
-      false,
-    );
-    if (!overwrite) return { state: 'declined-overwrite' };
-  }
-
-  io.print(neutralLine('首次使用, 先确定扫描范围', color));
-
-  // 默认取家目录而非 cwd: 本工具是工作区级清理, 用户从哪个目录唤起与要扫的范围
-  // 无关 (cwd 常是某个项目内部, 作默认值无意义); 非 TTY 静默回退仍按 cwd, 见 cli.ts
-  const home = homedir();
-  let roots: string[] = [];
-
-  // 存在性与根锚点形态校验挡在落盘前: 坏根提示后重问, 不让无效路径进配置
-  for (;;) {
-    const rootsAnswer = await io.ask(
-      '扫描根 (逗号或空白分隔多个)',
-      // 缩写在前、净化在后 (与落盘回执同款): home 源自环境属外部数据, 此坐标与其余回显面一致
-      // (home 缩写自身恒为 ~, 当前无可达的控制字节面, 该调用是坐标一致而非可观测改写)
-      `默认: ${sanitizeLine(shortenHome(home, home))}`,
-    );
-    if (rootsAnswer === null) return cancelled();
-    roots = parseList(rootsAnswer, [home]);
-
-    const missing: string[] = [];
-    const symlinked: { root: string; link: string }[] = [];
-    for (const root of roots) {
-      if (!(await fileExists(root))) {
-        missing.push(root);
-        // 不存在的根已足以下判: 不再叠报形态问题 (同一根只给一条提示)
-        continue;
-      }
-      // 判在解析后的拼写上 (即写进配置的形态), 与删除侧的判据同一坐标
-      const link = await firstSymlinkOnRoot(root);
-      if (link !== null) symlinked.push({ root, link });
-    }
-    if (missing.length === 0 && symlinked.length === 0) break;
-    // 路径与根都是用户答案原样透传 (外部数据): 经同一净化, 防控制序列改写回显行
-    for (const path of missing)
-      io.print(`  ${paint('✗', '31', color)} 根不存在: ${sanitizeLine(path)}`);
-    for (const item of symlinked)
-      io.print(
-        `  ${paint('✗', '31', color)} 根锚点链上有符号链接: ${sanitizeLine(item.link)} (根: ${sanitizeLine(item.root)}); 删除侧要求真实路径, 改写为不含符号链接的形态 (macOS 上如 /tmp/x 写成 /private/tmp/x)`,
+    if (await configExists(configPath)) {
+      const overwrite = await io.confirm(
+        `配置已存在 (${sanitizeLine(configPath)}), 是否覆盖?`,
+        false,
       );
-  }
+      if (!overwrite) return { state: 'declined-overwrite' };
+    }
 
-  // 空答取内置默认名单 (而非空数组): 显式写出的 exclude 会完全接管默认值 (见 config.ts 的
-  // DEFAULT_EXCLUDE), 若回填空数组, 「一路回车」反而把默认保护写没了 —— 与默认值本身相悖
-  const excludeAnswer = await io.ask(
-    '排除名单 (目录名)',
-    `回车采用默认名单 (${DEFAULT_EXCLUDE.length} 条)`,
-  );
-  if (excludeAnswer === null) return cancelled();
-  const exclude = parseList(excludeAnswer, [...DEFAULT_EXCLUDE]);
+    io.print(neutralLine('首次使用, 先确定扫描范围', color));
 
-  const includeAnswer = await io.ask('包含名单 (目录名, 可留空)', '回车跳过');
-  if (includeAnswer === null) return cancelled();
-  const include = parseList(includeAnswer, []);
+    let roots: string[] = [];
 
-  io.print(
-    neutralLine(
-      `将写入 ${roots.length} 个扫描根 · 排除 ${exclude.length} 条 · 包含 ${include.length} 条`,
-      color,
-    ),
-  );
-  // 落盘前锚点检查 (写入侧): 配置路径及其祖先链任一级是符号链接即拒 —— 写入跟随链接, 被改写的
-  // 是链接目标 (任意可写文件), 而回执报的仍是用户给的拼写, 事后看不出实际写到哪。
-  // 与逐根校验同形 (红 ✗ 提示后重问该问): 配置路径不是本向导的提问项, 故重问的是「确认写入?」
-  // 这一问; 写入被拒即该确认无法兑现, 出路有三: ① 重问期间把路径改好后答 y, 同一轮照常落盘
-  // (已收集的答案不丢, 见 init.test.ts「拒绝后重问: 路径锚点转好后同一轮照常落盘」); ② 答
-  // 「否」即取消; ③ 退出向导, 改好路径后重跑 init
-  for (;;) {
-    if (!(await io.confirm('确认写入?', true))) return cancelled();
-    const link = await firstSymlinkOnTarget(configPath);
-    if (link === null) break;
-    // 路径与链接位置都是外部数据 (配置拼写来自旗标 / 环境变量 / 平台默认, 链接位置来自磁盘): 同源净化
-    io.print(
-      `  ${paint('✗', '31', color)} 配置路径锚点链上有符号链接: ${sanitizeLine(link)} (配置: ${sanitizeLine(configPath)}); 写入会跟随符号链接改写其目标, 改写为不含符号链接的形态 (macOS 上如 /tmp/x 写成 /private/tmp/x)`,
+    // 存在性、根锚点形态与目录类型校验挡在落盘前: 坏根提示后重问, 不让无效路径或普通文件进配置
+    for (;;) {
+      const rootsAnswer = await io.ask(
+        '扫描根 (逗号或空白分隔多个)',
+        // 缩写在前、净化在后 (与落盘回执同款): home 源自环境属外部数据, 此坐标与其余回显面一致
+        `默认: ${sanitizeLine(shortenHome(home, home))}`,
+      );
+      if (rootsAnswer === null) return cancelled();
+      roots = parsePathList(rootsAnswer, [home], home);
+
+      const { missing, notDir, symlinked } = await checkRoots(roots, deps);
+      if (missing.length === 0 && notDir.length === 0 && symlinked.length === 0)
+        break;
+      // 路径与根都是用户答案原样透传 (外部数据): 经同一净化, 防控制序列改写回显行
+      for (const path of missing)
+        io.print(
+          `  ${paint('✗', '31', color)} 根不存在: ${sanitizeLine(path)}`,
+        );
+      for (const path of notDir)
+        io.print(
+          `  ${paint('✗', '31', color)} 根不是目录: ${sanitizeLine(path)}`,
+        );
+      for (const item of symlinked)
+        io.print(
+          `  ${paint('✗', '31', color)} 根锚点链上有符号链接: ${sanitizeLine(item.link)} (根: ${sanitizeLine(item.root)}); 删除侧要求真实路径, 改写为不含符号链接的形态 (macOS 上如 /tmp/x 写成 /private/tmp/x)`,
+        );
+    }
+
+    // 空答取内置默认名单 (而非空数组): 显式写出的 exclude 会完全接管默认值 (见 config.ts 的 DEFAULT_EXCLUDE)
+    const excludeAnswer = await io.ask(
+      '排除名单 (目录名)',
+      `回车采用默认名单 (${DEFAULT_EXCLUDE.length} 条)`,
     );
-  }
+    if (excludeAnswer === null) return cancelled();
+    const exclude = parseNameList(excludeAnswer, [...DEFAULT_EXCLUDE]);
+    for (const bad of exclude.filter(hasPathSeparator)) {
+      io.print(
+        `  ${paint('!', '33', color)} 排除名含路径分隔符, 不会命中任何目录 (请填写单级目录名): ${sanitizeLine(bad)}`,
+      );
+    }
 
-  const config = { roots, exclude, include };
-  const text = `${JSON.stringify(config, null, 2)}\n`;
-  await writeFile(configPath, text);
-  // 路径行是本工具的自述行: 缩写家目录便于辨认, 且缩写在前、净化在后 (展示的是缩写后的名字,
-  // 净化改写它即该防的注入面)。
-  // 正文回显落盘原文 (与文件逐字一致, 便于对照与复制), 刻意不净化 (OF-14 的排除项): 内容源是本轮
-  // 用户答案而非磁盘 / 他方数据, 净化会破坏「逐字一致供对照复制」的承诺; JSON 转义只覆盖 C0 类,
-  // 其余控制类字符 (DEL / C1 / bidi / 零宽 / BOM) 在该面以原形保留, 属已知缺口 (接受)。
-  io.print(
-    `  配置已写入: ${sanitizeLine(shortenHome(configPath, homedir()))}  ${paint('✓', '32', color)}`,
-  );
-  io.print('');
-  // 回显逐行缩进 2, 与叙述行/交互行同一左缘 (内容与落盘文件逐字一致, 仅整体加固定两空格缩进)
-  io.print(
-    text
-      .trimEnd()
-      .split('\n')
-      .map((line) => `  ${line}`)
-      .join('\n'),
-  );
-  io.print('');
-  return { state: 'written', config };
+    const includeAnswer = await io.ask('包含名单 (目录名, 可留空)', '回车跳过');
+    if (includeAnswer === null) return cancelled();
+    const include = parseNameList(includeAnswer, []);
+    for (const bad of include.filter(hasPathSeparator)) {
+      io.print(
+        `  ${paint('!', '33', color)} 包含名含路径分隔符, 不会命中任何目录 (请填写单级目录名): ${sanitizeLine(bad)}`,
+      );
+    }
+
+    io.print(
+      neutralLine(
+        `将写入 ${roots.length} 个扫描根 · 排除 ${exclude.length} 条 · 包含 ${include.length} 条`,
+        color,
+      ),
+    );
+    // 落盘前锚点检查 (写入侧): 配置路径及其祖先链任一级是符号链接即拒
+    for (;;) {
+      if (!(await io.confirm('确认写入?', true))) return cancelled();
+      const link = await firstSymlinkOnTarget(configPath);
+      if (link === null) break;
+      io.print(
+        `  ${paint('✗', '31', color)} 配置路径锚点链上有符号链接: ${sanitizeLine(link)} (配置: ${sanitizeLine(configPath)}); 写入会跟随符号链接改写其目标, 改写为不含符号链接的形态 (macOS 上如 /tmp/x 写成 /private/tmp/x)`,
+      );
+    }
+
+    const config = { roots, exclude, include };
+    const text = `${JSON.stringify(config, null, 2)}\n`;
+    await writeFile(configPath, text);
+    io.print(
+      `  配置已写入: ${sanitizeLine(shortenHome(configPath, home))}  ${paint('✓', '32', color)}`,
+    );
+    io.print('');
+    // 回显逐行缩进 2, 与叙述行/交互行同一左缘 (内容与落盘文件逐字一致, 仅整体加固定两空格缩进)
+    io.print(
+      text
+        .trimEnd()
+        .split('\n')
+        .map((line) => `  ${line}`)
+        .join('\n'),
+    );
+    io.print('');
+    return { state: 'written', config };
+  } finally {
+    io.close?.();
+  }
 }
 
 /**
@@ -302,6 +357,10 @@ export function createReadlineIO(color: boolean): InitIO {
   /** 当前等待中的问题; 调用方串行提问, 同一时刻至多一个 */
   let pending: ((line: string | null) => void) | null = null;
 
+  const onSigint = (): void => {
+    rl?.close();
+  };
+
   function ensure(): Interface {
     if (rl !== null) return rl;
 
@@ -327,7 +386,7 @@ export function createReadlineIO(color: boolean): InitIO {
       setStdinRef(false); // 与 line 路径对称: 等待因流关闭而结束, 同样释放引用
       resolve(null);
     });
-    created.on('SIGINT', () => created.close());
+    created.on('SIGINT', onSigint);
     rl = created;
     return created;
   }
@@ -382,6 +441,14 @@ export function createReadlineIO(color: boolean): InitIO {
     },
     print(line) {
       process.stdout.write(`${line}\n`);
+    },
+    close() {
+      if (rl === null) return;
+      const current = rl;
+      rl = null;
+      current.off('SIGINT', onSigint);
+      current.close();
+      setStdinRef(false);
     },
   };
 }

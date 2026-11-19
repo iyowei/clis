@@ -6,18 +6,25 @@
 import { afterEach, describe, expect, test } from 'bun:test';
 
 import { spawn, spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { fileURLToPath } from 'node:url';
+
+import type { Workspace } from '@iyowei/sweep-node-modules/testing';
 
 import {
-  type Workspace,
-  type WorkspaceSpec,
-  makeWorkspace,
-} from '@iyowei/sweep-node-modules/testing';
+  CLI,
+  RUNNER_AVAILABILITY,
+  createWorkspaceTracker,
+  runCli,
+  writeConfig,
+} from './cli.e2e.fixtures.ts';
 
-const CLI = fileURLToPath(new URL('./cli.ts', import.meta.url));
-const RUNNERS = ['bun', 'node'];
+/** 当前 CLI 包版本号 (与 --version / -V 端到端断言单源对齐) */
+const CLI_VERSION = (
+  JSON.parse(
+    readFileSync(new URL('../package.json', import.meta.url), 'utf8'),
+  ) as { version: string }
+).version;
 
 /** 权限注入用例在 root 下失效 (chmod 拦不住 root), 与 guard 契约测试同一口径 */
 const isRoot = typeof process.getuid === 'function' && process.getuid() === 0;
@@ -37,55 +44,8 @@ const PTY_TEST_TIMEOUT_MS = 30_000;
 const delay = (ms: number): Promise<void> =>
   new Promise((resolve) => setTimeout(resolve, ms));
 
-const workspaces: Workspace[] = [];
-async function make(spec: WorkspaceSpec): Promise<Workspace> {
-  const workspace = await makeWorkspace(spec);
-  workspaces.push(workspace);
-  return workspace;
-}
-
-afterEach(async () => {
-  await Promise.all(workspaces.map((workspace) => workspace.cleanup()));
-  workspaces.length = 0;
-});
-
-interface RunOptions {
-  cwd?: string;
-  /** 额外环境变量 (默认注入 NO_COLOR 以稳定断言; 降级用例单独覆盖) */
-  env?: Record<string, string>;
-  noColor?: boolean;
-}
-
-function runCli(runner: string, args: string[], options: RunOptions = {}) {
-  // 宿主变量不得泄漏进用例: SWEEP_NM_CONFIG 一律先清, 需要时经 options.env 显式给
-  const env: Record<string, string> = {
-    ...(process.env as Record<string, string>),
-  };
-  delete env.SWEEP_NM_CONFIG;
-  Object.assign(env, options.env);
-  if (options.noColor === false) {
-    delete env.NO_COLOR;
-  } else {
-    env.NO_COLOR = '1';
-  }
-  return spawnSync(runner, [CLI, ...args], {
-    encoding: 'utf8',
-    cwd: options.cwd,
-    env,
-    timeout: 10_000,
-  });
-}
-
-function writeConfig(
-  workspace: Workspace,
-  roots: string[],
-  exclude: string[] = [],
-  include: string[] = [],
-): string {
-  const file = join(workspace.root, 'sweep-config.json');
-  writeFileSync(file, JSON.stringify({ roots, exclude, include }));
-  return file;
-}
+const { make, cleanup } = createWorkspaceTracker();
+afterEach(cleanup);
 
 /** 空家目录: 平台默认配置路径 (HOME/.config/...) 因此保证 absent, 「无配置」类用例不受宿主影响 */
 function emptyHome(workspace: Workspace): string {
@@ -218,7 +178,7 @@ function definePreviewCases(runner: string, available: boolean): void {
         expect(result.stderr).toContain(
           '排除名未命中任何已扫描的目录: nosuchdir',
         );
-        expect(result.stdout).not.toContain('排除名未匹配');
+        expect(result.stdout).not.toContain('排除名未命中');
       },
     );
 
@@ -272,12 +232,12 @@ function definePreviewCases(runner: string, available: boolean): void {
           '包含名单无一条命中, 本次扫描必为空结果',
         );
         expect(result.stdout).toContain('未发现');
-        expect(result.stdout).not.toContain('包含名未匹配');
+        expect(result.stdout).not.toContain('包含名未命中');
       },
     );
 
     test.skipIf(!available)(
-      '--include 与 --exclude 同时命中同一名: 不报未匹配, 结果按 exclude 优先',
+      '--include 与 --exclude 同时命中同一名: 不报未命中, 结果按 exclude 优先',
       async () => {
         const workspace = await make({
           projects: [{ dir: 'alpha' }, { dir: 'beta' }],
@@ -292,9 +252,9 @@ function definePreviewCases(runner: string, available: boolean): void {
         const result = runCli(runner, [], { env: { SWEEP_NM_CONFIG: config } });
 
         expect(result.status).toBe(0);
-        // beta 目录客观存在且命中白名单, 只是被 exclude 优先截走: 不得报成「未匹配」
-        expect(result.stderr).not.toContain('包含名未匹配');
-        expect(result.stdout).not.toContain('包含名未匹配');
+        // beta 目录客观存在且命中白名单, 只是被 exclude 优先截走: 不得报成「未命中」
+        expect(result.stderr).not.toContain('包含名未命中');
+        expect(result.stdout).not.toContain('包含名未命中');
         // 应给出的信号是白名单命中 (alpha 生效), 而非白名单写错的后果说明
         expect(result.stderr).not.toContain('包含名单无一条命中');
         expect(result.stdout).toContain('alpha');
@@ -370,6 +330,21 @@ function definePreviewCases(runner: string, available: boolean): void {
         expect(result.stdout).toContain('sweep-nm --force');
       },
     );
+
+    test.skipIf(!available)('--version / -V: 输出当前版本号并退 0', () => {
+      for (const flag of ['--version', '-V']) {
+        const result = runCli(runner, [flag]);
+        expect(result.status).toBe(0);
+        expect(result.stdout.trim()).toBe(CLI_VERSION);
+      }
+    });
+
+    test.skipIf(!available)('init --yes: 互斥参数报错并退 1', () => {
+      const result = runCli(runner, ['init', '--yes']);
+      expect(result.status).toBe(1);
+      expect(result.stderr).toContain('参数错误:');
+      expect(result.stderr).toContain('不支持参数: --yes');
+    });
   });
 }
 
@@ -548,8 +523,7 @@ function defineExecuteCases(runner: string, available: boolean): void {
   });
 }
 
-for (const runner of RUNNERS) {
-  const available = spawnSync(runner, ['-v']).status === 0;
+for (const { runner, available } of RUNNER_AVAILABILITY) {
   definePreviewCases(runner, available);
   defineExecuteCases(runner, available);
 }
