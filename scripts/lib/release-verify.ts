@@ -404,9 +404,11 @@ export const judgeRelease = (
     };
   }
   if (dist.manifest.commit !== gitHead) {
+    const manifestCommit =
+      typeof dist.manifest.commit === 'string' ? dist.manifest.commit : null;
     return {
       ok: false,
-      reason: `产物清单记录的提交 ${shortHash(String(dist.manifest.commit))} 与 HEAD ${shortHash(gitHead)} 不一致, 产物不是本次提交构建的`,
+      reason: `产物清单记录的提交 ${shortHash(manifestCommit)} 与 HEAD ${shortHash(gitHead)} 不一致, 产物不是本次提交构建的`,
     };
   }
   if (dist.manifest[profile.shaField] !== dist.entrySha256) {
