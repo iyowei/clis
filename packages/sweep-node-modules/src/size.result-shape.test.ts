@@ -114,5 +114,19 @@ for (const candidate of candidates) {
       expect(events.map((event) => event.kind)).toEqual(['measured', 'gone']);
       expect(events.map((event) => event.target)).toEqual([present, ghost]);
     });
+
+    it('重复路径输入: 去重后测, 无重复条目且不误降级', async () => {
+      const { root } = await make({
+        projects: [{ dir: 'alpha', files: 1, bytesPerFile: 64 }],
+      });
+      const present = join(root, 'alpha', 'node_modules');
+
+      const result = await candidate.sizer.measure([present, present]);
+
+      expect(result.entries.map((entry) => entry.target)).toEqual([present]);
+      expect(result.unmeasured).toEqual([]);
+      expect(result.gone).toEqual([]);
+      expect(result.warnings).toEqual([]);
+    });
   });
 }

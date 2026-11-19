@@ -9,11 +9,16 @@
  */
 import { afterEach, describe, expect, test } from 'bun:test';
 
-import { chmod, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { chmod, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { assessDuOutput, createDuSizer } from './size-du.ts';
+import {
+  assessDuOutput,
+  chunkTargetsByBytes,
+  createDuSizer,
+} from './size-du.ts';
+import type { MeasureProgressEvent } from './types.ts';
 
 const ROOT = '/w/proj';
 
@@ -216,5 +221,82 @@ describe.skipIf(!canRunShell)(
       expect(result.unmeasured).toEqual([]);
       expect(result.warnings).toEqual([]);
     });
+
+    test('重复路径输入: 去重后测, 不触发同一路径多行的误降级', async () => {
+      const bin = await makeFakeDu(
+        `shift 2\nfor p in "$@"; do printf '4\\t%s\\n' "$p"; done\n`,
+      );
+      const a = `${ROOT}/aa`;
+      const b = `${ROOT}/bb`;
+
+      const result = await createDuSizer(bin).measure([b, a, a, b]);
+
+      expect(result.entries).toEqual([
+        { target: a, bytes: 4096 },
+        { target: b, bytes: 4096 },
+      ]);
+      expect(result.unmeasured).toEqual([]);
+      expect(result.warnings).toEqual([]);
+    });
+
+    test('大参数列表分批调用: 超字节上限拆成多批 spawn 并合并结果 (防 E2BIG)', async () => {
+      const logDir = await mkdtemp(join(tmpdir(), 'sweep-du-batch-log-'));
+      tempDirs.push(logDir);
+      const logFile = join(logDir, 'calls.log');
+      const bin = await makeFakeDu(
+        `shift 2\nprintf '%s\\n' "$#" >> "${logFile}"\nfor p in "$@"; do printf '4\\t%s\\n' "$p"; done\n`,
+      );
+      const targets = [`${ROOT}/p1`, `${ROOT}/p2`, `${ROOT}/p3`];
+      // 每条路径约 11 字节 (+1 NUL = 12 字节), 上限 25 字节 → 拆成 [p1, p2] 与 [p3] 两批
+      const result = await createDuSizer(bin, 25).measure(targets);
+
+      expect(result.entries).toEqual(
+        targets.map((target) => ({ target, bytes: 4096 })),
+      );
+      expect(result.unmeasured).toEqual([]);
+      expect(result.warnings).toEqual([]);
+      const calls = (await readFile(logFile, 'utf8')).trim().split('\n');
+      expect(calls).toEqual(['2', '1']);
+    });
   },
 );
+
+describe('du 分批切分与探针缺失完备性', () => {
+  test('chunkTargetsByBytes: 按 UTF-8 字节上限分批, 单条超预算仍独立成批', () => {
+    expect(chunkTargetsByBytes([], 10)).toEqual([]);
+    expect(chunkTargetsByBytes(['/a', '/b', '/c'], 6)).toEqual([
+      ['/a', '/b'],
+      ['/c'],
+    ]);
+    // 单条超过预算 (10 字节 > 4 字节): 至少 1 条/批, 不死循环
+    expect(chunkTargetsByBytes(['/very/long', '/x'], 4)).toEqual([
+      ['/very/long'],
+      ['/x'],
+    ]);
+  });
+
+  test('createDuSizer(null): 非空输入全部进 unmeasured 并带告警 (遵守 BC-43 完备性恒等式)', async () => {
+    const events: MeasureProgressEvent[] = [];
+    const result = await createDuSizer(null).measure(
+      [`${ROOT}/bb`, `${ROOT}/aa`, `${ROOT}/aa`],
+      { onProgress: (event) => events.push(event) },
+    );
+
+    expect(result.entries).toEqual([]);
+    expect(result.gone).toEqual([]);
+    expect(result.unmeasured).toEqual([
+      {
+        target: `${ROOT}/aa`,
+        code: 'SIZE_UNMEASURED_OTHER',
+        reason: 'du 候选不可用',
+      },
+      {
+        target: `${ROOT}/bb`,
+        code: 'SIZE_UNMEASURED_OTHER',
+        reason: 'du 候选不可用',
+      },
+    ]);
+    expect(result.warnings.map((w) => w.code)).toEqual(['SIZE_DU_UNAVAILABLE']);
+    expect(events.map((e) => e.kind)).toEqual(['unmeasured', 'unmeasured']);
+  });
+});

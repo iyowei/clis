@@ -7,5 +7,6 @@ import { createJsSizer } from './size-js.ts';
 import type { Sizer } from './types.ts';
 
 export function createSizer(): Sizer {
-  return findDu() !== null ? createDuSizer() : createJsSizer();
+  const bin = findDu();
+  return bin !== null ? createDuSizer(bin) : createJsSizer();
 }

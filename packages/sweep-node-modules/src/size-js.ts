@@ -131,8 +131,8 @@ export function createJsSizer(): Sizer {
         emit?.({ kind: 'unmeasured', target, code, reason });
       };
 
-      // 排序副本: 不改动调用方数组, 输出按 target 升序稳定
-      for (const target of [...targets].sort()) {
+      // 去重排序副本: 不改动调用方数组, 与 du 候选同口径 (重复输入不重复计数与发告警)
+      for (const target of [...new Set(targets)].sort()) {
         // 取消检查点 (逐目标之间): 被 abort 即抛 CANCELLED, 语义是「本次未完成」而非「结果为空」
         if (options?.signal?.aborted) {
           throw new SweepError('CANCELLED', '体积统计在逐目标检查点被取消', {
