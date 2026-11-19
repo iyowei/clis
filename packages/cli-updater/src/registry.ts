@@ -1,20 +1,34 @@
 /**
- * npm registry 解析与远端版本查询模块:
- * - Registry 优先级: 显式 --registry > 环境变量 > 用户家目录配置 (~/.bunfig.toml / ~/.npmrc) > 官方源;
- * - 安全硬底线: 绝不读取当前工作目录 (cwd) 的 .npmrc 或 bunfig.toml, 防止在不可信目录跑
- *   update 时被恶意配置劫持到钓鱼源;
- * - 查询端点使用轻量的 /<pkg>/<tag> dist-tag 接口并设严格超时。
+ * npm registry 解析、同源鉴权凭据提取与远端版本查询模块:
+ * - Registry 优先级: 显式 --registry > 环境变量 > 用户家目录配置 > 官方源;
+ *   仅 `pm === 'bun'` 或 `pm === undefined` 才读取 `~/.bunfig.toml`, 明确为 npm / pnpm /
+ *   yarn / volta 时只读 `~/.npmrc`, 杜绝查源与装源分裂;
+ * - 安全硬底线: 绝不读取当前工作目录 (cwd) 的 .npmrc 或 bunfig.toml, 防止被不可信目录劫持;
+ *   鉴权 token 仅在目标 registry 与配置 host/path 精确匹配时注入 Authorization 头, 且绝不回显。
  */
 import { readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 
+import {
+  normalizeRegistryUrl,
+  parseAuthTokenFromBunfig,
+  parseAuthTokenFromNpmrc,
+  parseRegistryFromBunfig,
+  parseRegistryFromNpmrc,
+} from './config-parse.ts';
 import { type PackageManager } from './detect.ts';
 import {
   isValidPackageName,
   isValidRegistryUrl,
   isValidTargetSpec,
 } from './semver.ts';
+
+export {
+  normalizeRegistryUrl,
+  parseRegistryFromBunfig,
+  parseRegistryFromNpmrc,
+};
 
 /** 默认官方 npm registry */
 export const DEFAULT_REGISTRY = 'https://registry.npmjs.org';
@@ -25,6 +39,15 @@ export const DEFAULT_FETCH_TIMEOUT_MS = 10_000;
 export interface ResolveRegistryInput {
   packageName: string;
   flagRegistry?: string;
+  pm?: PackageManager;
+  env?: NodeJS.ProcessEnv;
+  homeDir?: string;
+  readText?: (path: string) => string | null;
+}
+
+export interface ResolveRegistryAuthInput {
+  packageName: string;
+  registry: string;
   pm?: PackageManager;
   env?: NodeJS.ProcessEnv;
   homeDir?: string;
@@ -43,13 +66,15 @@ export interface FetchVersionInput {
   tag?: string;
   timeoutMs?: number;
   fetchFn?: FetchLike;
+  /** 可选同源 Bearer token (仅写入请求头, 绝不记录到日志或异常消息) */
+  authToken?: string;
 }
 
 export type FetchVersionResult =
   | { ok: true; version: string; registry: string }
   | {
       ok: false;
-      code: 'not-found' | 'network' | 'http' | 'invalid-response';
+      code: 'not-found' | 'auth' | 'network' | 'http' | 'invalid-response';
       message: string;
       status?: number;
     };
@@ -61,96 +86,6 @@ function defaultReadText(path: string): string | null {
   } catch {
     return null;
   }
-}
-
-/** 归一 registry URL (去掉末尾斜杠) */
-export function normalizeRegistryUrl(url: string): string {
-  return url.trim().replace(/\/+$/, '');
-}
-
-/** 提取包名的 scope (如 "@iyowei/foo" -> "@iyowei"; 裸包返回 null) */
-function extractScope(packageName: string): string | null {
-  if (!packageName.startsWith('@')) return null;
-  const slash = packageName.indexOf('/');
-  return slash > 1 ? packageName.slice(0, slash) : null;
-}
-
-/**
- * 从 ~/.npmrc 解析 registry: 若包带 scope, 优先匹配 `@scope:registry=...`, 否则回退 `registry=...`。
- * 支持双引号/单引号包裹的值, 忽略 `#` 与 `;` 注释行。
- */
-export function parseRegistryFromNpmrc(
-  content: string,
-  packageName: string,
-): string | null {
-  const scope = extractScope(packageName);
-  let globalReg: string | null = null;
-  let scopedReg: string | null = null;
-
-  for (const rawLine of content.split(/\r?\n/)) {
-    const line = rawLine.trim();
-    if (line === '' || line.startsWith('#') || line.startsWith(';')) continue;
-    const eq = line.indexOf('=');
-    if (eq <= 0) continue;
-    const key = line.slice(0, eq).trim();
-    const value = line
-      .slice(eq + 1)
-      .trim()
-      .replace(/^["']|["']$/g, '');
-    if (!isValidRegistryUrl(value)) continue;
-    if (scope !== null && key === `${scope}:registry`) {
-      scopedReg = value;
-    } else if (key === 'registry') {
-      globalReg = value;
-    }
-  }
-  return scopedReg ?? globalReg;
-}
-
-/**
- * 从 ~/.bunfig.toml 解析 [install] / [install.scopes] 中的 registry。
- * 支持常见字符串形式: `registry = "https://..."` 与 `"@scope" = "https://..."` 或内联表。
- */
-export function parseRegistryFromBunfig(
-  content: string,
-  packageName: string,
-): string | null {
-  const scope = extractScope(packageName);
-  let section = '';
-  let globalReg: string | null = null;
-  let scopedReg: string | null = null;
-
-  for (const rawLine of content.split(/\r?\n/)) {
-    const line = rawLine.replace(/#.*$/, '').trim();
-    if (line === '') continue;
-    const secMatch = /^\[([^\]]+)\]$/.exec(line);
-    if (secMatch !== null) {
-      section = secMatch[1]!.trim();
-      continue;
-    }
-    if (section === 'install') {
-      const m = /^registry\s*=\s*["']([^"']+)["']/.exec(line);
-      if (m !== null && isValidRegistryUrl(m[1]!)) globalReg = m[1]!;
-      continue;
-    }
-    if (section === 'install.scopes' && scope !== null) {
-      const quoted = new RegExp(
-        `^["']?${scope.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}["']?\\s*=\\s*(.+)$`,
-      ).exec(line);
-      if (quoted === null) continue;
-      const rhs = quoted[1]!.trim();
-      const strMatch = /^["']([^"']+)["']/.exec(rhs);
-      if (strMatch !== null && isValidRegistryUrl(strMatch[1]!)) {
-        scopedReg = strMatch[1]!;
-        continue;
-      }
-      const inlineMatch = /url\s*=\s*["']([^"']+)["']/.exec(rhs);
-      if (inlineMatch !== null && isValidRegistryUrl(inlineMatch[1]!)) {
-        scopedReg = inlineMatch[1]!;
-      }
-    }
-  }
-  return scopedReg ?? globalReg;
 }
 
 /** 推导本次查询应使用的 registry URL (仅查显式参数、环境变量与用户家目录配置) */
@@ -169,6 +104,7 @@ export function resolveRegistry(input: ResolveRegistryInput): string {
 
   const home = input.homeDir ?? homedir();
   const readText = input.readText ?? defaultReadText;
+
   if (input.pm === 'bun') {
     const bunfig = readText(join(home, '.bunfig.toml'));
     if (bunfig !== null) {
@@ -183,7 +119,8 @@ export function resolveRegistry(input: ResolveRegistryInput): string {
     if (found !== null) return normalizeRegistryUrl(found);
   }
 
-  if (input.pm !== 'bun') {
+  // 仅当未确定包管理器时允许回退 ~/.bunfig.toml; 明确 npm/pnpm/yarn/volta 绝不读 bunfig
+  if (input.pm === undefined) {
     const bunfig = readText(join(home, '.bunfig.toml'));
     if (bunfig !== null) {
       const found = parseRegistryFromBunfig(bunfig, input.packageName);
@@ -194,9 +131,61 @@ export function resolveRegistry(input: ResolveRegistryInput): string {
   return DEFAULT_REGISTRY;
 }
 
-/** 清理错误文本中的控制字符 (防止远端响应或异常文本注入终端控制序列) */
-function cleanMessage(raw: string): string {
-  return raw
+/**
+ * 为指定目标 registry 解析同源同路径鉴权 token (仅从用户家目录配置读取, 严格对齐 pm 规则)。
+ * 未配置、不匹配或环境变量缺失时返回 undefined。
+ */
+export function resolveRegistryAuthToken(
+  input: ResolveRegistryAuthInput,
+): string | undefined {
+  if (!isValidRegistryUrl(input.registry)) return undefined;
+  const env = input.env ?? process.env;
+  const home = input.homeDir ?? homedir();
+  const readText = input.readText ?? defaultReadText;
+  const base = normalizeRegistryUrl(input.registry);
+
+  if (input.pm === 'bun') {
+    const bunfig = readText(join(home, '.bunfig.toml'));
+    if (bunfig !== null) {
+      const token = parseAuthTokenFromBunfig(
+        bunfig,
+        base,
+        input.packageName,
+        env,
+      );
+      if (token !== null) return token;
+    }
+  }
+
+  const npmrc = readText(join(home, '.npmrc'));
+  if (npmrc !== null) {
+    const token = parseAuthTokenFromNpmrc(npmrc, base, env);
+    if (token !== null) return token;
+  }
+
+  if (input.pm === undefined) {
+    const bunfig = readText(join(home, '.bunfig.toml'));
+    if (bunfig !== null) {
+      const token = parseAuthTokenFromBunfig(
+        bunfig,
+        base,
+        input.packageName,
+        env,
+      );
+      if (token !== null) return token;
+    }
+  }
+
+  return undefined;
+}
+
+/** 清理错误文本中的控制字符并防御性脱敏 token (防止远端响应或凭据泄漏到终端) */
+function cleanMessage(raw: string, secret?: string): string {
+  const redacted =
+    secret !== undefined && secret !== ''
+      ? raw.replaceAll(secret, '[REDACTED]')
+      : raw;
+  return redacted
     .replace(/\p{Cc}/gu, ' ')
     .replace(/\s+/g, ' ')
     .trim();
@@ -226,17 +215,29 @@ export async function fetchLatestVersion(
   const url = `${base}/${encodeURIComponent(input.packageName)}/${encodeURIComponent(tag)}`;
   const fetchFn = input.fetchFn ?? fetch;
   const timeoutMs = input.timeoutMs ?? DEFAULT_FETCH_TIMEOUT_MS;
+  const authToken =
+    typeof input.authToken === 'string' &&
+    input.authToken.trim() !== '' &&
+    !/[\s\p{Cc}]/u.test(input.authToken)
+      ? input.authToken.trim()
+      : undefined;
+
+  const headers: Record<string, string> = {
+    accept: 'application/vnd.npm.install-v1+json, application/json',
+  };
+  if (authToken !== undefined) {
+    headers.authorization = `Bearer ${authToken}`;
+  }
 
   let response: Response;
   try {
     response = await fetchFn(url, {
-      headers: {
-        accept: 'application/vnd.npm.install-v1+json, application/json',
-      },
+      headers,
       signal: AbortSignal.timeout(timeoutMs),
     });
   } catch (error) {
-    const detail = error instanceof Error ? cleanMessage(error.message) : '';
+    const detail =
+      error instanceof Error ? cleanMessage(error.message, authToken) : '';
     return {
       ok: false,
       code: 'network',
@@ -247,6 +248,14 @@ export async function fetchLatestVersion(
     };
   }
 
+  if (response.status === 401 || response.status === 403) {
+    return {
+      ok: false,
+      code: 'auth',
+      status: response.status,
+      message: `访问包注册表 ${base} 鉴权失败 (HTTP ${response.status}), 请检查 ~/.npmrc / ~/.bunfig.toml 认证凭据或登录状态`,
+    };
+  }
   if (response.status === 404) {
     return {
       ok: false,
