@@ -6,7 +6,7 @@
 import { describe, expect, test } from 'bun:test';
 
 import { homedir } from 'node:os';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 
 import { DEFAULT_EXCLUDE } from '@iyowei/sweep-node-modules';
 
@@ -82,46 +82,78 @@ describe('parsePathList: 路径答案解析 (用于 roots)', () => {
   });
 
   test('逗号分隔: 半角与全角均成立', () => {
-    expect(parsePathList('/a,/b', [])).toEqual(['/a', '/b']);
-    expect(parsePathList('/a，/b', [])).toEqual(['/a', '/b']);
+    expect(parsePathList('/a,/b', [])).toEqual([resolve('/a'), resolve('/b')]);
+    expect(parsePathList('/a，/b', [])).toEqual([resolve('/a'), resolve('/b')]);
   });
 
   test('空白分隔: 多空格 / 制表符 / 首尾空白', () => {
-    expect(parsePathList('  /a   /b\t/c  ', [])).toEqual(['/a', '/b', '/c']);
+    expect(parsePathList('  /a   /b\t/c  ', [])).toEqual([
+      resolve('/a'),
+      resolve('/b'),
+      resolve('/c'),
+    ]);
   });
 
   test('混合分隔与空项过滤', () => {
-    expect(parsePathList(', /a ,, /b ,', [])).toEqual(['/a', '/b']);
+    expect(parsePathList(', /a ,, /b ,', [])).toEqual([
+      resolve('/a'),
+      resolve('/b'),
+    ]);
   });
 
   test('中文路径不被破坏', () => {
     expect(
       parsePathList('/Users/iyowei/我的文档，/Users/iyowei/项目数据', []),
-    ).toEqual(['/Users/iyowei/我的文档', '/Users/iyowei/项目数据']);
+    ).toEqual([
+      resolve('/Users/iyowei/我的文档'),
+      resolve('/Users/iyowei/项目数据'),
+    ]);
   });
 
   test('成对引号: 空格与逗号保留, 引号本身剥离', () => {
     expect(parsePathList('"/tmp/My Projects"', [])).toEqual([
-      '/tmp/My Projects',
+      resolve('/tmp/My Projects'),
     ]);
-    expect(parsePathList('"/tmp/a, b"', [])).toEqual(['/tmp/a, b']);
-    expect(parsePathList("'/tmp/a b' /c", [])).toEqual(['/tmp/a b', '/c']);
+    expect(parsePathList('"/tmp/a, b"', [])).toEqual([resolve('/tmp/a, b')]);
+    expect(parsePathList("'/tmp/a b' /c", [])).toEqual([
+      resolve('/tmp/a b'),
+      resolve('/c'),
+    ]);
   });
 
   test('未配对引号按普通字符处理, 不吞后续内容', () => {
-    expect(parsePathList('/a "b c', [])).toEqual(['/a', '"b', 'c']);
+    expect(parsePathList('/a "b c', [])).toEqual([
+      resolve('/a'),
+      resolve('"b'),
+      resolve('c'),
+    ]);
+  });
+
+  test('相对路径绝对化并去重 (SWEEPCLI-P0-1)', () => {
+    expect(parsePathList('. ./app ./app ../sibling', [])).toEqual([
+      resolve('.'),
+      resolve('./app'),
+      resolve('../sibling'),
+    ]);
+    expect(parsePathList('~/lab, ~/lab', [], '/custom/home')).toEqual([
+      resolve(join('/custom/home', 'lab')),
+    ]);
   });
 
   test('~ 展开为家目录 (含引号内的 ~ / win32 习惯的 ~\\ 与自定义 home 注入)', () => {
-    expect(parsePathList('~', [])).toEqual([homedir()]);
-    expect(parsePathList('~/lab', [])).toEqual([join(homedir(), 'lab')]);
-    expect(parsePathList('~\\lab', [])).toEqual([join(homedir(), 'lab')]);
+    expect(parsePathList('~', [])).toEqual([resolve(homedir())]);
+    expect(parsePathList('~/lab', [])).toEqual([
+      resolve(join(homedir(), 'lab')),
+    ]);
+    expect(parsePathList('~\\lab', [])).toEqual([
+      resolve(join(homedir(), 'lab')),
+    ]);
     expect(parsePathList('"~/My Projects" ~/lab', [])).toEqual([
-      join(homedir(), 'My Projects'),
-      join(homedir(), 'lab'),
+      resolve(join(homedir(), 'My Projects')),
+      resolve(join(homedir(), 'lab')),
     ]);
     expect(parsePathList('~/repo', [], '/custom/home')).toEqual([
-      join('/custom/home', 'repo'),
+      resolve(join('/custom/home', 'repo')),
     ]);
   });
 });
@@ -149,9 +181,11 @@ describe('parseNameList: 目录名答案解析 (用于 exclude / include)', () =
 
 describe('runInit: 非目录根拦截 / 名单分隔符提示 / io.close / home 注入', () => {
   test('普通文件路径作扫描根: 报「根不是目录」并重问, 不写入配置', async () => {
+    const okDir = resolve('/dir-ok');
+    const fileRoot = resolve('/some/file.txt');
     const { deps, askCalls, prints } = makeGuardDeps({
       rootExists: () => true,
-      rootIsDirectory: (path) => path === '/dir-ok',
+      rootIsDirectory: (path) => path === okDir,
       asks: ['/some/file.txt', '/dir-ok', '', ''],
       confirms: [true],
     });
@@ -161,12 +195,12 @@ describe('runInit: 非目录根拦截 / 名单分隔符提示 / io.close / home 
     expect(result).toEqual({
       state: 'written',
       config: {
-        roots: ['/dir-ok'],
+        roots: [okDir],
         exclude: [...DEFAULT_EXCLUDE],
         include: [],
       },
     });
-    expect(prints).toContain('  ✗ 根不是目录: /some/file.txt');
+    expect(prints).toContain(`  ✗ 根不是目录: ${fileRoot}`);
     expect(askCalls).toHaveLength(4);
   });
 
@@ -181,7 +215,7 @@ describe('runInit: 非目录根拦截 / 名单分隔符提示 / io.close / home 
     expect(result).toEqual({
       state: 'written',
       config: {
-        roots: ['/ok'],
+        roots: [resolve('/ok')],
         exclude: ['foo/bar', '~'],
         include: ['a\\b'],
       },
@@ -226,7 +260,7 @@ describe('runInit: 非目录根拦截 / 名单分隔符提示 / io.close / home 
     expect(result).toEqual({
       state: 'written',
       config: {
-        roots: [join(customHome, 'work')],
+        roots: [resolve(join(customHome, 'work'))],
         exclude: [...DEFAULT_EXCLUDE],
         include: [],
       },

@@ -6,7 +6,7 @@
 import { describe, expect, test } from 'bun:test';
 
 import { homedir } from 'node:os';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 
 import { DEFAULT_EXCLUDE } from '@iyowei/sweep-node-modules';
 
@@ -70,6 +70,8 @@ function makeFakeIO(script: {
 function makeDeps(options: {
   /** configPath 是否存在 (覆盖保护分流) */
   configExists?: boolean;
+  /** configPath 是否为既有目录 (前置与落盘前拦截 EISDIR) */
+  configIsDirectory?: boolean;
   /** 非 configPath 路径的存在性谓词 (根校验); 缺省一律视为存在 */
   rootExists?: (path: string) => boolean;
   /** 根是否为目录谓词 (拦截普通文件); 缺省与 rootExists 同真 */
@@ -91,6 +93,7 @@ function makeDeps(options: {
   const deps: InitDeps = {
     configPath: CONFIG_PATH,
     configExists: async () => options.configExists ?? false,
+    configIsDirectory: async () => options.configIsDirectory ?? false,
     rootExists: async (path) => options.rootExists?.(path) ?? true,
     rootIsDirectory: async (path) =>
       options.rootIsDirectory?.(path) ?? options.rootExists?.(path) ?? true,
@@ -165,7 +168,7 @@ describe('runInit: written 路径', () => {
     expect(result).toEqual({
       state: 'written',
       config: {
-        roots: ['/a', '/b', '/c'],
+        roots: [resolve('/a'), resolve('/b'), resolve('/c')],
         exclude: ['dist', 'coverage'],
         include: [],
       },
@@ -192,8 +195,9 @@ describe('runInit: written 路径', () => {
   });
 
   test('根不存在: 逐个提示后重问该问, 坏输入不进配置', async () => {
+    const okRoot = resolve('/ok');
     const { deps, askCalls, prints } = makeDeps({
-      rootExists: (path) => path === '/ok',
+      rootExists: (path) => path === okRoot,
       asks: ['/missing-a /missing-b', '/ok', '', ''],
       confirms: [true],
     });
@@ -202,19 +206,24 @@ describe('runInit: written 路径', () => {
 
     expect(result).toEqual({
       state: 'written',
-      config: { roots: ['/ok'], exclude: [...DEFAULT_EXCLUDE], include: [] },
+      config: {
+        roots: [okRoot],
+        exclude: [...DEFAULT_EXCLUDE],
+        include: [],
+      },
     });
-    expect(prints).toContain('  ✗ 根不存在: /missing-a');
-    expect(prints).toContain('  ✗ 根不存在: /missing-b');
+    expect(prints).toContain(`  ✗ 根不存在: ${resolve('/missing-a')}`);
+    expect(prints).toContain(`  ✗ 根不存在: ${resolve('/missing-b')}`);
     // 根问了两次 (重问), 加排除与包含名单各一次, 共四次
     expect(askCalls).toHaveLength(4);
     expect(askCalls[1]!.question).toBe(askCalls[0]!.question);
   });
 
   test('根不存在提示经净化: 控制字节不入终端 (与清单面同一源实现)', async () => {
+    const evilAbs = resolve('/evil\u001b[2Jroot\u202e');
     const { deps, prints } = makeDeps({
-      rootExists: (path) => path !== 'evil\u001b[2Jroot\u202e',
-      asks: ['evil\u001b[2Jroot\u202e /ok', '/ok', '', ''],
+      rootExists: (path) => path !== evilAbs,
+      asks: ['/evil\u001b[2Jroot\u202e /ok', '/ok', '', ''],
       confirms: [true],
     });
 
@@ -222,15 +231,20 @@ describe('runInit: written 路径', () => {
 
     expect(result.state).toBe('written');
     // 回显行里的 ESC (清屏序列引导) 与 RLO (视觉反转) 被剥除, 只剩可读文本;
-    // 未净化时该行会把控制字节直写终端, 并可能把后续内容覆盖成伪造的可信输出
-    expect(prints).toContain('  \u2717 根不存在: evil[2Jroot');
+    expect(
+      prints.some(
+        (line) =>
+          line.includes('  \u2717 根不存在: ') && line.includes('evil[2Jroot'),
+      ),
+    ).toBe(true);
     expect(prints.some((line) => line.includes('\u001b'))).toBe(false);
     expect(prints.some((line) => line.includes('\u202e'))).toBe(false);
   });
   test('根落在符号链接路径上: 提示后重问该问, 坏输入不进配置', async () => {
+    const tmpX = resolve('/tmp/x');
     const { deps, askCalls, prints } = makeDeps({
       // 删除侧判在配置拼写上: 根自身或祖先链任一级为符号链接即拒 (/tmp 是 macOS 的系统固有链接)
-      rootLink: (path) => (path === '/tmp/x' ? '/tmp' : null),
+      rootLink: (path) => (path === tmpX ? '/tmp' : null),
       asks: ['/tmp/x', '/ok', '', ''],
       confirms: [true],
     });
@@ -239,11 +253,15 @@ describe('runInit: written 路径', () => {
 
     expect(result).toEqual({
       state: 'written',
-      config: { roots: ['/ok'], exclude: [...DEFAULT_EXCLUDE], include: [] },
+      config: {
+        roots: [resolve('/ok')],
+        exclude: [...DEFAULT_EXCLUDE],
+        include: [],
+      },
     });
     // 提示点明删除侧要求真实路径与改写方向 (整批拒绝在删除侧才发生, 向导当场暴露它)
     expect(prints).toContain(
-      '  ✗ 根锚点链上有符号链接: /tmp (根: /tmp/x); 删除侧要求真实路径, 改写为不含符号链接的形态 (macOS 上如 /tmp/x 写成 /private/tmp/x)',
+      `  ✗ 根锚点链上有符号链接: /tmp (根: ${tmpX}); 删除侧要求真实路径, 改写为不含符号链接的形态 (macOS 上如 /tmp/x 写成 /private/tmp/x)`,
     );
     // 根问了两次 (重问), 加排除与包含名单各一次, 共四次
     expect(askCalls).toHaveLength(4);
@@ -251,9 +269,11 @@ describe('runInit: written 路径', () => {
   });
 
   test('根不存在时不叠报形态问题: 同一根只给一条提示', async () => {
+    const okRoot = resolve('/ok');
+    const ghostRoot = resolve('/var/ghost');
     const { deps, prints } = makeDeps({
-      rootExists: (path) => path === '/ok',
-      rootLink: (path) => (path === '/var/ghost' ? '/var' : null),
+      rootExists: (path) => path === okRoot,
+      rootLink: (path) => (path === ghostRoot ? '/var' : null),
       asks: ['/var/ghost', '/ok', '', ''],
       confirms: [true],
     });
@@ -261,7 +281,7 @@ describe('runInit: written 路径', () => {
     const result = await runInit(deps);
 
     expect(result.state).toBe('written');
-    expect(prints).toContain('  ✗ 根不存在: /var/ghost');
+    expect(prints).toContain(`  ✗ 根不存在: ${ghostRoot}`);
     expect(prints.some((line) => line.includes('根锚点链上有符号链接'))).toBe(
       false,
     );
@@ -283,58 +303,58 @@ describe('runInit: written 路径', () => {
     expect(colored.prints.map(strip)).toEqual(plain.prints);
   });
 });
-describe('runInit: 落盘前锚点检查 (写入侧)', () => {
-  test('配置路径自身是符号链接: 拒绝写入并重问该问; 用户改答「否」即取消, 不落盘', async () => {
-    const { deps, writes, confirmCalls, prints } = makeDeps({
-      // 写入侧判在配置拼写上 (写入会跟随链接改写其目标): 链接位置即配置路径自身
-      targetLink: (path) => (path === CONFIG_PATH ? '/var' : null),
-      asks: ['/root', '', ''],
-      // 第一次确认写入被拒, 重问该问后用户放弃
-      confirms: [true, false],
+describe('runInit: 前置配置路径检查与落盘前 TOCTOU 复检 (SWEEPCLI-P0-3)', () => {
+  test('前置拦截: 配置路径是既有目录时零询问直接拒绝, 防 EISDIR', async () => {
+    const { deps, writes, askCalls, confirmCalls, prints } = makeDeps({
+      configExists: true,
+      configIsDirectory: true,
     });
 
     const result = await runInit(deps);
 
     expect(result).toEqual({ state: 'cancelled' });
     expect(writes).toHaveLength(0);
-    expect(confirmCalls).toHaveLength(2);
-    // 拒绝文案与根校验同形 (红色 ✗ + 链接定位 + 改写指引), 点明写入侧为何要拒
-    expect(prints).toContain(
-      `  ✗ 配置路径锚点链上有符号链接: /var (配置: ${CONFIG_PATH}); 写入会跟随符号链接改写其目标, 改写为不含符号链接的形态 (macOS 上如 /tmp/x 写成 /private/tmp/x)`,
+    expect(askCalls).toHaveLength(0);
+    expect(confirmCalls).toHaveLength(0);
+    expect(prints.some((line) => line.includes('配置路径是既有目录'))).toBe(
+      true,
     );
     expect(prints).toContain('已取消, 未写入配置');
   });
 
-  test('悬空链接的配置路径: 判重先出覆盖一问, 随后才在写入面被拒 (两问先后)', async () => {
-    const { deps, writes, confirmCalls, prints } = makeDeps({
-      // 判重取 lstat 语义 (不跟进末段): 悬空链接同样算「已存在」, 故先经过覆盖一问
-      configExists: true,
-      // 悬空链接在锚点判定里同样命中 (lstat 不跟进末段, 链接自身即结果)
-      targetLink: (path) => (path === CONFIG_PATH ? CONFIG_PATH : null),
-      asks: ['/root', '', ''],
-      // 覆盖确认 (y) → 写入确认 (y, 随即被拒) → 重问该问时放弃
-      confirms: [true, true, false],
-    });
+  test('前置拦截: 配置路径或祖先链已含符号链接 (含悬空链接) 时进入三问前直接拒绝', async () => {
+    const parent = join(homedir(), '.config', 'sweep-node-modules');
+    for (const [label, link] of [
+      ['自身', CONFIG_PATH],
+      ['祖先', parent],
+      ['系统软链', '/var'],
+    ] as const) {
+      const { deps, writes, askCalls, confirmCalls, prints } = makeDeps({
+        configExists: label === '自身',
+        targetLink: (path) => (path === CONFIG_PATH ? link : null),
+      });
 
-    const result = await runInit(deps);
+      const result = await runInit(deps);
 
-    expect(result).toEqual({ state: 'cancelled' });
-    expect(writes).toHaveLength(0);
-    // 两问先后: 覆盖一问在前 (判重把悬空链接算作已存在), 写入确认在后, 被拒后重问同问
-    expect(confirmCalls).toHaveLength(3);
-    expect(confirmCalls[0]!.question).toContain('覆盖');
-    expect(confirmCalls[1]!.question).toBe('确认写入?');
-    expect(confirmCalls[2]!.question).toBe('确认写入?');
-    // 写入面被拒的定位报的是链接自身 (与「配置路径自身是符号链接」同形) 与配置拼写
-    expect(prints).toContain(
-      `  ✗ 配置路径锚点链上有符号链接: ${CONFIG_PATH} (配置: ${CONFIG_PATH}); 写入会跟随符号链接改写其目标, 改写为不含符号链接的形态 (macOS 上如 /tmp/x 写成 /private/tmp/x)`,
-    );
+      expect(result).toEqual({ state: 'cancelled' });
+      expect(writes).toHaveLength(0);
+      expect(askCalls).toHaveLength(0);
+      expect(confirmCalls).toHaveLength(0);
+      expect(prints).toContain(
+        `  ✗ 配置路径锚点链上有符号链接: ${link} (配置: ${CONFIG_PATH}); 写入会跟随符号链接改写其目标, 改写为不含符号链接的形态 (macOS 上如 /tmp/x 写成 /private/tmp/x)`,
+      );
+      expect(prints).toContain('已取消, 未写入配置');
+    }
   });
 
-  test('配置路径的父目录某级是符号链接: 同样拒绝, 定位报的是该级', async () => {
-    const parent = join(homedir(), '.config', 'sweep-node-modules');
+  test('落盘前 TOCTOU 复检: 问答期间路径出现软链时拒写, 重问默认降为 false (y/N) 防死循环', async () => {
+    let calls = 0;
     const { deps, writes, confirmCalls, prints } = makeDeps({
-      targetLink: (path) => (path === CONFIG_PATH ? parent : null),
+      // 首次 (前置检查) 全链真身; 第二次 (确认写入后 TOCTOU 复检) 检出软链
+      targetLink: () => {
+        calls += 1;
+        return calls === 1 ? null : '/var';
+      },
       asks: ['/root', '', ''],
       confirms: [true, false],
     });
@@ -344,22 +364,18 @@ describe('runInit: 落盘前锚点检查 (写入侧)', () => {
     expect(result).toEqual({ state: 'cancelled' });
     expect(writes).toHaveLength(0);
     expect(confirmCalls).toHaveLength(2);
-    expect(
-      prints.some(
-        (line) =>
-          line.includes('配置路径锚点链上有符号链接: ') &&
-          line.includes(parent),
-      ),
-    ).toBe(true);
+    expect(confirmCalls[0]!.defaultYes).toBe(true);
+    expect(confirmCalls[1]!.defaultYes).toBe(false);
+    expect(prints).toContain('已取消, 未写入配置');
   });
 
-  test('拒绝后重问: 路径锚点转好后同一轮照常落盘 (重问不吞已收集的答案)', async () => {
+  test('落盘前 TOCTOU 拒绝后重问: 锚点恢复真身后照常落盘 (不吞已收集答案)', async () => {
     let calls = 0;
     const { deps, writes, confirmCalls } = makeDeps({
-      // 首次判得链接, 第二次判得全链真身 (模拟路径在重问之间被修正)
+      // 1=前置通过, 2=首次落盘前检出软链, 3=修正后复检通过
       targetLink: () => {
         calls += 1;
-        return calls === 1 ? '/var' : null;
+        return calls === 2 ? '/var' : null;
       },
       asks: ['/root', '', ''],
       confirms: [true, true],
@@ -370,9 +386,11 @@ describe('runInit: 落盘前锚点检查 (写入侧)', () => {
     expect(result.state).toBe('written');
     expect(writes).toHaveLength(1);
     expect(confirmCalls).toHaveLength(2);
+    expect(confirmCalls[0]!.defaultYes).toBe(true);
+    expect(confirmCalls[1]!.defaultYes).toBe(false);
   });
 
-  test('正常路径: 锚点判定收到的正是配置拼写, 通过后不额外提问', async () => {
+  test('正常路径: 前置与落盘前均校验配置拼写, 通过后只问一次确认写入', async () => {
     const probed: string[] = [];
     const { deps, writes, confirmCalls } = makeDeps({
       targetLink: (path) => {
@@ -387,16 +405,13 @@ describe('runInit: 落盘前锚点检查 (写入侧)', () => {
 
     expect(result.state).toBe('written');
     expect(writes).toHaveLength(1);
-    // 判在用户给的拼写上 (与写盘同一坐标), 不做 realpath 归一再判
-    expect(probed).toEqual([CONFIG_PATH]);
+    expect(probed).toEqual([CONFIG_PATH, CONFIG_PATH]);
     expect(confirmCalls).toHaveLength(1);
   });
 
   test('锚点拒绝行经净化: 控制字节不入终端 (与其余外部数据回显同一源实现)', async () => {
     const { deps, prints } = makeDeps({
       targetLink: () => '/var/evil\u001b[2Jlink\u202e',
-      asks: ['/root', '', ''],
-      confirms: [true, false],
     });
 
     const result = await runInit(deps);

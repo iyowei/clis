@@ -5,7 +5,7 @@
  * 视觉: 与清单同一套色块语言 (顶栏 / 中性行 / 标记原语见 render.ts), 着色开关经 IO 层注入。
  */
 import { homedir } from 'node:os';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import { type Interface, createInterface } from 'node:readline/promises';
 
 import { type Config, DEFAULT_EXCLUDE } from '@iyowei/sweep-node-modules';
@@ -38,6 +38,8 @@ export interface InitDeps {
   configPath: string;
   /** 配置文件是否已存在 (lstat 语义: 悬空符号链接也算已存在, 触发覆盖保护) */
   configExists(path: string): Promise<boolean>;
+  /** 可选: 配置目标路径是否为既有目录 (前置与落盘前拦截 EISDIR) */
+  configIsDirectory?(path: string): Promise<boolean>;
   /** 扫描根是否为真实目录 (lstat + isDirectory: 不存在、普通文件与符号链接均返 false) */
   rootIsDirectory(path: string): Promise<boolean>;
   /** 可选: 扫描根路径是否存在 (lstat 语义); 提供时可精确区分「根不存在」与「根不是目录」 */
@@ -137,7 +139,12 @@ export function parsePathList(
   home: string = homedir(),
 ): string[] {
   if (answer === null) return [...fallback];
-  const items = splitAnswer(answer).map((token) => expandHome(token, home));
+  // 展开家目录后一律 resolve 绝对化并去重, 确保落盘配置与唤起 cwd 无关且 Windows 正斜杠归一
+  const items = [
+    ...new Set(
+      splitAnswer(answer).map((token) => resolve(expandHome(token, home))),
+    ),
+  ];
   return items.length > 0 ? items : [...fallback];
 }
 
@@ -223,8 +230,32 @@ export async function runInit(deps: InitDeps): Promise<InitResult> {
     return { state: 'cancelled' };
   }
 
+  /** 检查配置路径是否可安全落盘 (拦截既有目录与锚点软链); 不可写时输出清晰拒绝并返 false */
+  async function checkConfigTarget(): Promise<boolean> {
+    if (
+      deps.configIsDirectory !== undefined &&
+      (await deps.configIsDirectory(configPath))
+    ) {
+      io.print(
+        `  ${paint('✗', '31', color)} 配置路径是既有目录, 无法写入文件: ${sanitizeLine(configPath)}; 请用 --config 指定文件路径或先移走该目录`,
+      );
+      return false;
+    }
+    const link = await firstSymlinkOnTarget(configPath);
+    if (link !== null) {
+      io.print(
+        `  ${paint('✗', '31', color)} 配置路径锚点链上有符号链接: ${sanitizeLine(link)} (配置: ${sanitizeLine(configPath)}); 写入会跟随符号链接改写其目标, 改写为不含符号链接的形态 (macOS 上如 /tmp/x 写成 /private/tmp/x)`,
+      );
+      return false;
+    }
+    return true;
+  }
+
   try {
     io.print(bannerLine('初始化向导', color));
+
+    // 进入覆盖确认与三问前先校验 configPath: 既有目录或锚点软链立即前置拒绝, 避免答完三问才撞墙或陷死循环
+    if (!(await checkConfigTarget())) return cancelled();
 
     if (await configExists(configPath)) {
       const overwrite = await io.confirm(
@@ -294,14 +325,12 @@ export async function runInit(deps: InitDeps): Promise<InitResult> {
         color,
       ),
     );
-    // 落盘前锚点检查 (写入侧): 配置路径及其祖先链任一级是符号链接即拒
+    // 落盘前 TOCTOU 复检 (写入侧): 问答期间目标变为目录或锚点链出现符号链接即拒, 重问默认改为 false (y/N) 防死循环
+    let confirmDefault = true;
     for (;;) {
-      if (!(await io.confirm('确认写入?', true))) return cancelled();
-      const link = await firstSymlinkOnTarget(configPath);
-      if (link === null) break;
-      io.print(
-        `  ${paint('✗', '31', color)} 配置路径锚点链上有符号链接: ${sanitizeLine(link)} (配置: ${sanitizeLine(configPath)}); 写入会跟随符号链接改写其目标, 改写为不含符号链接的形态 (macOS 上如 /tmp/x 写成 /private/tmp/x)`,
-      );
+      if (!(await io.confirm('确认写入?', confirmDefault))) return cancelled();
+      if (await checkConfigTarget()) break;
+      confirmDefault = false;
     }
 
     const config = { roots, exclude, include };
@@ -354,10 +383,14 @@ export function createReadlineIO(color: boolean): InitIO {
   const buffered: string[] = [];
   let rl: Interface | null = null;
   let ended = false;
+  let aborted = false;
   /** 当前等待中的问题; 调用方串行提问, 同一时刻至多一个 */
   let pending: ((line: string | null) => void) | null = null;
 
   const onSigint = (): void => {
+    aborted = true;
+    buffered.length = 0;
+    if (process.stdout.isTTY === true) process.stdout.write('\n');
     rl?.close();
   };
 
@@ -399,12 +432,13 @@ export function createReadlineIO(color: boolean): InitIO {
    * 已关闭的 interface 再 prompt 会被官方实现拒绝 (ERR_USE_AFTER_CLOSE, 实测坐实)。
    */
   function readLine(prompt: string): Promise<string | null> {
+    if (aborted) return Promise.resolve(null);
     // 会话已结束: 缓冲里还有行就照常交付 (提示直写 stdout, 保持输出的行结构), 否则折算取消
     // (重建 interface 也等不到已发生过的 EOF)
     if (ended) {
       const bufferedLine = buffered.shift();
       if (bufferedLine === undefined) return Promise.resolve(null);
-      process.stdout.write(prompt);
+      process.stdout.write(`${prompt}\n`);
       return Promise.resolve(bufferedLine);
     }
 
@@ -413,7 +447,10 @@ export function createReadlineIO(color: boolean): InitIO {
     created.prompt();
 
     const ready = buffered.shift();
-    if (ready !== undefined) return Promise.resolve(ready);
+    if (ready !== undefined) {
+      process.stdout.write('\n');
+      return Promise.resolve(ready);
+    }
 
     setStdinRef(true);
     return new Promise((resolve) => {
