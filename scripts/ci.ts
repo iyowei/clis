@@ -4,7 +4,7 @@
  * 一律经本入口调用, 不再各自枚举。
  *
  * 分组:
- * - `--verify`         验证组 (ubuntu 权威全量): build → typecheck → test → lint → format-check → 五闸门;
+ * - `--verify`         验证组 (ubuntu 权威全量): build → typecheck → test → 7 道只读 lint 并行;
  * - `--verify-windows` Windows OS 兼容组: build → 限并发 test:windows → test:scripts;
  * - `--conformance`    验收组 (语料为 macOS 口径): build → conformance (bun + node 双 target);
  * - (无旗标)           全链 = 验证组 + 验收组 (重复步骤去重);
@@ -14,7 +14,7 @@
  * 用法: bun scripts/ci.ts [--verify | --verify-windows | --conformance | --only <step> | --help]
  * 退出码: 0 全绿; 2 参数非法; 其余为首个失败步骤的退出码。
  */
-import { spawnSync } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import * as fs from 'node:fs';
 import { join } from 'node:path';
 
@@ -31,6 +31,8 @@ interface Step {
   isolatedHome?: boolean;
   /** 叠加给子进程的环境变量 */
   env?: Readonly<Record<string, string>>;
+  /** 纯只读无副作用闸门: 连续出现时自动并行执行, 输出按声明序回放 */
+  parallel?: boolean;
 }
 
 /** 惰性派生转写验收 CLI 入口坐标 (单产品仓取唯一对; 多产品仓按 docs/protocol 锚点唯一定位) */
@@ -73,19 +75,41 @@ const STEPS: Readonly<Record<string, Step>> = {
     isolatedHome: true,
     env: WINDOWS_TEST_ENV,
   },
-  lint: { command: 'bunx', args: ['oxlint'] },
-  'format-check': { command: 'bunx', args: ['prettier', '--check', '.'] },
-  'lint:refs': { command: 'bun', args: ['scripts/lint-doc-references.ts'] },
-  'lint:examples': { command: 'bun', args: ['scripts/lint-doc-examples.ts'] },
+  lint: {
+    command: 'bun',
+    args: ['x', '--no-install', 'oxlint'],
+    parallel: true,
+  },
+  'format-check': {
+    command: 'bun',
+    args: ['x', '--no-install', 'prettier', '--check', '.'],
+    parallel: true,
+  },
+  'lint:refs': {
+    command: 'bun',
+    args: ['scripts/lint-doc-references.ts'],
+    parallel: true,
+  },
+  'lint:examples': {
+    command: 'bun',
+    args: ['scripts/lint-doc-examples.ts'],
+    parallel: true,
+  },
   'lint:deps': {
     command: 'bun',
     args: ['scripts/lint-dependency-direction.ts'],
+    parallel: true,
   },
   'lint:coverage': {
     command: 'bun',
     args: ['scripts/transcription/validate-coverage.ts'],
+    parallel: true,
   },
-  'lint:backups': { command: 'bun', args: ['scripts/lint-stray-backups.ts'] },
+  'lint:backups': {
+    command: 'bun',
+    args: ['scripts/lint-stray-backups.ts'],
+    parallel: true,
+  },
   // 发布凭据预检 (OIDC 换证): 发布特有, 不进任何组 — 仅 Release 的 release job (获批后)
   // 经 `--only npm-trust` 调用; 非 OIDC 环境下手动跑时脚本自行跳过。
   'npm-trust': {
@@ -146,7 +170,17 @@ const CONFORMANCE_GROUP: readonly string[] = [
   'conformance:node',
 ];
 
-/** 跑一步 (stdio 透传), 失败即携其退出码终止 */
+/** 组装单步环境变量 (可选叠加隔离 HOME 与步骤专有 env) */
+function buildStepEnv(step: Step, home: string | undefined): NodeJS.ProcessEnv {
+  const env: NodeJS.ProcessEnv = { ...process.env, ...step.env };
+  if (home !== undefined) {
+    env.HOME = home;
+    env.USERPROFILE = home;
+  }
+  return env;
+}
+
+/** 跑一步串行步骤 (stdio 透传), 失败即携其退出码终止 */
 function runStep(name: string): void {
   const step = STEPS[name]!;
   process.stdout.write(`\n=== ${name} ===\n`);
@@ -154,12 +188,10 @@ function runStep(name: string): void {
   const home = step.isolatedHome === true ? makeTmpRoot('ci-home-') : undefined;
   try {
     if (home !== undefined) process.stdout.write(`隔离 HOME: ${home}\n`);
-    const env: NodeJS.ProcessEnv = { ...process.env, ...step.env };
-    if (home !== undefined) {
-      env.HOME = home;
-      env.USERPROFILE = home;
-    }
-    const result = spawnSync(step.command, args, { stdio: 'inherit', env });
+    const result = spawnSync(step.command, args, {
+      stdio: 'inherit',
+      env: buildStepEnv(step, home),
+    });
     if (result.error !== undefined) {
       process.stderr.write(`步骤 ${name} 启动失败: ${result.error.message}\n`);
       process.exit(1);
@@ -174,6 +206,79 @@ function runStep(name: string): void {
         retryDelay: 100,
       });
     }
+  }
+}
+
+interface ParallelResult {
+  name: string;
+  status: number;
+  stdout: string;
+  stderr: string;
+}
+
+/** 异步执行单条只读并行步骤并收集输出 */
+function spawnParallelStep(name: string): Promise<ParallelResult> {
+  const step = STEPS[name]!;
+  const args = typeof step.args === 'function' ? step.args() : step.args;
+  return new Promise((resolve) => {
+    const child = spawn(step.command, args, {
+      stdio: ['ignore', 'pipe', 'pipe'],
+      env: buildStepEnv(step, undefined),
+    });
+    let stdout = '';
+    let stderr = '';
+    child.stdout.setEncoding('utf8');
+    child.stderr.setEncoding('utf8');
+    child.stdout.on('data', (chunk: string) => {
+      stdout += chunk;
+    });
+    child.stderr.on('data', (chunk: string) => {
+      stderr += chunk;
+    });
+    child.on('error', (error) => {
+      resolve({
+        name,
+        status: 1,
+        stdout,
+        stderr: `${stderr}步骤 ${name} 启动失败: ${error.message}\n`,
+      });
+    });
+    child.on('close', (code) => {
+      resolve({ name, status: code ?? 1, stdout, stderr });
+    });
+  });
+}
+
+/** 并行执行连续的只读检查步骤, 按原声明顺序整块回放输出并在首个失败处退出 */
+async function runParallelBatch(names: readonly string[]): Promise<void> {
+  const results = await Promise.all(names.map(spawnParallelStep));
+  let firstFailure = 0;
+  for (const res of results) {
+    process.stdout.write(`\n=== ${res.name} ===\n`);
+    if (res.stdout.length > 0) process.stdout.write(res.stdout);
+    if (res.stderr.length > 0) process.stderr.write(res.stderr);
+    if (res.status !== 0 && firstFailure === 0) firstFailure = res.status;
+  }
+  if (firstFailure !== 0) process.exit(firstFailure);
+}
+
+/** 按步骤序列编排执行: 连续的 parallel 步骤自动成批并发, 其余严格串行 */
+async function runSteps(names: readonly string[]): Promise<void> {
+  let index = 0;
+  while (index < names.length) {
+    const name = names[index]!;
+    if (STEPS[name]?.parallel === true) {
+      const batch: string[] = [];
+      while (index < names.length && STEPS[names[index]!]?.parallel === true) {
+        batch.push(names[index]!);
+        index += 1;
+      }
+      if (batch.length === 1) runStep(batch[0]!);
+      else await runParallelBatch(batch);
+      continue;
+    }
+    runStep(name);
+    index += 1;
   }
 }
 
@@ -245,6 +350,6 @@ if (process.argv.includes('--help')) {
   process.stdout.write(`${HELP_TEXT}\n`);
 } else {
   const steps = resolveSteps(process.argv.slice(2));
-  for (const name of steps) runStep(name);
+  await runSteps(steps);
   process.stdout.write('\nCI 预演全绿 ✓\n');
 }
