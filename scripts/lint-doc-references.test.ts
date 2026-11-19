@@ -91,6 +91,22 @@ describe('相对链接', () => {
       0,
     );
   });
+
+  test('包根 README 禁止逃出包目录的相对链接 (防 npm 404); 包内链接与 GitHub URL 放行', () => {
+    const root = makeRoot({
+      'docs/guide.md': '# Guide\n',
+      'packages/demo/README.md': [
+        '[外逃](../../docs/guide.md)',
+        '[包内](README.zh-CN.md)',
+        '[绝对](https://github.com/iyowei/clis/blob/main/docs/guide.md)',
+      ].join('\n'),
+      'packages/demo/README.zh-CN.md': '# 中文\n',
+    });
+    const issues = findAllIssues(root).filter((f) => f.kind === 'link');
+    expect(issues).toHaveLength(1);
+    expect(issues[0]!.file).toBe('packages/demo/README.md');
+    expect(issues[0]!.reference).toBe('../../docs/guide.md');
+  });
 });
 
 describe('§章节引用', () => {
@@ -129,6 +145,17 @@ describe('§章节引用', () => {
       resolveSectionTarget(line, line.indexOf('§'), 'docs', new Map()),
     ).toBe('packages/sweep-node-modules/docs/designs/api-surface.md');
   });
+
+  test('同名文档跨包引用优先命中同包而非回退根 docs/', () => {
+    const root = makeRoot({
+      'docs/designs/architecture.md': '## 1. 根架构\n',
+      'packages/pkg-a/docs/designs/architecture.md': '## 2. 包内架构\n',
+      'packages/pkg-a/docs/adrs/0030-x.md': '见 architecture.md §2。\n',
+    });
+    expect(
+      findAllIssues(root).filter((f) => f.kind === 'section'),
+    ).toHaveLength(0);
+  });
 });
 
 describe('ADR 编号', () => {
@@ -154,5 +181,14 @@ describe('ADR 编号', () => {
     const issues = findAllIssues(root).filter((f) => f.kind === 'adr');
     expect(issues).toHaveLength(1);
     expect(issues[0]!.reference).toBe('ADR 0022');
+  });
+
+  test('跨级 ADR 编号重号碰撞直接抓出', () => {
+    const root = makeRoot({
+      'packages/x/docs/adrs/0001-dup.md': '# ADR 0001: 重号\n',
+    });
+    const issues = findAllIssues(root).filter((f) => f.kind === 'adr');
+    expect(issues).toHaveLength(1);
+    expect(issues[0]!.message).toContain('重号碰撞');
   });
 });
