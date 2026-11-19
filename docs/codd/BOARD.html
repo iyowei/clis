@@ -1,0 +1,5749 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="dark light" />
+    <title>Codd · MongoDB 模板化装配看板</title>
+    <script>
+      try {
+        var savedTheme = localStorage.getItem('codd-docs-theme');
+        if (savedTheme === 'light' || savedTheme === 'dark') {
+          document.documentElement.setAttribute('data-theme', savedTheme);
+        }
+      } catch (e) {}
+    </script>
+    <style>
+      @layer reset, theme, base, components, utilities;
+
+      @layer reset {
+        html,
+        body {
+          margin: 0;
+          height: 100%;
+          overflow: hidden;
+        }
+        :where(
+          html,
+          body,
+          div,
+          section,
+          article,
+          main,
+          header,
+          footer,
+          nav,
+          h1,
+          h2,
+          h3,
+          p,
+          ul,
+          ol,
+          li,
+          pre,
+          code,
+          button,
+          dialog,
+          figure,
+          figcaption,
+          span
+        ) {
+          box-sizing: border-box;
+        }
+      }
+
+      @layer theme {
+        :root {
+          --sans:
+            -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Helvetica Neue',
+            system-ui, sans-serif;
+          --mono: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+
+          color-scheme: dark;
+          --bg: #0c0d12;
+          --bg-deep: #080a0d;
+          --bg-top-glow: rgba(60, 78, 96, 0.16);
+          --list-bg: linear-gradient(180deg, #151920 0%, #131720 100%);
+          --card-bg: linear-gradient(180deg, #1c2128 0%, #191e25 100%);
+          --card-bg-hover: linear-gradient(180deg, #20262e 0%, #1d232a 100%);
+          --well: #0e1016;
+          --ink: #e0e5ea;
+          --strong: #eaf0f5;
+          --text-2: #bfc8d1;
+          --mid: #98a2ad;
+          --dim: #606b76;
+          --line: #212730;
+          --line-soft: #1a1f27;
+          --edge-top: rgba(255, 255, 255, 0.04);
+          --edge-top-strong: rgba(255, 255, 255, 0.055);
+          --edge-bottom: rgba(0, 0, 0, 0.25);
+          --shadow-near: 0 1px 2px rgba(0, 0, 0, 0.28);
+          --shadow-far: 0 10px 28px -14px rgba(0, 0, 0, 0.55);
+          --shadow-hover: 0 4px 14px rgba(0, 0, 0, 0.42);
+          --acc: #e06158;
+          --acc-ink: #f0a094;
+          --acc-soft: rgba(224, 97, 88, 0.14);
+          --acc-line: rgba(224, 97, 88, 0.45);
+          --ok: #6cc39a;
+          --ok-ink: #9ad8b8;
+          --ok-soft: rgba(108, 195, 154, 0.12);
+          --ok-glow: rgba(108, 195, 154, 0.5);
+          --warn: #c9926a;
+          --warn-ink: #d9ac89;
+          --warn-soft: rgba(201, 146, 106, 0.1);
+          --warn-glow: rgba(201, 146, 106, 0.45);
+          --hot: #83a9d6;
+          --hot-soft: rgba(131, 169, 214, 0.12);
+          --divider: rgba(255, 255, 255, 0.055);
+          --card-ring: rgba(255, 255, 255, 0.045);
+          --card-primary-ring: #29323b;
+          --hover-wash: rgba(255, 255, 255, 0.07);
+          --dialog-bg: #20262e;
+          --dialog-glass: rgba(32, 38, 46, 0.86);
+          --dialog-line: #3a4552;
+          --dialog-shadow:
+            0 26px 64px -8px rgba(0, 0, 0, 0.7), 0 4px 14px rgba(0, 0, 0, 0.45);
+          --edge-glow: rgba(240, 138, 126, 0.82);
+          --edge-glow-soft: rgba(232, 122, 110, 0.14);
+          --edge-glow-mid: rgba(236, 130, 118, 0.3);
+          --focus-ring: rgba(255, 255, 255, 0.3);
+          --bottom-bg: #0a0b10;
+          --gear-bg: #202730;
+          --gear-bg-hover: #2a323d;
+          --gear-line: #313a45;
+          --gear-shadow:
+            0 4px 14px rgba(0, 0, 0, 0.5), 0 1px 3px rgba(0, 0, 0, 0.35);
+          --scroll: rgba(255, 255, 255, 0.09);
+          --scroll-hover: rgba(255, 255, 255, 0.16);
+          --list-head-bg: #151920;
+          --svg-box: #161b22;
+          --svg-box-soft: #1b222c;
+        }
+
+        html[data-theme='light'] {
+          color-scheme: light;
+          --bg: #e8ebef;
+          --bg-deep: #dfe4ea;
+          --bg-top-glow: rgba(255, 255, 255, 1);
+          --list-bg: linear-gradient(180deg, #f7f8fa 0%, #f1f3f6 100%);
+          --card-bg: linear-gradient(180deg, #ffffff 0%, #fcfdfe 100%);
+          --card-bg-hover: linear-gradient(180deg, #ffffff 0%, #f4f7fa 100%);
+          --well: #f5f7fa;
+          --ink: #14181d;
+          --strong: #0a0e12;
+          --text-2: #333d47;
+          --mid: #46515c;
+          --dim: #6f7984;
+          --line: #d9dee5;
+          --line-soft: #e6eaef;
+          --edge-top: rgba(255, 255, 255, 0.9);
+          --edge-top-strong: rgba(255, 255, 255, 1);
+          --edge-bottom: rgba(15, 23, 32, 0.05);
+          --shadow-near: 0 1px 3px rgba(15, 23, 32, 0.11);
+          --shadow-far: 0 14px 30px -16px rgba(15, 23, 32, 0.26);
+          --shadow-hover: 0 4px 14px rgba(15, 23, 32, 0.13);
+          --acc: #c0392b;
+          --acc-ink: #9e2b20;
+          --acc-soft: rgba(192, 57, 43, 0.1);
+          --acc-line: rgba(192, 57, 43, 0.4);
+          --ok: #2f8f66;
+          --ok-ink: #1f6b4b;
+          --ok-soft: rgba(47, 143, 102, 0.1);
+          --ok-glow: rgba(47, 143, 102, 0.42);
+          --warn: #a8623a;
+          --warn-ink: #8a4a24;
+          --warn-soft: rgba(168, 98, 58, 0.1);
+          --warn-glow: rgba(168, 98, 58, 0.38);
+          --hot: #3d6fa8;
+          --hot-soft: rgba(61, 111, 168, 0.1);
+          --divider: rgba(15, 23, 32, 0.075);
+          --card-ring: rgba(15, 23, 32, 0.07);
+          --card-primary-ring: rgba(15, 23, 32, 0.16);
+          --hover-wash: rgba(15, 23, 32, 0.06);
+          --dialog-bg: #ffffff;
+          --dialog-glass: rgba(255, 255, 255, 0.86);
+          --dialog-line: #ccd3db;
+          --dialog-shadow:
+            0 24px 56px -10px rgba(15, 23, 32, 0.26),
+            0 4px 12px rgba(15, 23, 32, 0.1);
+          --edge-glow: rgba(192, 57, 43, 0.75);
+          --edge-glow-soft: rgba(192, 57, 43, 0.12);
+          --edge-glow-mid: rgba(192, 57, 43, 0.24);
+          --focus-ring: rgba(15, 23, 32, 0.22);
+          --bottom-bg: #ffffff;
+          --gear-bg: #ffffff;
+          --gear-bg-hover: #f4f7fa;
+          --gear-line: #dfe4ea;
+          --gear-shadow:
+            0 2px 8px rgba(15, 23, 32, 0.14), 0 1px 2px rgba(15, 23, 32, 0.1);
+          --scroll: rgba(15, 23, 32, 0.14);
+          --scroll-hover: rgba(15, 23, 32, 0.24);
+          --list-head-bg: #f7f8fa;
+          --svg-box: #ffffff;
+          --svg-box-soft: #eef2f6;
+        }
+
+        @media (prefers-color-scheme: light) {
+          :root:not([data-theme='dark']) {
+            color-scheme: light;
+            --bg: #e8ebef;
+            --bg-deep: #dfe4ea;
+            --bg-top-glow: rgba(255, 255, 255, 1);
+            --list-bg: linear-gradient(180deg, #f7f8fa 0%, #f1f3f6 100%);
+            --card-bg: linear-gradient(180deg, #ffffff 0%, #fcfdfe 100%);
+            --card-bg-hover: linear-gradient(180deg, #ffffff 0%, #f4f7fa 100%);
+            --well: #f5f7fa;
+            --ink: #14181d;
+            --strong: #0a0e12;
+            --text-2: #333d47;
+            --mid: #46515c;
+            --dim: #6f7984;
+            --line: #d9dee5;
+            --line-soft: #e6eaef;
+            --edge-top: rgba(255, 255, 255, 0.9);
+            --edge-top-strong: rgba(255, 255, 255, 1);
+            --edge-bottom: rgba(15, 23, 32, 0.05);
+            --shadow-near: 0 1px 3px rgba(15, 23, 32, 0.11);
+            --shadow-far: 0 14px 30px -16px rgba(15, 23, 32, 0.26);
+            --shadow-hover: 0 4px 14px rgba(15, 23, 32, 0.13);
+            --acc: #c0392b;
+            --acc-ink: #9e2b20;
+            --acc-soft: rgba(192, 57, 43, 0.1);
+            --acc-line: rgba(192, 57, 43, 0.4);
+            --ok: #2f8f66;
+            --ok-ink: #1f6b4b;
+            --ok-soft: rgba(47, 143, 102, 0.1);
+            --ok-glow: rgba(47, 143, 102, 0.42);
+            --warn: #a8623a;
+            --warn-ink: #8a4a24;
+            --warn-soft: rgba(168, 98, 58, 0.1);
+            --warn-glow: rgba(168, 98, 58, 0.38);
+            --hot: #3d6fa8;
+            --hot-soft: rgba(61, 111, 168, 0.1);
+            --divider: rgba(15, 23, 32, 0.075);
+            --card-ring: rgba(15, 23, 32, 0.07);
+            --card-primary-ring: rgba(15, 23, 32, 0.16);
+            --hover-wash: rgba(15, 23, 32, 0.06);
+            --dialog-bg: #ffffff;
+            --dialog-glass: rgba(255, 255, 255, 0.86);
+            --dialog-line: #ccd3db;
+            --dialog-shadow:
+              0 24px 56px -10px rgba(15, 23, 32, 0.26),
+              0 4px 12px rgba(15, 23, 32, 0.1);
+            --edge-glow: rgba(192, 57, 43, 0.75);
+            --edge-glow-soft: rgba(192, 57, 43, 0.12);
+            --edge-glow-mid: rgba(192, 57, 43, 0.24);
+            --focus-ring: rgba(15, 23, 32, 0.22);
+            --bottom-bg: #ffffff;
+            --gear-bg: #ffffff;
+            --gear-bg-hover: #f4f7fa;
+            --gear-line: #dfe4ea;
+            --gear-shadow:
+              0 2px 8px rgba(15, 23, 32, 0.14), 0 1px 2px rgba(15, 23, 32, 0.1);
+            --scroll: rgba(15, 23, 32, 0.14);
+            --scroll-hover: rgba(15, 23, 32, 0.24);
+            --list-head-bg: #f7f8fa;
+            --svg-box: #ffffff;
+            --svg-box-soft: #eef2f6;
+          }
+        }
+      }
+
+      @layer base {
+        body {
+          background:
+            radial-gradient(
+              1100px 520px at 50% -12%,
+              var(--bg-top-glow),
+              transparent 62%
+            ),
+            linear-gradient(180deg, var(--bg) 0%, var(--bg-deep) 100%);
+          color: var(--ink);
+          font: 13px/1.6 var(--sans);
+          -webkit-font-smoothing: antialiased;
+        }
+
+        :focus-visible {
+          outline: 2px solid var(--focus-ring);
+          outline-offset: 2px;
+        }
+
+        a {
+          color: var(--acc-ink);
+          text-decoration: none;
+        }
+
+        a:hover {
+          text-decoration: underline;
+          text-underline-offset: 3px;
+        }
+
+        :where(.board, .lb, .dbgmono, .expandbody) {
+          scrollbar-width: thin;
+          scrollbar-color: var(--scroll) transparent;
+        }
+
+        :where(.board, .lb, .dbgmono, .expandbody)::-webkit-scrollbar {
+          width: 4px;
+          height: 4px;
+        }
+
+        :where(.board, .lb, .dbgmono, .expandbody)::-webkit-scrollbar-track {
+          background: transparent;
+        }
+
+        :where(.board, .lb, .dbgmono, .expandbody)::-webkit-scrollbar-thumb {
+          background: transparent;
+          border-radius: 2px;
+          transition: background 0.25s ease;
+        }
+
+        :where(
+            .board,
+            .lb,
+            .dbgmono,
+            .expandbody
+          ):hover::-webkit-scrollbar-thumb {
+          background: var(--scroll);
+        }
+
+        :where(
+            .board,
+            .lb,
+            .dbgmono,
+            .expandbody
+          )::-webkit-scrollbar-thumb:hover {
+          background: var(--scroll-hover);
+        }
+      }
+
+      @layer components {
+        .shell {
+          height: 100%;
+          block-size: 100dvh;
+          display: grid;
+          grid-template-rows: 1fr auto;
+        }
+
+        /* ── 看板: 8 列严格等宽, 横向滚动 ── */
+        .board {
+          display: flex;
+          gap: 12px;
+          align-items: flex-start;
+          padding: 18px 20px 10px;
+          min-height: 0;
+          overflow-x: auto;
+          overflow-y: hidden;
+          overscroll-behavior-x: contain;
+        }
+
+        .list {
+          flex: 0 0 288px;
+          min-inline-size: 0;
+          max-inline-size: 288px;
+          max-height: 100%;
+          min-height: 0;
+          display: flex;
+          flex-direction: column;
+          overflow: clip;
+          background: var(--list-bg);
+          border-radius: 18px;
+          box-shadow:
+            inset 0 0 0 1px var(--line-soft),
+            inset 0 1px 0 var(--edge-top),
+            inset 0 -1px 0 var(--edge-bottom),
+            var(--shadow-near),
+            var(--shadow-far);
+        }
+
+        .lh {
+          position: relative;
+          flex: none;
+          margin: 0;
+          display: flex;
+          align-items: safe center;
+          gap: 9px;
+          padding: 15px 20px 12px;
+          font: 500 12px/1 var(--sans);
+          letter-spacing: 0.1em;
+          color: var(--mid);
+          user-select: none;
+        }
+
+        .lh::after {
+          content: '';
+          position: absolute;
+          left: 12px;
+          right: 12px;
+          bottom: 0;
+          height: 1px;
+          background: var(--divider);
+          mask-image: linear-gradient(
+            90deg,
+            transparent,
+            #000 18%,
+            #000 82%,
+            transparent
+          );
+          -webkit-mask-image: linear-gradient(
+            90deg,
+            transparent,
+            #000 18%,
+            #000 82%,
+            transparent
+          );
+        }
+
+        .lh .dot {
+          width: 5px;
+          height: 5px;
+          border-radius: 50%;
+          background: #2b343d;
+          flex: none;
+        }
+
+        .list.on .lh .dot {
+          background: var(--ok);
+          animation: dot-halo 2.2s ease-out infinite;
+        }
+
+        .list.bad .lh .dot {
+          background: var(--warn);
+          animation: dot-halo-warn 3.4s ease-out infinite;
+        }
+
+        @keyframes dot-halo {
+          0% {
+            box-shadow: 0 0 0 0 var(--ok-glow);
+          }
+          70%,
+          100% {
+            box-shadow: 0 0 0 5px transparent;
+          }
+        }
+
+        @keyframes dot-halo-warn {
+          0% {
+            box-shadow: 0 0 0 0 var(--warn-glow);
+          }
+          70%,
+          100% {
+            box-shadow: 0 0 0 5px transparent;
+          }
+        }
+
+        .lh b {
+          margin-left: auto;
+          font: 500 11px/1 var(--mono);
+          color: var(--dim);
+          font-variant-numeric: tabular-nums;
+        }
+
+        .lb {
+          flex: 1 1 auto;
+          min-inline-size: 0;
+          overflow-y: auto;
+          overflow-x: hidden;
+          scrollbar-gutter: stable;
+          overscroll-behavior-y: contain;
+          padding: 9px 8px 12px;
+          min-height: 0;
+        }
+
+        /* ── 卡片: 同心圆角 (18 = 10 + 8) + 顶光抬起 ── */
+        .c,
+        .pc,
+        .dc,
+        .sc {
+          position: relative;
+          min-inline-size: 0;
+          max-inline-size: 100%;
+          background: var(--card-bg);
+          border-radius: 10px;
+          padding: 11px 12px;
+          box-shadow:
+            inset 0 1px 0 var(--edge-top),
+            inset 0 0 0 1px var(--card-ring),
+            inset 0 -1px 0 var(--edge-bottom),
+            var(--shadow-near);
+          transition:
+            background 0.18s ease,
+            box-shadow 0.18s ease,
+            transform 0.18s ease;
+        }
+
+        .lb > :where(.c, .pc, .dc, .sc):not(:last-child) {
+          margin-bottom: 8px;
+        }
+
+        .c[data-card-key],
+        .pc[data-card-key],
+        .dc[data-card-key],
+        .sc[data-card-key] {
+          cursor: pointer;
+        }
+
+        .sc[data-card-key] .sid:not([data-copy-text]) {
+          cursor: inherit;
+        }
+
+        .c:hover,
+        .pc:hover,
+        .dc:hover,
+        .sc:hover {
+          background: var(--card-bg-hover);
+          transform: translateY(-1px);
+          box-shadow:
+            inset 0 0 0 1px var(--card-ring),
+            inset 0 1px 0 var(--edge-top-strong),
+            inset 0 -1px 0 var(--edge-bottom),
+            var(--shadow-hover);
+        }
+
+        .pc.primary {
+          box-shadow:
+            inset 0 0 0 1px var(--card-primary-ring),
+            inset 0 1px 0 var(--edge-top-strong),
+            var(--shadow-near);
+        }
+
+        /* ── 卡片头部标签与标题 ── */
+        .pc .ch {
+          position: relative;
+          display: flex;
+          align-items: center;
+          gap: 7px;
+          flex-wrap: wrap;
+          padding-right: 28px;
+          margin-bottom: 6px;
+        }
+
+        .pc .ch .zooom,
+        .pc .ch .card-open {
+          position: absolute;
+          top: -2px;
+          right: 0;
+          margin-left: 0;
+        }
+
+        .card-open {
+          flex: none;
+          width: 24px;
+          height: 24px;
+          padding: 0;
+          border: 0;
+          border-radius: 5px;
+          background: transparent;
+          color: var(--dim);
+          cursor: pointer;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          opacity: 0.72;
+          transition:
+            color 0.15s ease,
+            background 0.15s ease,
+            opacity 0.15s ease;
+        }
+
+        [data-card-key]:hover .card-open,
+        .card-open:hover,
+        .card-open:focus-visible {
+          opacity: 1;
+          color: var(--ink);
+        }
+
+        .card-open:hover {
+          background: var(--hover-wash);
+        }
+
+        .card-open svg {
+          width: 13px;
+          height: 13px;
+        }
+
+        .c .t .card-open {
+          margin-left: auto;
+        }
+
+        .dc .h .card-open {
+          margin-left: 2px;
+        }
+
+        .sc .card-open {
+          position: absolute;
+          top: 9px;
+          right: 9px;
+        }
+
+        .sc .sid {
+          padding-right: 28px;
+        }
+
+        .kind {
+          font: 500 10px/1 var(--sans);
+          letter-spacing: 0.08em;
+          padding: 3px 7px;
+          border-radius: 5px;
+          background: var(--acc-soft);
+          color: var(--acc-ink);
+        }
+
+        .kind.ok {
+          background: var(--ok-soft);
+          color: var(--ok-ink);
+        }
+
+        .kind.code {
+          background: var(--hot-soft);
+          color: var(--hot);
+        }
+
+        .kind.warn {
+          background: var(--warn-soft);
+          color: var(--warn-ink);
+        }
+
+        .loc {
+          display: inline-block;
+          font: 600 10px/1.25 var(--sans);
+          letter-spacing: 0.03em;
+          padding: 2px 6px;
+          margin-right: 4px;
+          border-radius: 4px;
+          vertical-align: 1px;
+        }
+
+        .loc.dev {
+          background: var(--hot-soft);
+          color: var(--hot);
+        }
+
+        .loc.srv {
+          background: var(--ok-soft);
+          color: var(--ok-ink);
+        }
+
+        .loc.k8s {
+          background: var(--warn-soft);
+          color: var(--warn-ink);
+        }
+
+        .repo {
+          font: 10px/1 var(--mono);
+          color: var(--dim);
+          letter-spacing: 0.04em;
+        }
+
+        .pc h3,
+        .c h3,
+        .dc h3,
+        .sc h3 {
+          margin: 0;
+          font-size: 13.5px;
+          line-height: 1.5;
+          font-weight: 500;
+          flex-basis: 100%;
+          letter-spacing: 0.015em;
+          color: var(--strong);
+        }
+
+        .k {
+          display: block;
+          margin: 9px 0 4px;
+          font: 500 9.5px/1 var(--sans);
+          letter-spacing: 0.12em;
+          color: var(--dim);
+        }
+
+        .prose {
+          font-size: 12.5px;
+          line-height: 1.68;
+          color: var(--text-2);
+          overflow-wrap: anywhere;
+        }
+
+        .prose p {
+          margin: 0 0 7px;
+        }
+
+        .prose p:last-child {
+          margin-bottom: 0;
+        }
+
+        .prose ul {
+          margin: 0 0 6px;
+          padding-left: 16px;
+        }
+
+        .prose li {
+          margin-bottom: 4px;
+        }
+
+        .prose strong {
+          font-weight: 600;
+          color: var(--strong);
+        }
+
+        .prose code,
+        .c code,
+        .sc code {
+          background: var(--hover-wash);
+          padding: 1px 5px;
+          border-radius: 4px;
+          font-size: 11px;
+          font-family: var(--mono);
+          color: var(--ink);
+        }
+
+        .advice {
+          margin-top: 8px;
+        }
+
+        .advice .prose {
+          color: var(--text-2);
+          background: var(--acc-soft);
+          border-left: 1.5px solid var(--acc-line);
+          border-radius: 0 5px 5px 0;
+          padding: 7px 10px;
+          font-size: 12px;
+        }
+
+        /* ── 卡片内置微 SVG 图解 ── */
+        .svgbox {
+          position: relative;
+          margin-top: 8px;
+          border-radius: 6px;
+          background: var(--well);
+          padding: 8px;
+          box-shadow: inset 0 0 0 1px var(--line-soft);
+        }
+
+        .svgbox svg {
+          display: block;
+          width: 100%;
+          height: auto;
+          font-family: var(--sans);
+        }
+
+        /* ── 键值指标卡 (.sc) ── */
+        .sc .sid {
+          display: inline-flex;
+          align-items: center;
+          min-height: 24px;
+          margin: 0;
+          padding: 0 4px 0 0;
+          border: 0;
+          background: none;
+          cursor: pointer;
+          font: 10.5px/1 var(--mono);
+          color: var(--mid);
+          letter-spacing: 0.02em;
+          transition: color 0.15s ease;
+        }
+
+        .sc .sid:hover {
+          color: var(--strong);
+        }
+
+        .sc .sid.copied {
+          color: var(--acc);
+        }
+
+        .sc .row {
+          display: flex;
+          justify-content: space-between;
+          align-items: baseline;
+          gap: 8px;
+          min-inline-size: 0;
+          font: 11.5px/1.85 var(--sans);
+          color: var(--dim);
+          margin-top: 4px;
+        }
+
+        .sc .row span {
+          min-inline-size: 0;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+        }
+
+        .sc .row b {
+          flex: none;
+          min-inline-size: 0;
+          color: var(--strong);
+          font-weight: 500;
+          font-family: var(--mono);
+          font-size: 11px;
+          text-align: right;
+        }
+
+        .sc .row b small {
+          font-size: 9.5px;
+          font-weight: 400;
+          color: var(--dim);
+          margin-left: 3px;
+        }
+
+        /* ── 命令与配置卡 (.dc) ── */
+        .dc .h {
+          display: flex;
+          gap: 8px;
+          align-items: center;
+          font: 10.5px/1.4 var(--mono);
+          color: var(--dim);
+          font-variant-numeric: tabular-nums;
+          margin-bottom: 4px;
+        }
+
+        .dc .h em {
+          flex: none;
+          white-space: nowrap;
+          font-style: normal;
+          color: var(--strong);
+          letter-spacing: 0.03em;
+        }
+
+        .dc .h span {
+          min-width: 0;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+        }
+
+        .copy-sid {
+          margin-left: auto;
+          flex: none;
+          white-space: nowrap;
+          display: inline-flex;
+          align-items: center;
+          min-height: 24px;
+          padding: 0 6px;
+          border: 0;
+          border-radius: 4px;
+          background: transparent;
+          cursor: pointer;
+          font: 10.5px/1 var(--mono);
+          color: var(--mid);
+        }
+
+        .copy-sid:hover {
+          background: var(--hover-wash);
+          color: var(--ink);
+        }
+
+        .copy-sid.copied {
+          color: var(--acc);
+        }
+
+        .dc .desc {
+          margin: 2px 0 6px;
+          font-size: 12px;
+          line-height: 1.55;
+          color: var(--text-2);
+        }
+
+        .dc .prose {
+          font-size: 11.8px;
+          line-height: 1.56;
+          margin-bottom: 7px;
+        }
+
+        .dc .prose li {
+          margin-bottom: 3px;
+        }
+
+        .dc .lbl {
+          display: block;
+          margin: 7px 0 4px;
+          font: 500 9.5px/1 var(--sans);
+          letter-spacing: 0.12em;
+          color: var(--dim);
+        }
+
+        .dbgwrap {
+          position: relative;
+          min-inline-size: 0;
+          max-inline-size: 100%;
+        }
+
+        .dbgmono {
+          margin: 0;
+          inline-size: 100%;
+          min-inline-size: 0;
+          max-inline-size: 100%;
+          height: 156px;
+          border-radius: 6px;
+          overflow: auto;
+          background: var(--well);
+          color: var(--text-2);
+          padding: 8px 28px 8px 9px;
+          font-family: var(--mono);
+          font-size: 10.5px;
+          line-height: 1.55;
+          white-space: pre;
+          -webkit-mask-image: linear-gradient(
+            90deg,
+            #000 0%,
+            #000 94%,
+            transparent 100%
+          );
+          mask-image: linear-gradient(
+            90deg,
+            #000 0%,
+            #000 94%,
+            transparent 100%
+          );
+        }
+
+        .dbgmono.mounted {
+          padding: 0;
+          overflow: hidden;
+          white-space: normal;
+          -webkit-mask-image: none;
+          mask-image: none;
+        }
+
+        .dbgmono.fallback {
+          color: var(--mid);
+        }
+
+        .dbgmono code {
+          font-family: inherit;
+          font-size: inherit;
+          background: transparent;
+          padding: 0;
+          color: inherit;
+        }
+
+        .mnhint {
+          margin: 8px 16px 0;
+          font-size: 11px;
+          color: var(--dim);
+        }
+
+        .mnhint.bad {
+          color: var(--warn-ink);
+        }
+
+        /* Monaco 的隐藏键盘输入域: 压成透明且不可缩放, 避免深色主题下露出一块白框 */
+        .dbgmono .inputarea,
+        .dbgmono .ime-text-area,
+        .expandbody .inputarea,
+        .expandbody .ime-text-area {
+          opacity: 0 !important;
+          color: transparent !important;
+          background: transparent !important;
+          border: 0 !important;
+          resize: none !important;
+        }
+
+        /* 撑开按钮 ⤢ (26x26px 触控区, 平常隐灰, 悬停浮现浅底) */
+        .zooom {
+          cursor: zoom-in;
+          color: var(--dim);
+          line-height: 1;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          width: 26px;
+          height: 26px;
+          border: 0;
+          padding: 0;
+          border-radius: 5px;
+          background: transparent;
+          transition:
+            color 0.18s ease,
+            background 0.18s ease,
+            transform 0.12s cubic-bezier(0.2, 0.8, 0.2, 1);
+        }
+
+        .dbgwrap .zooom {
+          position: absolute;
+          top: 4px;
+          right: 4px;
+          z-index: 2;
+        }
+
+        .zooom svg {
+          width: 14px;
+          height: 14px;
+        }
+
+        .zooom:hover {
+          color: var(--ink);
+          background: var(--hover-wash);
+        }
+
+        /* ── 状态与告警卡 (.c) ── */
+        .c .t {
+          display: flex;
+          gap: 7px;
+          align-items: center;
+          font: 10.5px/1.4 var(--mono);
+          color: var(--dim);
+          margin-bottom: 5px;
+        }
+
+        .c .t i {
+          width: 5px;
+          height: 5px;
+          border-radius: 50%;
+          background: var(--dim);
+          flex: none;
+        }
+
+        .c .t i.running {
+          background: var(--ok);
+          animation: lamp-breathe 1.8s ease-in-out infinite;
+        }
+
+        .c .t i.failed {
+          background: var(--warn);
+        }
+
+        .c .t em {
+          flex: none;
+          white-space: nowrap;
+          font-style: normal;
+          letter-spacing: 0.04em;
+        }
+
+        .c .t span {
+          min-width: 0;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+        }
+
+        .c .t em.run {
+          color: var(--ok-ink);
+        }
+
+        .c .t em.fail {
+          color: var(--warn-ink);
+        }
+
+        .c .p {
+          margin: 5px 0 0;
+          font-size: 12px;
+          line-height: 1.6;
+          color: var(--text-2);
+        }
+
+        .c .err {
+          margin: 8px 0 0;
+          font: 11px/1.6 var(--sans);
+          color: var(--warn-ink);
+          background: var(--warn-soft);
+          border-radius: 6px;
+          padding: 7px 9px;
+        }
+
+        .c.running {
+          position: relative;
+          overflow: hidden;
+        }
+
+        .c.running::after {
+          content: '';
+          position: absolute;
+          top: 0;
+          left: -40%;
+          width: 40%;
+          height: 1px;
+          background: linear-gradient(
+            90deg,
+            transparent,
+            var(--ok),
+            transparent
+          );
+          animation: sweep-line 2.4s linear infinite;
+        }
+
+        @keyframes sweep-line {
+          to {
+            left: 100%;
+          }
+        }
+
+        .links-list {
+          list-style: none;
+          padding: 0;
+          margin: 6px 0 0;
+          display: flex;
+          flex-direction: column;
+          gap: 6px;
+        }
+
+        .links-list a {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          padding: 6px 8px;
+          border-radius: 6px;
+          background: var(--well);
+          color: var(--text-2);
+          font-size: 12px;
+          box-shadow: inset 0 0 0 1px var(--line-soft);
+        }
+
+        .links-list a:hover {
+          background: var(--hover-wash);
+          color: var(--strong);
+          text-decoration: none;
+        }
+
+        .links-list a code {
+          background: transparent;
+          color: var(--dim);
+          padding: 0;
+          font-size: 10.5px;
+        }
+
+        /* ── 底部 34px 读数条 ── */
+        .bottom {
+          display: flex;
+          align-items: stretch;
+          height: 34px;
+          background: var(--bottom-bg);
+          box-shadow: inset 0 1px 0 var(--edge-top);
+          overflow-x: auto;
+        }
+
+        .bottom .brand {
+          padding: 0 20px;
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          font: 600 11px/1 var(--sans);
+          letter-spacing: 0.16em;
+          color: var(--acc);
+          white-space: nowrap;
+        }
+
+        .bottom .brand::before {
+          content: '';
+          width: 5px;
+          height: 5px;
+          background: var(--acc);
+          flex: none;
+        }
+
+        .bottom .cell {
+          padding: 0 18px;
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          border-left: 1px solid var(--line-soft);
+          font: 400 10.5px/1 var(--sans);
+          letter-spacing: 0.08em;
+          color: var(--dim);
+          white-space: nowrap;
+        }
+
+        .bottom .cell::before {
+          content: '';
+          width: 4px;
+          height: 4px;
+          border-radius: 50%;
+          background: #2b343d;
+          flex: none;
+        }
+
+        .bottom .cell.up::before {
+          background: var(--ok);
+          animation: lamp-breathe 1.8s ease-in-out infinite;
+        }
+
+        .bottom .cell.down::before {
+          background: var(--warn);
+          animation: lamp-breathe 2.8s ease-in-out infinite;
+        }
+
+        @keyframes lamp-breathe {
+          0%,
+          100% {
+            opacity: 1;
+          }
+          50% {
+            opacity: 0.3;
+          }
+        }
+
+        .bottom .cell b {
+          font: 500 11px/1 var(--mono);
+          color: var(--strong);
+          font-variant-numeric: tabular-nums;
+        }
+
+        .bottom .cell.up b {
+          color: var(--ok-ink);
+        }
+
+        .bottom .cell.down b {
+          color: var(--warn-ink);
+        }
+
+        .bottom .grow {
+          flex: 1;
+        }
+
+        .bottom .live {
+          padding: 0 20px;
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          font: 500 10px/1 var(--mono);
+          letter-spacing: 0.14em;
+          color: #6a8a7c;
+          white-space: nowrap;
+        }
+
+        .bottom .live::before {
+          content: '';
+          width: 5px;
+          height: 5px;
+          border-radius: 50%;
+          background: var(--ok);
+          animation: breathe-dot 2.2s ease-in-out infinite;
+        }
+
+        @keyframes breathe-dot {
+          50% {
+            opacity: 0.35;
+          }
+        }
+
+        /* ── 右下角齿轮与原生模态弹窗 ── */
+        dialog {
+          border: 0;
+          border-radius: 14px;
+          padding: 22px 24px;
+          max-width: 440px;
+          background: var(--dialog-bg);
+          color: var(--ink);
+          box-shadow: var(--dialog-shadow);
+        }
+
+        dialog::backdrop {
+          background: rgba(4, 6, 9, 0.62);
+        }
+
+        dialog .dlg-head {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          margin-bottom: 10px;
+        }
+
+        dialog h2 {
+          margin: 0;
+          font-size: 16px;
+          font-weight: 600;
+        }
+
+        dialog .dlg-close {
+          min-height: 28px;
+          padding: 4px 10px;
+          border: 0;
+          border-radius: 6px;
+          background: var(--hover-wash);
+          color: var(--mid);
+          font: inherit;
+          font-size: 12px;
+          cursor: pointer;
+        }
+
+        dialog .dlg-close:hover {
+          color: var(--strong);
+        }
+
+        dialog p {
+          margin: 0 0 10px;
+          color: var(--mid);
+          font-size: 12.5px;
+          line-height: 1.7;
+        }
+
+        dialog kbd {
+          background: var(--well);
+          border-radius: 4px;
+          padding: 1px 6px;
+          font-size: 11px;
+          font-family: var(--mono);
+          color: var(--ink);
+          box-shadow: inset 0 0 0 1px var(--line);
+        }
+
+        .themepick {
+          display: flex;
+          align-items: center;
+          gap: 6px;
+          margin-top: 14px;
+          padding-top: 12px;
+          border-top: 1px solid var(--line-soft);
+        }
+
+        .themelabel {
+          font-size: 12px;
+          color: var(--dim);
+          margin-right: 4px;
+        }
+
+        .themepick button {
+          border: 0;
+          border-radius: 6px;
+          min-height: 28px;
+          padding: 5px 11px;
+          font-size: 12px;
+          cursor: pointer;
+          background: var(--hover-wash);
+          color: var(--mid);
+          font-family: inherit;
+          line-height: normal;
+        }
+
+        .themepick button.on {
+          background: var(--acc);
+          color: #fff;
+        }
+
+        .gear {
+          position: fixed;
+          right: 24px;
+          bottom: 46px;
+          width: 44px;
+          height: 44px;
+          border: 0;
+          border-radius: 50%;
+          background: var(--gear-bg);
+          color: var(--mid);
+          box-shadow:
+            inset 0 0 0 1px var(--gear-line),
+            var(--gear-shadow);
+          cursor: pointer;
+          font-size: 19px;
+          line-height: 1;
+          z-index: 30;
+          transition:
+            color 0.15s ease,
+            background 0.15s ease,
+            box-shadow 0.15s ease,
+            transform 0.12s cubic-bezier(0.2, 0.8, 0.2, 1);
+        }
+
+        .gear:hover {
+          color: var(--ink);
+          background: var(--gear-bg-hover);
+        }
+
+        .gear:active {
+          transform: scale(0.94);
+        }
+
+        /* ── 非模态毛玻璃可拖缩放浮层 (.expanddlg) ── */
+        @keyframes flashglow {
+          0% {
+            box-shadow:
+              var(--dialog-shadow),
+              0 0 0 0 var(--acc-line);
+          }
+          60% {
+            box-shadow:
+              var(--dialog-shadow),
+              0 0 0 8px var(--acc-soft);
+          }
+          100% {
+            box-shadow:
+              var(--dialog-shadow),
+              0 0 0 0 transparent;
+          }
+        }
+
+        .expanddlg.flash {
+          animation: flashglow 0.55s ease-out;
+        }
+
+        .expanddlg {
+          position: fixed;
+          z-index: 100;
+          margin: 0;
+          border: 1px solid var(--dialog-line);
+          border-radius: 14px;
+          padding: 0;
+          width: min(760px, 90vw);
+          height: auto;
+          max-height: min(680px, 84vh);
+          max-width: 92vw;
+          min-width: 340px;
+          background: var(--dialog-glass);
+          -webkit-backdrop-filter: blur(26px) saturate(150%);
+          backdrop-filter: blur(26px) saturate(150%);
+          color: var(--ink);
+          box-shadow: var(--dialog-shadow);
+          display: flex;
+          flex-direction: column;
+          overflow: visible;
+        }
+
+        .expanddlg.card-dlg {
+          width: min(620px, 90vw);
+        }
+
+        .expanddlg.card-dlg.wide {
+          width: min(760px, 92vw);
+        }
+
+        .expandhead {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          border-radius: 13px 13px 0 0;
+          padding: 11px 16px;
+          border-bottom: 1px solid var(--line-soft);
+          font-size: 12.5px;
+          font-weight: 600;
+          color: var(--ink);
+          background: var(--list-head-bg);
+          cursor: move;
+          user-select: none;
+        }
+
+        .expandhead .exp-acts {
+          margin-left: auto;
+          display: flex;
+          gap: 6px;
+        }
+
+        .expandhead button {
+          border: 0;
+          border-radius: 6px;
+          min-height: 26px;
+          padding: 4px 11px;
+          font-size: 11.5px;
+          cursor: pointer;
+          background: var(--hover-wash);
+          color: var(--ink);
+          font-family: inherit;
+          line-height: normal;
+        }
+
+        .expandhead button.copied {
+          background: var(--acc-soft);
+          color: var(--acc-ink);
+        }
+
+        .expandbody {
+          margin: 0;
+          border-radius: 0 0 13px 13px;
+          padding: 16px 18px;
+          overflow: auto;
+          scrollbar-gutter: stable;
+          overscroll-behavior: contain;
+          flex: 1 1 auto;
+          min-height: 160px;
+          min-width: 0;
+          font-family: var(--mono);
+          font-size: 12.5px;
+          line-height: 1.68;
+          white-space: pre-wrap;
+          word-break: break-word;
+          background: var(--well);
+          color: var(--ink);
+        }
+
+        /* Monaco 挂载点: 撑满弹窗剩余高度, 自身不再滚动 (由编辑器接管) */
+        .expandbody.monaco {
+          padding: 0;
+          overflow: hidden;
+          white-space: normal;
+          flex: none;
+        }
+
+        .expandbody.svg-view {
+          white-space: normal;
+          font-family: var(--sans);
+          padding: 18px 20px;
+        }
+
+        .expandbody.svg-view svg {
+          display: block;
+          width: 100%;
+          height: auto;
+        }
+
+        /* ── 卡片正常大小阅读窗体排版 ── */
+        .expandbody.card-view {
+          white-space: normal;
+          word-break: normal;
+          font-family: var(--sans);
+          font-size: 14px;
+          line-height: 1.72;
+          padding: 20px 24px 22px;
+        }
+
+        .expandbody.card-view > :where(.pc, .sc, .dc, .c) {
+          background: transparent;
+          box-shadow: none;
+          padding: 0;
+          margin: 0;
+          border-radius: 0;
+          cursor: default;
+          transform: none;
+          transition: none;
+        }
+
+        .expandbody.card-view > :where(.pc, .sc, .dc, .c):hover {
+          background: transparent;
+          box-shadow: none;
+          transform: none;
+        }
+
+        .expandbody.card-view :where(.pc, .sc, .dc, .c) h3 {
+          font-size: 18px;
+          line-height: 1.45;
+          font-weight: 600;
+          margin-top: 8px;
+        }
+
+        .expandbody.card-view .kind {
+          font-size: 11px;
+          padding: 4px 9px;
+        }
+
+        .expandbody.card-view .loc {
+          font-size: 11.5px;
+          padding: 3px 8px;
+          margin-right: 6px;
+        }
+
+        .expandbody.card-view .repo {
+          font-size: 11.5px;
+        }
+
+        .expandbody.card-view .pc .ch {
+          padding-right: 0;
+        }
+
+        .expandbody.card-view .sc .sid {
+          padding-right: 0;
+          font-size: 14px;
+          font-weight: 600;
+          color: var(--strong);
+          margin-bottom: 8px;
+        }
+
+        .expandbody.card-view .dc .h,
+        .expandbody.card-view .c .t {
+          font-size: 12.5px;
+          margin-bottom: 10px;
+        }
+
+        .expandbody.card-view .dc .h span,
+        .expandbody.card-view .c .t span {
+          white-space: normal;
+          overflow: visible;
+        }
+
+        .expandbody.card-view .prose,
+        .expandbody.card-view .dc .desc,
+        .expandbody.card-view .c .p {
+          font-size: 14px;
+          line-height: 1.74;
+        }
+
+        .expandbody.card-view .prose ul {
+          margin: 6px 0 10px;
+          padding-left: 20px;
+        }
+
+        .expandbody.card-view .prose li {
+          margin-bottom: 6px;
+        }
+
+        .expandbody.card-view :where(.prose, .c, .sc, .dc) code {
+          font-size: 12.5px;
+          padding: 2px 6px;
+        }
+
+        .expandbody.card-view .advice,
+        .expandbody.card-view .c .err {
+          margin-top: 14px;
+        }
+
+        .expandbody.card-view .advice .prose,
+        .expandbody.card-view .c .err {
+          font-size: 13.5px;
+          line-height: 1.65;
+          padding: 11px 14px;
+        }
+
+        .expandbody.card-view .sc .row {
+          font-size: 13.5px;
+          line-height: 2.15;
+          padding: 2px 0;
+          margin-top: 0;
+        }
+
+        .expandbody.card-view .sc .row:not(:last-child) {
+          border-bottom: 1px dashed var(--line-soft);
+        }
+
+        .expandbody.card-view .sc .row b {
+          font-size: 13px;
+        }
+
+        .expandbody.card-view .sc .row b small {
+          font-size: 11px;
+        }
+
+        .expandbody.card-view .svgbox {
+          padding: 14px 16px;
+          margin: 10px 0 14px;
+        }
+
+        .expandbody.card-view .dbgmono {
+          height: auto;
+          max-height: none;
+          margin-top: 12px;
+          padding: 14px 16px;
+          font-size: 12.5px;
+          line-height: 1.65;
+          white-space: pre-wrap;
+          word-break: break-word;
+          -webkit-mask-image: none;
+          mask-image: none;
+          box-shadow: inset 0 0 0 1px var(--line-soft);
+        }
+
+        .expandbody.card-view .dbgmono.mounted {
+          padding: 0;
+          overflow: hidden;
+          white-space: normal;
+        }
+
+        .expandbody.card-view .dbgmono code {
+          background: transparent;
+          padding: 0;
+          font-size: inherit;
+        }
+
+        .expandbody.card-view .links-list {
+          margin-top: 12px;
+          gap: 8px;
+        }
+
+        .expandbody.card-view .links-list a {
+          padding: 10px 14px;
+          font-size: 13.5px;
+        }
+
+        .expandbody.card-view .links-list a code {
+          font-size: 12px;
+          padding: 2px 6px;
+        }
+
+        .rz {
+          position: absolute;
+          z-index: 3;
+        }
+        .rz-n,
+        .rz-s {
+          left: 10px;
+          right: 10px;
+          height: 9px;
+        }
+        .rz-n {
+          top: -3px;
+          cursor: ns-resize;
+        }
+        .rz-s {
+          bottom: -3px;
+          cursor: ns-resize;
+        }
+        .rz-e,
+        .rz-w {
+          top: 10px;
+          bottom: 10px;
+          width: 9px;
+        }
+        .rz-e {
+          right: -3px;
+          cursor: ew-resize;
+        }
+        .rz-w {
+          left: -3px;
+          cursor: ew-resize;
+        }
+        .rz-ne,
+        .rz-nw,
+        .rz-se,
+        .rz-sw {
+          width: 14px;
+          height: 14px;
+        }
+        .rz-nw {
+          top: -3px;
+          left: -3px;
+          cursor: nwse-resize;
+        }
+        .rz-se {
+          bottom: -3px;
+          right: -3px;
+          cursor: nwse-resize;
+        }
+        .rz-ne {
+          top: -3px;
+          right: -3px;
+          cursor: nesw-resize;
+        }
+        .rz-sw {
+          bottom: -3px;
+          left: -3px;
+          cursor: nesw-resize;
+        }
+
+        .rz::after {
+          content: '';
+          position: absolute;
+          pointer-events: none;
+          opacity: 0;
+          transition: opacity 0.18s ease;
+        }
+        .rz:hover::after {
+          opacity: 1;
+        }
+        .rz-n::after,
+        .rz-s::after {
+          left: 0;
+          right: 0;
+          height: 8px;
+          -webkit-mask-image: linear-gradient(
+            90deg,
+            transparent,
+            #000 9%,
+            #000 91%,
+            transparent
+          );
+          mask-image: linear-gradient(
+            90deg,
+            transparent,
+            #000 9%,
+            #000 91%,
+            transparent
+          );
+          background:
+            radial-gradient(
+              110px 1px at var(--mx, 50%) 50%,
+              var(--edge-glow),
+              transparent
+            ),
+            radial-gradient(
+              150px 4px at var(--mx, 50%) 50%,
+              var(--edge-glow-mid),
+              transparent
+            ),
+            radial-gradient(
+              210px 8px at var(--mx, 50%) 50%,
+              var(--edge-glow-soft),
+              transparent
+            );
+        }
+        .rz-n::after {
+          top: -1px;
+        }
+        .rz-s::after {
+          bottom: -1px;
+        }
+        .rz-e::after,
+        .rz-w::after {
+          top: 0;
+          bottom: 0;
+          width: 8px;
+          -webkit-mask-image: linear-gradient(
+            180deg,
+            transparent,
+            #000 9%,
+            #000 91%,
+            transparent
+          );
+          mask-image: linear-gradient(
+            180deg,
+            transparent,
+            #000 9%,
+            #000 91%,
+            transparent
+          );
+          background:
+            radial-gradient(
+              1px 110px at 50% var(--my, 50%),
+              var(--edge-glow),
+              transparent
+            ),
+            radial-gradient(
+              4px 150px at 50% var(--my, 50%),
+              var(--edge-glow-mid),
+              transparent
+            ),
+            radial-gradient(
+              8px 210px at 50% var(--my, 50%),
+              var(--edge-glow-soft),
+              transparent
+            );
+        }
+        .rz-e::after {
+          right: -1px;
+        }
+        .rz-w::after {
+          left: -1px;
+        }
+
+        button:not(:disabled):active,
+        .zooom:active {
+          transform: scale(0.97);
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+          .list.on .lh .dot,
+          .list.bad .lh .dot,
+          .c.running::after,
+          .c .t i.running,
+          .bottom .cell.up::before,
+          .bottom .cell.down::before,
+          .bottom .live::before {
+            animation: none;
+          }
+        }
+      }
+
+      @layer utilities {
+        .visually-hidden:where(:not(:focus-within, :active)) {
+          position: absolute !important;
+          clip-path: inset(50%) !important;
+          overflow: hidden !important;
+          width: 1px !important;
+          height: 1px !important;
+          margin: -1px !important;
+          padding: 0 !important;
+          border: 0 !important;
+          white-space: nowrap !important;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="shell">
+      <main class="board" aria-label="Codd MongoDB 文档看板">
+        <h1 class="visually-hidden">Codd MongoDB 模板化装配与公式计算看板</h1>
+
+        <!-- ═══════════════════════════════════════════
+             列 1: 架构与隔离 (只讲架构、指纹防重名、安全边界)
+             ═══════════════════════════════════════════ -->
+        <section class="list" aria-labelledby="col-arch">
+          <h2 class="lh" id="col-arch">
+            <span class="dot" aria-hidden="true"></span>
+            架构与隔离
+            <b>4</b>
+          </h2>
+          <div class="lb">
+            <!-- 卡 1-1: 拓扑图缩略 + 浮层高清全图 -->
+            <article class="pc primary">
+              <div class="ch">
+                <span class="kind code">拓扑</span>
+                <span class="repo">单节点 · 隔离网</span>
+                <button
+                  type="button"
+                  class="zooom"
+                  data-zoom="arch-svg"
+                  title="撑开看高清拓扑大图"
+                  aria-label="撑开查看总体拓扑大图"
+                >
+                  <svg
+                    viewBox="0 0 16 16"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="1.5"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    aria-hidden="true"
+                  >
+                    <path
+                      d="M6.2 2.2H2.2v4M9.8 2.2h4v4M6.2 13.8H2.2v-4M9.8 13.8h4v-4"
+                    />
+                  </svg>
+                </button>
+                <h3>一图看清网络与卷关系</h3>
+              </div>
+              <div class="svgbox">
+                <svg
+                  role="img"
+                  viewBox="0 0 242 152"
+                  aria-labelledby="mini-arch-t"
+                >
+                  <title id="mini-arch-t">
+                    MongoDB 容器网络与数据卷隔离简图
+                  </title>
+                  <defs>
+                    <marker
+                      id="ma"
+                      viewBox="0 0 10 10"
+                      refX="9"
+                      refY="5"
+                      markerWidth="5"
+                      markerHeight="5"
+                      orient="auto"
+                    >
+                      <path d="M0 1 L10 5 L0 9 z" fill="var(--ok)" />
+                    </marker>
+                  </defs>
+                  <!-- Left: entries -->
+                  <rect
+                    x="4"
+                    y="10"
+                    width="76"
+                    height="34"
+                    rx="5"
+                    fill="var(--svg-box)"
+                    stroke="var(--line)"
+                  />
+                  <text
+                    x="42"
+                    y="25"
+                    text-anchor="middle"
+                    font-size="9"
+                    font-weight="600"
+                    fill="var(--strong)"
+                  >
+                    127.0.0.1
+                  </text>
+                  <text
+                    x="42"
+                    y="37"
+                    text-anchor="middle"
+                    font-size="8"
+                    font-family="monospace"
+                    fill="var(--dim)"
+                  >
+                    :27117 回环
+                  </text>
+
+                  <rect
+                    x="4"
+                    y="56"
+                    width="76"
+                    height="34"
+                    rx="5"
+                    fill="var(--svg-box)"
+                    stroke="var(--line)"
+                  />
+                  <text
+                    x="42"
+                    y="71"
+                    text-anchor="middle"
+                    font-size="9"
+                    font-weight="600"
+                    fill="var(--strong)"
+                  >
+                    业务容器
+                  </text>
+                  <text
+                    x="42"
+                    y="83"
+                    text-anchor="middle"
+                    font-size="8"
+                    font-family="monospace"
+                    fill="var(--ok)"
+                  >
+                    mongo:27117
+                  </text>
+
+                  <rect
+                    x="4"
+                    y="106"
+                    width="76"
+                    height="34"
+                    rx="5"
+                    fill="var(--warn-soft)"
+                    stroke="var(--warn)"
+                    stroke-opacity="0.5"
+                  />
+                  <text
+                    x="42"
+                    y="121"
+                    text-anchor="middle"
+                    font-size="9"
+                    font-weight="600"
+                    fill="var(--warn-ink)"
+                  >
+                    $BACKUP_DIR
+                  </text>
+                  <text
+                    x="42"
+                    y="133"
+                    text-anchor="middle"
+                    font-size="8"
+                    fill="var(--dim)"
+                  >
+                    卷外宿主机目录
+                  </text>
+
+                  <!-- Middle: bridge net & mongo -->
+                  <rect
+                    x="94"
+                    y="8"
+                    width="84"
+                    height="136"
+                    rx="8"
+                    fill="var(--svg-box-soft)"
+                    stroke="var(--ok)"
+                    stroke-dasharray="3 3"
+                  />
+                  <text
+                    x="136"
+                    y="21"
+                    text-anchor="middle"
+                    font-size="8"
+                    font-family="monospace"
+                    fill="var(--ok)"
+                  >
+                    ...-net
+                  </text>
+
+                  <rect
+                    x="102"
+                    y="30"
+                    width="68"
+                    height="22"
+                    rx="4"
+                    fill="var(--svg-box)"
+                    stroke="var(--line)"
+                  />
+                  <text
+                    x="136"
+                    y="44"
+                    text-anchor="middle"
+                    font-size="8.5"
+                    fill="var(--mid)"
+                  >
+                    -init (退出0)
+                  </text>
+
+                  <rect
+                    x="102"
+                    y="60"
+                    width="68"
+                    height="38"
+                    rx="5"
+                    fill="var(--ok-soft)"
+                    stroke="var(--ok)"
+                  />
+                  <text
+                    x="136"
+                    y="76"
+                    text-anchor="middle"
+                    font-size="9.5"
+                    font-weight="700"
+                    fill="var(--strong)"
+                  >
+                    mongo
+                  </text>
+                  <text
+                    x="136"
+                    y="90"
+                    text-anchor="middle"
+                    font-size="8"
+                    font-family="monospace"
+                    fill="var(--ok-ink)"
+                  >
+                    rs0 · 9.0.8
+                  </text>
+
+                  <rect
+                    x="102"
+                    y="110"
+                    width="68"
+                    height="24"
+                    rx="4"
+                    fill="var(--svg-box)"
+                    stroke="var(--line)"
+                  />
+                  <text
+                    x="136"
+                    y="125"
+                    text-anchor="middle"
+                    font-size="8.5"
+                    fill="var(--mid)"
+                  >
+                    mongo-tools
+                  </text>
+
+                  <!-- Right: volumes -->
+                  <rect
+                    x="190"
+                    y="42"
+                    width="48"
+                    height="32"
+                    rx="5"
+                    fill="var(--svg-box)"
+                    stroke="var(--line)"
+                  />
+                  <text
+                    x="214"
+                    y="56"
+                    text-anchor="middle"
+                    font-size="8.5"
+                    font-weight="600"
+                    fill="var(--strong)"
+                  >
+                    -data
+                  </text>
+                  <text
+                    x="214"
+                    y="68"
+                    text-anchor="middle"
+                    font-size="7.5"
+                    font-family="monospace"
+                    fill="var(--dim)"
+                  >
+                    /data/db
+                  </text>
+
+                  <rect
+                    x="190"
+                    y="84"
+                    width="48"
+                    height="32"
+                    rx="5"
+                    fill="var(--svg-box)"
+                    stroke="var(--line)"
+                  />
+                  <text
+                    x="214"
+                    y="98"
+                    text-anchor="middle"
+                    font-size="8.5"
+                    font-weight="600"
+                    fill="var(--strong)"
+                  >
+                    -key
+                  </text>
+                  <text
+                    x="214"
+                    y="110"
+                    text-anchor="middle"
+                    font-size="7.5"
+                    font-family="monospace"
+                    fill="var(--dim)"
+                  >
+                    400 密钥
+                  </text>
+
+                  <path
+                    d="M80 27 L98 70"
+                    fill="none"
+                    stroke="var(--ok)"
+                    stroke-width="1.2"
+                    marker-end="url(#ma)"
+                  />
+                  <path
+                    d="M80 73 L99 77"
+                    fill="none"
+                    stroke="var(--ok)"
+                    stroke-width="1.2"
+                    marker-end="url(#ma)"
+                  />
+                  <path
+                    d="M136 52 L136 58"
+                    fill="none"
+                    stroke="var(--ok)"
+                    stroke-width="1.2"
+                    marker-end="url(#ma)"
+                  />
+                  <path
+                    d="M136 110 L136 100"
+                    fill="none"
+                    stroke="var(--ok)"
+                    stroke-width="1.2"
+                    marker-end="url(#ma)"
+                  />
+                  <path
+                    d="M102 122 L82 122"
+                    fill="none"
+                    stroke="var(--ok)"
+                    stroke-width="1.2"
+                    marker-end="url(#ma)"
+                  />
+                  <path
+                    d="M170 72 L188 58"
+                    fill="none"
+                    stroke="var(--ok)"
+                    stroke-width="1.2"
+                    marker-end="url(#ma)"
+                  />
+                  <path
+                    d="M170 86 L188 100"
+                    fill="none"
+                    stroke="var(--ok)"
+                    stroke-width="1.2"
+                    marker-end="url(#ma)"
+                  />
+                </svg>
+              </div>
+              <div class="prose" style="margin-top: 8px">
+                <p>
+                  外部完全不监听公网端口, 只有本机回环或同桥接网容器可直连,
+                  备份落到卷外的宿主机目录。
+                </p>
+              </div>
+            </article>
+
+            <!-- 卡 2: 指纹码衍生表 -->
+            <div class="sc">
+              <button
+                type="button"
+                class="sid"
+                data-copy-text="codd --new-fingerprint"
+                title="点击复制新建独立指纹实例命令"
+              >
+                FINGERPRINT 全链路零冲突派生
+              </button>
+              <div class="row">
+                <span>主容器 / 项目 / 网络</span>
+                <b>&lt;prefix&gt;-&lt;fp&gt;[-net]</b>
+              </div>
+              <div class="row">
+                <span>数据卷 / 密钥卷</span>
+                <b>...-data / ...-key</b>
+              </div>
+              <div class="row">
+                <span>栈目录 / dist 目录</span>
+                <b>...-&lt;name&gt;-&lt;fp&gt;</b>
+              </div>
+              <div class="row">
+                <span>服务器备份目录</span>
+                <b>...-&lt;name&gt;-&lt;fp&gt;</b>
+              </div>
+            </div>
+
+            <!-- 卡 3: 三容器职责 -->
+            <article class="pc">
+              <div class="ch">
+                <span class="kind code">编排</span>
+                <span class="repo">template/podman/</span>
+                <h3>三组服务各干什么</h3>
+              </div>
+              <div class="prose">
+                <ul>
+                  <li>
+                    <strong>mongo</strong>: 数据库本体 (<code
+                      >tcmalloc-google</code
+                    >
+                    + <code>/dev/tcp</code> 零 V8 尖峰探针), 首次自建 756B
+                    <code>400</code> 权限密钥
+                  </li>
+                  <li>
+                    <strong>mongo-init</strong>: 等
+                    <code>healthy</code> 后跑幂等
+                    <code>init.js</code> (切主后自动路由活跃主节点), 配完退出
+                    <code>exit=0</code>
+                  </li>
+                  <li>
+                    <strong>mongo-tools</strong>: 按需启停的
+                    <code>Bun + mongodump + 沙箱 mongod</code> 容器,
+                    宿主机免装任何工具
+                  </li>
+                </ul>
+              </div>
+            </article>
+
+            <!-- 卡 4: 多库隔离与三账号最小权限 -->
+            <article class="pc">
+              <div class="ch">
+                <span class="kind">安全</span>
+                <span class="repo">多库隔离 · 纯字母数字</span>
+                <h3>多库与三账号隔离</h3>
+              </div>
+              <div class="prose">
+                <ul>
+                  <li>
+                    <strong>业务账号 (app)</strong>: 主库配专属
+                    <code>readWrite</code>; 在 <code>deploy.json</code> 的
+                    <code>apps[]</code>
+                    追加多库即可由生成器自动配权与生成随机口令
+                  </li>
+                  <li>
+                    <strong>备份账号 (backup)</strong>: 仅
+                    <code>admin.backup</code> 只读角色,
+                    兼管从节点热备与容器内沙箱 <code>drill</code> 索引比对
+                  </li>
+                  <li>
+                    <strong>管理员 (root)</strong>: 仅限
+                    <code>init</code> 与紧急真恢复 <code>restore</code>
+                  </li>
+                </ul>
+              </div>
+              <div class="advice">
+                <div class="prose">
+                  所有路径、卷、网络与定时任务全部自动嵌入唯一
+                  <code>FINGERPRINT</code>, 同机部署两个同名实例只需错开
+                  <code>port</code> 即 100% 零冲突。
+                </div>
+              </div>
+            </article>
+          </div>
+        </section>
+
+        <!-- ═══════════════════════════════════════════
+             列 2: 资源公式与引擎 (紧缩基线公式推导 + 何时扩容)
+             ═══════════════════════════════════════════ -->
+        <section class="list" aria-labelledby="col-res">
+          <h2 class="lh" id="col-res">
+            <span class="dot" aria-hidden="true"></span>
+            资源与公式
+            <b>4</b>
+          </h2>
+          <div class="lb">
+            <!-- 卡 1: 紧缩基线锚点条 -->
+            <div class="sc">
+              <button
+                type="button"
+                class="sid"
+                data-copy-text="codd wizard"
+                title="点击复制向导启动命令"
+              >
+                内存配比基线 (2G 起步示例)
+              </button>
+              <div class="svgbox" style="margin-top: 6px; padding: 6px 8px">
+                <svg
+                  role="img"
+                  viewBox="0 0 242 64"
+                  aria-labelledby="mini-mem-t"
+                >
+                  <title id="mini-mem-t">MongoDB 容器内存与缓存比例示意</title>
+                  <rect
+                    x="2"
+                    y="8"
+                    width="59"
+                    height="22"
+                    rx="4"
+                    fill="var(--acc)"
+                  />
+                  <text
+                    x="31"
+                    y="22"
+                    text-anchor="middle"
+                    font-size="8.5"
+                    font-weight="700"
+                    fill="#fff"
+                  >
+                    WT 50%
+                  </text>
+                  <rect
+                    x="63"
+                    y="8"
+                    width="177"
+                    height="22"
+                    rx="4"
+                    fill="var(--svg-box-soft)"
+                    stroke="var(--line)"
+                  />
+                  <text
+                    x="151"
+                    y="22"
+                    text-anchor="middle"
+                    font-size="8.5"
+                    fill="var(--mid)"
+                  >
+                    连接栈+排序+系统 (留余量防 OOM)
+                  </text>
+                  <line
+                    x1="121"
+                    y1="2"
+                    x2="121"
+                    y2="8"
+                    stroke="var(--warn)"
+                    stroke-width="1.5"
+                    stroke-dasharray="2 1.5"
+                  />
+                  <line
+                    x1="121"
+                    y1="30"
+                    x2="121"
+                    y2="39"
+                    stroke="var(--warn)"
+                    stroke-width="1.5"
+                    stroke-dasharray="2 2"
+                  />
+                  <text
+                    x="121"
+                    y="52"
+                    text-anchor="middle"
+                    font-size="8.5"
+                    fill="var(--warn-ink)"
+                  >
+                    软保护 50% / 1g
+                  </text>
+                  <text
+                    x="240"
+                    y="52"
+                    text-anchor="end"
+                    font-size="8.5"
+                    fill="var(--dim)"
+                  >
+                    硬顶上限
+                  </text>
+                </svg>
+              </div>
+              <div class="row">
+                <span>2G 起步 WT 缓存</span>
+                <b>0.5<small>GB</small></b>
+              </div>
+              <div class="row">
+                <span>8G 生产 WT 缓存</span>
+                <b>3.5<small>GB</small></b>
+              </div>
+              <div class="row">
+                <span>官方余量公式</span>
+                <b>0.5 × (RAM-1G)</b>
+              </div>
+            </div>
+
+            <!-- 卡 2: 单节点副本集 & oplog 关系 -->
+            <article class="pc">
+              <div class="ch">
+                <span class="kind">ADR 0001 · 0004</span>
+                <span class="repo">rs0 · oplog >= 990MB</span>
+                <h3>为什么默认全员副本集</h3>
+              </div>
+              <div class="prose">
+                <p>
+                  Standalone 无法用多文档事务和 Change Streams, 故单机直接启
+                  <code>rs0</code>; 同机多业务靠同实例分库隔离 (<code
+                    >apps[]</code
+                  >
+                  / <code>MONGO_EXTRA_APPS</code>), 硬塞 3 容器既 3
+                  倍耗费内存磁盘又无硬件容灾。真三物理节点看右侧「多副本 ·
+                  Podman」列。
+                </p>
+              </div>
+              <div class="advice">
+                <div class="prose">
+                  <code>oplog</code> 是<strong>磁盘</strong>上限 (保底 990MB
+                  按盘比例计算); <code>WT</code> 是<strong>内存</strong>上限,
+                  平时按需占用。详见
+                  <a
+                    href="../../packages/codd/docs/adrs/0012-single-node-replica-set.md"
+                    >ADR 0012</a
+                  >
+                  与
+                  <a
+                    href="../../packages/codd/docs/adrs/0015-compact-2c2g-resource-budget.md"
+                    >ADR 0015</a
+                  >。
+                </div>
+              </div>
+            </article>
+
+            <!-- 卡 3: 科学计算公式引擎 -->
+            <div class="sc">
+              <span class="sid" style="cursor: default"
+                >FORMULAS.TS 科学公式引擎</span
+              >
+              <div class="row">
+                <span>WT_CACHE_GB</span>
+                <b>≤8G 0.5× / &gt;8G 0.55×(RAM-1)</b>
+              </div>
+              <div class="row">
+                <span>最大入站连接</span>
+                <b>(RAM-WT)×80 (下限100)</b>
+              </div>
+              <div class="row">
+                <span>oplog / 停机窗口</span>
+                <b>盘×3%~8% / max(30s,8s/G)</b>
+              </div>
+              <div class="row">
+                <span>句柄/线程 ulimit</span>
+                <b>max(连接×4, 65536<small>官方≥64k</small>)</b>
+              </div>
+              <div class="row">
+                <span>块压缩 + 协议压缩</span>
+                <b>zstd/snappy + wire(zstd)</b>
+              </div>
+              <div class="row">
+                <span>K8s 内存防驱逐</span>
+                <b>requests.mem == limits.mem</b>
+              </div>
+            </div>
+
+            <!-- 卡 4: 扩容触发信号 -->
+            <div class="c">
+              <div class="t">
+                <i class="failed" aria-hidden="true"></i>
+                <em class="fail">扩容信号</em>
+                <span>· 改 hardware 重算后 make up</span>
+              </div>
+              <p class="p">
+                <strong>OOMKilled=true</strong> → 调高
+                <code>hardware.memoryGb</code> 重跑 <code>generate</code>
+              </p>
+              <p class="p">
+                <strong>bytes read into cache 爬升</strong> → 公式自动同步抬高
+                <code>WT_CACHE_GB</code>
+              </p>
+              <p class="p">
+                <strong>慢查询增多 (&gt;100ms)</strong> → 先查缺失索引再加配
+              </p>
+              <p class="p">
+                <strong>make stats 常超 80%</strong> → 上调配置同步并
+                <code>make up</code>
+              </p>
+            </div>
+          </div>
+        </section>
+
+        <!-- ═══════════════════════════════════════════
+             列 3: 单副本 · Podman (Linux / macOS 跨平台, 1 台宿主机 rs0)
+             ═══════════════════════════════════════════ -->
+        <section class="list on" aria-labelledby="col-deploy">
+          <h2 class="lh" id="col-deploy">
+            <span class="dot" aria-hidden="true"></span>
+            单副本 · Podman
+            <b>6</b>
+          </h2>
+          <div class="lb">
+            <!-- Step 0 -->
+            <div class="dc">
+              <div class="h">
+                <em>Step 0</em>
+                <span>· 跨平台前置与端口空闲检测</span>
+                <button type="button" class="copy-sid" data-copy="cmd-s0">
+                  复制
+                </button>
+              </div>
+              <p class="desc">
+                <span class="loc srv">目标服务器</span> 未自定义端口时默认检测
+                <code>27117</code>, 若自定义了端口则将下方
+                <code>PORT</code> 改为实际端口号; 装包与虚拟机按系统区分。
+              </p>
+              <div class="dbgwrap">
+                <pre
+                  class="dbgmono"
+                  id="cmd-s0"
+                  role="region"
+                  aria-label="Step 0 核对环境与端口命令"
+                  tabindex="0"
+                ><code># [执行设备: 目标服务器] 1) 通用 CLI 与容器引擎检查 (Linux / macOS 一致)
+podman --version \
+  &amp;&amp; podman-compose --version \
+  &amp;&amp; make --version \
+  &amp;&amp; openssl version \
+  &amp;&amp; podman info &gt;/dev/null
+
+# 2) 按平台安装缺失工具 + 检测目标端口空闲 (默认 27117, 自定义时改 PORT)
+PORT=27117
+# --- Linux ---
+# sudo apt install -y podman podman-compose make openssl
+# sudo dnf install -y podman podman-compose make openssl
+ss -lntp | grep ":${PORT}\b" || echo "${PORT} 空闲"
+
+# --- macOS (非交互 SSH 需 /opt/homebrew/bin 入 ~/.zshenv) ---
+# brew install podman podman-compose
+podman machine list
+lsof -nP -iTCP:"${PORT}" -sTCP:LISTEN || echo "${PORT} 空闲"</code></pre>
+                <button
+                  type="button"
+                  class="zooom"
+                  data-zoom="cmd-s0"
+                  title="撑开看全部"
+                  aria-label="撑开 Step 0 命令"
+                >
+                  <svg
+                    viewBox="0 0 16 16"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="1.5"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    aria-hidden="true"
+                  >
+                    <path
+                      d="M6.2 2.2H2.2v4M9.8 2.2h4v4M6.2 13.8H2.2v-4M9.8 13.8h4v-4"
+                    />
+                  </svg>
+                </button>
+              </div>
+            </div>
+
+            <!-- Step 1 -->
+            <div class="dc">
+              <div class="h">
+                <em>Step 1</em>
+                <span>· 生成带指纹的最小运行包</span>
+                <button type="button" class="copy-sid" data-copy="cmd-s1">
+                  复制
+                </button>
+              </div>
+              <p class="desc">
+                <span class="loc dev">本地开发机</span> 运行向导或
+                <code>codd</code> 产出带指纹部署包并推送上机;
+                服务器无需克隆仓库或安装 Bun。
+              </p>
+              <div class="dbgwrap">
+                <pre
+                  class="dbgmono"
+                  id="cmd-s1"
+                  role="region"
+                  aria-label="Step 1 生成与同步最小部署包命令"
+                  tabindex="0"
+                ><code># [执行设备: 本地开发机] 1) 运行向导, 或直接指定任意清单文件: codd deploy-dev.json
+cd /path/to/codd
+codd wizard
+
+# [执行设备: 本地开发机] 2) 在目标服务器准备栈与日志父目录 (BACKUP_DIR 由 make check-env 自动创建)
+ssh user@target-host 'mkdir -p ~/srv/stacks ~/srv/logs'
+
+# [执行设备: 本地开发机] 3) 按生成提示推送带唯一指纹的运行时目录
+rsync -av \
+  dist/mongo-app-&lt;fp&gt;/ \
+  user@target-host:~/srv/stacks/mongo-app-&lt;fp&gt;/</code></pre>
+                <button
+                  type="button"
+                  class="zooom"
+                  data-zoom="cmd-s1"
+                  title="撑开看全部"
+                  aria-label="撑开 Step 1 命令"
+                >
+                  <svg
+                    viewBox="0 0 16 16"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="1.5"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    aria-hidden="true"
+                  >
+                    <path
+                      d="M6.2 2.2H2.2v4M9.8 2.2h4v4M6.2 13.8H2.2v-4M9.8 13.8h4v-4"
+                    />
+                  </svg>
+                </button>
+              </div>
+            </div>
+
+            <!-- Step 2 -->
+            <div class="dc">
+              <div class="h">
+                <em>Step 2</em>
+                <span>· 内核调优与校验 .env</span>
+                <button type="button" class="copy-sid" data-copy="cmd-s2">
+                  复制
+                </button>
+              </div>
+              <p class="desc">
+                <span class="loc srv">目标服务器</span> 登录服务器执行
+                <code>make tune-host</code> (Linux 调宿主机、macOS 自动进 Podman
+                VM) 持久化开启 THP; <code>make check-env</code> 自动创建
+                <code>0700</code> 备份目录。
+              </p>
+              <div class="dbgwrap">
+                <pre
+                  class="dbgmono"
+                  id="cmd-s2"
+                  role="region"
+                  aria-label="Step 2 校验 .env 命令"
+                  tabindex="0"
+                ><code># [执行设备: 目标服务器] 进入上传好的部署目录, 调优内核并创建 0700 指纹备份目录
+cd ~/srv/stacks/mongo-app-&lt;fp&gt;
+# 首次部署一键开启 THP 与 swappiness=1 并写入持久化 (Linux 宿主机 / macOS Podman VM 通用):
+make tune-host
+make check-env
+
+# 确认生成的关键环境变量与公式参数 (完整连接串见开发机 .codd-state/)
+grep -E \
+  -e '^STACK_PREFIX=' \
+  -e '^FINGERPRINT=' \
+  -e '^MONGO_IMAGE_TAG=' \
+  -e '^MONGO_PORT=' \
+  -e '^CPU_LIMIT=' \
+  -e '^MEMORY_LIMIT=' \
+  -e '^WT_CACHE_GB=' \
+  -e '^BACKUP_DIR=' \
+  .env</code></pre>
+                <button
+                  type="button"
+                  class="zooom"
+                  data-zoom="cmd-s2"
+                  title="撑开看全部"
+                  aria-label="撑开 Step 2 命令"
+                >
+                  <svg
+                    viewBox="0 0 16 16"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="1.5"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    aria-hidden="true"
+                  >
+                    <path
+                      d="M6.2 2.2H2.2v4M9.8 2.2h4v4M6.2 13.8H2.2v-4M9.8 13.8h4v-4"
+                    />
+                  </svg>
+                </button>
+              </div>
+            </div>
+
+            <!-- Step 3 -->
+            <div class="dc">
+              <div class="h">
+                <em>Step 3</em>
+                <span>· 启动与性能基线确认</span>
+                <button type="button" class="copy-sid" data-copy="cmd-s3">
+                  复制
+                </button>
+              </div>
+              <p class="desc">
+                <span class="loc srv">目标服务器</span> 启动容器栈并初始化
+                <code>rs0</code> 与全库隔离账号, 用
+                <code>make check-perf</code> 确认内核参数生效且
+                <code>startupWarnings</code> 为 <code>0</code>。
+              </p>
+              <div class="dbgwrap">
+                <pre
+                  class="dbgmono"
+                  id="cmd-s3"
+                  role="region"
+                  aria-label="Step 3 启动与确认命令"
+                  tabindex="0"
+                ><code># [执行设备: 目标服务器] 1) 启动容器栈
+make up
+
+# 2) 见初始化完成提示后 Ctrl+C
+make logs
+
+# 3) 主容器应显示 healthy, 并巡检 THP / ulimit / startupWarnings
+make status &amp;&amp; make check-perf
+
+# 4) 核对 init 已退出且 exit=0
+set -a &amp;&amp; . ./.env &amp;&amp; set +a
+podman inspect \
+  "${STACK_PREFIX}-${FINGERPRINT}-init" \
+  --format \
+  '{{.State.Status}} exit={{.State.ExitCode}}'</code></pre>
+                <button
+                  type="button"
+                  class="zooom"
+                  data-zoom="cmd-s3"
+                  title="撑开看全部"
+                  aria-label="撑开 Step 3 命令"
+                >
+                  <svg
+                    viewBox="0 0 16 16"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="1.5"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    aria-hidden="true"
+                  >
+                    <path
+                      d="M6.2 2.2H2.2v4M9.8 2.2h4v4M6.2 13.8H2.2v-4M9.8 13.8h4v-4"
+                    />
+                  </svg>
+                </button>
+              </div>
+            </div>
+
+            <!-- Step 4 -->
+            <div class="c running">
+              <div class="t">
+                <i class="running" aria-hidden="true"></i>
+                <em class="run">Step 4 · 五步验收</em>
+                <button type="button" class="copy-sid" data-copy="cmd-s4">
+                  复制
+                </button>
+                <button
+                  type="button"
+                  class="zooom"
+                  data-zoom="cmd-s4"
+                  title="撑开看完整验收脚本"
+                  aria-label="撑开 Step 4 完整验收命令"
+                >
+                  <svg
+                    viewBox="0 0 16 16"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="1.5"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    aria-hidden="true"
+                  >
+                    <path
+                      d="M6.2 2.2H2.2v4M9.8 2.2h4v4M6.2 13.8H2.2v-4M9.8 13.8h4v-4"
+                    />
+                  </svg>
+                </button>
+              </div>
+              <p class="p">
+                <span class="loc srv">目标服务器</span> 写 1
+                条探测文档避开空库报错,
+                验证主节点、工具构建、备份及沙箱演练全链路后再清理:
+              </p>
+              <div class="dbgwrap" style="margin-top: 7px">
+                <pre
+                  class="dbgmono"
+                  id="cmd-s4"
+                  role="region"
+                  aria-label="Step 4 全链路验收命令"
+                  tabindex="0"
+                ><code># [执行设备: 目标服务器]
+set -a &amp;&amp; . ./.env &amp;&amp; set +a
+C="${STACK_PREFIX}-${FINGERPRINT}"
+ROOT_AUTH="${MONGO_INITDB_ROOT_USERNAME}:${MONGO_INITDB_ROOT_PASSWORD}"
+APP_AUTH="${MONGO_APP_USER}:${MONGO_APP_PASSWORD}"
+HOST_QS="127.0.0.1:${MONGO_PORT:-27117}"
+
+# 1) 确认 PRIMARY 与版本号
+podman exec "$C" mongosh \
+  "mongodb://${ROOT_AUTH}@${HOST_QS}/admin?authSource=admin&amp;directConnection=true" \
+  --quiet \
+  --eval 'printjson({
+    primary: db.hello().isWritablePrimary,
+    state: rs.status().members[0].stateStr,
+    version: db.version()
+  })'
+
+# 2) 业务账号写探测文档 (使库非空)
+APP_URI="mongodb://${APP_AUTH}@${HOST_QS}/${MONGO_APP_DATABASE}?authSource=${MONGO_APP_DATABASE}&amp;directConnection=true"
+podman exec "$C" mongosh \
+  "$APP_URI" \
+  --quiet \
+  --eval '
+    db.__deploy_smoke.insertOne({
+      ok: true,
+      at: new Date()
+    });
+    print(
+      "count:",
+      db.__deploy_smoke.countDocuments({})
+    );
+  '
+
+# 3) 首次备份 + 4) 临时库演练
+make backup \
+  &amp;&amp; make drill
+
+# 5) 清理临时探测集合
+podman exec "$C" mongosh \
+  "$APP_URI" \
+  --quiet \
+  --eval 'db.__deploy_smoke.drop()'</code></pre>
+              </div>
+            </div>
+
+            <!-- Step 5 & 6 -->
+            <div class="dc">
+              <div class="h">
+                <em>Step 5–6</em>
+                <span>· 接入与自动备份</span>
+                <button type="button" class="copy-sid" data-copy="cmd-s5">
+                  复制
+                </button>
+              </div>
+              <p class="desc">
+                <span class="loc srv">目标服务器</span> 同网容器用
+                <code>mongo:&lt;PORT&gt;</code>; Compass 远程连展开 Proxy/SSH
+                选私钥免命令直连; 家里内网机设
+                <code>bindIp: "0.0.0.0"</code> 可让代码与 Compass 走 WG 直接连。
+              </p>
+              <div class="dbgwrap">
+                <pre
+                  class="dbgmono"
+                  id="cmd-s5"
+                  role="region"
+                  aria-label="Step 5 和 Step 6 命令模板"
+                  tabindex="0"
+                ><code># [业务配置] 同网络容器连接串 (完整密钥见开发机 .codd-state/single-&lt;name&gt;.credentials.txt)
+# 需挂 ${STACK_PREFIX}-${FINGERPRINT}-net (external: true, 默认端口 27117)
+mongodb://&lt;USER&gt;:&lt;PWD&gt;@mongo:&lt;PORT&gt;/&lt;DB&gt;?authSource=&lt;DB&gt;
+
+# [宿主机 / 远程直连] Compass 展开 Proxy/SSH 选私钥免手敲隧道; 家庭内网机设 bindIp=0.0.0.0 可直接填 WG IP
+mongodb://&lt;USER&gt;:&lt;PWD&gt;@127.0.0.1:&lt;HOST_PORT&gt;/&lt;DB&gt;?authSource=&lt;DB&gt;&amp;directConnection=true
+
+# [执行设备: 目标服务器 Linux] 每日 03:30 自动备份 (crontab -e 加入下行)
+# 30 3 * * * cd "$HOME/srv/stacks/mongo-app-&lt;fp&gt;" &amp;&amp; make backup &gt;&gt; "$HOME/srv/logs/mongo-backup-&lt;fp&gt;.log" 2&gt;&amp;1
+
+# [执行设备: 目标服务器 macOS] 每日 03:30 自动备份 (加载随包生成的唯一指纹 .plist)
+set -a &amp;&amp; . ./.env &amp;&amp; set +a
+PLIST="com.codd.mongo-backup-${FINGERPRINT}.plist"
+mkdir -p "$HOME/srv/logs" "$HOME/Library/LaunchAgents"
+cp "$PLIST" "$HOME/Library/LaunchAgents/"
+launchctl bootstrap "gui/$(id -u)" "$HOME/Library/LaunchAgents/$PLIST"</code></pre>
+                <button
+                  type="button"
+                  class="zooom"
+                  data-zoom="cmd-s5"
+                  title="撑开看全部"
+                  aria-label="撑开 Step 5 和 6 命令"
+                >
+                  <svg
+                    viewBox="0 0 16 16"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="1.5"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    aria-hidden="true"
+                  >
+                    <path
+                      d="M6.2 2.2H2.2v4M9.8 2.2h4v4M6.2 13.8H2.2v-4M9.8 13.8h4v-4"
+                    />
+                  </svg>
+                </button>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- ═══════════════════════════════════════════
+             列 4: 多副本 · Podman (同 compose + 差异 .env, 3 台独立物理机 PSS)
+             ═══════════════════════════════════════════ -->
+        <section class="list on" aria-labelledby="col-rs">
+          <h2 class="lh" id="col-rs">
+            <span class="dot" aria-hidden="true"></span>
+            多副本 · Podman
+            <b>5</b>
+          </h2>
+          <div class="lb">
+            <!-- 卡 1: 同 compose 跨三机架构原则 -->
+            <article class="pc primary">
+              <div class="ch">
+                <span class="kind ok">3 物理节点</span>
+                <span class="repo">PSS · 差异 .env</span>
+                <h3>何时用真 3 节点</h3>
+              </div>
+              <div class="prose">
+                <p>
+                  面向 <strong>3 台独立物理机</strong> (<code>node1</code> /
+                  <code>node2</code> / <code>node3</code>)
+                  防单台掉电坏盘。三机共用同一套
+                  <code>template/podman/</code> 模板, 靠
+                  <code>codd</code> 一次导出 3 个对称节点包。
+                </p>
+              </div>
+              <div class="advice">
+                <div class="prose">
+                  默认用 <code>27117</code> 端口 (自定义
+                  <code>port</code> 时放行实际端口号),
+                  防火墙只向三节点与内网放行 (Linux
+                  <code>ufw</code>/<code>firewalld</code>; macOS 放行
+                  <code>gvproxy</code>)。详版见
+                  <a href="./designs/podman-replica-set.md"
+                    >podman-replica-set.md</a
+                  >。
+                </div>
+              </div>
+            </article>
+
+            <!-- Step 1: 三机生成各自节点目录并同步 -->
+            <div class="dc">
+              <div class="h">
+                <em>Step 1</em>
+                <span>· 一次生成 3 节点并同步</span>
+                <button type="button" class="copy-sid" data-copy="cmd-rs1">
+                  复制
+                </button>
+              </div>
+              <p class="desc">
+                <span class="loc dev">本地开发机</span> 配置
+                <code>mode: "replica-set"</code> 填 3 台 <code>nodes</code>,
+                一次生成共用指纹与
+                <code>MONGO_KEYFILE</code> 的三个节点包并分别推上服务器。
+              </p>
+              <div class="dbgwrap">
+                <pre
+                  class="dbgmono"
+                  id="cmd-rs1"
+                  role="region"
+                  aria-label="多节点 Step 1 生成 3 个节点包并同步命令"
+                  tabindex="0"
+                ><code># [执行设备: 本地开发机] 1) 直接指定对应清单文件生成 3 个现成节点包
+cd /path/to/codd
+codd deploy.ha.json
+
+# [执行设备: 本地开发机] 2) 将 3 个带唯一指纹的独立目录分别推往对应物理服务器
+rsync -av dist/mongo-ha-&lt;fp&gt;-node1/ ops@10.8.0.11:~/srv/stacks/mongo-ha-&lt;fp&gt;-node1/
+rsync -av dist/mongo-ha-&lt;fp&gt;-node2/ ops@10.8.0.12:~/srv/stacks/mongo-ha-&lt;fp&gt;-node2/
+rsync -av dist/mongo-ha-&lt;fp&gt;-node3/ ops@10.8.0.13:~/srv/stacks/mongo-ha-&lt;fp&gt;-node3/</code></pre>
+                <button
+                  type="button"
+                  class="zooom"
+                  data-zoom="cmd-rs1"
+                  title="撑开看全部"
+                  aria-label="撑开多节点 Step 1 命令"
+                >
+                  <svg
+                    viewBox="0 0 16 16"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="1.5"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    aria-hidden="true"
+                  >
+                    <path
+                      d="M6.2 2.2H2.2v4M9.8 2.2h4v4M6.2 13.8H2.2v-4M9.8 13.8h4v-4"
+                    />
+                  </svg>
+                </button>
+              </div>
+            </div>
+
+            <!-- Step 2: 先启 2 台从节点 -->
+            <div class="dc">
+              <div class="h">
+                <em>Step 2</em>
+                <span>· 先启 2 台从节点</span>
+                <button type="button" class="copy-sid" data-copy="cmd-rs2">
+                  复制
+                </button>
+              </div>
+              <p class="desc">
+                <span class="loc srv">从服务器 node2·3</span>
+                分别登录两台从机启动预设
+                <code>RS_ROLE=secondary</code> 的节点包,
+                保持空盘等待主节点同步。
+              </p>
+              <div class="dbgwrap">
+                <pre
+                  class="dbgmono"
+                  id="cmd-rs2"
+                  role="region"
+                  aria-label="多节点 Step 2 从节点启动命令"
+                  tabindex="0"
+                ><code># 生成器已自动写好每台差异项 (示例 node2; node3 同理, 三机资源参数完全一致):
+#   MONGO_BIND_IP=10.8.0.12  RS_ROLE=secondary  RS_SELF_HOST=node2
+#   RS_MEMBERS=node1:27117,node2:27117,node3:27117
+#   RS_PEER_1=node1:10.8.0.11  RS_PEER_2=node3:10.8.0.13
+
+# [执行设备: 分别登录从服务器 node2 与 node3]
+cd ~/srv/stacks/mongo-ha-&lt;fp&gt;-node2   # node3 上进入 mongo-ha-&lt;fp&gt;-node3
+make tune-host \
+  &amp;&amp; make check-env \
+  &amp;&amp; make up \
+  &amp;&amp; make status</code></pre>
+                <button
+                  type="button"
+                  class="zooom"
+                  data-zoom="cmd-rs2"
+                  title="撑开看全部"
+                  aria-label="撑开多节点 Step 2 命令"
+                >
+                  <svg
+                    viewBox="0 0 16 16"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="1.5"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    aria-hidden="true"
+                  >
+                    <path
+                      d="M6.2 2.2H2.2v4M9.8 2.2h4v4M6.2 13.8H2.2v-4M9.8 13.8h4v-4"
+                    />
+                  </svg>
+                </button>
+              </div>
+            </div>
+
+            <!-- Step 3: 在主引导节点 node1 make up 自动初始化全集群 -->
+            <div class="dc">
+              <div class="h">
+                <em>Step 3</em>
+                <span>· 主节点启动初始化</span>
+                <button type="button" class="copy-sid" data-copy="cmd-rs3">
+                  复制
+                </button>
+              </div>
+              <p class="desc">
+                <span class="loc srv">主服务器 node1</span> 登录
+                <code>node1</code> 启动 (预设 <code>RS_ROLE=primary</code>),
+                <code>mongo-init</code> 自动完成 3 成员组网与全库建号。
+              </p>
+              <div class="dbgwrap">
+                <pre
+                  class="dbgmono"
+                  id="cmd-rs3"
+                  role="region"
+                  aria-label="多节点 Step 3 主节点启动命令"
+                  tabindex="0"
+                ><code># node1 已预设主引导参数 (与从节点共享指纹、keyFile 及对等资源上限):
+#   MONGO_BIND_IP=10.8.0.11  RS_ROLE=primary  RS_SELF_HOST=node1
+#   RS_PEER_1=node2:10.8.0.12  RS_PEER_2=node3:10.8.0.13
+
+# [执行设备: 登录主服务器 node1] 启动后自动发起 rs.initiate 与全库账号初始化
+cd ~/srv/stacks/mongo-ha-&lt;fp&gt;-node1
+make tune-host \
+  &amp;&amp; make check-env \
+  &amp;&amp; make up \
+  &amp;&amp; make logs</code></pre>
+                <button
+                  type="button"
+                  class="zooom"
+                  data-zoom="cmd-rs3"
+                  title="撑开看全部"
+                  aria-label="撑开多节点 Step 3 命令"
+                >
+                  <svg
+                    viewBox="0 0 16 16"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="1.5"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    aria-hidden="true"
+                  >
+                    <path
+                      d="M6.2 2.2H2.2v4M9.8 2.2h4v4M6.2 13.8H2.2v-4M9.8 13.8h4v-4"
+                    />
+                  </svg>
+                </button>
+              </div>
+            </div>
+
+            <!-- Step 4: 同步验收、故障转移串与 Makefile 维护 -->
+            <div class="dc">
+              <div class="h">
+                <em>Step 4</em>
+                <span>· 验收与不停服维护</span>
+                <button type="button" class="copy-sid" data-copy="cmd-rs4">
+                  复制
+                </button>
+              </div>
+              <p class="desc">
+                <span class="loc srv">主服务器 node1</span> 1 台主库写、2
+                台从库同步; 业务写全三台地址且禁加
+                <code>directConnection</code>, 重启主库前先喊一声交接班。
+              </p>
+              <div class="prose">
+                <ul>
+                  <li>
+                    <strong>怎么看同步成功</strong>: 查成员状态是
+                    <code>1 PRIMARY + 2 SECONDARY</code>、全部
+                    <code>health: 1</code> 且落后秒数趋近 <code>0s</code>
+                  </li>
+                  <li>
+                    <strong>怎么连才会自动切换</strong>: 写全
+                    <code>node1,node2,node3</code> 就像记 3 个分店电话,
+                    一台断线驱动自动换下一台
+                  </li>
+                  <li>
+                    <strong>备份 / 演练 / 恢复在哪台跑</strong>:
+                    <code>make backup</code> 自动从 <code>SECONDARY</code> 热备;
+                    <code>make drill</code> 走容器内沙箱零污染; 切主后任意节点跑
+                    <code>restore</code> / <code>init</code> 均自动路由新主
+                  </li>
+                  <li>
+                    <strong>不停服重启怎么操作</strong>: 先逐台重启
+                    <code>node2</code>、<code>node3</code>; 轮到原主
+                    <code>node1</code> 前先跑
+                    <code>rs.stepDown(60)</code> 退居二线 60
+                    秒让新主接班后再关机
+                  </li>
+                </ul>
+              </div>
+              <div class="dbgwrap">
+                <pre
+                  class="dbgmono"
+                  id="cmd-rs4"
+                  role="region"
+                  aria-label="多节点 Step 4 同步验收与切主维护命令"
+                  tabindex="0"
+                ><code># [执行设备: 主服务器 node1] 1) 一键检查三机角色与同步延迟
+# 成功标志: 1 个 PRIMARY + 2 个 SECONDARY, 全 health=1, 延迟约 0s
+cd ~/srv/stacks/mongo-ha-&lt;fp&gt;-node1 &amp;&amp; set -a &amp;&amp; . ./.env &amp;&amp; set +a
+C="${STACK_PREFIX}-${FINGERPRINT}"
+URI="mongodb://${MONGO_INITDB_ROOT_USERNAME}:${MONGO_INITDB_ROOT_PASSWORD}@127.0.0.1:${MONGO_PORT:-27117}/admin?authSource=admin&amp;directConnection=true"
+
+podman exec "$C" mongosh "$URI" --quiet --eval '
+  printjson(rs.status().members.map((m) =&gt; ({
+    name: m.name, state: m.stateStr, health: m.health
+  })));
+  rs.printSecondaryReplicationInfo();
+'
+
+# 2) 业务端高可用连接串 (写全三台, 禁加 directConnection=true)
+# mongodb://&lt;USER&gt;:&lt;PWD&gt;@node1:27117,node2:27117,node3:27117/&lt;DB&gt;?replicaSet=rs0&amp;authSource=&lt;DB&gt;
+
+# 3) 滚动重启不断业务 (先分别对两从机 make down &amp;&amp; make up)
+# 最后在原主节点喊一句让主 "交接班", 等几秒选出新主后再重启原主机:
+podman exec "$C" mongosh "$URI" --quiet --eval 'rs.stepDown(60)'</code></pre>
+                <button
+                  type="button"
+                  class="zooom"
+                  data-zoom="cmd-rs4"
+                  title="撑开看全部"
+                  aria-label="撑开多节点 Step 4 命令"
+                >
+                  <svg
+                    viewBox="0 0 16 16"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="1.5"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    aria-hidden="true"
+                  >
+                    <path
+                      d="M6.2 2.2H2.2v4M9.8 2.2h4v4M6.2 13.8H2.2v-4M9.8 13.8h4v-4"
+                    />
+                  </svg>
+                </button>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- ═══════════════════════════════════════════
+             列 5: K8s 单副本部署 (StatefulSet replicaCount=1 + PVC + Helm)
+             ═══════════════════════════════════════════ -->
+        <section class="list on" aria-labelledby="col-k8s-single">
+          <h2 class="lh" id="col-k8s-single">
+            <span class="dot" aria-hidden="true"></span>
+            K8s 单副本部署
+            <b>5</b>
+          </h2>
+          <div class="lb">
+            <!-- 卡 1: K8s 单副本设计说明 -->
+            <article class="pc primary">
+              <div class="ch">
+                <span class="kind ok">Helm · 1 Pod</span>
+                <span class="repo">rs0 · 27117</span>
+                <h3>何时用 K8s 单副本</h3>
+              </div>
+              <div class="prose">
+                <p>
+                  用
+                  <a href="../../packages/codd/template/helm/values.yaml"
+                    >template/helm/</a
+                  >
+                  轻量运行 1 副本 <code>StatefulSet</code> + PVC,
+                  由科学公式注入限额/缓存/连接数/oplog, <code>init-job</code> 建
+                  <code>rs0</code> 与 <code>extraApps</code>, 默认端口
+                  <code>27117</code>。
+                </p>
+              </div>
+              <div class="advice">
+                <div class="prose">
+                  支持 <code>codd</code> (<code>mode: "k8s-single"</code>)
+                  一键生成 <code>values.generated.yaml</code> 与
+                  <code>deploy.sh</code>。详版见
+                  <a href="./designs/kubernetes-single.md"
+                    >kubernetes-single.md</a
+                  >。
+                </div>
+              </div>
+            </article>
+
+            <!-- Step 1: 查集群并预建固定 Secret -->
+            <div class="dc">
+              <div class="h">
+                <em>Step 1</em>
+                <span>· 查集群与建固定 Secret</span>
+                <button type="button" class="copy-sid" data-copy="cmd-k1s1">
+                  复制
+                </button>
+              </div>
+              <p class="desc">
+                <span class="loc k8s">K8s 管控机</span> 确认存在可用
+                <code>StorageClass</code> (最好开卷扩容), 手调方式可预建固定
+                Secret (走生成器可跳至 Step 2)。
+              </p>
+              <div class="dbgwrap">
+                <pre
+                  class="dbgmono"
+                  id="cmd-k1s1"
+                  role="region"
+                  aria-label="K8s 单副本 Step 1 预建 Secret 命令"
+                  tabindex="0"
+                ><code># [执行设备: K8s 管控机 (已配 kubectl 与 helm)] 1) 检查集群连接与存储类
+kubectl cluster-info &amp;&amp; helm version --short
+kubectl get storageclass
+
+# 2) 创建命名空间与独立 Secret (若用生成器 deploy.sh 则会自动创建, 可跳过本段)
+NS=data
+kubectl create namespace "$NS" --dry-run=client -o yaml | kubectl apply -f -
+ROOT_PWD="$(openssl rand -hex 12)"
+APP_PWD="$(openssl rand -hex 12)"
+BAK_PWD="$(openssl rand -hex 12)"
+KEY_B64="$(openssl rand -base64 756 | tr -d '\n')"
+
+kubectl -n "$NS" create secret generic mongo-app-auth \
+  --from-literal=root-password="$ROOT_PWD" \
+  --from-literal=app-password="$APP_PWD" \
+  --from-literal=backup-password="$BAK_PWD" \
+  --from-literal=mongodb-keyfile="$KEY_B64" \
+  --dry-run=client -o yaml | kubectl apply -f -
+printf 'ROOT=%s\nAPP=%s\nBACKUP=%s\n' "$ROOT_PWD" "$APP_PWD" "$BAK_PWD"</code></pre>
+                <button
+                  type="button"
+                  class="zooom"
+                  data-zoom="cmd-k1s1"
+                  title="撑开看全部"
+                  aria-label="撑开 K8s 单副本 Step 1 命令"
+                >
+                  <svg
+                    viewBox="0 0 16 16"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="1.5"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    aria-hidden="true"
+                  >
+                    <path
+                      d="M6.2 2.2H2.2v4M9.8 2.2h4v4M6.2 13.8H2.2v-4M9.8 13.8h4v-4"
+                    />
+                  </svg>
+                </button>
+              </div>
+            </div>
+
+            <!-- Step 2: 生成 deploy.sh 或手动 Helm 安装 -->
+            <div class="dc">
+              <div class="h">
+                <em>Step 2</em>
+                <span>· 安装单副本 Release</span>
+                <button type="button" class="copy-sid" data-copy="cmd-k1s2">
+                  复制
+                </button>
+              </div>
+              <p class="desc">
+                <span class="loc dev">本地开发机</span
+                ><span class="loc k8s">K8s 管控机</span> 开发机生成自带
+                <code>chart/</code> 的部署包, 在已配
+                <code>kubectl</code> 的本机或管控跳板机运行
+                <code>deploy.sh</code>。
+              </p>
+              <div class="dbgwrap">
+                <pre
+                  class="dbgmono"
+                  id="cmd-k1s2"
+                  role="region"
+                  aria-label="K8s 单副本 Step 2 Helm 安装命令"
+                  tabindex="0"
+                ><code># 方式 A (推荐): [本地开发机] 生成部署包 -&gt; [K8s 管控机] 执行 deploy.sh
+# codd &amp;&amp; bash dist/mongo-app-&lt;fp&gt;-k8s/deploy.sh
+
+# 方式 B: [执行设备: K8s 管控机] 手工直调通用 Chart template/helm/
+helm upgrade --install mongo-app /path/to/codd/template/helm \
+  --namespace data \
+  --set replicaCount=1 \
+  --set auth.existingSecret=mongo-app-auth \
+  --set service.type=ClusterIP \
+  --set config.net.port=27117 \
+  --set service.port=27117</code></pre>
+                <button
+                  type="button"
+                  class="zooom"
+                  data-zoom="cmd-k1s2"
+                  title="撑开看全部"
+                  aria-label="撑开 K8s 单副本 Step 2 命令"
+                >
+                  <svg
+                    viewBox="0 0 16 16"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="1.5"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    aria-hidden="true"
+                  >
+                    <path
+                      d="M6.2 2.2H2.2v4M9.8 2.2h4v4M6.2 13.8H2.2v-4M9.8 13.8h4v-4"
+                    />
+                  </svg>
+                </button>
+              </div>
+            </div>
+
+            <!-- Step 3: 验 Pod 与冒烟写入 -->
+            <div class="dc">
+              <div class="h">
+                <em>Step 3</em>
+                <span>· 验 Pod 与冒烟写入</span>
+                <button type="button" class="copy-sid" data-copy="cmd-k1s3">
+                  复制
+                </button>
+              </div>
+              <p class="desc">
+                <span class="loc k8s">K8s 管控机</span> 确认 Pod 为
+                <code>1/1 Running</code>、<code>init</code> Job 为
+                <code>Completed</code>, 再进 Pod 验读写与清理探测表。
+              </p>
+              <div class="dbgwrap">
+                <pre
+                  class="dbgmono"
+                  id="cmd-k1s3"
+                  role="region"
+                  aria-label="K8s 单副本 Step 3 验收命令"
+                  tabindex="0"
+                ><code># [执行设备: K8s 管控机] 1) 观察 Pod、PVC 与 init Job 状态
+kubectl -n data get pods,jobs,pvc -l app.kubernetes.io/instance=mongo-app
+
+# 2) 用业务凭据进 Pod-0 写入 1 条后删除
+APP_PWD="$(kubectl -n data get secret mongo-app-auth -o jsonpath='{.data.app-password}' | base64 -d)"
+kubectl -n data exec mongo-app-0 -c mongo -- mongosh \
+  "mongodb://app:${APP_PWD}@127.0.0.1:27117/app?authSource=app&amp;directConnection=true" \
+  --quiet --eval '
+    print("primary:", db.hello().isWritablePrimary);
+    db.__k8s_smoke.insertOne({ ok: true });
+    db.__k8s_smoke.drop();
+  '</code></pre>
+                <button
+                  type="button"
+                  class="zooom"
+                  data-zoom="cmd-k1s3"
+                  title="撑开看全部"
+                  aria-label="撑开 K8s 单副本 Step 3 命令"
+                >
+                  <svg
+                    viewBox="0 0 16 16"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="1.5"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    aria-hidden="true"
+                  >
+                    <path
+                      d="M6.2 2.2H2.2v4M9.8 2.2h4v4M6.2 13.8H2.2v-4M9.8 13.8h4v-4"
+                    />
+                  </svg>
+                </button>
+              </div>
+            </div>
+
+            <!-- Step 4: 集群连串与 PVC 扩容 -->
+            <div class="dc">
+              <div class="h">
+                <em>Step 4</em>
+                <span>· 连串与 PVC 在线扩容</span>
+                <button type="button" class="copy-sid" data-copy="cmd-k1s4">
+                  复制
+                </button>
+              </div>
+              <p class="desc">
+                <span class="loc k8s">K8s 管控机</span> StatefulSet
+                卷模板不可改, 扩容须在管控机直接 <code>kubectl patch pvc</code>;
+                同集群业务走内部 Service DNS。
+              </p>
+              <div class="dbgwrap">
+                <pre
+                  class="dbgmono"
+                  id="cmd-k1s4"
+                  role="region"
+                  aria-label="K8s 单副本 Step 4 连串和扩盘命令"
+                  tabindex="0"
+                ><code># [业务配置] 1) 同集群业务 Pod 连接串 (走 ClusterIP Service, 默认端口 27117)
+# mongodb://&lt;USER&gt;:&lt;PWD&gt;@mongo-app.data.svc.cluster.local:27117/&lt;DB&gt;?authSource=&lt;DB&gt;&amp;directConnection=true
+
+# [执行设备: K8s 管控机] 2) 在线扩盘 (勿仅改 values.yaml 重跑 upgrade)
+kubectl -n data patch pvc data-mongo-app-0 \
+  -p '{"spec":{"resources":{"requests":{"storage":"64Gi"}}}}'</code></pre>
+                <button
+                  type="button"
+                  class="zooom"
+                  data-zoom="cmd-k1s4"
+                  title="撑开看全部"
+                  aria-label="撑开 K8s 单副本 Step 4 命令"
+                >
+                  <svg
+                    viewBox="0 0 16 16"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="1.5"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    aria-hidden="true"
+                  >
+                    <path
+                      d="M6.2 2.2H2.2v4M9.8 2.2h4v4M6.2 13.8H2.2v-4M9.8 13.8h4v-4"
+                    />
+                  </svg>
+                </button>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- ═══════════════════════════════════════════
+             列 6: K8s 多副本部署 (StatefulSet replicaCount=3, Headless PSS)
+             ═══════════════════════════════════════════ -->
+        <section class="list on" aria-labelledby="col-k8s-rs">
+          <h2 class="lh" id="col-k8s-rs">
+            <span class="dot" aria-hidden="true"></span>
+            K8s 多副本部署
+            <b>5</b>
+          </h2>
+          <div class="lb">
+            <!-- 卡 1: K8s 多副本架构说明 -->
+            <article class="pc primary">
+              <div class="ch">
+                <span class="kind ok">Helm · 3 Pods</span>
+                <span class="repo">Headless · PSS</span>
+                <h3>何时用 K8s 多副本</h3>
+              </div>
+              <div class="prose">
+                <p>
+                  面向至少 <strong>3 个 Worker 节点</strong>的集群高可用: 通过
+                  <code>-headless</code> 无头服务给出 <code>-0/-1/-2</code> 固定
+                  FQDN, <code>bootstrap-root</code> 只在 <code>-0</code> 初始化,
+                  从 Pod 保持空盘全量初始同步。
+                </p>
+              </div>
+              <div class="advice">
+                <div class="prose">
+                  生产用
+                  <code>podAntiAffinityPreset.type=hard</code>
+                  打散节点并配跨节点远程块存储 (单机试验群改
+                  <code>soft</code>)。详版见
+                  <a href="./designs/kubernetes-replica-set.md"
+                    >kubernetes-replica-set.md</a
+                  >。
+                </div>
+              </div>
+            </article>
+
+            <!-- Step 1: 核节点与建共用 Secret -->
+            <div class="dc">
+              <div class="h">
+                <em>Step 1</em>
+                <span>· 核节点与建共用 Secret</span>
+                <button type="button" class="copy-sid" data-copy="cmd-k3s1">
+                  复制
+                </button>
+              </div>
+              <p class="desc">
+                <span class="loc k8s">K8s 管控机</span> 检查至少 3
+                个可用节点与共享块存储类; 手调安装可预建共用
+                <code>mongo-ha-auth</code> 密钥。
+              </p>
+              <div class="dbgwrap">
+                <pre
+                  class="dbgmono"
+                  id="cmd-k3s1"
+                  role="region"
+                  aria-label="K8s 多副本 Step 1 检查节点和建 Secret 命令"
+                  tabindex="0"
+                ><code># [执行设备: K8s 管控机 (已配 kubectl 与 helm)] 1) 核验 Worker 节点数量与存储类
+kubectl get nodes -o wide &amp;&amp; kubectl get storageclass
+
+# 2) 创建命名空间与集群共用 Secret (若用生成器 deploy.sh 则会自动创建)
+NS=data
+kubectl create namespace "$NS" --dry-run=client -o yaml | kubectl apply -f -
+ROOT_PWD="$(openssl rand -hex 12)"
+APP_PWD="$(openssl rand -hex 12)"
+BAK_PWD="$(openssl rand -hex 12)"
+KEY_B64="$(openssl rand -base64 756 | tr -d '\n')"
+
+kubectl -n "$NS" create secret generic mongo-ha-auth \
+  --from-literal=root-password="$ROOT_PWD" \
+  --from-literal=app-password="$APP_PWD" \
+  --from-literal=backup-password="$BAK_PWD" \
+  --from-literal=mongodb-keyfile="$KEY_B64" \
+  --dry-run=client -o yaml | kubectl apply -f -</code></pre>
+                <button
+                  type="button"
+                  class="zooom"
+                  data-zoom="cmd-k3s1"
+                  title="撑开看全部"
+                  aria-label="撑开 K8s 多副本 Step 1 命令"
+                >
+                  <svg
+                    viewBox="0 0 16 16"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="1.5"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    aria-hidden="true"
+                  >
+                    <path
+                      d="M6.2 2.2H2.2v4M9.8 2.2h4v4M6.2 13.8H2.2v-4M9.8 13.8h4v-4"
+                    />
+                  </svg>
+                </button>
+              </div>
+            </div>
+
+            <!-- Step 2: Helm 部署 3 副本 PSS -->
+            <div class="dc">
+              <div class="h">
+                <em>Step 2</em>
+                <span>· Helm 部署 3 副本 PSS</span>
+                <button type="button" class="copy-sid" data-copy="cmd-k3s2">
+                  复制
+                </button>
+              </div>
+              <p class="desc">
+                <span class="loc dev">本地开发机</span
+                ><span class="loc k8s">K8s 管控机</span> 开发机生成内嵌
+                <code>chart/</code> 的可移植包, 在已配
+                <code>kubectl</code> 的本机或管控跳板机一键施用。
+              </p>
+              <div class="dbgwrap">
+                <pre
+                  class="dbgmono"
+                  id="cmd-k3s2"
+                  role="region"
+                  aria-label="K8s 多副本 Step 2 Helm 安装命令"
+                  tabindex="0"
+                ><code># 方式 A (推荐): [本地开发机] 生成部署包 -&gt; [K8s 管控机] 运行 deploy.sh
+# codd &amp;&amp; bash dist/mongo-ha-&lt;fp&gt;-k8s/deploy.sh
+
+# 方式 B: [执行设备: K8s 管控机] 手工直调通用 Chart template/helm/ 部署 3 副本 PSS
+helm upgrade --install mongo-ha /path/to/codd/template/helm \
+  --namespace data \
+  --set replicaCount=3 \
+  --set auth.existingSecret=mongo-ha-auth \
+  --set service.type=ClusterIP \
+  --set podAntiAffinityPreset.type=hard \
+  --set resources.limits.cpu=4 \
+  --set resources.limits.memory=4Gi \
+  --set resources.requests.memory=4Gi \
+  --set config.storage.wiredTiger.engineConfig.cacheSizeGB=1.5</code></pre>
+                <button
+                  type="button"
+                  class="zooom"
+                  data-zoom="cmd-k3s2"
+                  title="撑开看全部"
+                  aria-label="撑开 K8s 多副本 Step 2 命令"
+                >
+                  <svg
+                    viewBox="0 0 16 16"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="1.5"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    aria-hidden="true"
+                  >
+                    <path
+                      d="M6.2 2.2H2.2v4M9.8 2.2h4v4M6.2 13.8H2.2v-4M9.8 13.8h4v-4"
+                    />
+                  </svg>
+                </button>
+              </div>
+            </div>
+
+            <!-- Step 3: 验 3 Pod 与同步延迟 -->
+            <div class="dc">
+              <div class="h">
+                <em>Step 3</em>
+                <span>· 验 3 Pod 与同步延迟</span>
+                <button type="button" class="copy-sid" data-copy="cmd-k3s3">
+                  复制
+                </button>
+              </div>
+              <p class="desc">
+                <span class="loc k8s">K8s 管控机</span> 核对
+                <code>-0/-1/-2</code> 落在不同节点且 3 成员均
+                <code>health=1</code>, <code>1 PRIMARY + 2 SECONDARY</code>。
+              </p>
+              <div class="dbgwrap">
+                <pre
+                  class="dbgmono"
+                  id="cmd-k3s3"
+                  role="region"
+                  aria-label="K8s 多副本 Step 3 验收命令"
+                  tabindex="0"
+                ><code># [执行设备: K8s 管控机]
+kubectl -n data get pods,pvc,jobs -l app.kubernetes.io/instance=mongo-ha -o wide
+kubectl -n data logs -l app.kubernetes.io/instance=mongo-ha,app.kubernetes.io/component=init --tail=50
+
+ROOT_PWD="$(kubectl -n data get secret mongo-ha-auth -o jsonpath='{.data.root-password}' | base64 -d)"
+kubectl -n data exec mongo-ha-0 -c mongo -- mongosh \
+  "mongodb://root:${ROOT_PWD}@127.0.0.1:27117/admin?authSource=admin&amp;directConnection=true" \
+  --quiet --eval '
+    printjson(rs.status().members.map((m) =&gt; ({
+      name: m.name, state: m.stateStr, health: m.health
+    })));
+    rs.printSecondaryReplicationInfo();
+  '</code></pre>
+                <button
+                  type="button"
+                  class="zooom"
+                  data-zoom="cmd-k3s3"
+                  title="撑开看全部"
+                  aria-label="撑开 K8s 多副本 Step 3 命令"
+                >
+                  <svg
+                    viewBox="0 0 16 16"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="1.5"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    aria-hidden="true"
+                  >
+                    <path
+                      d="M6.2 2.2H2.2v4M9.8 2.2h4v4M6.2 13.8H2.2v-4M9.8 13.8h4v-4"
+                    />
+                  </svg>
+                </button>
+              </div>
+            </div>
+
+            <!-- Step 4: 切主连接串与滚维 -->
+            <div class="dc">
+              <div class="h">
+                <em>Step 4</em>
+                <span>· 切主连接串与滚动维护</span>
+                <button type="button" class="copy-sid" data-copy="cmd-k3s4">
+                  复制
+                </button>
+              </div>
+              <p class="desc">
+                <span class="loc k8s">K8s 管控机</span> 业务串写全三节点
+                Headless FQDN 且禁加 <code>directConnection</code>; 切主与三块
+                PVC 扩容在管控机执行。
+              </p>
+              <div class="dbgwrap">
+                <pre
+                  class="dbgmono"
+                  id="cmd-k3s4"
+                  role="region"
+                  aria-label="K8s 多副本 Step 4 切主串和扩容命令"
+                  tabindex="0"
+                ><code># [业务配置] 1) 集群内自动切主连接串 (写全 -0/-1/-2 Headless FQDN, 禁加 directConnection)
+# mongodb://&lt;USER&gt;:&lt;PWD&gt;@mongo-ha-0.mongo-ha-headless.data.svc.cluster.local:27117,mongo-ha-1.mongo-ha-headless.data.svc.cluster.local:27117,mongo-ha-2.mongo-ha-headless.data.svc.cluster.local:27117/&lt;DB&gt;?replicaSet=rs0&amp;authSource=&lt;DB&gt;
+
+# [执行设备: K8s 管控机] 2) 重建主 Pod 前先取密码并喊让主, 等从 Pod 接班再滚动
+ROOT_PWD="$(kubectl -n data get secret mongo-ha-auth -o jsonpath='{.data.root-password}' | base64 -d)"
+kubectl -n data exec mongo-ha-0 -c mongo -- mongosh \
+  "mongodb://root:${ROOT_PWD}@127.0.0.1:27117/admin?authSource=admin&amp;directConnection=true" \
+  --quiet --eval 'rs.stepDown(60)'
+
+# [执行设备: K8s 管控机] 3) 三块 PVC 等大扩盘
+for i in 0 1 2; do
+  kubectl -n data patch pvc "data-mongo-ha-${i}" -p '{"spec":{"resources":{"requests":{"storage":"64Gi"}}}}'
+done</code></pre>
+                <button
+                  type="button"
+                  class="zooom"
+                  data-zoom="cmd-k3s4"
+                  title="撑开看全部"
+                  aria-label="撑开 K8s 多副本 Step 4 命令"
+                >
+                  <svg
+                    viewBox="0 0 16 16"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="1.5"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    aria-hidden="true"
+                  >
+                    <path
+                      d="M6.2 2.2H2.2v4M9.8 2.2h4v4M6.2 13.8H2.2v-4M9.8 13.8h4v-4"
+                    />
+                  </svg>
+                </button>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- ═══════════════════════════════════════════
+             列 7: 运维与灾备 (只讲: 日常管理、备份周期、真恢复、迁卷)
+             ═══════════════════════════════════════════ -->
+        <section class="list" aria-labelledby="col-ops">
+          <h2 class="lh" id="col-ops">
+            <span class="dot" aria-hidden="true"></span>
+            运维与灾备
+            <b>5</b>
+          </h2>
+          <div class="lb">
+            <!-- 卡 1: 常用命令速查 -->
+            <div class="dc">
+              <div class="h">
+                <em>Makefile</em>
+                <span>· 日常运维指令</span>
+                <button type="button" class="copy-sid" data-copy="cmd-make">
+                  复制
+                </button>
+              </div>
+              <p class="desc">
+                <span class="loc srv">目标服务器</span>
+                登录服务器在部署目录执行; 加库或
+                <code>--rotate</code> 轮换则在<span class="loc dev"
+                  >本地开发机</span
+                >重生成推送后再上机跑 <code>make init</code>。
+              </p>
+              <div class="dbgwrap">
+                <pre
+                  class="dbgmono"
+                  id="cmd-make"
+                  role="region"
+                  aria-label="Makefile 常用命令"
+                  tabindex="0"
+                ><code># [执行设备: 目标服务器 部署目录内] 容器健康与资源快照
+make status
+
+# 一键调优并巡检内核 THP / swappiness / ulimit 与 startupWarnings
+make tune-host &amp;&amp; make check-perf
+
+# 实时日志 (Ctrl+C 退出)
+make logs
+
+# 持续查看 CPU / 内存占用
+make stats
+
+# 以 root 身份进 mongosh
+make shell
+
+# 幂等重跑副本集与账号初始化 (切主后亦可自动发现新 PRIMARY)
+make init
+
+# 停删容器 (数据与密钥卷保留)
+make down
+
+# 启动或改 .env 后热重建容器
+make up</code></pre>
+                <button
+                  type="button"
+                  class="zooom"
+                  data-zoom="cmd-make"
+                  title="撑开看全部"
+                  aria-label="撑开常用运维命令"
+                >
+                  <svg
+                    viewBox="0 0 16 16"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="1.5"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    aria-hidden="true"
+                  >
+                    <path
+                      d="M6.2 2.2H2.2v4M9.8 2.2h4v4M6.2 13.8H2.2v-4M9.8 13.8h4v-4"
+                    />
+                  </svg>
+                </button>
+              </div>
+            </div>
+
+            <!-- 卡 2: 多实例共网接入 -->
+            <article class="pc">
+              <div class="ch">
+                <span class="kind code">接入</span>
+                <span class="repo">RS_MEMBER_HOST</span>
+                <h3>多实例同网防冲突</h3>
+              </div>
+              <div class="prose">
+                <p>同一业务容器需要同时挂载多个不同指纹 MongoDB 网络时:</p>
+                <ul>
+                  <li>
+                    单实例只管一库默认留空; 多实例共网在
+                    <code>deploy.json</code> 开
+                    <code>"multiNetAlias": true</code>, 或设
+                    <code>RS_MEMBER_HOST</code> 为
+                    <code>&lt;prefix&gt;-&lt;FINGERPRINT&gt;:27117</code>
+                  </li>
+                  <li>
+                    业务连接串主机名同步用容器全名, 避免多个
+                    <code>mongo</code> 服务名互相抢解析
+                  </li>
+                </ul>
+              </div>
+            </article>
+
+            <!-- 卡 3: 备份保留策略 -->
+            <div class="sc">
+              <span class="sid" style="cursor: default">备份轮转与演练</span>
+              <div class="svgbox" style="margin-top: 6px; padding: 6px 8px">
+                <svg
+                  role="img"
+                  viewBox="0 0 242 68"
+                  aria-labelledby="mini-bak-t"
+                >
+                  <title id="mini-bak-t">备份留存与月度演练流程</title>
+                  <rect
+                    x="2"
+                    y="10"
+                    width="72"
+                    height="22"
+                    rx="4"
+                    fill="var(--ok-soft)"
+                    stroke="var(--ok)"
+                  />
+                  <text
+                    x="38"
+                    y="24"
+                    text-anchor="middle"
+                    font-size="8.5"
+                    font-weight="600"
+                    fill="var(--strong)"
+                  >
+                    每日留 7 份
+                  </text>
+                  <rect
+                    x="86"
+                    y="10"
+                    width="76"
+                    height="22"
+                    rx="4"
+                    fill="var(--svg-box-soft)"
+                    stroke="var(--line)"
+                  />
+                  <text
+                    x="124"
+                    y="24"
+                    text-anchor="middle"
+                    font-size="8.5"
+                    fill="var(--mid)"
+                  >
+                    周日 weekly 4份
+                  </text>
+                  <rect
+                    x="174"
+                    y="10"
+                    width="66"
+                    height="22"
+                    rx="4"
+                    fill="var(--acc-soft)"
+                    stroke="var(--acc)"
+                  />
+                  <text
+                    x="207"
+                    y="24"
+                    text-anchor="middle"
+                    font-size="8.5"
+                    font-weight="600"
+                    fill="var(--acc-ink)"
+                  >
+                    月度 drill
+                  </text>
+                  <text
+                    x="121"
+                    y="54"
+                    text-anchor="middle"
+                    font-size="8.5"
+                    fill="var(--dim)"
+                  >
+                    按库保留: drill 在容器沙箱恢复, 线上零写入
+                  </text>
+                </svg>
+              </div>
+              <div class="row">
+                <span>每日每库保留 (BACKUP_DIR)</span>
+                <b>7<small>份</small></b>
+              </div>
+              <div class="row">
+                <span>周日每库加留 (weekly/)</span>
+                <b>4<small>份</small></b>
+              </div>
+            </div>
+
+            <!-- 卡 4: 真实恢复与限制 -->
+            <div class="dc">
+              <div class="h">
+                <em>紧急真恢复</em>
+                <span>· 先 drill 再 restore</span>
+                <button type="button" class="copy-sid" data-copy="cmd-restore">
+                  复制
+                </button>
+              </div>
+              <p class="desc">
+                <span class="loc srv">目标服务器</span> 从归档文件名解析目标库
+                <code>&lt;db&gt;</code> 并仅
+                <code>--nsInclude=&lt;db&gt;.*</code> 单库覆盖恢复,
+                不动同实例其它库。
+              </p>
+              <div class="dbgwrap">
+                <pre
+                  class="dbgmono"
+                  id="cmd-restore"
+                  role="region"
+                  aria-label="真恢复命令"
+                  tabindex="0"
+                ><code># [执行设备: 目标服务器 部署目录内] 1) 先在独立沙箱演练全部库
+make drill
+
+# 2) 按归档文件名识别库名, 确认单库覆盖恢复
+make restore \
+  FILE=mongo-&lt;db&gt;-YYYYMMDD_HHMMSS.archive.gz \
+  CONFIRM=yes</code></pre>
+                <button
+                  type="button"
+                  class="zooom"
+                  data-zoom="cmd-restore"
+                  title="撑开看全部"
+                  aria-label="撑开真恢复命令"
+                >
+                  <svg
+                    viewBox="0 0 16 16"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="1.5"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    aria-hidden="true"
+                  >
+                    <path
+                      d="M6.2 2.2H2.2v4M9.8 2.2h4v4M6.2 13.8H2.2v-4M9.8 13.8h4v-4"
+                    />
+                  </svg>
+                </button>
+              </div>
+            </div>
+
+            <!-- 卡 5: 版本升级 & 扩盘 & 迁卷 -->
+            <div class="dc">
+              <div class="h">
+                <em>升级 / 扩盘 / 迁卷</em>
+                <span>· 成对迁移防失钥</span>
+                <button type="button" class="copy-sid" data-copy="cmd-migrate">
+                  复制
+                </button>
+              </div>
+              <p class="desc">
+                <span class="loc srv">目标服务器</span> 迁新指纹必须同时导入
+                <code>-data</code> 和 <code>-key</code> 密钥卷,
+                丢失密钥会导致副本集认证失败; macOS VM 扩盘只可调大。
+              </p>
+              <div class="dbgwrap">
+                <pre
+                  class="dbgmono"
+                  id="cmd-migrate"
+                  role="region"
+                  aria-label="升级扩盘和迁移命令"
+                  tabindex="0"
+                ><code># [执行设备: 目标服务器 部署目录内] 1) 改 .env MONGO_IMAGE_TAG 后升级
+make up
+podman-compose \
+  -f podman-compose.yml \
+  --profile tools \
+  build mongo-tools
+
+# 2) 磁盘容量排查与扩容
+# [Linux] 无 VM, 直接核查宿主机卷盘余量
+df -h ~/.local/share/containers/storage
+
+# [macOS] Podman 虚拟机扩容 (只可调大)
+podman machine stop \
+  &amp;&amp; podman machine set \
+    --disk-size 64 \
+  &amp;&amp; podman machine start
+
+# 3) 迁移旧数据卷与密钥卷到新指纹
+podman volume export &lt;旧data&gt; \
+  | podman volume import \
+    &lt;prefix&gt;-&lt;新fp&gt;-data -
+
+podman volume export &lt;旧key&gt; \
+  | podman volume import \
+    &lt;prefix&gt;-&lt;新fp&gt;-key -</code></pre>
+                <button
+                  type="button"
+                  class="zooom"
+                  data-zoom="cmd-migrate"
+                  title="撑开看全部"
+                  aria-label="撑开升级扩盘迁移命令"
+                >
+                  <svg
+                    viewBox="0 0 16 16"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="1.5"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    aria-hidden="true"
+                  >
+                    <path
+                      d="M6.2 2.2H2.2v4M9.8 2.2h4v4M6.2 13.8H2.2v-4M9.8 13.8h4v-4"
+                    />
+                  </svg>
+                </button>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- ═══════════════════════════════════════════
+             列 8: 卡点与文档 (只讲: 常见报错排障 + 原文外链)
+             ═══════════════════════════════════════════ -->
+        <section class="list bad" aria-labelledby="col-faq">
+          <h2 class="lh" id="col-faq">
+            <span class="dot" aria-hidden="true"></span>
+            卡点与文档
+            <b>5</b>
+          </h2>
+          <div class="lb">
+            <!-- 报错卡 1 -->
+            <div class="c">
+              <div class="t">
+                <i class="failed" aria-hidden="true"></i>
+                <em class="fail">配置报错</em>
+                <span>· CHANGE_ME / 非字母数字</span>
+              </div>
+              <p class="p">
+                <code>.env</code> 未替换模板占位, 或账号密码里带了特殊符号。
+              </p>
+              <div class="err">
+                优先重跑 <code>codd [--rotate]</code> 重产 <code>.env</code>;
+                手调场景用 <code>openssl rand -hex 12</code> 重生密码替换后跑
+                <code>make check-env &amp;&amp; make init</code>
+              </div>
+            </div>
+
+            <!-- 报错卡 2 -->
+            <div class="c">
+              <div class="t">
+                <i class="failed" aria-hidden="true"></i>
+                <em class="fail">空库备份失败</em>
+                <span>· 异常小 / 无集合</span>
+              </div>
+              <p class="p">
+                库里没有任何集合时归档只有几十字节 (&lt;100B 校验阈值)。
+              </p>
+              <div class="err">
+                按 Step 4 先写入 1 条临时探测文档即可验通;
+                正式上线业务写表后即恢复正常
+              </div>
+            </div>
+
+            <!-- 报错卡 3 -->
+            <div class="c">
+              <div class="t">
+                <i class="failed" aria-hidden="true"></i>
+                <em class="fail">路径 / 端口</em>
+                <span>· 写不进备份 / 地址占用</span>
+              </div>
+              <p class="p">
+                macOS 仅 <code>/Users</code>, <code>/private</code>,
+                <code>/var/folders</code> 挂载进 VM (Linux 无此限制);
+                多实例复用同端口 (默认 <code>27117</code>) 会地址冲突。
+              </p>
+              <div class="err">
+                统一将 <code>BACKUP_DIR</code> 建在
+                <code>~/srv/backups/</code> 并 <code>mkdir -p</code>;
+                同机多业务优先用 <code>MONGO_EXTRA_APPS</code> 分库, 独立实例传
+                <code>ENV=.env.other</code> 换
+                <code>MONGO_HOST_PORT</code> 与指纹
+              </div>
+            </div>
+
+            <!-- 报错卡 4 -->
+            <div class="c">
+              <div class="t">
+                <i class="failed" aria-hidden="true"></i>
+                <em class="fail">工具缺失</em>
+                <span>· podman-compose not found</span>
+              </div>
+              <p class="p">
+                <code>podman</code> 本体不自带编排引擎, 缺
+                <code>podman-compose</code> 或 macOS 非交互 SSH 未加载 PATH
+                时都会报错。
+              </p>
+              <div class="err">
+                Linux 跑 <code>sudo apt install -y podman-compose</code> (或
+                <code>sudo dnf install -y podman-compose</code>); macOS 跑
+                <code>brew install podman-compose</code> 并把
+                <code>/opt/homebrew/bin</code> 写入
+                <code>~/.zshenv</code> (交互登录可另写 <code>~/.zprofile</code>)
+                后重跑 <code>make check-env</code>
+              </div>
+            </div>
+
+            <!-- 文档外链卡 -->
+            <article class="pc">
+              <div class="ch">
+                <span class="kind ok">文档索引</span>
+                <span class="repo">AI / Git 文本原件</span>
+                <h3>仓库权威文档外链</h3>
+              </div>
+              <ul class="links-list">
+                <li>
+                  <a href="./README.md"
+                    ><span>仓库总索引</span><code>README.md</code></a
+                  >
+                </li>
+                <li>
+                  <a href="./designs/generator-and-formulas.md"
+                    ><span>清单、科学公式与生成器</span
+                    ><code>designs/generator-and-formulas.md</code></a
+                  >
+                </li>
+                <li>
+                  <a href="./designs/podman-single.md"
+                    ><span>Podman 单副本部署手册</span
+                    ><code>designs/podman-single.md</code></a
+                  >
+                </li>
+                <li>
+                  <a href="./designs/podman-replica-set.md"
+                    ><span>Podman 3 物理节点部署</span
+                    ><code>podman-replica-set.md</code></a
+                  >
+                </li>
+                <li>
+                  <a href="./designs/kubernetes-single.md"
+                    ><span>K8s 单副本轻量部署</span
+                    ><code>kubernetes-single.md</code></a
+                  >
+                </li>
+                <li>
+                  <a href="./designs/kubernetes-replica-set.md"
+                    ><span>K8s 3 节点高可用部署</span
+                    ><code>kubernetes-replica-set.md</code></a
+                  >
+                </li>
+                <li>
+                  <a href="./designs/operations-and-recovery.md"
+                    ><span>通用运维、扩容与灾备</span
+                    ><code>designs/operations-and-recovery.md</code></a
+                  >
+                </li>
+                <li>
+                  <a href="./designs/mongosh-snippets.md"
+                    ><span>mongosh 运维速查</span
+                    ><code>designs/mongosh-snippets.md</code></a
+                  >
+                </li>
+                <li>
+                  <a href="../../packages/codd/docs/README.md"
+                    ><span>包级架构决策 (ADR 0012–0018)</span
+                    ><code>packages/codd/docs/README.md</code></a
+                  >
+                </li>
+              </ul>
+            </article>
+          </div>
+        </section>
+      </main>
+
+      <!-- 贴底 34px 读数条: 只放算得出来的真实条目数 -->
+      <footer class="bottom">
+        <span class="brand">CODD · TEMPLATE</span>
+        <span class="cell">主题列 <b id="cnt-cols">8</b></span>
+        <span class="cell">信息卡片 <b id="cnt-cards">39</b></span>
+        <span class="cell up">部署步骤 <b id="cnt-steps">18</b></span>
+        <span class="cell">脚本卡 <b id="cnt-cmds">21</b></span>
+        <span class="cell down">常见卡点 <b id="cnt-warns">4</b></span>
+        <span class="grow"></span>
+        <span class="live">MONGO 9.0.8</span>
+      </footer>
+    </div>
+
+    <!-- 右下角齿轮与关于弹窗 (三态主题选择 + 操作提示) -->
+    <button
+      type="button"
+      class="gear"
+      id="gear"
+      aria-label="关于与主题设置"
+      title="关于与主题 (Shift + ?)"
+    >
+      ⚙
+    </button>
+
+    <dialog id="about" closedby="any" aria-labelledby="about-title">
+      <div class="dlg-head">
+        <h2 id="about-title">Codd 模板化装配看板</h2>
+        <button type="button" class="dlg-close" id="about-close">关闭</button>
+      </div>
+      <p>
+        每一列专注讲清一个大主题, 列内拆成独立的卡片分点展示。点击任意卡片
+        (或右上角 <code>⤢</code> 图标) 可同时打开 N 个正常大小的阅读窗体,
+        支持自由拖动、八向边角缩放、与「复制」整段命令并排对照。
+      </p>
+      <p>
+        代码块与命令浮层接入与 reactor 同源的只读 Monaco Editor
+        (主题实时跟随页面切换, 离线或加载失败自动保留纯文本)。按
+        <kbd>Shift</kbd> + <kbd>?</kbd> 打开本窗口, 按
+        <kbd>Esc</kbd> 逐个关闭最上层浮层或本窗口。
+      </p>
+      <div class="themepick" role="group" aria-label="主题选择">
+        <span class="themelabel">主题</span>
+        <button type="button" data-theme-opt="system">跟随系统</button>
+        <button type="button" data-theme-opt="light">亮色</button>
+        <button type="button" data-theme-opt="dark">暗色</button>
+      </div>
+    </dialog>
+
+    <!-- 高清完整 SVG 模板 (仅供点击 ⤢ 浮层渲染, 不重复渲染) -->
+    <template id="tpl-arch-svg">
+      <svg role="img" viewBox="0 0 880 390" aria-labelledby="full-arch-t">
+        <title id="full-arch-t">Codd 总体拓扑与隔离全图</title>
+        <defs>
+          <marker
+            id="fa"
+            viewBox="0 0 10 10"
+            refX="9"
+            refY="5"
+            markerWidth="6"
+            markerHeight="6"
+            orient="auto"
+          >
+            <path d="M0 1 L10 5 L0 9 z" fill="var(--ok)" />
+          </marker>
+        </defs>
+        <!-- Left column -->
+        <rect
+          x="16"
+          y="24"
+          width="205"
+          height="90"
+          rx="9"
+          fill="var(--svg-box)"
+          stroke="var(--line)"
+          stroke-width="1.5"
+        />
+        <text
+          x="118"
+          y="52"
+          text-anchor="middle"
+          font-size="13"
+          font-weight="700"
+          fill="var(--strong)"
+        >
+          宿主机回环入口
+        </text>
+        <text
+          x="118"
+          y="75"
+          text-anchor="middle"
+          font-size="12"
+          font-family="monospace"
+          fill="var(--ok-ink)"
+        >
+          127.0.0.1:${MONGO_HOST_PORT}
+        </text>
+        <text
+          x="118"
+          y="96"
+          text-anchor="middle"
+          font-size="11"
+          fill="var(--dim)"
+        >
+          仅本机回环, 不暴露局域网/公网
+        </text>
+
+        <rect
+          x="16"
+          y="144"
+          width="205"
+          height="90"
+          rx="9"
+          fill="var(--svg-box)"
+          stroke="var(--line)"
+          stroke-width="1.5"
+        />
+        <text
+          x="118"
+          y="172"
+          text-anchor="middle"
+          font-size="13"
+          font-weight="700"
+          fill="var(--strong)"
+        >
+          同机业务容器
+        </text>
+        <text
+          x="118"
+          y="195"
+          text-anchor="middle"
+          font-size="12"
+          font-family="monospace"
+          fill="var(--ok)"
+        >
+          mongo:27117
+        </text>
+        <text
+          x="118"
+          y="216"
+          text-anchor="middle"
+          font-size="11"
+          fill="var(--dim)"
+        >
+          接入隔离桥接网 · 仅业务库读写
+        </text>
+
+        <rect
+          x="16"
+          y="272"
+          width="205"
+          height="92"
+          rx="9"
+          fill="var(--warn-soft)"
+          stroke="var(--warn)"
+          stroke-width="1.5"
+        />
+        <text
+          x="118"
+          y="300"
+          text-anchor="middle"
+          font-size="13"
+          font-weight="700"
+          fill="var(--warn-ink)"
+        >
+          宿主机备份目录
+        </text>
+        <text
+          x="118"
+          y="323"
+          text-anchor="middle"
+          font-size="12"
+          font-family="monospace"
+          fill="var(--strong)"
+        >
+          $BACKUP_DIR (/backup)
+        </text>
+        <text
+          x="118"
+          y="344"
+          text-anchor="middle"
+          font-size="11"
+          fill="var(--warn-ink)"
+        >
+          卷外留存 · macOS 需建在 /Users 下
+        </text>
+
+        <!-- Center net -->
+        <rect
+          x="256"
+          y="16"
+          width="380"
+          height="356"
+          rx="14"
+          fill="var(--svg-box-soft)"
+          stroke="var(--ok)"
+          stroke-width="1.8"
+          stroke-dasharray="6 5"
+        />
+        <rect
+          x="276"
+          y="5"
+          width="300"
+          height="22"
+          rx="6"
+          fill="var(--well)"
+          stroke="var(--ok)"
+        />
+        <text
+          x="426"
+          y="20"
+          text-anchor="middle"
+          font-size="11.5"
+          font-weight="700"
+          font-family="monospace"
+          fill="var(--ok-ink)"
+        >
+          桥接网络 &lt;prefix&gt;-&lt;FINGERPRINT&gt;-net
+        </text>
+
+        <rect
+          x="282"
+          y="42"
+          width="328"
+          height="68"
+          rx="8"
+          fill="var(--svg-box)"
+          stroke="var(--line)"
+          stroke-width="1.5"
+        />
+        <text
+          x="446"
+          y="66"
+          text-anchor="middle"
+          font-size="13"
+          font-weight="700"
+          fill="var(--strong)"
+        >
+          &lt;prefix&gt;-&lt;FINGERPRINT&gt;-init
+        </text>
+        <text
+          x="446"
+          y="85"
+          text-anchor="middle"
+          font-size="11"
+          fill="var(--mid)"
+        >
+          healthy 后执行 init.js 建 rs0 与三账号, 结束 exit=0
+        </text>
+
+        <rect
+          x="282"
+          y="136"
+          width="328"
+          height="114"
+          rx="10"
+          fill="var(--ok-soft)"
+          stroke="var(--ok)"
+          stroke-width="2"
+        />
+        <text
+          x="446"
+          y="164"
+          text-anchor="middle"
+          font-size="14"
+          font-weight="700"
+          fill="var(--strong)"
+        >
+          &lt;prefix&gt;-&lt;FINGERPRINT&gt;
+        </text>
+        <text
+          x="446"
+          y="187"
+          text-anchor="middle"
+          font-size="12"
+          font-family="monospace"
+          fill="var(--ok-ink)"
+        >
+          mongod 9.0.8 · 单节点 rs0 · 按硬件公式配额
+        </text>
+        <text
+          x="446"
+          y="209"
+          text-anchor="middle"
+          font-size="11.5"
+          fill="var(--text-2)"
+        >
+          WT_CACHE_GB · zstd/snappy · oplogSizeMB · maxConns 全动态推算
+        </text>
+        <text
+          x="446"
+          y="230"
+          text-anchor="middle"
+          font-size="11"
+          fill="var(--dim)"
+        >
+          首次启动自建随机 756B keyfile (权限 400)
+        </text>
+
+        <rect
+          x="282"
+          y="276"
+          width="328"
+          height="76"
+          rx="8"
+          fill="var(--svg-box)"
+          stroke="var(--line)"
+          stroke-width="1.5"
+        />
+        <text
+          x="446"
+          y="302"
+          text-anchor="middle"
+          font-size="13"
+          font-weight="700"
+          fill="var(--strong)"
+        >
+          mongo-tools (按需启动 · --rm 退出即删)
+        </text>
+        <text
+          x="446"
+          y="324"
+          text-anchor="middle"
+          font-size="11.5"
+          font-family="monospace"
+          fill="var(--ok)"
+        >
+          Bun + mongodump / mongorestore
+        </text>
+        <text
+          x="446"
+          y="341"
+          text-anchor="middle"
+          font-size="11"
+          fill="var(--dim)"
+        >
+          make backup / drill / restore 统一入口
+        </text>
+
+        <!-- Right volumes -->
+        <rect
+          x="668"
+          y="88"
+          width="196"
+          height="88"
+          rx="9"
+          fill="var(--svg-box)"
+          stroke="var(--line)"
+          stroke-width="1.5"
+        />
+        <text
+          x="766"
+          y="116"
+          text-anchor="middle"
+          font-size="13"
+          font-weight="700"
+          fill="var(--strong)"
+        >
+          数据命名卷
+        </text>
+        <text
+          x="766"
+          y="139"
+          text-anchor="middle"
+          font-size="11.5"
+          font-family="monospace"
+          fill="var(--ok)"
+        >
+          ...-data → /data/db
+        </text>
+        <text
+          x="766"
+          y="159"
+          text-anchor="middle"
+          font-size="11"
+          fill="var(--dim)"
+        >
+          make down 保留 · 随宿主盘增长
+        </text>
+
+        <rect
+          x="668"
+          y="206"
+          width="196"
+          height="88"
+          rx="9"
+          fill="var(--svg-box)"
+          stroke="var(--line)"
+          stroke-width="1.5"
+        />
+        <text
+          x="766"
+          y="234"
+          text-anchor="middle"
+          font-size="13"
+          font-weight="700"
+          fill="var(--strong)"
+        >
+          密钥命名卷
+        </text>
+        <text
+          x="766"
+          y="257"
+          text-anchor="middle"
+          font-size="11.5"
+          font-family="monospace"
+          fill="var(--acc-ink)"
+        >
+          ...-key → /etc/mongo/keyfile
+        </text>
+        <text
+          x="766"
+          y="277"
+          text-anchor="middle"
+          font-size="11"
+          fill="var(--dim)"
+        >
+          迁卷必须与 -data 成对搬走
+        </text>
+
+        <!-- Arrows -->
+        <path
+          d="M221 69 L240 69 L240 168 L280 168"
+          fill="none"
+          stroke="var(--ok)"
+          stroke-width="1.6"
+          marker-end="url(#fa)"
+        />
+        <path
+          d="M221 189 L280 189"
+          fill="none"
+          stroke="var(--ok)"
+          stroke-width="1.6"
+          marker-end="url(#fa)"
+        />
+        <path
+          d="M446 110 L446 134"
+          fill="none"
+          stroke="var(--ok)"
+          stroke-width="1.6"
+          marker-end="url(#fa)"
+        />
+        <path
+          d="M446 276 L446 253"
+          fill="none"
+          stroke="var(--ok)"
+          stroke-width="1.6"
+          marker-end="url(#fa)"
+        />
+        <path
+          d="M282 316 L224 316"
+          fill="none"
+          stroke="var(--ok)"
+          stroke-width="1.6"
+          marker-end="url(#fa)"
+        />
+        <path
+          d="M610 172 L640 172 L640 132 L666 132"
+          fill="none"
+          stroke="var(--ok)"
+          stroke-width="1.6"
+          marker-end="url(#fa)"
+        />
+        <path
+          d="M610 218 L640 218 L640 250 L666 250"
+          fill="none"
+          stroke="var(--ok)"
+          stroke-width="1.6"
+          marker-end="url(#fa)"
+        />
+      </svg>
+    </template>
+
+    <div id="live-status" class="visually-hidden" aria-live="polite"></div>
+
+    <script>
+      (() => {
+        const THEME_KEY = 'codd-docs-theme';
+        const root = document.documentElement;
+        const dialog = document.getElementById('about');
+        const gear = document.getElementById('gear');
+        const closeAbout = document.getElementById('about-close');
+        const live = document.getElementById('live-status');
+        const themeBtns = Array.from(
+          document.querySelectorAll('[data-theme-opt]'),
+        );
+
+        const announce = (msg) => {
+          if (live) live.textContent = msg;
+        };
+
+        /* ── 1. 底部栏真实计数: 只算页面里真实存在的条目 ── */
+        const cols = document.querySelectorAll('.board > section.list').length;
+        const cards = document.querySelectorAll(
+          '.board .lb > :where(.pc, .sc, .dc, .c)',
+        ).length;
+        const steps = document.querySelectorAll(
+          '.board .list.on .lb > :where(.dc, .c)',
+        ).length;
+        const cmds = document.querySelectorAll('.board pre.dbgmono').length;
+        const warns = document.querySelectorAll(
+          '.board .list.bad .lb > .c',
+        ).length;
+        document.getElementById('cnt-cols').textContent = String(cols);
+        document.getElementById('cnt-cards').textContent = String(cards);
+        document.getElementById('cnt-steps').textContent = String(steps);
+        document.getElementById('cnt-cmds').textContent = String(cmds);
+        document.getElementById('cnt-warns').textContent = String(warns);
+
+        /* ── 2. 三态主题切换 (跟随系统 = 移除属性与存储) ── */
+        const getChoice = () => {
+          try {
+            const v = localStorage.getItem(THEME_KEY);
+            return v === 'light' || v === 'dark' ? v : 'system';
+          } catch (_) {
+            return 'system';
+          }
+        };
+
+        const applyTheme = (choice, persist) => {
+          if (choice === 'system') {
+            root.removeAttribute('data-theme');
+            if (persist) {
+              try {
+                localStorage.removeItem(THEME_KEY);
+              } catch (_) {}
+            }
+          } else {
+            root.setAttribute('data-theme', choice);
+            if (persist) {
+              try {
+                localStorage.setItem(THEME_KEY, choice);
+              } catch (_) {}
+            }
+          }
+          for (const btn of themeBtns) {
+            btn.classList.toggle(
+              'on',
+              btn.getAttribute('data-theme-opt') === choice,
+            );
+          }
+        };
+
+        applyTheme(getChoice(), false);
+
+        for (const btn of themeBtns) {
+          btn.addEventListener('click', () => {
+            const next = btn.getAttribute('data-theme-opt') || 'system';
+            applyTheme(next, true);
+            announce('已切换主题: ' + btn.textContent);
+          });
+        }
+
+        /* ── 3. 关于/设置弹窗 (齿轮 + Shift+?) 与 Monaco Editor 按需接入 ── */
+        if (gear && dialog) {
+          gear.addEventListener('click', () => {
+            if (!dialog.open) dialog.showModal();
+          });
+        }
+        if (closeAbout && dialog) {
+          closeAbout.addEventListener('click', () => dialog.close());
+        }
+        if (dialog) {
+          dialog.addEventListener('click', (e) => {
+            if (e.target === dialog) dialog.close();
+          });
+        }
+
+        const rawCodeMap = new WeakMap();
+        const getCodeText = (pre) => {
+          if (!pre) return '';
+          if (rawCodeMap.has(pre)) return rawCodeMap.get(pre) || '';
+          return (pre.textContent || '').trim();
+        };
+
+        const calcInlineHeight = (code) => {
+          const lines = String(code || '').split('\n').length;
+          return Math.min(Math.max(92, lines * 17 + 16), 192);
+        };
+
+        const calcModalHeight = (code, cap = 460) => {
+          const lines = String(code || '').split('\n').length;
+          return Math.min(Math.max(110, lines * 20 + 24), cap);
+        };
+
+        document.querySelectorAll('pre.dbgmono').forEach((pre) => {
+          const raw = (pre.textContent || '').trim();
+          rawCodeMap.set(pre, raw);
+          pre.style.height = calcInlineHeight(raw) + 'px';
+        });
+
+        const MONACO_CDN_VS =
+          'https://cdn.jsdelivr.net/npm/monaco-editor@0.57.0/min/vs';
+        const MONACO_CDN_MIN =
+          'https://cdn.jsdelivr.net/npm/monaco-editor@0.57.0/min/';
+
+        const MONACO_THEME_DARK = {
+          base: 'vs-dark',
+          inherit: true,
+          rules: [
+            { token: '', foreground: 'c6d0da' },
+            { token: 'comment', foreground: '5f6a75', fontStyle: 'italic' },
+            { token: 'string', foreground: 'a3e3c0' },
+            { token: 'string.key.json', foreground: '8fb8e8' },
+            { token: 'string.value.json', foreground: 'a3e3c0' },
+            { token: 'number', foreground: 'e2b57c' },
+            { token: 'keyword', foreground: 'c79bdd' },
+            { token: 'variable', foreground: '8fb8e8' },
+            { token: 'variable.predefined', foreground: '8fb8e8' },
+            { token: 'attribute.name', foreground: '8fb8e8' },
+            { token: 'type', foreground: 'c79bdd' },
+            { token: 'operators', foreground: '737f8b' },
+            { token: 'delimiter', foreground: '5f6a75' },
+            { token: 'delimiter.bracket.json', foreground: '737f8b' },
+          ],
+          colors: {
+            'editor.background': '#0e1016',
+            'editor.foreground': '#8e98a2',
+            'editorLineNumber.foreground': '#39434d',
+            'editorLineNumber.activeForeground': '#6c7883',
+            'editor.selectionBackground': '#243040',
+            'editor.lineHighlightBackground': '#141922',
+            'editorCursor.foreground': '#6cc39a',
+            'editorIndentGuide.background1': '#1b222b',
+            'editorWidget.background': '#14171e',
+            'editorGutter.background': '#0e1016',
+            'scrollbarSlider.background': '#ffffff17',
+            'scrollbarSlider.hoverBackground': '#ffffff2e',
+            'scrollbarSlider.activeBackground': '#ffffff42',
+          },
+        };
+
+        const MONACO_THEME_LIGHT = {
+          base: 'vs',
+          inherit: true,
+          rules: [
+            { token: '', foreground: '37424d' },
+            { token: 'comment', foreground: '8b949e', fontStyle: 'italic' },
+            { token: 'string', foreground: '27795a' },
+            { token: 'string.key.json', foreground: '2c5f96' },
+            { token: 'string.value.json', foreground: '27795a' },
+            { token: 'number', foreground: '9a6320' },
+            { token: 'keyword', foreground: '7b3fa8' },
+            { token: 'variable', foreground: '2c5f96' },
+            { token: 'variable.predefined', foreground: '2c5f96' },
+            { token: 'attribute.name', foreground: '2c5f96' },
+            { token: 'type', foreground: '7b3fa8' },
+            { token: 'operators', foreground: '6f7b86' },
+            { token: 'delimiter', foreground: '8b949e' },
+            { token: 'delimiter.bracket.json', foreground: '6f7b86' },
+          ],
+          colors: {
+            'editor.background': '#f5f7fa',
+            'editor.foreground': '#4a5560',
+            'editorLineNumber.foreground': '#b3bac1',
+            'editorLineNumber.activeForeground': '#6a747e',
+            'editor.selectionBackground': '#d7e3ee',
+            'editor.lineHighlightBackground': '#eef1f4',
+            'editorCursor.foreground': '#2f7d5b',
+            'editorWidget.background': '#ffffff',
+            'editorGutter.background': '#f5f7fa',
+            'scrollbarSlider.background': '#0f172819',
+            'scrollbarSlider.hoverBackground': '#0f17282e',
+            'scrollbarSlider.activeBackground': '#0f172840',
+            'scrollbar.shadow': '#0f17280d',
+          },
+        };
+
+        const pickMonacoTheme = () => {
+          const attr = root.getAttribute('data-theme');
+          const light =
+            attr === 'light' ||
+            (attr === null &&
+              typeof window.matchMedia === 'function' &&
+              window.matchMedia('(prefers-color-scheme: light)').matches);
+          return light ? 'reactor-light' : 'reactor-dark';
+        };
+
+        let monacoThemeWatched = false;
+        const watchMonacoTheme = (api) => {
+          if (monacoThemeWatched) return;
+          monacoThemeWatched = true;
+          const apply = () => api.editor.setTheme(pickMonacoTheme());
+          if (typeof window.matchMedia === 'function') {
+            const mq = window.matchMedia('(prefers-color-scheme: light)');
+            if (mq && typeof mq.addEventListener === 'function') {
+              mq.addEventListener('change', apply);
+            }
+          }
+          if (typeof MutationObserver === 'function') {
+            new MutationObserver(apply).observe(root, {
+              attributes: true,
+              attributeFilter: ['data-theme'],
+            });
+          }
+        };
+
+        let monacoPromise = null;
+        const loadMonaco = () => {
+          if (window.monaco) return Promise.resolve(window.monaco);
+          if (monacoPromise) return monacoPromise;
+          if (!document.head) {
+            return Promise.reject(new Error('No document.head'));
+          }
+
+          monacoPromise = new Promise((resolve, reject) => {
+            let settled = false;
+            const fail = (err) => {
+              if (settled) return;
+              settled = true;
+              reject(err instanceof Error ? err : new Error(String(err)));
+            };
+            const timer = window.setTimeout(
+              () => fail(new Error('Monaco CDN timeout')),
+              8000,
+            );
+
+            try {
+              if (!window.MonacoEnvironment) {
+                window.MonacoEnvironment = {
+                  getWorkerUrl: () =>
+                    'data:text/javascript;charset=utf-8,' +
+                    encodeURIComponent(
+                      "self.MonacoEnvironment={baseUrl:'" +
+                        MONACO_CDN_MIN +
+                        "'};importScripts('" +
+                        MONACO_CDN_MIN +
+                        "vs/base/worker/workerMain.js');",
+                    ),
+                };
+              }
+            } catch (_) {}
+
+            const loader = document.createElement('script');
+            loader.src = MONACO_CDN_VS + '/loader.js';
+            loader.async = true;
+            loader.onload = () => {
+              try {
+                if (typeof window.require !== 'function') {
+                  window.clearTimeout(timer);
+                  fail(new Error('AMD loader missing'));
+                  return;
+                }
+                window.require.config({ paths: { vs: MONACO_CDN_VS } });
+                window.require(
+                  ['vs/editor/editor.main'],
+                  () => {
+                    window.clearTimeout(timer);
+                    if (settled) return;
+                    settled = true;
+                    const api = window.monaco;
+                    api.editor.defineTheme('reactor-dark', MONACO_THEME_DARK);
+                    api.editor.defineTheme('reactor-light', MONACO_THEME_LIGHT);
+                    resolve(api);
+                  },
+                  (err) => {
+                    window.clearTimeout(timer);
+                    fail(err);
+                  },
+                );
+              } catch (err) {
+                window.clearTimeout(timer);
+                fail(err);
+              }
+            };
+            loader.onerror = () => {
+              window.clearTimeout(timer);
+              fail(new Error('Failed to load loader.js'));
+            };
+            document.head.appendChild(loader);
+          });
+
+          monacoPromise.catch(() => {
+            monacoPromise = null;
+          });
+
+          return monacoPromise;
+        };
+
+        const mountMonaco = (el, opts) => {
+          let disposed = false;
+          let editor = null;
+          const {
+            code,
+            language = 'shell',
+            fontSize = 10.5,
+            lineHeight = 16,
+            lineNumbers = false,
+            wordWrap = 'off',
+            alwaysConsumeMouseWheel = false,
+            mountedClass = 'mounted',
+            onReady,
+            onError,
+          } = opts;
+
+          const raf =
+            typeof window.requestAnimationFrame === 'function'
+              ? window.requestAnimationFrame
+              : (cb) => window.setTimeout(cb, 0);
+
+          loadMonaco()
+            .then((monaco) => {
+              if (disposed || !el.isConnected) return;
+              raf(() => {
+                if (disposed || !el.isConnected) return;
+                el.textContent = '';
+                el.classList.remove('fallback');
+                el.classList.add(mountedClass);
+
+                editor = monaco.editor.create(el, {
+                  value: code,
+                  language,
+                  readOnly: true,
+                  theme: pickMonacoTheme(),
+                  minimap: { enabled: false },
+                  scrollBeyondLastLine: false,
+                  fontFamily:
+                    "ui-monospace, 'SF Mono', Menlo, Consolas, monospace",
+                  fontSize,
+                  lineHeight,
+                  wordWrap,
+                  lineNumbers: lineNumbers ? 'on' : 'off',
+                  folding: Boolean(lineNumbers),
+                  glyphMargin: false,
+                  lineDecorationsWidth: lineNumbers ? 10 : 8,
+                  renderLineHighlight: 'none',
+                  overviewRulerLanes: 0,
+                  hideCursorInOverviewRuler: true,
+                  overviewRulerBorder: false,
+                  automaticLayout: true,
+                  padding: {
+                    top: lineNumbers ? 10 : 8,
+                    bottom: lineNumbers ? 10 : 8,
+                  },
+                  scrollbar: {
+                    alwaysConsumeMouseWheel,
+                    verticalScrollbarSize: 4,
+                    horizontalScrollbarSize: 4,
+                  },
+                });
+                editor.layout();
+                watchMonacoTheme(monaco);
+                if (typeof onReady === 'function') onReady(editor);
+              });
+            })
+            .catch((err) => {
+              if (disposed) return;
+              el.classList.remove(mountedClass);
+              el.classList.add('fallback');
+              if (!el.textContent) el.textContent = code;
+              if (typeof onError === 'function') onError(err);
+            });
+
+          return () => {
+            disposed = true;
+            if (editor) {
+              editor.dispose();
+              editor = null;
+            }
+          };
+        };
+
+        // 为看板上的 21 块指令卡片渐进挂载只读 Monaco Editor
+        if (document.head) {
+          document.querySelectorAll('.board pre.dbgmono').forEach((pre) => {
+            mountMonaco(pre, {
+              code: getCodeText(pre),
+              language: 'shell',
+              fontSize: 10.5,
+              lineHeight: 16,
+              lineNumbers: false,
+              wordWrap: 'off',
+              alwaysConsumeMouseWheel: false,
+            });
+          });
+        }
+
+        const closeLayerEntry = (key, entry) => {
+          if (Array.isArray(entry.disposers)) {
+            entry.disposers.forEach((dispose) => {
+              try {
+                dispose();
+              } catch (_) {}
+            });
+          }
+          entry.el.remove();
+          layers.delete(key);
+        };
+
+        window.addEventListener('keydown', (e) => {
+          if (
+            e.key === 'Escape' &&
+            (!dialog || !dialog.open) &&
+            layers.size > 0
+          ) {
+            let topKey = null;
+            let topEntry = null;
+            let maxZ = -1;
+            for (const [k, ent] of layers.entries()) {
+              const z = parseInt(ent.el.style.zIndex || '0', 10);
+              if (z >= maxZ) {
+                maxZ = z;
+                topKey = k;
+                topEntry = ent;
+              }
+            }
+            if (topEntry && topKey) {
+              e.preventDefault();
+              closeLayerEntry(topKey, topEntry);
+              if (
+                topEntry.trigger &&
+                typeof topEntry.trigger.focus === 'function'
+              ) {
+                topEntry.trigger.focus();
+              }
+              announce('已关闭浮层');
+            }
+            return;
+          }
+          const isQ = e.key === '?' || (e.code === 'Slash' && e.shiftKey);
+          if (!isQ || !dialog) return;
+          e.preventDefault();
+          if (!dialog.open) dialog.showModal();
+        });
+
+        /* ── 4. 复制反馈与卡片窗体增强 ── */
+        const createExpandIcon = () => {
+          const ns = 'http://www.w3.org/2000/svg';
+          const svg = document.createElementNS(ns, 'svg');
+          svg.setAttribute('viewBox', '0 0 16 16');
+          svg.setAttribute('fill', 'none');
+          svg.setAttribute('stroke', 'currentColor');
+          svg.setAttribute('stroke-width', '1.5');
+          svg.setAttribute('stroke-linecap', 'round');
+          svg.setAttribute('stroke-linejoin', 'round');
+          svg.setAttribute('aria-hidden', 'true');
+          const p = document.createElementNS(ns, 'path');
+          p.setAttribute(
+            'd',
+            'M6.2 2.2H2.2v4M9.8 2.2h4v4M6.2 13.8H2.2v-4M9.8 13.8h4v-4',
+          );
+          svg.appendChild(p);
+          return svg;
+        };
+
+        const getCardMeta = (card) => {
+          const colEl = card.closest('section.list');
+          const colHead = colEl ? colEl.querySelector('.lh') : null;
+          let colName = '';
+          if (colHead) {
+            colName = Array.from(colHead.childNodes)
+              .filter((n) => n.nodeType === Node.TEXT_NODE)
+              .map((n) => n.textContent || '')
+              .join('')
+              .trim();
+          }
+          const h3 = card.querySelector('h3');
+          const dcHead = card.querySelector('.dc .h');
+          const cEm = card.querySelector('.c .t em');
+          const cSpan = card.querySelector('.c .t span');
+          const sid = card.querySelector('.sc .sid');
+          let cardTitle = '';
+          if (h3) {
+            cardTitle = (h3.textContent || '').trim();
+          } else if (dcHead) {
+            const em = (dcHead.querySelector('em')?.textContent || '').trim();
+            const sp = (dcHead.querySelector('span')?.textContent || '').trim();
+            cardTitle = [em, sp]
+              .filter(Boolean)
+              .join(' ')
+              .replace(/\s+·\s+/, ' · ');
+          } else if (cEm) {
+            cardTitle = [
+              (cEm.textContent || '').trim(),
+              (cSpan?.textContent || '').trim(),
+            ]
+              .filter(Boolean)
+              .join(' ');
+          } else if (sid) {
+            cardTitle = (sid.textContent || '').trim();
+          }
+          return [colName, cardTitle].filter(Boolean).join(' · ') || '卡片详情';
+        };
+
+        const cardList = Array.from(
+          document.querySelectorAll('.board .lb > :where(.pc, .sc, .dc, .c)'),
+        );
+        const iconProto = createExpandIcon();
+        cardList.forEach((card, idx) => {
+          const isArchCard = Boolean(
+            card.querySelector('.ch .zooom[data-zoom="arch-svg"]'),
+          );
+          const key = isArchCard ? 'arch-svg' : 'card-' + idx;
+          card.setAttribute('data-card-key', key);
+
+          if (isArchCard) return;
+
+          const openBtn = document.createElement('button');
+          openBtn.type = 'button';
+          openBtn.className = 'card-open';
+          openBtn.title = '在独立窗体中阅读';
+          openBtn.setAttribute(
+            'aria-label',
+            '打开阅读窗体: ' + getCardMeta(card),
+          );
+          openBtn.appendChild(iconProto.cloneNode(true));
+
+          if (card.classList.contains('pc')) {
+            const ch = card.querySelector('.ch');
+            const h3 = ch ? ch.querySelector('h3') : null;
+            if (ch) ch.insertBefore(openBtn, h3);
+          } else if (card.classList.contains('dc')) {
+            const h = card.querySelector('.h');
+            if (h) h.appendChild(openBtn);
+          } else if (card.classList.contains('c')) {
+            const t = card.querySelector('.t');
+            if (t) t.appendChild(openBtn);
+          } else if (card.classList.contains('sc')) {
+            card.insertBefore(openBtn, card.firstChild);
+          }
+        });
+
+        const copyText = (text, btn) => {
+          if (!navigator.clipboard) return;
+          navigator.clipboard
+            .writeText(text)
+            .then(() => {
+              const prev = btn.textContent;
+              btn.classList.add('copied');
+              btn.textContent = '已复制';
+              announce('已复制到剪贴板');
+              window.setTimeout(() => {
+                btn.classList.remove('copied');
+                btn.textContent = prev;
+              }, 1200);
+            })
+            .catch(() => {});
+        };
+
+        let downPt = null;
+        document.addEventListener('mousedown', (e) => {
+          downPt = { x: e.clientX, y: e.clientY };
+        });
+
+        document.addEventListener('click', (e) => {
+          const target = e.target instanceof Element ? e.target : null;
+          if (!target) return;
+
+          const sidBtn = target.closest('.sc .sid[data-copy-text]');
+          if (sidBtn) {
+            copyText(sidBtn.getAttribute('data-copy-text') || '', sidBtn);
+            return;
+          }
+
+          const cmdBtn = target.closest('.copy-sid[data-copy]');
+          if (cmdBtn) {
+            const id = cmdBtn.getAttribute('data-copy');
+            const src = id ? document.getElementById(id) : null;
+            if (src) {
+              copyText(getCodeText(src), cmdBtn);
+            }
+            return;
+          }
+
+          const zoomBtn = target.closest('.zooom[data-zoom]');
+          if (zoomBtn) {
+            openExpandLayer(zoomBtn.getAttribute('data-zoom') || '', zoomBtn);
+            return;
+          }
+
+          const openBtn = target.closest('.card-open');
+          if (openBtn) {
+            const host = openBtn.closest('[data-card-key]');
+            if (host) {
+              openExpandLayer(
+                host.getAttribute('data-card-key') || '',
+                openBtn,
+              );
+            }
+            return;
+          }
+
+          const cardHost = target.closest('.board .lb > [data-card-key]');
+          if (cardHost) {
+            if (
+              target.closest(
+                'a, button, input, select, textarea, summary, .scrollbar',
+              )
+            ) {
+              return;
+            }
+            if (e.detail >= 2) return;
+            if (
+              downPt &&
+              Math.hypot(e.clientX - downPt.x, e.clientY - downPt.y) > 5
+            ) {
+              return;
+            }
+            const sel = window.getSelection
+              ? window.getSelection().toString().trim()
+              : '';
+            if (sel) return;
+            openExpandLayer(
+              cardHost.getAttribute('data-card-key') || '',
+              cardHost.querySelector('.card-open, .zooom'),
+            );
+          }
+        });
+
+        /* ── 5. 非模态毛玻璃浮层 (N 窗并存 + Monaco + 层叠错位 + 复点闪烁 + 拖动 + 八向缩放边光) ── */
+        const layers = new Map();
+        let topZ = 100;
+        let expandSeq = 0;
+        const CASCADE = 26;
+        const MIN_W = 340;
+        const MIN_H = 220;
+        const DIRS = ['n', 's', 'e', 'w', 'ne', 'nw', 'se', 'sw'];
+
+        const sanitizeCloneIds = (rootEl, prefix) => {
+          const idMap = new Map();
+          rootEl.querySelectorAll('[id]').forEach((el) => {
+            const oldId = el.getAttribute('id');
+            if (!oldId) return;
+            const nextId = prefix + oldId;
+            idMap.set(oldId, nextId);
+            el.setAttribute('id', nextId);
+          });
+          if (!idMap.size) return;
+          rootEl.querySelectorAll('*').forEach((el) => {
+            for (const attr of Array.from(el.attributes)) {
+              let val = attr.value;
+              let changed = false;
+              if (
+                attr.name === 'aria-labelledby' ||
+                attr.name === 'aria-describedby'
+              ) {
+                val = val
+                  .split(/\s+/)
+                  .map((tok) => idMap.get(tok) || tok)
+                  .join(' ');
+                changed = val !== attr.value;
+              } else if (val.includes('#')) {
+                for (const [oldId, nextId] of idMap.entries()) {
+                  if (val.includes('#' + oldId)) {
+                    val = val.split('#' + oldId).join('#' + nextId);
+                    changed = true;
+                  }
+                }
+              }
+              if (changed) el.setAttribute(attr.name, val);
+            }
+          });
+        };
+
+        const focusLayer = (entry) => {
+          topZ += 1;
+          entry.el.style.zIndex = String(topZ);
+        };
+
+        const flashLayer = (entry) => {
+          entry.el.classList.remove('flash');
+          void entry.el.offsetWidth;
+          entry.el.classList.add('flash');
+        };
+
+        const openExpandLayer = (key, triggerEl) => {
+          if (!key) return;
+          const existing = layers.get(key);
+          if (existing) {
+            focusLayer(existing);
+            flashLayer(existing);
+            return;
+          }
+
+          expandSeq += 1;
+          const seqPrefix = 'exp-' + expandSeq + '-';
+          let title = '';
+          let copySourceText = '';
+          let bodyNode;
+          let hintNode = null;
+          let isCardDlg = false;
+          let isWideCard = false;
+          let isStandaloneCode = false;
+          const pendingMonacoMounts = [];
+
+          if (key === 'arch-svg' || key.startsWith('card-')) {
+            const cardEl = document.querySelector(`[data-card-key="${key}"]`);
+            if (cardEl) {
+              isCardDlg = true;
+              title = getCardMeta(cardEl);
+
+              const origPres = Array.from(
+                cardEl.querySelectorAll('pre.dbgmono'),
+              );
+              const sidSrc = cardEl.querySelector('.sid[data-copy-text]');
+              if (origPres.length > 0) {
+                copySourceText = getCodeText(origPres[0]);
+              } else if (sidSrc) {
+                copySourceText = sidSrc.getAttribute('data-copy-text') || '';
+              }
+
+              const clone = cardEl.cloneNode(true);
+              clone.removeAttribute('data-card-key');
+              clone
+                .querySelectorAll('.card-open, .zooom, .copy-sid')
+                .forEach((btn) => btn.remove());
+              clone
+                .querySelectorAll('pre.dbgmono[tabindex]')
+                .forEach((pre) => pre.removeAttribute('tabindex'));
+
+              // 在卡片阅读窗里把克隆代码块重设为干净容器, 之后再挂载完整尺寸的 Monaco Editor
+              const clonePres = Array.from(
+                clone.querySelectorAll('pre.dbgmono'),
+              );
+              clonePres.forEach((cPre, idx) => {
+                const raw = getCodeText(origPres[idx]);
+                cPre.className = 'dbgmono';
+                cPre.textContent = raw;
+                cPre.style.height = calcModalHeight(raw, 360) + 'px';
+                pendingMonacoMounts.push({
+                  el: cPre,
+                  opts: {
+                    code: raw,
+                    language: 'shell',
+                    fontSize: 12,
+                    lineHeight: 19,
+                    lineNumbers: true,
+                    wordWrap: 'off',
+                    alwaysConsumeMouseWheel: false,
+                    mountedClass: 'mounted',
+                  },
+                });
+              });
+
+              if (key === 'arch-svg') {
+                const tpl = document.getElementById('tpl-arch-svg');
+                const svgBox = clone.querySelector('.svgbox');
+                if (tpl && 'content' in tpl && svgBox) {
+                  svgBox.textContent = '';
+                  svgBox.appendChild(tpl.content.cloneNode(true));
+                  isWideCard = true;
+                }
+              }
+
+              sanitizeCloneIds(clone, seqPrefix);
+
+              if (clonePres.length > 0) {
+                isWideCard = true;
+              }
+
+              bodyNode = document.createElement('div');
+              bodyNode.className = 'expandbody card-view';
+              bodyNode.appendChild(clone);
+            } else if (key === 'arch-svg') {
+              const tpl = document.getElementById('tpl-arch-svg');
+              title = 'Codd 总体架构与隔离拓扑全图';
+              bodyNode = document.createElement('div');
+              bodyNode.className = 'expandbody svg-view';
+              if (tpl && 'content' in tpl) {
+                const svgFrag = tpl.content.cloneNode(true);
+                sanitizeCloneIds(svgFrag, seqPrefix);
+                bodyNode.appendChild(svgFrag);
+              }
+              isWideCard = true;
+            } else {
+              return;
+            }
+          } else {
+            const srcPre = document.getElementById(key);
+            if (!srcPre) return;
+            title = srcPre.getAttribute('aria-label') || '完整命令';
+            copySourceText = getCodeText(srcPre);
+            isStandaloneCode = true;
+            isWideCard = true;
+
+            hintNode = document.createElement('div');
+            hintNode.className = 'mnhint';
+            hintNode.textContent = '编辑器加载中…';
+
+            bodyNode = document.createElement('pre');
+            bodyNode.className = 'expandbody';
+            bodyNode.textContent = copySourceText;
+            bodyNode.style.height = calcModalHeight(copySourceText, 460) + 'px';
+
+            pendingMonacoMounts.push({
+              el: bodyNode,
+              opts: {
+                code: copySourceText,
+                language: 'shell',
+                fontSize: 12,
+                lineHeight: 19,
+                lineNumbers: true,
+                wordWrap: 'off',
+                alwaysConsumeMouseWheel: true,
+                mountedClass: 'monaco',
+                onReady: () => {
+                  if (hintNode && hintNode.parentNode) hintNode.remove();
+                },
+                onError: (err) => {
+                  if (hintNode) {
+                    hintNode.classList.add('bad');
+                    hintNode.textContent =
+                      '编辑器加载失败, 已回退为纯文本: ' +
+                      String(err?.message || err || '');
+                  }
+                },
+              },
+            });
+          }
+
+          const layer = document.createElement('div');
+          layer.className = isCardDlg
+            ? isWideCard
+              ? 'expanddlg card-dlg wide'
+              : 'expanddlg card-dlg'
+            : 'expanddlg';
+          layer.setAttribute('role', 'region');
+          layer.setAttribute('aria-label', title);
+
+          const vw = window.innerWidth;
+          const vh = window.innerHeight;
+          const estW = isWideCard
+            ? Math.min(760, vw * 0.92)
+            : Math.min(620, vw * 0.9);
+          const count = layers.size;
+          const cycle = count % 7;
+          const wave = Math.floor(count / 7);
+          let left = Math.max(
+            16,
+            Math.round((vw - estW) / 2) + (cycle - 1) * CASCADE + wave * 24,
+          );
+          let top = Math.max(
+            24,
+            Math.round(vh * 0.1) + cycle * CASCADE + wave * 18,
+          );
+          if (left + estW > vw - 16) left = Math.max(16, vw - estW - 16);
+          if (top > vh - 240) top = Math.max(24, vh - 240);
+
+          topZ += 1;
+          layer.style.left = left + 'px';
+          layer.style.top = top + 'px';
+          layer.style.zIndex = String(topZ);
+
+          const head = document.createElement('div');
+          head.className = 'expandhead';
+          const titleSpan = document.createElement('span');
+          titleSpan.textContent = title;
+          head.appendChild(titleSpan);
+
+          const acts = document.createElement('div');
+          acts.className = 'exp-acts';
+          if (copySourceText) {
+            const cpBtn = document.createElement('button');
+            cpBtn.type = 'button';
+            cpBtn.textContent = '复制';
+            cpBtn.addEventListener('click', () =>
+              copyText(copySourceText, cpBtn),
+            );
+            acts.appendChild(cpBtn);
+          }
+          const clsBtn = document.createElement('button');
+          clsBtn.type = 'button';
+          clsBtn.textContent = '关闭';
+          acts.appendChild(clsBtn);
+          head.appendChild(acts);
+
+          layer.appendChild(head);
+          if (hintNode) layer.appendChild(hintNode);
+          layer.appendChild(bodyNode);
+
+          const entry = {
+            el: layer,
+            trigger: triggerEl || null,
+            disposers: [],
+            editors: [],
+          };
+
+          for (const dir of DIRS) {
+            const h = document.createElement('span');
+            h.className = 'rz rz-' + dir;
+            h.addEventListener('mousemove', (ev) => {
+              const r = h.getBoundingClientRect();
+              h.style.setProperty(
+                '--mx',
+                (((ev.clientX - r.left) / r.width) * 100).toFixed(1) + '%',
+              );
+              h.style.setProperty(
+                '--my',
+                (((ev.clientY - r.top) / r.height) * 100).toFixed(1) + '%',
+              );
+            });
+            h.addEventListener('mousedown', (ev) => {
+              ev.preventDefault();
+              ev.stopPropagation();
+              const rect = layer.getBoundingClientRect();
+              layer.style.setProperty('width', rect.width + 'px', 'important');
+              layer.style.setProperty(
+                'height',
+                rect.height + 'px',
+                'important',
+              );
+              layer.style.setProperty('max-width', 'none', 'important');
+              layer.style.setProperty('max-height', 'none', 'important');
+              if (isStandaloneCode) {
+                bodyNode.style.height = '';
+                bodyNode.style.flex = '1 1 auto';
+              }
+              activeResize = {
+                entry,
+                layer,
+                dir,
+                sx: ev.clientX,
+                sy: ev.clientY,
+                l: rect.left,
+                t: rect.top,
+                w: rect.width,
+                h: rect.height,
+              };
+              focusLayer(entry);
+            });
+            layer.appendChild(h);
+          }
+
+          layers.set(key, entry);
+
+          layer.addEventListener('mousedown', () => focusLayer(entry));
+          head.addEventListener('mousedown', (ev) => {
+            if (
+              ev.target instanceof Element &&
+              ev.target.closest('button, .rz')
+            )
+              return;
+            ev.preventDefault();
+            activeDrag = {
+              layer,
+              sx: ev.clientX,
+              sy: ev.clientY,
+              ol: parseFloat(layer.style.left) || 0,
+              ot: parseFloat(layer.style.top) || 0,
+            };
+            focusLayer(entry);
+          });
+          clsBtn.addEventListener('click', () => {
+            closeLayerEntry(key, entry);
+            if (entry.trigger && typeof entry.trigger.focus === 'function') {
+              entry.trigger.focus();
+            }
+          });
+
+          document.body.appendChild(layer);
+
+          if (document.head) {
+            pendingMonacoMounts.forEach((m) => {
+              const prevOnReady = m.opts.onReady;
+              const dispose = mountMonaco(m.el, {
+                ...m.opts,
+                onReady: (ed) => {
+                  entry.editors.push(ed);
+                  if (typeof prevOnReady === 'function') prevOnReady(ed);
+                },
+              });
+              entry.disposers.push(dispose);
+            });
+          } else if (hintNode && hintNode.parentNode) {
+            hintNode.remove();
+          }
+        };
+
+        let activeDrag = null;
+        let activeResize = null;
+
+        document.addEventListener('mousemove', (ev) => {
+          if (activeDrag) {
+            activeDrag.layer.style.left =
+              activeDrag.ol + (ev.clientX - activeDrag.sx) + 'px';
+            activeDrag.layer.style.top =
+              activeDrag.ot + (ev.clientY - activeDrag.sy) + 'px';
+            return;
+          }
+          if (activeResize) {
+            const r = activeResize;
+            const dx = ev.clientX - r.sx;
+            const dy = ev.clientY - r.sy;
+            let nl = r.l;
+            let nt = r.t;
+            let nw = r.w;
+            let nh = r.h;
+            if (r.dir.includes('e')) nw = Math.max(MIN_W, r.w + dx);
+            if (r.dir.includes('s')) nh = Math.max(MIN_H, r.h + dy);
+            if (r.dir.includes('w')) {
+              nw = Math.max(MIN_W, r.w - dx);
+              nl = r.l + (r.w - nw);
+            }
+            if (r.dir.includes('n')) {
+              nh = Math.max(MIN_H, r.h - dy);
+              nt = r.t + (r.h - nh);
+            }
+            r.layer.style.setProperty('width', nw + 'px', 'important');
+            r.layer.style.setProperty('height', nh + 'px', 'important');
+            r.layer.style.left = nl + 'px';
+            r.layer.style.top = nt + 'px';
+            if (r.entry && Array.isArray(r.entry.editors)) {
+              r.entry.editors.forEach((ed) => ed.layout());
+            }
+          }
+        });
+
+        document.addEventListener('mouseup', () => {
+          if (
+            activeResize &&
+            activeResize.entry &&
+            Array.isArray(activeResize.entry.editors)
+          ) {
+            activeResize.entry.editors.forEach((ed) => ed.layout());
+          }
+          activeDrag = null;
+          activeResize = null;
+        });
+      })();
+    </script>
+  </body>
+</html>
