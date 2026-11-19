@@ -1,8 +1,11 @@
 /**
  * 模板快照构建链: 读骨架清单 (template-manifest) → 按四类处置产出 assets/template/ →
  * 三条构建自检 (清单完整性 / 泛化零残留 / 排除包路径零泄漏) → 落资产清单 assets/manifest.json。
+ *
+ * 权限透传: 落盘时保留源文件/骨架文件原有 mode (+x 可执行位不丢失)。
  */
 import {
+  chmodSync,
   existsSync,
   mkdirSync,
   readFileSync,
@@ -68,6 +71,11 @@ export interface BuildTemplateResult {
   files: string[];
 }
 
+interface PlannedFile {
+  bytes: Buffer;
+  mode: number;
+}
+
 /** 从清单中自动派生「被排除的非模板包」路径禁词 (如 packages/codd、packages/create-clis) */
 export function deriveExcludedPackageTerms(
   manifest: readonly ManifestEntry[],
@@ -109,16 +117,21 @@ export function buildTemplate(
     'registry.npmmirror.com',
   ];
 
-  // 1. 逐条处置: 计划产出 (输出相对路径 → 字节), 路径一并泛化; 撞车即抛
-  const planned = new Map<string, Buffer>();
-  const claim = (file: string, bytes: Buffer, source: string): void => {
+  // 1. 逐条处置: 计划产出 (输出相对路径 → 字节 + 权限 mode), 路径一并泛化; 撞车即抛
+  const planned = new Map<string, PlannedFile>();
+  const claim = (
+    file: string,
+    bytes: Buffer,
+    mode: number,
+    source: string,
+  ): void => {
     const shipped = toCarrierPath(file);
     if (planned.has(shipped)) {
       throw new Error(
         `模板产出路径重复: ${shipped} (来源 ${source}); 两条清单条目映射到同一路径`,
       );
     }
-    planned.set(shipped, bytes);
+    planned.set(shipped, { bytes, mode });
   };
 
   for (const entry of manifest) {
@@ -139,14 +152,21 @@ export function buildTemplate(
       }
       if (entry.path.endsWith('/')) {
         for (const rel of walkSkeletonDir(skeletonPath, '')) {
+          const full = join(skeletonPath, rel);
           claim(
             `${outPath}${rel}`,
-            readFileSync(join(skeletonPath, rel)),
+            readFileSync(full),
+            statSync(full).mode,
             entry.path,
           );
         }
       } else {
-        claim(outPath, readFileSync(skeletonPath), entry.path);
+        claim(
+          outPath,
+          readFileSync(skeletonPath),
+          statSync(skeletonPath).mode,
+          entry.path,
+        );
       }
     } else {
       const sourcePath = join(repoRoot, entry.path);
@@ -156,6 +176,7 @@ export function buildTemplate(
         );
       }
       const bytes = readFileSync(sourcePath);
+      const { mode } = statSync(sourcePath);
       claim(
         outPath,
         entry.disposition === 'snapshot'
@@ -163,6 +184,7 @@ export function buildTemplate(
           : Buffer.from(
               renderTemplate(bytes.toString('utf8'), placeholder, original),
             ),
+        mode,
         entry.path,
       );
     }
@@ -174,13 +196,14 @@ export function buildTemplate(
     }
   }
 
-  // 2. 写盘: 整目录重建
+  // 2. 写盘: 整目录重建并保留可执行权限位
   rmSync(outDir, { recursive: true, force: true });
   mkdirSync(outDir, { recursive: true });
-  for (const [file, bytes] of planned) {
+  for (const [file, { bytes, mode }] of planned) {
     const target = join(outDir, file);
     mkdirSync(dirname(target), { recursive: true });
-    writeFileSync(target, bytes);
+    writeFileSync(target, bytes, { mode });
+    if (process.platform !== 'win32') chmodSync(target, mode);
   }
 
   // 3. 泛化零残留 + 排除包零泄漏自检 (回读磁盘)

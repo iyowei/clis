@@ -25,6 +25,7 @@
  */
 import { spawnSync } from 'node:child_process';
 import {
+  chmodSync,
   cpSync,
   existsSync,
   mkdirSync,
@@ -133,17 +134,20 @@ function assertTargetAvailable(targetDir: string): void {
  */
 function substituteVocabulary(targetDir: string, vocabulary: Vocabulary): void {
   for (const rel of listTemplateFiles(targetDir)) {
+    const srcPath = join(targetDir, rel);
+    const { mode } = statSync(srcPath);
     const next = renderTemplate(rel, vocabulary, TEMPLATE_VOCABULARY);
-    const source = readFileSync(join(targetDir, rel), 'utf8');
+    const source = readFileSync(srcPath, 'utf8');
     const rendered = renderTemplate(source, vocabulary, TEMPLATE_VOCABULARY);
     if (next === rel) {
-      if (rendered !== source) writeFileSync(join(targetDir, rel), rendered);
+      if (rendered !== source) writeFileSync(srcPath, rendered, { mode });
       continue;
     }
     const destination = join(targetDir, next);
     mkdirSync(dirname(destination), { recursive: true });
-    writeFileSync(destination, rendered);
-    rmSync(join(targetDir, rel));
+    writeFileSync(destination, rendered, { mode });
+    if (process.platform !== 'win32') chmodSync(destination, mode);
+    rmSync(srcPath);
   }
   // 先深后浅 (路径长度降序即深度降序): 只有子目录清空后父目录才可能空
   for (const rel of listTemplateDirs(targetDir).sort(
