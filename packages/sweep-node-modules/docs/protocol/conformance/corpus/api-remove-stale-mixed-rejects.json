@@ -1,0 +1,40 @@
+{
+  "id": "api-remove-stale-mixed-rejects",
+  "kind": "api",
+  "specRefs": ["BC-42", "BC-22"],
+  "fixture": {
+    "projects": [{ "dir": "zone/a" }, { "dir": "outside" }]
+  },
+  "steps": [
+    {
+      "call": {
+        "export": "removeBatch",
+        "args": [
+          [
+            "$FIXTURE/zone/ghost/node_modules",
+            "$FIXTURE/outside/node_modules",
+            "$FIXTURE/zone/a/node_modules"
+          ],
+          { "roots": ["$FIXTURE/zone"], "staleTargets": "missing" }
+        ]
+      }
+    }
+  ],
+  "expect": {
+    "result": {
+      "subset": {
+        "status": "rejected",
+        "rejected": [
+          {
+            "target": "$FIXTURE/outside/node_modules",
+            "code": "GUARD_OUTSIDE_ROOTS"
+          }
+        ]
+      }
+    },
+    "fs": [
+      { "path": "zone/a/node_modules", "state": "exists" },
+      { "path": "outside/node_modules", "state": "exists" }
+    ]
+  }
+}

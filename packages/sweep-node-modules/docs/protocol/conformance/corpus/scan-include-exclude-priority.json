@@ -19,6 +19,6 @@
     "exitCode": 0,
     "stdoutExact": "▍ SWEEP-NM  预览 · 1 个根: $FIXTURE/zone\n  ▒ 8 KB  proj    $FIXTURE/zone/self/proj\n  █ 合计 1 处 · 8 KB   加 --yes 执行删除\n",
     "stdoutMustNotContain": ["app"],
-    "stderrMustNotContain": ["包含名未匹配", "包含名单无一条命中"]
+    "stderrMustNotContain": ["包含名未命中", "包含名单无一条命中"]
   }
 }

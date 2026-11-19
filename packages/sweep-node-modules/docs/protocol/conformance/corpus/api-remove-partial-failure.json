@@ -22,7 +22,13 @@
       "subset": {
         "status": "executed",
         "removal": {
-          "failed": [{ "target": "$FIXTURE/zone/a/node_modules" }]
+          "failed": [
+            {
+              "target": "$FIXTURE/zone/a/node_modules",
+              "code": "REMOVE_FAILED",
+              "partialRisk": true
+            }
+          ]
         }
       }
     }

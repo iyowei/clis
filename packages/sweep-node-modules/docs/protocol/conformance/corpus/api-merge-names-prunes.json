@@ -1,7 +1,7 @@
 {
   "id": "api-merge-names-prunes",
   "kind": "api",
-  "specRefs": ["BC-20", "BC-34"],
+  "specRefs": ["BC-34"],
   "fixture": {},
   "steps": [
     {

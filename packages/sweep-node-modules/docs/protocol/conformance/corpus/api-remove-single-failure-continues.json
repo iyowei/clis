@@ -1,0 +1,45 @@
+{
+  "id": "api-remove-single-failure-continues",
+  "kind": "api",
+  "specRefs": ["BC-24"],
+  "fixture": {
+    "projects": [{ "dir": "zone/locked" }, { "dir": "zone/ok" }],
+    "readonly": ["zone/locked/node_modules"]
+  },
+  "steps": [
+    {
+      "call": {
+        "export": "removeBatch",
+        "args": [
+          [
+            "$FIXTURE/zone/locked/node_modules",
+            "$FIXTURE/zone/ok/node_modules"
+          ],
+          { "roots": ["$FIXTURE/zone"] }
+        ]
+      }
+    }
+  ],
+  "expect": {
+    "result": {
+      "subset": {
+        "status": "executed",
+        "removal": {
+          "removed": ["$FIXTURE/zone/ok/node_modules"],
+          "missing": [],
+          "failed": [
+            {
+              "target": "$FIXTURE/zone/locked/node_modules",
+              "code": "REMOVE_FAILED",
+              "partialRisk": true
+            }
+          ]
+        }
+      }
+    },
+    "fs": [
+      { "path": "zone/locked/node_modules", "state": "exists" },
+      { "path": "zone/ok/node_modules", "state": "gone" }
+    ]
+  }
+}

@@ -25,8 +25,8 @@
     ],
     "stdoutMustNotContain": ["未发现 node_modules"],
     "stderrMustNotContain": [
-      "排除名未匹配",
-      "包含名未匹配",
+      "排除名未命中",
+      "包含名未命中",
       "包含名单无一条命中"
     ]
   }

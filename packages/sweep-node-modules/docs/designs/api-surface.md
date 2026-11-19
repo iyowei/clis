@@ -3,14 +3,14 @@
 > **状态**: 已定稿 (Accepted)
 > **日期**: 2026-09-29
 > **决策者**: 沈委
-> **父文档**: [设计总纲](../../../../docs/sweep/designs/sweep-node-modules-design.md)
+> **父文档**: [设计总纲](sweep-node-modules-design.md)
 >
 > 用途: 定义 API 包 (`@iyowei/sweep-node-modules`, 全部能力与契约都在这里) 与 CLI 薄壳包 (`@iyowei/sweep-node-modules-cli`, 解析 → 调 API → 渲染 → 交互) 的切分, 以及 API 包对外的可编程面。
-> 范围: 本文只管「API 面长什么样」(导出面 / 错误模型 / 进度与取消 / 域类型 / 缺口处置 / 调用示例); 命令面与字节级输出规格见 [命令面与输出](../../../sweep-node-modules-cli/docs/designs/cli-surface.md), 配置模型见 [配置与初始化](../../../../docs/sweep/designs/config-and-initialization.md), 删除安全语义与安全闸见 [删除安全闸](../../../../docs/sweep/designs/deletion-guard.md), 扫描与体积算法见 [扫描与体积](../../../../docs/sweep/designs/scan-and-size.md)。
-> 事实基准: 实读仓库 (2026-09-29) 的 `src/` 全部模块、[行为契约](../../../../docs/sweep/protocol/behavior-contract.md)、`docs/designs/` 四份分册与 [ADR 0002](../adrs/0002-fixed-config-and-preview-execution.md) / [0003](../adrs/0003-zero-runtime-deps.md) / [0006](../../../../docs/adrs/0006-dual-runtime-bun-first.md) / [0009](../../../../docs/adrs/0009-npm-distribution-form.md) / [0010](../../../../docs/adrs/0010-dual-package-monorepo.md); 需求侧的输入是使用方场景清单 (7 场景 + 9 条跨场景观察); 验证侧的输入是使用方体验报告与五份调用代码 (外部材料, 逐条处置见 §12)。
+> 范围: 本文只管「API 面长什么样」(导出面 / 错误模型 / 进度与取消 / 域类型 / 缺口处置 / 调用示例); 命令面与字节级输出规格见 [命令面与输出](../../../sweep-node-modules-cli/docs/designs/cli-surface.md), 配置模型见 [配置与初始化](config-and-initialization.md), 删除安全语义与安全闸见 [删除安全闸](deletion-guard.md), 扫描与体积算法见 [扫描与体积](scan-and-size.md)。
+> 事实基准: 实读仓库 (2026-09-29) 的 `src/` 全部模块、[行为契约](../protocol/behavior-contract.md)、包内 `docs/designs/` 四份分册与 [ADR 0002](../adrs/0002-fixed-config-and-preview-execution.md) / [0003](../adrs/0003-zero-runtime-deps.md) / [0006](../../../../docs/adrs/0006-dual-runtime-bun-first.md) / [0009](../../../../docs/adrs/0009-npm-distribution-form.md) / [0010](../../../../docs/adrs/0010-dual-package-monorepo.md); 需求侧的输入是使用方场景清单 (7 场景 + 9 条跨场景观察); 验证侧的输入是使用方体验报告与五份调用代码 (外部材料, 处置摘要见 §12)。
 > 标注约定: 「实读」= 仓库现状; 「设计」= 本文的推演; 每一条的落点都标注「复用」「新增」「改动」三档之一 (复用 = 现有函数原样升为导出面, 逻辑不动; 改动 = 现有形状或签名需变; 新增 = 今天不存在的东西)。
-> 时点说明: 标注「实读」的代码事实均为**单包时代 (2026-09-29 拆分前)** 的实读, 用于推导设计; 落地后现在的位置 (双包) 见 [ADR 0010](../../../../docs/adrs/0010-dual-package-monorepo.md) 与 [设计总纲](../../../../docs/sweep/designs/sweep-node-modules-design.md) 结构一节。
-> 反馈处置: 体验报告逐条处置见文末 §12 (57 条: 采纳 49 / 部分采纳 7 / 驳回 1)。
+> 时点说明: 标注「实读」的代码事实均为**单包时代 (2026-09-29 拆分前)** 的实读, 用于推导设计; 落地后现在的位置 (双包) 见 [ADR 0010](../../../../docs/adrs/0010-dual-package-monorepo.md) 与 [设计总纲](sweep-node-modules-design.md) 结构一节。
+> 反馈处置: 体验报告处置摘要见文末 §12 (57 条: 采纳 49 / 部分采纳 7 / 驳回 1)。
 
 ## 修订记录
 
@@ -22,6 +22,7 @@
 | 2026-09-29 | §10 闭环两缺口: `.d.ts` 产出通道已实测 (按 ADR 0010 决策 5 的 `tsc --emitDeclarationOnly` 落地, 需独立构建配置排除测试与 fixtures; declaration emit 会把源码的相对 specifier `.ts` 原样带出, `rewriteRelativeImportExtensions` 在 typescript 7.0.2 的 declaration emit 下实测未生效, 由构建脚本在产物里确定性地改写为 `.js`); 两包发布链经查证无依赖与顺序约束 (CLI 发布产物为 bundle 内联、零依赖声明), 实现见 `packages/sweep-node-modules/scripts/` 的 `build.ts` / `verify-release.ts` 与根 tsconfig 的 paths 双态方案 (开发态直指 src, 发布态 exports 指 dist)                                                                                                                                                         |
 | 2026-09-30 | §3.4 三条「新增条款 (待登记)」正式登记为 BC-42 / BC-43 / BC-44 (登记义务由「转写双面覆盖」的设计承接), 标注随之更新                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
 | 2026-10-01 | §9 Q17 追加修正注记: 原「预演实测」首发归因经发布日志与 semrel v25 源码复核为误 (0.5.0 实际走 tag 0.4.0 正常递增); 原记录保留                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| 2026-11-19 | 代码与文档漂移校准: 补 `SweepReport.drift` / `SweepPlan.trailer` / `RemovalOptions.style` / `NotAttemptedCode` (`AbortCode \| 'BATCH_REJECTED'`), 修正 `SizeResult.gone` 排序为按 target 升序, 对齐 `ResolvedSweepOptions` 只读冻结与 4 路并发删除中止语义, 精简 §12 历史逐条评审流水账                                                                                                                                                                                                                                                                                                                                                                                                                                     |
 
 ---
 
@@ -185,7 +186,7 @@ export interface SizeResult {
   /** 存在但无法测量的目标 (如权限不足), 按 target 升序 */
   unmeasured: UnmeasuredEntry[];
   /**
-   * 扫描命中、测量时已不存在 (BC-13) 的目标, 保输入顺序 (新增)。
+   * 扫描命中、测量时已不存在 (BC-13) 的目标, 按 target 升序 (体积三桶同此口径)。
    * 「不存在」既不产生字节也不属「存在但测不到」, 故单列一桶, 与 warnings 里的
    * `SIZE_TARGET_VANISHED` 事件同源同判定 (事件供诊断, 本桶供划分)。
    */
@@ -376,6 +377,8 @@ export interface TrustRoot {
 export interface RemovalOptions {
   /** 可删目标所属的信任根 (与 guard 同源); 目标不在任何根之下时整批中止 */
   roots: TrustRoot[];
+  /** 路径风味 (归属判定与复核链大小写折叠); 缺省平台原生 */
+  style?: PathStyle;
   /** 取消信号 (新增); 只在条目之间检查, 绝不在单条 rm 中途中断 (见 §4.3) */
   signal?: AbortSignal;
   /** 进度回调 (新增); 粒度: 每条目标一有结果就发一条 */
@@ -658,13 +661,13 @@ export interface SweepOptions {
 }
 
 export interface ResolvedSweepOptions {
-  roots: string[];
+  readonly roots: readonly string[];
   /** 已过 mergeNames 收口的生效名单 (去重 + 静默剔除永不生效名, BC-34) */
-  exclude: string[];
-  include: string[];
-  home: string | null;
-  style: PathStyle;
-  policy: SweepPolicy;
+  readonly exclude: readonly string[];
+  readonly include: readonly string[];
+  readonly home: string | null;
+  readonly style: PathStyle;
+  readonly policy: Readonly<SweepPolicy>;
 }
 
 /** 只读面调用选项 (plan) */
@@ -766,6 +769,8 @@ export interface SweepPlan {
   batch: string[];
   /** 批次外目标与原因 (含未测到体积的条目) */
   skipped: SkippedTarget[];
+  /** 清单末行说明 (与 SkipBook.trailer 同源: 按类与形态各一行, 只在出现时出; 无跳过说明时为空数组) */
+  trailer?: string[];
   /** 扫描与体积的非致命告警 (两段合并, 保各自次序) */
   warnings: SweepWarning[];
   /** 两份名单的命中统计 (供 CLI 出名单回执与未命中告警, BC-09 / BC-33) */
@@ -793,8 +798,12 @@ export type EntryOutcome =
   | { kind: 'stale' }
   | { kind: 'failed'; failure: TargetFailure }
   | { kind: 'rejected'; rejection: RejectedTarget }
-  /** 批次内但未轮到 (整批中止时中止点及其之后) */
-  | { kind: 'not-attempted'; code: AbortCode }
+  /**
+   * 批次内但未尝试:
+   * - 删除阶段复核整批中止时未被派发的条目 (`AbortCode`; 4 路并发窗口内已派发条目会完成并如实报告, 之后不再派发新条目);
+   * - 安全闸整批拒绝时同批通过闸门、因整批零删除而连带未删的健康条目 (`'BATCH_REJECTED'`)。
+   */
+  | { kind: 'not-attempted'; code: NotAttemptedCode }
   /**
    * 在期望批次之外 (提供了 expectedBatch, 且本目标不在其中, 新增)。
    * 语义是「本次没让它进删除面」, 与 skipped 的区别: skipped 是安全策略挡下,
@@ -834,6 +843,8 @@ export interface SweepReport {
   stale: string[];
   /** 释放量: 成功侧 (removed + missing + stale) 的体积累计, 口径与 CLI 汇总行同源 */
   releasedBytes: number;
+  /** 期望批次与实时批次的差集; 未提供 expectedBatch 时缺省 */
+  drift?: SweepDrift;
 }
 ```
 
@@ -903,6 +914,7 @@ const readOnly = true;
 | `GuardCode`         | 安全闸拒绝码                                         | §3.2 拒绝表 (10 个)      |
 | `RemoveFailureCode` | 删除失败码                                           | §3.2 失败表 (4 个)       |
 | `AbortCode`         | 整批中止码                                           | §3.2 中止表 (3 个)       |
+| `NotAttemptedCode`  | `AbortCode \| 'BATCH_REJECTED'` (未尝试条目码)       | §3.2 中止表 + 整批拒绝   |
 | `SweepErrorCode`    | 抛错码                                               | §3.2 配置与调用表 (6 个) |
 | `SweepErrorDetails` | 抛错附带的上下文                                     | §3.6 判别联合            |
 
@@ -974,6 +986,7 @@ export type AbortCode =
   | 'REVIEW_NOT_UNDER_ANY_ROOT'
   | 'REVIEW_HEAD_SYMLINK'
   | 'REVIEW_COMPONENT_REPLACED';
+export type NotAttemptedCode = AbortCode | 'BATCH_REJECTED';
 export type SweepErrorCode =
   | 'CONFIG_READ_FAILED'
   | 'CONFIG_CORRUPT_JSON'
@@ -1094,10 +1107,10 @@ export type SkipReason =
 
 **关系定性 (设计): 编号体系与 code 体系并列而不同职能, 不复用编号当 code。**
 
-| 体系              | 是什么                                                                                           | 覆盖面                                           | 生命周期                         |
-| ----------------- | ------------------------------------------------------------------------------------------------ | ------------------------------------------------ | -------------------------------- |
-| BC / OF / EC 编号 | **行为条款编号**, 面向「转写与验收」的语料背书 (实读 `docs/sweep/protocol/behavior-contract.md`) | 全行为面 (含非错误的形态约束, 如 OF-05 体积格式) | 会随设计演进拆分 / 合并 / 重编号 |
-| 本文档的 `code`   | **调用期判别值**, 面向程序分支                                                                   | 失败 / 跳过 / 告警 / 未测到                      | 发布即冻结                       |
+| 体系              | 是什么                                                                                                                 | 覆盖面                                           | 生命周期                         |
+| ----------------- | ---------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------ | -------------------------------- |
+| BC / OF / EC 编号 | **行为条款编号**, 面向「转写与验收」的语料背书 (实读 `packages/sweep-node-modules/docs/protocol/behavior-contract.md`) | 全行为面 (含非错误的形态约束, 如 OF-05 体积格式) | 会随设计演进拆分 / 合并 / 重编号 |
+| 本文档的 `code`   | **调用期判别值**, 面向程序分支                                                                                         | 失败 / 跳过 / 告警 / 未测到                      | 发布即冻结                       |
 
 **复用哪些** (语义与判定逐条复用, 不新造判定): 全部判定原样来自现有代码分支; EC-01 (TOCTOU 归 missing)、EC-02 (整批拒绝)、EC-03 (win32 与 du 平台守卫)、EC-04 (符号链接只删链接)、EC-05 (半完成语义 → `partialRisk`)、EC-07 (ENOENT 两分 → `REMOVE_ENOENT_SURVIVOR`)、EC-08 (命令解析面不含 cwd, 属 CLI 侧) 各自的判定一个不改。
 
@@ -1187,7 +1200,7 @@ export function isSweepError(value: unknown): value is SweepError;
 | `INVALID_ARGUMENT`     | `{ field }`           | 构造期同步抛 (见 §2.7)                                                                                                                                         |
 | `CANCELLED`            | `{ phase, partial? }` | `phase` 取 `SweepPhase` 全集 (7 个值都可能出现, 回答 G8); `partial` **只在 `phase === 'remove'` 时出现**, 且为「取消点为止已产生的分桶结果」的 `RemovalResult` |
 
-设计说明: `SweepError` 是全仓「以 `createXxx()` 工厂交出实例、不导出类」惯例的**唯一例外** (实读惯例见 `docs/sweep/designs/architecture-overview.md`)。取例外的理由: 调用方要 `instanceof` 判别, 也要保留 `stack` / `cause` (跨实例场景 `instanceof` 用不了, 改用 `isSweepError`)。`class` 属可擦除语法, 不违反 ADR 0006 的语法约束。
+设计说明: `SweepError` 是全仓「以 `createXxx()` 工厂交出实例、不导出类」惯例的**唯一例外** (实读惯例见 `packages/sweep-node-modules/docs/designs/architecture-overview.md`)。取例外的理由: 调用方要 `instanceof` 判别, 也要保留 `stack` / `cause` (跨实例场景 `instanceof` 用不了, 改用 `isSweepError`)。`class` 属可擦除语法, 不违反 ADR 0006 的语法约束。
 
 ---
 
@@ -1940,96 +1953,15 @@ async function refreshPanel(sweeper: Sweeper, controller: AbortController) {
 
 ---
 
-## 12. 反馈处置记录 (v2 新增)
+## 12. 体验反馈处置摘要 (v2 归档)
 
-> 来源: `api_ux_review.md` 与 `experience/` 五份代码 (仓外反馈材料, 不随仓保存; 共 57 条: 逐场景堵点 27 条 + 「草案未覆盖」15 条 + 「需要猜测」9 条 + 「最想改的 3 处」3 条 + 代码内注顺带指出 3 条)。
-> 计数: **采纳 49 / 部分采纳 7 / 驳回 1**。0 条因「与 ADR 硬约束冲突」被驳回: 逐条核过后, 除下述 7 条在形态上做了取舍、1 条判定为不成立, 其余都能在不动 ADR 0003 / 0006 的前提下落地; 采纳不等于照抄, 凡与使用方给出的形态不同的地方, 一律写在「理由」列。
-> 改动位置列指向 v2 正文的节号, 可逐条回查。
+> 来源: 初稿外部使用方体验报告与五份模拟集成代码 (共 57 条: 逐场景堵点 27 条 + 草案未覆盖 15 条 + 需猜测项 9 条 + 最想改 3 处 + 代码内注 3 条; 逐条原始记录已随 git 历史归档, 正文与 §9 开放问题已完整承接全部落定设计)。
 
-### 表 A: 逐场景堵点 (27 条)
-
-| #   | 堵点                                                                 | 处置              | 改动位置                                                                 | 理由                                                                                                                                                               |
-| --- | -------------------------------------------------------------------- | ----------------- | ------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| 1-1 | `GUARD_REALPATH_FAILED` 一个码盖两种语义, 并发清理被整批否决堵死     | 采纳              | §3.2 拒绝表 (拆三码)、§2.3 `RejectionDetails.errno`、§2.4 `staleTargets` | 拆码 (ENOENT / EACCES-EPERM / 其余) + 补 `errno`; 另给显式容忍开关, 使「别人已经删掉」既不阻断整批也不需匹配中文                                                   |
-| 1-2 | 「成功侧 = removed + missing」无代码出口                             | 采纳              | §2.7 `isSuccessOutcome` / `summarizeReport`                              | 判据与库同源, 新增 kind 不静默漏判; 另给三档退出码配方                                                                                                             |
-| 1-3 | `SweepErrorDetails` 类型未定义                                       | 采纳              | §3.6 判别联合 + code → details 表                                        | 原为悬空引用, 现已逐 code 对齐                                                                                                                                     |
-| 1-4 | 进度事件无整轮终结事件                                               | 采纳              | §4.1 `done` / `plan-done`                                                | 终结契约已登记为 BC-44 (见 §3.4)                                                                                                                                   |
-| 1-5 | `SweepEntry` 不带跳过文案                                            | 采纳              | §2.7 `SweepEntry.skipNote`                                               | 与 `plan.skipped[].note` 恒等, 复核表不必再 join                                                                                                                   |
-| 1-6 | `INVALID_ARGUMENT` 抛出时机未写                                      | 采纳              | §2.7 `createSweeper` 注释、§3.1                                          | 同款疑问见 5-5; 规则统一为「同步入口同步抛, 异步入口以 rejected promise 抛出」                                                                                     |
-| 1-7 | `SweepWarningCode` 未定义且不在别名清单                              | 采纳              | §2.8 别名全表                                                            | 明确定为 `ScanWarningCode \| SizeWarningCode`, 并给穷举 `switch` 的写法建议                                                                                        |
-| 2-1 | `SIZE_TARGET_VANISHED` 归属桶无解                                    | 采纳              | §3.2 体积表拆两张 + 归属列、§2.2 `SizeResult.gone`                       | 明确只进 `gone` 桶与 `warnings` 事件, 绝不进 `unmeasured`                                                                                                          |
-| 2-2 | 无桶完备性恒等式                                                     | 采纳              | §2.2 恒等式、已登记为 BC-43 (见 §3.4)                                    | 三桶互斥且完备, 取消调用方的 `'unknown'` 兜底                                                                                                                      |
-| 2-3 | 两个名单字段 optional 而缺席条件未写                                 | 采纳              | §2.2 `ScanResult`                                                        | 改必填 (空数组表达无名单): 对外只见胜出门面 (实读), 必填成立; 落盘 schema 因此不漂移                                                                               |
-| 3-1 | `watch()` 缺席, 自桥估价「三行」低估                                 | 部分采纳          | §4.4 修订估价、§8.6 参考实现、Q7                                         | 不新增库 API (只有编辑器需要); 承认估价错误并给出约 20 行完整实现 (终结事件到位后)                                                                                 |
-| 3-2 | 事件流无终结事件, 迭代器判不出流结束                                 | 采纳              | §4.1                                                                     | 同 1-4; §8.6 的桥接因此不再需要自造哨兵                                                                                                                            |
-| 3-3 | 拒绝码不区分「不存在 / 不可读」, 本地化只能含糊                      | 采纳              | §3.2、§2.3                                                               | 拆码后本地化可精确两分                                                                                                                                             |
-| 3-4 | 扩展打包后 `instanceof SweepError` 不可靠                            | 采纳              | §3.6 `isSweepError`                                                      | 推翻 v1 的 YAGNI 判断: 使用方给出真实失效场景 (同进程双实例), 理由成立                                                                                             |
-| 3-5 | 用户在 Finder 删掉后点「清理这一个」得到语义错误的拒绝               | 采纳              | §2.4 `staleTargets`                                                      | 与 1-1 同源; 开启后该情形落 `stale`, 不再弹红条                                                                                                                    |
-| 3-6 | 面板行只能显示机器码                                                 | 采纳              | §2.7 `skipNote`                                                          | 同 1-5                                                                                                                                                             |
-| 4-1 | `SkipCandidate.suspect` 可选 → 疑似安装树静默进批                    | 采纳 (方案 a + c) | §2.5 `SkipCandidate.suspect` 必填 + `toSkipCandidates()`、§5.2           | 双管: 必填让误传当场类型报错, 构造器让正确写法更省事。**未采纳方案 b** (入参收成 `SweepEntry[]`): 会把原语层门槛抬高, 场景 5 / 7 式最小用法被迫填无关字段 (见 Q15) |
-| 4-2 | 断点续跑被整批否决挡死                                               | 采纳              | §2.4 `staleTargets` + `BatchOutcome.executed.stale`                      | 见下 U2 的取舍说明                                                                                                                                                 |
-| 4-3 | 机器码与人话分属两入口, 需调两次再对齐                               | 采纳              | §2.5 `SkipBook.entries`                                                  | 一次调用同时给出码与话; `hints` / `trailer` 保留供 CLI 现有渲染路径                                                                                                |
-| 4-4 | `findCrossDeviceTargets` 返回 `Map`, 落盘丢列                        | 采纳              | §2.3 改返回 `CrossDeviceEntry[]` + `crossDeviceIndex()`、§7.9            | 取消 v1 的 Map 例外, 让 §5.1 的可序列化承诺无条件成立                                                                                                              |
-| 4-5 | `SkippedTarget.note` 在未测到体积时无来源                            | 采纳              | §2.5 note 来源段、§2.7 `skipNote`                                        | 单源化: 未测到者取「体积统计失败: <unmeasuredReason>」, 与 CLI 现行行尾注记同源                                                                                    |
-| 5-1 | `run()` 恒重跑 plan, 预览与实际执行不可对账                          | 采纳              | §2.7 `expectedBatch` + `SweepDrift`、Q2 修订                             | 新增执行范围上界与差集字段; 仍重跑判定链, 不退回「拿旧计划执行」                                                                                                   |
-| 5-2 | 成功侧判据无出口; `skipped` / `not-attempted` 落失败侧与库的定性打架 | 部分采纳          | §2.7 三档配方、§7.8                                                      | 判据与计数按诉求给出; **不内置 `ok` 字段**: 退出码是产品口径 (CLI 包按 BC-26 把跳过算失败侧是刻意的, 交互式 CLI 可更宽松), 库给配方而不代决                        |
-| 5-3 | `sanitizeLine` 与 `sanitizeOutputLine` 分工未写                      | 采纳              | §2.6 逐函数语义                                                          | 明写: 单行字段用前者, 多行块用后者 (唯一差别是保留行首缩进)                                                                                                        |
-| 5-4 | 预览行要 join 两份数组                                               | 采纳              | §2.7 `skipNote`                                                          | 同 1-5                                                                                                                                                             |
-| 5-5 | `INVALID_ARGUMENT` 时机未写                                          | 采纳              | §2.7 / §3.1                                                              | 同 1-6                                                                                                                                                             |
-| 5-6 | Q1 未决, 第三方 CLI 作者不知引哪个包                                 | 部分采纳          | §9 Q1a / Q1b (均已定夺)                                                  | 「引哪个包」由本次拆分定义可确定, 写进 Q1a; 「存量 CLI 用户怎么迁移」属发布策略, 体验报告提出时尚未拍板, 定稿时已由决策者拍板 (不保留过渡转发 `bin`, 见 §9 Q1b)    |
-
-### 表 B: 「草案未覆盖」15 条
-
-| #   | 缺的东西                            | 处置     | 改动位置                                            | 理由                                                                                                                                                                                                           |
-| --- | ----------------------------------- | -------- | --------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| U1  | `SweepErrorDetails` 完整定义        | 采纳     | §3.6                                                | 判别联合 + 逐 code 对应表                                                                                                                                                                                      |
-| U2  | 「陈旧目标」的处理出口              | 部分采纳 | §2.4 `staleTargets` / `BatchOutcome.executed.stale` | 拆 code + `errno` 与开关都采纳; **不采纳「并入 `RemovalResult.missing`」**: 未过安全闸的路径不该以「删除器核验过」的桶对外呈现, 改单列 `stale` 保来源可辨, 并由库的成功侧判据把它与 removed / missing 同侧计入 |
-| U3  | 成功侧判据                          | 采纳     | §2.7 `isSuccessOutcome` + `summarizeReport`         | 形态取函数而非 `report.summary` 字段: 派生量不入报告对象, 免与 `entries` 漂移                                                                                                                                  |
-| U4  | 每目标的跳过文案                    | 采纳     | §2.7 `SweepEntry.skipNote`                          | 采用 `skipNote` 而非 `entryIndex` 回指: 复用与 `kindReason` 同款的现成写法, 调用方零 join                                                                                                                      |
-| U5  | 进度流终结事件                      | 采纳     | §4.1                                                | `plan-done` 带完整计划, 省掉自造哨兵                                                                                                                                                                           |
-| U6  | 异步迭代桥接参考实现                | 部分采纳 | §8.6                                                | 给完整实现而非 `watch()` (见 Q7); 估价更正为约 20 行                                                                                                                                                           |
-| U7  | 错误类型守卫                        | 采纳     | §3.6 `isSweepError`                                 | 不依赖类身份, 走 `name` + `code` 判别                                                                                                                                                                          |
-| U8  | `SweepWarningCode` 定义与归属       | 采纳     | §2.8 全表                                           | 并集别名 + 穷举写法建议                                                                                                                                                                                        |
-| U9  | `SIZE_TARGET_VANISHED` 归属桶       | 采纳     | §3.2 + §2.2                                         | 表拆两张加归属列; 只进 `gone` 与事件                                                                                                                                                                           |
-| U10 | 桶完备性恒等式                      | 采纳     | §2.2、§3.4                                          | 三桶互斥完备, 写进契约                                                                                                                                                                                         |
-| U11 | 名单字段缺席语义                    | 采纳     | §2.2                                                | 改必填 (使用方给的两个选项里选前者的强化版: 恒在且恒为数组)                                                                                                                                                    |
-| U12 | `SkipBook` 码 + 人话单入口          | 采纳     | §2.5 `SkipBook.entries`                             | 采用, 并保留 `hints` / `trailer` 以免动 CLI 现有渲染接线                                                                                                                                                       |
-| U13 | `crossDevice` 落盘形态              | 采纳     | §2.3、§7.9                                          | 取「返回数组」而非「补转换器」: 转换器留不住 Map 这一陷阱本身                                                                                                                                                  |
-| U14 | `INVALID_ARGUMENT` 抛出时机         | 采纳     | §2.7 / §3.1                                         | 构造期同步抛 (与使用方的倾向一致)                                                                                                                                                                              |
-| U15 | `SkippedTarget.note` 未测到时的来源 | 采纳     | §2.5                                                | 取 `unmeasuredReason` 组装, 与 CLI 现行注记同源                                                                                                                                                                |
-
-### 表 C: 「需要猜测」9 条 (逐条消除)
-
-| #   | 原猜测内容                                         | 处置 | 消除方式                                                                           |
-| --- | -------------------------------------------------- | ---- | ---------------------------------------------------------------------------------- |
-| G1  | `SweepErrorDetails` 形状                           | 采纳 | §3.6 给出判别联合与 code → details 表                                              |
-| G2  | `INVALID_ARGUMENT` 抛出时机                        | 采纳 | §2.7 写死构造期同步抛; §3.1 给出同步 / 异步两条通道的统一规则                      |
-| G3  | `SIZE_TARGET_VANISHED` 进 warnings 还是 unmeasured | 采纳 | §3.2 归属列 + §2.2 `gone` 桶: 两者都不是, 进 `gone` 与 `warnings` 事件             |
-| G4  | 名单字段何时缺席                                   | 采纳 | §2.2 改必填, 永不缺席                                                              |
-| G5  | `sanitizeLine` / `sanitizeOutputLine` 分工         | 采纳 | §2.6 逐函数语义 (唯一差别是行首缩进保留与否)                                       |
-| G6  | `SweepWarningCode` 是否并集                        | 采纳 | §2.8 明确定为并集, 并给前缀分组 + `default` 记录的写法建议                         |
-| G7  | `plan.skipped` 与 `inBatch === false` 是否恒等     | 采纳 | §2.7 `SweepEntry.skipReason` / `skipNote` 注释写死恒等, 让 join 与落空分支一并消失 |
-| G8  | `CANCELLED` 的 `details.phase` 取值域              | 采纳 | §3.6 写死为 `SweepPhase` 全集, 且 `partial` 只在 `phase === 'remove'` 出现         |
-| G9  | 报告 `plan` 与先前 `plan()` 不一致以谁为准         | 采纳 | §2.7 `SweepReport.plan` 注释写死「以报告为准」, 差异由 `drift` 显式给出            |
-
-### 表 D: 使用方「最想改的 3 处」
-
-| #   | 建议                                                                                                             | 处置     | 改动位置                     | 理由                                                                     |
-| --- | ---------------------------------------------------------------------------------------------------------------- | -------- | ---------------------------- | ------------------------------------------------------------------------ |
-| D1  | 第一处: `SkipCandidate.suspect` 必填 (或收成 `SweepEntry[]`)                                                     | 采纳     | §2.5、§5.2、§11              | 取必填 + 构造器; 不取 `SweepEntry[]` 入参 (理由见 4-1 行)                |
-| D2  | 第二处: 拆 `GUARD_REALPATH_FAILED` + `RejectionDetails.errno` + `staleTargets` 开关                              | 部分采纳 | §3.2、§2.3、§2.4             | 三项全采纳; 仅落点从「并入 `missing` 桶」改为独立 `stale` 字段 (见 U2)   |
-| D3  | 第三处: 缝合层五件 (summary / isSuccessOutcome + skipNote + 终态事件 + `SweepErrorDetails` + `SweepWarningCode`) | 采纳     | §2.7、§4.1、§3.6、§2.8、§7.8 | 五件全给, 另补 `SkipBook.entries` 与三档退出码配方; 不内置 `ok` (见 5-2) |
-
-### 表 E: 代码内注顺带指出的 3 条 (未进正式堵点表)
-
-| #   | 意见                                                        | 处置     | 改动位置               | 理由                                                                                                                                                                                  |
-| --- | ----------------------------------------------------------- | -------- | ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| E1  | 编排层没有体积口径单值, 要取口径只能拿首条 entry            | 采纳     | §2.7 `SweepPlan.basis` | 与 `Sizer.basis` 对称; 契约写明与逐条 `entry.basis` 同源同值                                                                                                                          |
-| E2  | 场景 4 阶段 1 写进审计的 `skipReason` 无法在阶段 2 直接喂回 | 部分采纳 | §9 Q16                 | 不提供「按旧判定执行」的入口 (重判是刻意设计, 磁盘状态会漂移); 按使用方建议把该意图写进文档                                                                                           |
-| E3  | 需要「跨设备形态 → 人话标签」的映射 (`deviceLabel`)         | 驳回     | —                      | 库已提供 `crossDeviceNote(kind)` (实读 `skip.ts`, 两形态各一句文案); 使用方那份带「同设备」默认分支的实现是其自定义标签, 不是库缺件。若确需第三种措辞, 属调用方文案偏好, 不该由库内置 |
-
-### 逐条处置之外的说明
-
-- **0 条驳回不等于照单全收**: 表 A 至 D 里 7 条「部分采纳」的取舍点已逐条写在「理由」列, 主要是三处形态分歧 (陈旧目标落桶 / 退出码口径归属 / 异步迭代入口) 与一处未采纳子方案 (写侧入参类型)。
-- **本批唯一被判不成立的是 E3**: 库已有 `crossDeviceNote`; 使用方的实现是自定义标签。
-- **未处理的使用方表扬项** (PathMapping / `Sizer.basis` / `ScanHit.root` / `partialRisk` / `SweepPolicy`) 在 v2 中全部保留, 未作改动。
+- **处置汇总**: **采纳 49 / 部分采纳 7 / 驳回 1** (零条因与 ADR 0003 / 0006 硬约束冲突而驳回)。
+- **核心落地改造 (均已融入上文 §2–§8)**:
+  1. 拆细 realpath 拒绝码 (`GUARD_TARGET_MISSING` / `GUARD_TARGET_UNREADABLE` / `GUARD_REALPATH_FAILED`) + `details.errno` + 显式 `staleTargets: 'missing'` (落独立 `stale` 桶而非混入删除器核验的 `missing` 桶);
+  2. `SkipCandidate.suspect` 改必填并新增 `toSkipCandidates()`, 杜绝 `SizeEntry[]` 误传导致疑似安装树静默进批;
+  3. 补齐结果到呈现/分支的缝合层 (`isSuccessOutcome` / `summarizeReport` / `SweepEntry.skipNote` / `SkipBook.entries` / `plan-done` 与 `done` 终结事件 / `SweepErrorDetails` 判别联合 / `SweepWarningCode` 并集 / `isSweepError`);
+  4. `SizeResult` 增设 `gone` 桶并确立三桶完备性恒等式 (`BC-43`), `excludeMatches`/`includeMatches` 改必填, `findCrossDeviceTargets` 改返回可序列化 `CrossDeviceEntry[]` 配合 `crossDeviceIndex()`;
+  5. `run()` 增设 `expectedBatch` 与 `SweepReport.drift` 实现预览与执行的对账; 明写同步入口同步抛与 `sanitizeLine` / `sanitizeOutputLine` 分工。
+- **关键不采纳 / 部分采纳取舍 (详见 §9)**: 不内置退出码 `ok` 字段 (由调用方依三档配方自决, Q14); 不新增 `watch()` 异步迭代 API, 改提供约 20 行标准桥接参考 (§8.6, Q7); 不接受绕过实时重判的旧计划执行 (Q2 / Q16); 唯一驳回项为自定义 `deviceLabel` 映射 (库已内置 `crossDeviceNote`)。

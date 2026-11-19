@@ -18,6 +18,15 @@
           "run": false,
           "steps": { "minItems": 1 },
           "expect": {
+            "anyOf": [
+              { "required": ["result"] },
+              { "required": ["error"] },
+              { "required": ["events"] },
+              { "required": ["fs"] }
+            ],
+            "not": {
+              "required": ["result", "error"]
+            },
             "properties": {
               "exitCode": false,
               "stdoutExact": false,
@@ -61,7 +70,7 @@
       "type": "array",
       "minItems": 1,
       "uniqueItems": true,
-      "items": { "type": "string", "pattern": "^[A-Z]{2,4}-[0-9]+$" },
+      "items": { "type": "string", "pattern": "^(?:BC|OF|EC)-[0-9]+$" },
       "description": "背书的契约条款编号 (BC-* 行为契约 / OF-* 输出规格 / EC-* 边界表); 可追溯性硬要求: 每条期望必须能由条款原文辩护, 严禁「跑一遍记下来」式捕获"
     },
     "fixture": {
@@ -238,7 +247,17 @@
           "collectEvents": {
             "type": "boolean",
             "default": false,
-            "description": "true 时把进度事件收集器以 onProgress 并入本次调用的末个参数 (末参为对象则合并其中, 否则追加 { onProgress }); 收集结果进输出 events"
+            "description": "true 时把进度事件收集器以 onProgress 并入本次调用的末个参数 (末参为对象则合并其中, 否则追加 { onProgress }); 仅方法步允许声明 true, 收集结果进输出 events"
+          }
+        },
+        "if": {
+          "properties": {
+            "call": { "required": ["export"] }
+          }
+        },
+        "then": {
+          "properties": {
+            "collectEvents": { "const": false }
           }
         }
       }

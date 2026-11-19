@@ -1,0 +1,41 @@
+{
+  "id": "api-sweep-run-terminal-event",
+  "kind": "api",
+  "specRefs": ["BC-44"],
+  "fixture": {
+    "projects": [{ "dir": "zone/a" }]
+  },
+  "steps": [
+    {
+      "as": "sweeper",
+      "call": {
+        "export": "createSweeper",
+        "args": [
+          { "roots": ["$FIXTURE/zone"], "exclude": [], "home": "$FIXTURE/home" }
+        ]
+      }
+    },
+    {
+      "call": { "on": "sweeper", "method": "run" },
+      "collectEvents": true
+    }
+  ],
+  "expect": {
+    "result": {
+      "subset": {
+        "status": "executed",
+        "entries": [
+          {
+            "target": "$FIXTURE/zone/a/node_modules",
+            "outcome": { "kind": "removed" }
+          }
+        ]
+      }
+    },
+    "events": {
+      "lastIs": "done",
+      "mustInclude": ["phase", "hit", "measured", "removed", "done"]
+    },
+    "fs": [{ "path": "zone/a/node_modules", "state": "gone" }]
+  }
+}
