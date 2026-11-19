@@ -8,7 +8,14 @@
 import { describe, expect, test } from 'bun:test';
 
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs';
+import {
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  utimesSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -17,9 +24,12 @@ import {
   FatalError,
   buildMongoUri,
   intEnv,
+  isBackupName,
+  listBackups,
   parseBackupDb,
   parseExtraApps,
   parseRsMembersList,
+  toolConfigYaml,
   validateAlnumSecret,
   validateDbName,
 } from '../template/podman/lib.ts';
@@ -116,8 +126,55 @@ describe('template/podman/lib.ts 纯函数单测', () => {
       expect(buildMongoUri('bak', 'sec')).toBe(
         'mongodb://bak:sec@mongo:27117/?authSource=admin&directConnection=true',
       );
+      expect(toolConfigYaml('backup', 'Pass123', 'secondaryPreferred')).toBe(
+        'uri: mongodb://backup:Pass123@mongo:27117/?authSource=admin&directConnection=true&readPreference=secondaryPreferred\n',
+      );
+      expect(toolConfigYaml('root', 'RootPass123')).toBe(
+        'uri: mongodb://root:RootPass123@mongo:27117/?authSource=admin&directConnection=true\n',
+      );
     } finally {
       restoreSingle();
+    }
+
+    const restoreRsYaml = applyTempEnv({
+      RS_MEMBERS: 'node1:27117,node2:27117,node3:27117',
+      RS_NAME: 'rs0',
+    });
+    try {
+      expect(toolConfigYaml('root', 'RootPass123')).toBe(
+        'uri: mongodb://root:RootPass123@node1:27117,node2:27117,node3:27117/?authSource=admin&replicaSet=rs0\n',
+      );
+    } finally {
+      restoreRsYaml();
+    }
+  });
+
+  test('listBackups 按库隔离并按修改时间倒序返回, 拒绝非法与路径穿越归档名', async () => {
+    expect(isBackupName('mongo-billing-20261118_033000.archive.gz')).toBe(true);
+    expect(isBackupName('random.tar.gz')).toBe(false);
+    expect(parseBackupDb('../mongo-app-20261118_033000.archive.gz')).toBeNull();
+    expect(
+      parseBackupDb('mongo-app-20261118_033000.archive.gz.partial'),
+    ).toBeNull();
+
+    const dir = mkdtempSync(join(tmpdir(), 'codd-list-backups-'));
+    try {
+      const fAppOld = 'mongo-app-20261117_033000.archive.gz';
+      const fAppNew = 'mongo-app-20261118_033000.archive.gz';
+      const fOrd = 'mongo-orders-20261118_033000.archive.gz';
+      writeFileSync(join(dir, fAppOld), 'x');
+      writeFileSync(join(dir, fAppNew), 'x');
+      writeFileSync(join(dir, fOrd), 'x');
+      writeFileSync(join(dir, 'ignored.partial'), 'x');
+      utimesSync(join(dir, fAppOld), 1000, 1000);
+      utimesSync(join(dir, fAppNew), 2000, 2000);
+      utimesSync(join(dir, fOrd), 3000, 3000);
+
+      expect(await listBackups(dir, 'app')).toEqual([fAppNew, fAppOld]);
+      expect(await listBackups(dir, 'orders')).toEqual([fOrd]);
+      expect(await listBackups(dir)).toEqual([fOrd, fAppNew, fAppOld]);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
     }
   });
 });
