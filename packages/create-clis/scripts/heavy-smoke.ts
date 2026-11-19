@@ -1,50 +1,25 @@
 /**
- * 重量级冒烟 (发布层, spec「质量闭环」第 2 条): 现场重建模板资产 → 经 bin 启动器跑构建产物
- * (dist/create-clis.js) 生成一个 core 档完整项目到 ~/tmp 独占临时目录 → 依赖安装 (install hook)
- * → 在生成物里跑它自己的完整闸门链 (`bun run ci`) → 全绿才算过。
+ * 重量级冒烟 (发布层): 直接校验已经过 build + verify:release 的包内不可变资产与产物,
+ * 经 bin 启动器跑构建产物生成默认 standard 档项目 → 依赖安装 → 跑通生成物完整 bun run ci。
  *
- * 为什么必须真跑: 轻量冒烟 (cli.smoke.test.ts) 只断言生成物结构, 生成物「自己绿不绿」只有真装
- * 依赖并跑它的 ci 才能证明; 本脚本是发布链的一环 (package.json 的 prepublishOnly: build →
- * verify:release → heavy-smoke), 发布出去的生成器版本必须自证「它生成的项目是绿的」。
- *
- * 几条口径:
- * - 只认构建产物: 经 bin/create-clis.mjs 启动 (运行时挑选 + 产物自证对账一并被走到), 与用户经
- *   npm 安装后的入口形态一致; 产物缺失即拒绝 (先跑 build), 不做源码回退;
- * - 只认包内资产: 模板资产现场重建进包内 assets/ (与 build 的第一步同源同参), 于是本脚本可独立
- *   跑, 冒烟对象即「包内资产目录」这一份; 它与发行面包的一致性由 verify:release 的白名单对账
- *   兜住 (npm 面包机制按文件名硬性剔除 .gitignore / .npmrc, 资产以载体名随包并在生成期还原,
- *   见 release-artifact.ts 的 NPM_UNSHIPPABLE_BASENAMES 与 template-snapshot.ts 的 ASSET_CARRIERS),
- *   本脚本自身不读 tarball;
- * - core 档: 最小装备档, 生成与 ci 都最快; 收尾走默认 (依赖安装 hook 真跑), 但 --no-git (产物
- *   ci 链不依赖 git, git init 收尾另有端到端用例覆盖);
- * - 失败即拒: 任一步非零退出即视为冒烟失败 (退出码 1), 临时现场保留并打印路径供诊断, 不静默清理。
- *
- * 用法: bun scripts/heavy-smoke.ts (prepublishOnly 内由 npm run heavy-smoke 调用)
- * 退出码: 0 全绿; 1 任一步骤失败 (原因见 stderr 与子进程输出)
+ * 不可变原则: 本脚本位于 prepublishOnly 的 verify:release 之后, 严禁覆写包内 assets/,
+ * 只读取并验证即将随包发出的同一份 dist/ 与 assets/。
  */
 import { spawnSync } from 'node:child_process';
-import { existsSync, rmSync } from 'node:fs';
+import { existsSync, rmSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { makeTmpRoot } from '../../../scripts/lib/tmp-root.ts';
-import { ORIGINAL } from '../src/template-snapshot.ts';
 import {
+  ASSET_MANIFEST_FILE,
   DEFAULT_TEMPLATE_DIR,
   PACKAGE_ROOT,
-  buildTemplate,
 } from './build-template.ts';
-import { REPO_ROOT } from './template-manifest.ts';
 
-/** 冒烟项目名 (kebab-case; 生成物根包名取 <name>-monorepo, 两包取 <name> 与 <name>-cli) */
 const PROJECT_NAME = 'clis-smoke';
-
-/** 生成步时限: 含依赖安装 (bun install 走网络, 慢机给足); 超时即判失败, 防环境异常时无限悬挂 */
 const GENERATE_TIMEOUT_MS = 15 * 60 * 1000;
-
-/** 生成物 ci 步时限 (ci.ts 全链跑一遍的宽裕上界) */
 const CI_TIMEOUT_MS = 15 * 60 * 1000;
 
-/** 跑一条子进程 (stdio 透传, 让用户看得到进度); 返回是否成功 */
 const run = (
   command: string,
   args: string[],
@@ -61,7 +36,6 @@ const run = (
   return result.status === 0;
 };
 
-/** 失败收口: 保留现场 (排障要拿生成物本体), 打印路径与出口 */
 const fail = (workDir: string, stage: string): number => {
   process.stderr.write(
     `\n重量级冒烟未通过 (失败于${stage})。现场保留: ${workDir}\n` +
@@ -70,44 +44,19 @@ const fail = (workDir: string, stage: string): number => {
   return 1;
 };
 
-/**
- * 冒烟主流程; 返回进程退出码 (0 全绿)。
- *
- * ### 数据追踪示例
- * ```text
- * Input（真实 Payload）
- *   包内资产 = 94 个模板文件 (buildTemplate 现场重建)
- *   产物 = dist/create-clis.js (须先跑 build; 缺失即拒)
- *
- * 步骤 1：临时区与生成 (经 bin 启动器, 默认收尾含依赖安装)
- *   workDir = ~/tmp/create-clis-smoke-XXXXXX; target = <workDir>/clis-smoke
- *   bin/create-clis.mjs --name clis-smoke --tier core --yes --no-git <target>
- *   → 生成 94 份 → 裁剪 → 替换 → 格式化收口 → 自检 → bun install (install hook 真跑)
- *
- * 步骤 2：生成物自证 (产物自己的闸门链)
- *   cd <target> && bun run ci → build → typecheck → test → lint → format-check → 四闸门
- *
- * 步骤 3：收口
- *   全绿 → 删除 workDir, return 0; 任一步失败 → 保留 workDir, return 1
- *
- * Output（数据契约）
- *   return 0|1 (进程退出码); stdout 已打印各步进度与结论
- * ```
- */
 const main = (): number => {
-  // 1. 模板资产现场重建 (与 build 的第一步同源同参: 冒烟对象恒是将随包发售的那份资产)
-  const { files } = buildTemplate({
-    repoRoot: REPO_ROOT,
-    outDir: DEFAULT_TEMPLATE_DIR,
-    original: ORIGINAL,
-  });
-  process.stdout.write(`模板资产已重建: ${files.length} 个文件\n`);
-
-  // 2. 只认构建产物 (与 bin 启动器同口径; 缺产物说明还没构建, 冒烟对象不存在)
+  // 1. 校验不可变构建产物与模板资产已就位 (严禁在 verify:release 后覆写包内 assets/)
+  const manifestPath = join(PACKAGE_ROOT, 'assets', ASSET_MANIFEST_FILE);
   const artifact = join(PACKAGE_ROOT, 'dist', 'create-clis.js');
+  if (!existsSync(DEFAULT_TEMPLATE_DIR) || !existsSync(manifestPath)) {
+    process.stderr.write(
+      'heavy-smoke: 缺少已构建的模板资产 (assets/template 与 assets/manifest.json), 请先跑 bun run build\n',
+    );
+    return 1;
+  }
   if (!existsSync(artifact)) {
     process.stderr.write(
-      `heavy-smoke: 缺少构建产物 (dist/create-clis.js), 先跑构建 (bun run build)\n`,
+      'heavy-smoke: 缺少构建产物 (dist/create-clis.js), 请先跑 bun run build\n',
     );
     return 1;
   }
@@ -115,9 +64,9 @@ const main = (): number => {
   const workDir = makeTmpRoot('create-clis-smoke-');
   const target = join(workDir, PROJECT_NAME);
 
-  // 3. 生成 (经 bin 启动器: 运行时挑选与产物自证对账一并被走到; 默认收尾含 bun install)
+  // 2. 生成默认 standard 档项目 (经 bin 启动器: 同步验收运行时解析、bunfig 隔离与产物自证)
   process.stdout.write(
-    `\n=== heavy-smoke: 生成 ${PROJECT_NAME} (core 档) → ${target} ===\n`,
+    `\n=== heavy-smoke: 生成 ${PROJECT_NAME} (standard 默认档) → ${target} ===\n`,
   );
   const generated = run(
     'node',
@@ -131,7 +80,7 @@ const main = (): number => {
       '--repo',
       `https://github.com/clis-smoke/${PROJECT_NAME}`,
       '--tier',
-      'core',
+      'standard',
       '--yes',
       '--no-git',
     ],
@@ -140,15 +89,32 @@ const main = (): number => {
   );
   if (!generated) return fail(workDir, '生成步 (含依赖安装)');
 
-  // 3.5 载体还原断言 (TD-05 的发行侧证据): npm 面包机制剔除的真实名发不进包, 模板以载体名随包
-  // (见 src/template-snapshot.ts 的 ASSET_CARRIERS), 还原步骤若回归, 生成物 ci 依然全绿
-  // (lint / prettier 都不看这两个名字), 只有显式断言抓得住
+  // 3. 载体还原与启动器执行位断言
   for (const real of ['.gitignore', '.npmrc']) {
     if (!existsSync(join(target, real))) {
       process.stderr.write(
         `heavy-smoke: 生成物缺 ${real} (载体还原步骤回归? 见 generate.ts 的 restoreCarrierNames)\n`,
       );
       return fail(workDir, '生成物载体还原断言');
+    }
+  }
+  if (process.platform !== 'win32') {
+    const launcher = join(
+      target,
+      'packages',
+      `${PROJECT_NAME}-cli`,
+      'bin',
+      PROJECT_NAME,
+    );
+    if (existsSync(launcher)) {
+      const mode = statSync(launcher).mode;
+      const execBits = mode % 0o1000;
+      if (Math.floor(execBits / 0o100) % 2 !== 1) {
+        process.stderr.write(
+          `heavy-smoke: 生成物启动器缺少可执行权限 (+x): ${launcher}\n`,
+        );
+        return fail(workDir, '启动器权限位断言');
+      }
     }
   }
 
@@ -158,13 +124,11 @@ const main = (): number => {
     return fail(workDir, '生成物 ci 步');
   }
 
-  // 5. 全绿收口: 抹掉临时现场 (绝对无痕)
   rmSync(workDir, { recursive: true, force: true });
   process.stdout.write(
-    `\n重量级冒烟通过 ✓ (生成物 ${PROJECT_NAME} 的 bun run ci 全绿; 临时现场已清理)\n`,
+    `\n重量级冒烟通过 ✓ (生成物 ${PROJECT_NAME} standard 档 bun run ci 全绿; 临时现场已清理)\n`,
   );
   return 0;
 };
 
-// 被测试 import 时不得跑入口 (只有直接运行才落退出码)
 if (import.meta.main) process.exitCode = main();
