@@ -1,58 +1,30 @@
 # clis 工程技术文档总索引
 
-> 文档类型: 全部工程技术文档的总入口
+> 文档类型: 仓库级工程技术文档总入口
 > 适用对象: 本仓维护者与 AI Agent
-> 范围说明: 本索引收录工程技术文档 (决策 / 设计 / 协议 / 开发); 新增文档必须登记 (adrs/、designs/、protocol/ 下的登记到各自目录的 README, 其余登记到本索引), 严禁出现索引之外的孤岛文档。
+> 范围说明: 仓根 `docs/` 仅收录跨产品的仓库治理、工程机制、开发指南与仓级 ADR; 各工具产品的整体设计、协议与产品 ADR 全部内聚在各自产品主包的 `packages/<pkg>/docs/` 下。分层规则见 [文档分层协议](designs/docs-layering.md) 与 [ADR 0019](adrs/0019-two-tier-package-owned-docs.md)。
 >
-> 分层说明: 文档分三级: 仓库级 (`docs/`) / 产品区 (`docs/<product>/`) / 包级 (`packages/<pkg>/docs/`); 分层的判定标准与外链规则见 [文档分层协议](designs/docs-layering.md) 与 [ADR 0011](adrs/0011-docs-and-adr-layering.md); 产品区与包级的入口见下文「设计文档」一节。
->
-> 命名约定: `designs/` 下的文件名不带日期, 修订日期登记在正文的「修订记录」里; ADR 按编号顺序追加, 已接受的决定不原地改写。
+> 命名约定: `designs/` 下的文件名不带日期, 修订日期登记在正文的「修订记录」里; ADR 按全仓唯一四位编号顺延追加, 已接受的决定不原地改写。
 
-## 包
+## 包与产品文档入口
 
-**create-clis (生成器包)**
-[生成器包文档入口](../packages/create-clis/docs/README.md) (生成新集合仓的文档入口与设计关联)。
+- **`create-clis` (集合仓生成器)**: 用户向用法见 [README](../packages/create-clis/README.md); 脚手架架构、快照与契约设计属仓库级设施, 见 [设计文档索引](designs/README.md)。
+- **`sweep-node-modules` (工作区 `node_modules` 清理器 — 双包)**:
+  - 主包 / API 包 (`@iyowei/sweep-node-modules`): [主包文档入口](../packages/sweep-node-modules/docs/README.md) (含可编程 API 面、全套产品设计、安全防护总账、转写契约套件与产品 ADR `0001-0004` / `0007-0008`);
+  - CLI 薄壳包 (`@iyowei/sweep-node-modules-cli`): [CLI 包文档入口](../packages/sweep-node-modules-cli/docs/README.md) (命令面、输出与交互契约)。
+- **`codd` (MongoDB 9.0 部署装配器 — 双包)**:
+  - 主包 / API 包 (`@iyowei/codd`): [主包文档入口](../packages/codd/docs/README.md) (含公式设计、Podman / Kubernetes 运维分册、可视化看板 `BOARD.html` 与产品 ADR `0012-0018`);
+  - CLI 薄壳包 (`@iyowei/codd-cli`): [CLI 包文档入口](../packages/codd-cli/docs/README.md) (命令面、向导交互、退出码与状态文件契约)。
 
-**sweep-node-modules (API 包与 CLI 包)**
-[API 包文档入口](../packages/sweep-node-modules/docs/README.md) (可编程 API 与包级 ADR) / [CLI 包文档入口](../packages/sweep-node-modules-cli/docs/README.md) (命令用法与输出)。
+## 仓库级决策 (ADR)
 
-**codd (CLI 包)**
-[CLI 包文档入口](../packages/codd/docs/README.md) (命令用法、包级 ADR 与产品区关联)。
+- [仓库级架构决策记录索引](adrs/README.md): 收录集合仓工程基建、双运行时、分发形态、双包结构与文档分层等仓级重大决策。
 
-## 决策与模板
+## 仓库级设计 (治理与脚手架)
 
-**架构决策记录**
-[架构决策记录索引](adrs/README.md)
-收录本仓演进过程中的重大技术决策 (ADRs), 以及当时的背景与权衡。
+- [设计文档索引 (按推荐阅读顺序)](designs/README.md): 集合仓定位、包分类、依赖方向、文档分层、能力分档、脚手架机制与技术债台账。
 
-## 设计文档
+## 开发与协作
 
-**设计文档索引 (仓库级)**
-[设计文档索引 (按推荐阅读顺序)](designs/README.md)
-仓库级设计 (集合仓治理与脚手架) 的登记入口与推荐阅读顺序。
-
-**产品区 (sweep-node-modules)**
-[产品区入口](sweep/README.md)
-sweep 的跨包文档: 产品设计 (总纲 / 配置 / 扫描 / 删除闸 / 加固 / 安全总账 / 双面覆盖 / 架构) 与转写契约套件 (明细条目见下面两节)。
-
-**产品区 (codd)**
-[产品区入口](codd/README.md)
-codd 的产品文档: 公式与清单设计、Podman 单机与三物理节点分册、Kubernetes 单副本与三副本分册、日常运维灾备手册与可视化看板。
-
-## 安全防护
-
-**安全防护保障 (完整版)**
-[安全防护保障](sweep/designs/safety-guardrails.md)
-完整收录六组 91 条保障点与 14 类内部账目 (含对已知残余风险的如实记录); 面向想深挖的用户与未来维护者; CLI 包 README 的安全防护一节是从本文精简出来的。
-
-## 转写契约
-
-**转写契约套件**
-[转写契约套件 (transcription kit)](sweep/protocol/README.md)
-为将来的多语言精准转写准备的工具包: 编号行为契约、金样本语料、确定性验收器、变异自证与实施提示词; 见 [ADR 0008](../packages/sweep-node-modules/docs/adrs/0008-transcription-kit.md)。
-
-## 开发
-
-**开发指南**
-[开发指南](development.md)
-环境准备、常用命令、双运行时验证与提交钩子; 面向仓库维护者与贡献者。使用说明见 CLI 包 [README](../packages/sweep-node-modules-cli/README.md) (以英文为主; 中文版 [README.zh-CN.md](../packages/sweep-node-modules-cli/README.zh-CN.md))。
+- [开发指南](development.md): 环境准备、常用命令、双运行时验证、发布链与提交钩子。
+- [贡献指南 (English)](../CONTRIBUTING.md) / [贡献指南 (中文)](../CONTRIBUTING.zh-CN.md) / [安全策略](../SECURITY.md)。
