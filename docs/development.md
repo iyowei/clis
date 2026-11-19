@@ -1,6 +1,6 @@
 # 开发指南
 
-> 面向本仓库的维护者与贡献者; 入门级开发说明见 [CONTRIBUTING](../CONTRIBUTING.md), 本文是深入版。仓库为双包 monorepo: `packages/sweep-node-modules` 承载可编程 API 与全部业务语义, `packages/sweep-node-modules-cli` 是它的 CLI 薄壳 (依据见 [ADR 0010](adrs/0010-dual-package-monorepo.md))。使用说明见 CLI 包 [README](../packages/sweep-node-modules-cli/README.md) 与 API 包 [README](../packages/sweep-node-modules/README.md); 设计决策见 [设计文档索引](designs/README.md); 转写套件见 [转写契约](sweep/protocol/README.md)。
+> 面向本仓库的维护者与贡献者; 入门级开发说明见 [CONTRIBUTING](../CONTRIBUTING.md), 本文是深入版。仓库为多包 CLI 工具集合 monorepo (默认「可编程 API 主包 + CLI 薄壳从包」双包范式, 见 [ADR 0010](adrs/0010-dual-package-monorepo.md) 与 [ADR 0019](adrs/0019-two-tier-package-owned-docs.md))。各包清单见根 [README](../README.zh-CN.md); 仓级治理设计见 [设计文档索引](designs/README.md); `sweep` 转写套件见 [转写契约](../packages/sweep-node-modules/docs/protocol/README.md)。
 
 ## 环境准备
 
@@ -18,7 +18,7 @@ bun install
 以下命令除注明外均在仓库根执行:
 
 ```shell
-# 类型检查 (tsc --noEmit; 经 turbo 编排两包)
+# 类型检查 (tsc --noEmit; 经 turbo 编排全仓各包并校验根 scripts/)
 bun run typecheck
 
 # 代码检查 (oxlint)
@@ -27,28 +27,28 @@ bun run lint
 # 格式化 (prettier --write)
 bun run format
 
-# 单元测试 (契约 / 鲁棒 / 压测 / 双载体 e2e / 伪终端冒烟 / 启动器冒烟 等; 经 turbo 编排两包, 带缓存)
+# 单元测试 (契约 / 鲁棒 / 压测 / 双载体 e2e / 伪终端冒烟 / 启动器冒烟 / 模板回归等; 经 turbo 编排全部工作区包 + 根 scripts/)
 bun run test
 
-# 直通形态: 不走 turbo, 由 bun 内置测试器从仓库根递归扫全部 *.test.ts (含仓库根 scripts/ 下的用例, 无缓存)
+# 直通形态: 不走 turbo, 由 bun 内置测试器从仓库根递归扫全部 *.test.ts (无缓存)
 bun test
 
-# 基准四组 (扫描 / 体积 / 真实工作区 / 压测)
+# 基准组 (经 turbo 调度各包 bench)
 bun run bench
 
-# 转写一致性验收 (金样本语料见 docs/sweep/protocol/; target 为 CLI 包内源码路径)
+# 转写一致性验收 (金样本语料见 packages/sweep-node-modules/docs/protocol/; target 为 CLI 包内源码路径)
 bun run conformance -- --target "bun packages/sweep-node-modules-cli/src/cli.ts"
 
-# 本地 CI 预演 (与 GitHub Actions 的 verify + conformance 两 job 同集合: build / 类型 / 测试 / lint / 格式 / 文档与仓库卫生四闸门 / conformance 双 target; 推前必跑, pre-push 钩子按同集合自动执行)
+# 本地 CI 预演 (与 GitHub Actions 的 verify + conformance 同集合: build / 类型 / 测试 / lint / 格式 / 五道治理闸门 / conformance 双 target; pre-push 钩子按同集合自动执行)
 bun run ci
 
-# 打包两包发布产物: CLI 单文件 (dist/cli.js + 自证清单) 与 API 包 (dist/index.js + 类型声明 + 自证清单); 发布时由各自的 prepublishOnly 自动跑
+# 构建全部包发布产物: 各 API 包 bundle + 类型声明 + 清单, 各 CLI 包单文件 + 清单, 以及模板资产 (assets/)
 bun run build
 
-# 发布前置闸门 (干净检出 + 产物自证 + 发行面白名单; API 包另加 d.ts specifier 复查; 在各自包目录跑, 发布前自动跑, 也可手动复核)
+# 发布前置闸门 (干净检出 + 产物自证 + 发行面白名单; API 包另查 d.ts specifier; 在各自包目录跑)
 cd packages/sweep-node-modules-cli && bun run verify:release
 
-# 干净重装 (清掉 CLI 包 dist / bun.lock / node_modules 后重新 bun install; API 包 dist 不在清理面; 只清不建, 跑测试或推送前先 bun run build 重建产物)
+# 干净重装 (清理全部工作区包的 dist / assets / .turbo 以及根 .turbo / bun.lock / node_modules 后重新 bun install; 重装后请执行 bun run build)
 bun run safe-install
 ```
 
@@ -64,11 +64,11 @@ OIDC 免密发布有一处仓库外依赖: npm 侧的 Trusted Publisher 登记�
 
 **新包首发路径** (最近一例是生成器包 `create-clis`, 2026-10-01 已按此路径完成, npm 上现有 0.1.0 与 1.0.0 两版、`latest` 为 1.0.0, 两 tag 均已补到远端): ① 首发前新包以自身 `package.json` 的 `"private": true` 隔离 (mrs 的 `ignorePrivate` 默认开启, private 包不进它的加载面, 连加载都不会发生); ② 首发次序: 移除 private 并提交推送 → 人工发布一个起步版本 (`npm publish` / `bun publish`, 同一道 `prepublishOnly` 闸门把关) 并完成 Trusted Publisher 登记 → 在 `release` environment 批准 → 自动链 first-release 一次性完成 (首发同样经 `prepublishOnly` 全套闸门, 且自动创建 tag 与 release 提交)。起步版本与登记都必须在批准之前: TP 登记只能在包首次发布之后 (对尚未发布的包预登记不可行, 2026-10-01 实测返回 404), 而批准后 release job 的第一道发布凭据预检要求包已有登记; 登记命令 `npm trust github <包> --file release.yml --repo <owner/repo> --env release --allow-publish` (字段口径同既有包: repository / workflow 文件名 `release.yml` / environment `release`; 登记在仓库外、不会随改名自动跟改, 见上段)。移除 private 后新包即自动纳入 `scripts/npm-trust-guard.ts` 的核对与发布凭据预检面 (该脚本按 workspaces 枚举非 private 包, 与发布链同源); create-clis 实测次序即 0.1.0 起步 + 登记 → 批准 → 自动链发 1.0.0; ③ 别指望用起步版本续版: 不要给起步版本补 tag, 自动链看得到该包既有 tag 时会按它递增 (0.1.0 → 0.1.1), 看不到时按 first-release 缺省发 `1.0.0` (create-clis 的 1.0.0 即此成因), 版本由 tag 到达时机决定而非预期; 这条「人工发布 + 补 tag 再交自动链」正是被弃用的旧路径 (实测证伪; 手动发与自动链的交接天然脆弱); ④ 首发版本没有配置口: 无前序发布时 semantic-release 固定发 `1.0.0` (2026-10-01 核验: semantic-release v25 源码中该值是硬编码常量 `FIRST_RELEASE`; 官方 FAQ 明文拒绝初始版本可配置, 原话 `This is not supported by semantic-release.`; 官方配置文档选项表中无 `initialVersion` 一类字段; 本仓 mrs 1.0.3 全量检索亦无此字段)。不要用 `multi-release.ignorePackages` 做新包隔离: 2026-10-01 实测它对包名形式不生效 (被 mrs 映射为 topo 负 glob 后无效), 被列入的包仍会被处理, 并因 npm 侧无登记而挂 ENONPMTOKEN 类错误; 该字段现已清空。
 
-发布动作统一过 `prepublishOnly` 闸门 (链上链下同一道, 逐包各自)。三层按包列举: CLI 与 API 两包 = 构建 (`bun run build`; CLI 产出 `dist/cli.js` 与自证清单 `dist/manifest.json`, API 产出 `dist/index.js`、类型声明与自证清单) + 发布前置闸门 (`bun run verify:release`, 在各自包目录跑); 生成器包 `create-clis` 在前面另串一层 heavy-smoke (现场生成一个 core 档完整项目并跑通它的整套闸门链, 见包 README), 全绿才允许发布。闸门按序短路, 任一命中即退 1 拒发: 工作树不干净 / 产物缺失 / 清单与提交或产物的对账不过 / 发行面包内文件与白名单 `PACK_FILES_EXPECTED` 不符 (该检查跑一次只读的 `npm pack --dry-run --json --ignore-scripts`, 需要 npm; API 包另查 d.ts 相对 specifier 无 `.ts` 残留)。手动发布 (`npm publish` / `bun publish`) 是链外的兜底通道, 走的是同一道闸门 (两者自行打包时都执行 `prepublishOnly`, 核验依据见 [ADR 0009](adrs/0009-npm-distribution-form.md) 补记第 4 条); 已知残留口: `npm pack` 与 `npm publish <tarball>` 不经闸门。
+发布动作统一过 `prepublishOnly` 闸门 (链上链下同一道, 逐包各自): 各 API 包与 CLI 包均执行 `build` + `verify:release` (通用逻辑收拢于 `scripts/lib/release-verify.ts` 与 `scripts/lib/release-cli.ts`), `create-clis` 在 `verify:release` 之后另串不可变资产 `heavy-smoke`; 待首发新包 (`@iyowei/codd` 与 `@iyowei/codd-cli`) 以 `"private": true` 隔离于自动发布链之外, 但已配齐同等 `build`、`assets` 与 `verify:release` 闸门。闸门按序短路, 任一命中即退 1 拒发: 工作树不干净 / 产物缺失 / 清单与提交或产物的对账不过 / 发行面包内文件与白名单不符 (API 包另查 `.d.ts` 相对 specifier 无 `.ts` 残留)。手动发布 (`npm publish` / `bun publish`) 走的是同一道闸门 (见 [ADR 0009](adrs/0009-npm-distribution-form.md) 补记第 4 条); 已知残留口: `npm pack` 与 `npm publish <tarball>` 不经闸门。
 
-**README / LICENSE 类备份别落 CLI 包目录**: npm 会把包根 (`packages/sweep-node-modules-cli/`) 的 `README*` / `LICENSE*` 无条件收进发行包, 且没有任何配置可以排除 (官方 files 节与 npm-packlist 的 strict 规则, 见 ADR 0009 补记第 3 条), 落包根目录的备份会被静默发出去; 备份一律落 `~/tmp`。
+**README / LICENSE 类备份别落任何包目录 (`packages/*/`)**: npm 会把包根的 `README*` / `LICENSE*` 无条件收进发行包, 且没有任何配置可以排除 (ADR 0009 补记第 3 条), 落包根目录的备份会被静默发出去; 备份一律落 `~/tmp/clis_backups/` 并由 `scripts/lint-stray-backups.ts` 全树兜底。
 
-装进包里的 `bin/sweep-nm.mjs` (CLI 包内 `packages/sweep-node-modules-cli/bin/sweep-nm.mjs`) 挑选运行时时, win32 下先按 PATH 解析出运行时的绝对路径再执行 (不搜当前工作目录: 本工具在被扫目录里执行, 目录内放同名 `bun.exe` 即可顶替真实运行时; 依据与落法见 [ADR 0007](../packages/sweep-node-modules/docs/adrs/0007-platform-portability.md) 决策第 4 条补记)。它在优先使用产物前核对清单摘要 (含形状版本), 清单缺失 / 损坏 / 版本不支持 / 摘要不符即拒收产物并给出指引 (处置按运行场景分流: 仓库检出态给源码入口与重构建, 包态给重装本包); 无产物时回退源码的语义不变。启动器不判工作树脏净 (开发态常脏), 那是发布闸门的职责。清单字段、判定与两道防线的分工见 [ADR 0009](adrs/0009-npm-distribution-form.md) 补记与 `packages/sweep-node-modules-cli/scripts/release-artifact.ts`。
+所有 CLI 包的启动器 (`bin/*.mjs` / `bin/<cmd>` / `bin/<cmd>.cmd`) 均落实三道运行期防线: ① 按 PATH 严格解析绝对路径、跳过空与相对条目 (防被扫/当前工作目录同名 `bun` 劫持, 见 [ADR 0007](../packages/sweep-node-modules/docs/adrs/0007-platform-portability.md)); ② 选中 Bun 时强制附加 `--config=<pkg>/bin/bunfig.toml --no-env-file`, 隔绝工作目录坏 `bunfig.toml` (`preload` RCE / 语法报错) 与 `.env` 注入; ③ 执行 `dist/` 产物前校验 `dist/manifest.json` SHA-256 摘要。
 
 ## 运行时双跑
 
@@ -111,5 +111,5 @@ bun run conformance -- --target "node packages/sweep-node-modules-cli/src/cli.ts
 
 - [工程技术文档总索引](README.md)
 - [设计文档索引](designs/README.md): 设计总纲与各分册
-- [架构决策记录](adrs/README.md): ADR
-- [转写契约套件](sweep/protocol/README.md): 编号行为契约与金样本语料
+- [架构决策记录](adrs/README.md): 仓级工程 ADR
+- [sweep 转写契约套件](../packages/sweep-node-modules/docs/protocol/README.md): 编号行为契约与金样本语料

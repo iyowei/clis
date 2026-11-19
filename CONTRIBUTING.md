@@ -22,9 +22,10 @@ The repository is a monorepo whose packages live under `packages/`:
 - `packages/create-clis`: the collection scaffolding generator, published as `create-clis`.
 - `packages/sweep-node-modules-cli`: the `sweep-nm` CLI, published as `@iyowei/sweep-node-modules-cli`.
 - `packages/sweep-node-modules`: the programmable API behind `sweep-nm`, published as `@iyowei/sweep-node-modules`.
-- `packages/codd`: the `codd` MongoDB 9.0 provisioning CLI (`@iyowei/codd`).
+- `packages/codd-cli`: the `codd` MongoDB 9.0 provisioning CLI (`@iyowei/codd-cli`, pre-release `private: true`).
+- `packages/codd`: the programmable API and template asset package behind `codd` (`@iyowei/codd`, pre-release `private: true`).
 
-turbo orchestrates the build, typecheck, and test tasks across all workspace packages. The code treats bun and node as first-class runtimes (bun when available, node otherwise, identical behavior), runs on Windows, macOS, and Linux, and keeps zero third-party runtime dependencies.
+turbo orchestrates the build, typecheck, and test tasks across all workspace packages. The code treats bun and node as first-class runtimes (bun when available, node otherwise, identical behavior), runs on Windows, macOS, and Linux, and keeps runtime dependencies minimal (zero third-party runtime dependencies for `sweep` and `codd`; `prettier` only for `create-clis` scaffold formatting).
 
 ## Development setup
 
@@ -63,7 +64,7 @@ bun test
 # Benchmarks
 bun run bench
 
-# Bundle both packages: the CLI single-file artifact + manifest, and the API bundle + type declarations
+# Build all packages: API bundles + type declarations, CLI single-file artifacts + manifests, and template assets
 bun run build
 ```
 
@@ -110,7 +111,7 @@ node packages/sweep-node-modules-cli/src/cli.ts
 
 ## Documentation
 
-Engineering docs live under `docs/`; the index is [docs/README.md](docs/README.md). New documents must be registered in the index they belong to (the README under `adrs/`, `designs/`, or `protocol/`, or the top-level index for everything else); orphan documents are not accepted. If a change alters behavior or a documented contract, update the matching document in the same pull request.
+Engineering docs follow a two-tier layout (see [docs/README.md](docs/README.md) and [ADR 0019](docs/adrs/0019-two-tier-package-owned-docs.md)): repository-wide governance and scaffolding docs live under `docs/`, while each tool's product designs, protocols, and ADRs live under its main package `packages/<pkg>/docs/`. Register new documents in their corresponding index (`docs/README.md`, `docs/designs/README.md`, `docs/adrs/README.md`, or `packages/<pkg>/docs/README.md`); orphan documents are not accepted. If a change alters behavior or a documented contract, update the matching document in the same pull request.
 
 ## Questions
 

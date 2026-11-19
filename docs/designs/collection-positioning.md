@@ -2,17 +2,17 @@
 
 > 文档类型: 仓库级设计
 > 适用对象: 本仓维护者与 AI Agent
-> 状态: 重定位进行中 (仓库新名 `iyowei/clis` 已定; 改名与组织落地见[重定位执行与验证](collection-relocation.md))
+> 状态: 已落地 (`iyowei/clis` 多工具集合仓, 重定位归档见[重定位执行与验证](collection-relocation.md))
 
 ## 定位
 
 本仓是 **iyowei 的 CLI 工具集合仓**。边界就一句话:
 
-> 我自己日常开发用的 CLI 工具及其脚手架; 主要用途就是开发 CLI, 用 monorepo 方式管理; 能让不同 CLI 复用的包也抽离出来, 同样在这个仓库的 `packages/` 下维护。
+> 我自己日常开发用的 CLI 工具及其脚手架; 主要用途就是开发 CLI, 用 monorepo 方式管理; 每个独立工具默认拆成「可编程 API 主包 + CLI 薄壳包」对称双包; 能让不同 CLI 复用的包也抽离出来, 同样在这个仓库的 `packages/` 下维护。
 
 三层身份同仓并存:
 
-1. **工具宿主**: 每个 CLI 工具及其配套包都属于这个集合 (现为 `sweep-node-modules` 一族);
+1. **工具宿主**: 每个 CLI 工具及其配套 API 包都属于这个集合 (现行包清单见根 [README](../../README.zh-CN.md));
 2. **复用库的家**: 跨工具共享的库抽成独立包, 与工具在同一个仓库里演进 (分类与发布策略见[包分类与发布协议](package-classification.md));
 3. **脚手架本体**: 本仓的工程骨架就是新项目的模板, 生成器从骨架快照产出独立的新集合仓 (见[生成器包](scaffold-package.md)与[模板快照机制](scaffold-template-snapshot.md))。
 

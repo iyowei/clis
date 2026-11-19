@@ -2,10 +2,12 @@
 
 ## Supported versions
 
-Security fixes are released as new versions; only the latest published release of each package is supported:
+Security fixes are released as new versions; only the latest published release of each published package is supported:
 
+- `create-clis`: the monorepo collection scaffold CLI;
 - `@iyowei/sweep-node-modules-cli`: the `sweep-nm` CLI;
-- `@iyowei/sweep-node-modules`: the programmable API.
+- `@iyowei/sweep-node-modules`: the `sweep` programmable API;
+- `@iyowei/codd-cli` / `@iyowei/codd`: the MongoDB 9.0 provisioning CLI and programmable API (currently pre-release / `private: true`, tracked on `main`).
 
 Older releases do not receive fixes.
 
@@ -18,7 +20,7 @@ A useful report includes:
 - what the issue is, and how it could be exploited;
 - the affected package and version, or the commit hash when running from a clone;
 - the runtime and its version (bun or node), and the operating system;
-- the exact command used, and the configuration in effect (`sweep-nm config` reports which config file applies);
+- the exact command or API call used, and any active configuration;
 - a minimal reproduction, if possible.
 
 The report stays private between the reporter and the maintainers until a fix is released. To be credited when the fix ships, say so in the report.
@@ -29,13 +31,14 @@ The project is maintained by one person; responses are best effort, and security
 
 ## Scope
 
-Deleting `node_modules` directories is the tool's purpose: a removal of targets that were listed and confirmed is not a vulnerability. The published packages also carry no third-party runtime dependencies and make no network calls on the run path.
+Runtime dependency posture varies by package:
+
+- `@iyowei/sweep-node-modules`, `@iyowei/sweep-node-modules-cli`, `@iyowei/codd`, and `@iyowei/codd-cli` carry no third-party runtime dependencies and make no network calls on the run path;
+- `create-clis` bundles no network calls on the run path, and carries `prettier` plus `@trivago/prettier-plugin-sort-imports` as runtime dependencies solely to format newly generated scaffold files.
 
 Reports we treat as security issues include, for example:
 
-- removal of anything outside the configured roots, or of targets the safety guards should reject;
-- ways to bypass the guards around path validation, symlinks, suspected install trees, or cross-device targets;
-- output that can be forged or injected into, so the CLI shows something other than what is actually on disk;
-- a published artifact that fails or bypasses its self-check, or a compromise of the release chain.
-
-The full set of safety guarantees, including the honest account of the known residual risks, is documented in [docs/sweep/designs/safety-guardrails.md](docs/sweep/designs/safety-guardrails.md) (in Chinese).
+- **`sweep` (`sweep-nm` / `@iyowei/sweep-node-modules`)**: removal of anything outside the configured roots, bypassing path validation / symlink / suspected install tree / cross-device guards, or forging CLI output so it differs from disk state (deleting listed and confirmed `node_modules` directories is the tool's intended purpose; full safety guarantees and known residual risks are documented in [safety-guardrails.md](packages/sweep-node-modules/docs/designs/safety-guardrails.md), in Chinese);
+- **`codd` (`codd` / `@iyowei/codd`)**: template/shell/YAML/XML injection through manifest inputs, path traversal in generated bundle paths, weakening default loopback binding or generated keyfile/credential permissions, or unsafe Helm upgrade secret clobbering;
+- **`create-clis`**: overwriting existing non-empty directories without refusal, path traversal during template rendering, or leaking host secrets/files into generated repositories;
+- **Distribution & release chain**: launcher PATH / cwd config (`bunfig.toml` / `.env`) hijacking, published artifacts that fail or bypass SHA-256 self-verification, or compromise of the release chain.

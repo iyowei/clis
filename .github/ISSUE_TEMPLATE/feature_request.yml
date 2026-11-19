@@ -1,5 +1,5 @@
 name: Feature request
-description: Suggest an idea or an improvement for the CLI or the programmable API package.
+description: Suggest an idea or improvement for any package in iyowei/clis.
 title: "[Feature]:\x20"
 labels: ['enhancement']
 body:
@@ -18,11 +18,14 @@ body:
     id: area
     attributes:
       label: Area
-      description: Which part of the project is this about?
+      description: Which part of the repository is this about?
       options:
+        - CLI (create-clis)
         - CLI (sweep-nm)
         - Programmable API (@iyowei/sweep-node-modules)
-        - Documentation
+        - CLI (codd)
+        - Programmable API (@iyowei/codd)
+        - Documentation / Governance
         - Other
     validations:
       required: true
@@ -30,7 +33,7 @@ body:
     id: problem
     attributes:
       label: The problem
-      description: Describe the task or use case, and where the current behavior gets in the way. Include the workspace layout or setup if it matters.
+      description: Describe the task or use case, and where the current behavior gets in the way.
     validations:
       required: true
   - type: textarea
@@ -38,8 +41,12 @@ body:
     attributes:
       label: Proposed solution
       description: Optional. If a specific solution shape is already in mind, describe it.
+    validations:
+      required: false
   - type: textarea
     id: alternatives
     attributes:
       label: Alternatives
       description: Optional. Workarounds in use today, or other approaches considered.
+    validations:
+      required: false

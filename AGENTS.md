@@ -11,18 +11,17 @@ This block is written and re-added by `turbo` before repository-scoped commands 
 
 # 仓库导航 (供 AI Agent 与人类读者)
 
-> 本仓库是 CLI 工具集合仓 (仓库名 `iyowei/clis`; 边界与结构见 [集合仓定位](docs/designs/collection-positioning.md))。本节说明**文档之间的关系和阅读顺序**, 分层规则见 [文档分层协议](docs/designs/docs-layering.md)。
+> 本仓库是 CLI 工具集合仓 (仓库名 `iyowei/clis`; 边界与结构见 [集合仓定位](docs/designs/collection-positioning.md))。文档采用极简两级结构 (见 [文档分层协议](docs/designs/docs-layering.md) 与 [ADR 0019](docs/adrs/0019-two-tier-package-owned-docs.md))。
 
 ## 文档分层与读取路径
 
-- **仓库级文档**在 `docs/`: 先读 [文档总索引](docs/README.md); 仓库级设计的入口是 [设计文档索引](docs/designs/README.md);
-- **产品区文档**在 `docs/<product>/` (现为 `docs/sweep/` 与 `docs/codd/`): 该产品的跨包与整体文档、验收套件都在这; 从各产品区入口 ([sweep](docs/sweep/README.md) / [codd](docs/codd/README.md)) 进;
-- **包级文档**在各包 `packages/<pkg>/docs/`, 入口固定是包内 `docs/README.md` (里面有该包的文档清单、包级 ADR 和指回上级的链接; 内部 `designs/`、`adrs/` 的组织方式与仓库级相同);
-- **ADR 编号全仓库共用一套, 不会重号**: 仓库级的在 `docs/adrs/`, 包级的在各包 `docs/adrs/`; 总索引 [docs/adrs/README.md](docs/adrs/README.md) 列出全部编号 (包级的条目直接链到包内文件);
-- **读取顺序**: 总索引 → 产品区或包入口 → 明细; 三级文档互相链接, 从任何一级都能找到另外两级 (仓库级 ↔ 产品区 ↔ 包级)。
+- **仓库级文档 (`docs/`)**: 纯工程治理与脚手架机制, 从 [文档总索引](docs/README.md) 进; 仓库级设计入口是 [设计文档索引](docs/designs/README.md), 仓库级工程 ADR 入口是 [docs/adrs/README.md](docs/adrs/README.md);
+- **包级 / 产品文档 (`packages/<pkg>/docs/`, 按需创建)**: 每个工具产品的整体设计、协议套件与产品 ADR 全部内聚在其主包 (API 包) 下 (`packages/sweep-node-modules/docs/README.md`、`packages/codd/docs/README.md`); CLI 薄壳从包按需仅保留命令面契约 (`packages/sweep-node-modules-cli/docs/README.md`、`packages/codd-cli/docs/README.md`), 无独立包内文档的包 (如 `create-clis`) 不建空壳目录;
+- **ADR 编号全局唯一、永不重编**: 仓库级工程 ADR 留在 `docs/adrs/`, 产品 ADR 随主包住在 `packages/<pkg>/docs/adrs/`, 引用闸门联合扫描两级并拦截重号;
+- **读取顺序**: 总索引 (`docs/README.md`) → 仓库级设计或对应产品主包 `packages/<pkg>/docs/README.md` → 明细。
 
 ## 结构事实
 
-- 包怎么分类、怎么发布见 [包分类与发布协议](docs/designs/package-classification.md); 包之间的依赖方向见 [依赖方向纪律](docs/designs/dependency-direction.md);
-- 工程闸门链只有一份步骤清单, 就是 `scripts/ci.ts` (本地全链、pre-push、CI、Release verify 跑的是同一套; 其中 Release 的 `release` job 在获批后多一步发布凭据预检, 即 `npm-trust` 步, 见[开发指南](docs/development.md)「发布」章);
-- 提交信息与发布链的约定见 [CONTRIBUTING.md](CONTRIBUTING.md)。
+- 默认双包范式与三类包判定见 [包分类与发布协议](docs/designs/package-classification.md); 包间依赖方向由 `scripts/lint-dependency-direction.ts` 物理强制 ([依赖方向纪律](docs/designs/dependency-direction.md));
+- 工程闸门链只有一份步骤清单, 就是 `scripts/ci.ts` (本地全链、pre-push、CI 与 Release 前置门禁共用; Release 获批后额外经 `--only npm-trust` 跑 OIDC 凭据预检, 见 [开发指南](docs/development.md)「发布」章);
+- 提交信息与发布链约定见 [CONTRIBUTING.md](CONTRIBUTING.md)。

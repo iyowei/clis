@@ -22,9 +22,10 @@
 - `packages/create-clis`: 集合仓生成器, 发布为 `create-clis`。
 - `packages/sweep-node-modules-cli`: `sweep-nm` 命令行工具, 发布为 `@iyowei/sweep-node-modules-cli`。
 - `packages/sweep-node-modules`: `sweep-nm` 的可编程 API 包, 发布为 `@iyowei/sweep-node-modules`。
-- `packages/codd`: `codd` 模板化 MongoDB 9.0 部署装配 CLI (`@iyowei/codd`)。
+- `packages/codd-cli`: `codd` 模板化 MongoDB 9.0 部署装配 CLI (`@iyowei/codd-cli`, 待首发 `private: true`)。
+- `packages/codd`: `codd` 的可编程 API 与模板资产包 (`@iyowei/codd`, 待首发 `private: true`)。
 
-turbo 跨工作区各包编排构建、类型检查与测试任务。代码对 bun 与 node 一视同仁 (有 bun 走 bun, 否则走 node, 行为一致), 支持 Windows / macOS / Linux, 并保持零第三方运行时依赖。
+turbo 跨工作区各包编排构建、类型检查与测试任务。代码对 bun 与 node 一视同仁 (有 bun 走 bun, 否则走 node, 行为一致), 支持 Windows / macOS / Linux; 运行时依赖极简 (`sweep` 与 `codd` 全线零第三方运行时依赖, `create-clis` 仅携带 `prettier` 用于生成物格式化)。
 
 ## 环境准备
 
@@ -63,7 +64,7 @@ bun test
 # 基准测试
 bun run bench
 
-# 打包两个包: 单文件 CLI 产物与其清单, 以及 API 包的 bundle 与类型声明
+# 构建全部包: API 产物与类型声明、CLI 单文件产物与清单、以及模板资产
 bun run build
 ```
 
@@ -110,7 +111,7 @@ node packages/sweep-node-modules-cli/src/cli.ts
 
 ## 文档
 
-工程文档在 `docs/` 下; 索引见 [docs/README.md](docs/README.md)。新增文档必须登记到所属索引 (`adrs/`、`designs/` 或 `protocol/` 下的 README, 其余登记到顶层索引); 不接受孤岛文档。改动一旦影响行为或已经写进文档的契约, 就在同一个 pull request 里一并更新对应文档。
+工程文档采用极简两级结构 (见 [docs/README.md](docs/README.md) 与 [ADR 0019](docs/adrs/0019-two-tier-package-owned-docs.md)): 仓库级治理与脚手架文档在根 `docs/` 下, 各产品的整体设计、协议与 ADR 内聚在对应主包 `packages/<pkg>/docs/` 下。新增文档必须登记到所属索引 (`docs/README.md`、`docs/designs/README.md`、`docs/adrs/README.md` 或 `packages/<pkg>/docs/README.md`), 不接受孤岛文档。改动一旦影响行为或已经写进文档的契约, 就在同一个 pull request 里一并更新对应文档。
 
 ## 提问
 
