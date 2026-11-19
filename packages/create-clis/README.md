@@ -81,8 +81,8 @@ Under `npm create`, flags go after `--` (`npm create clis -- --tier core`); npm 
 
 `--tier` takes `core`, `standard`, or `full`; the default is `standard`. The tiers subtract: `full` is the complete box, `standard` is `full` minus the enhanced tier, and `core` is `standard` minus the standard tier.
 
-- **core**: the engineering skeleton and release closure every repo in the collection carries (the layer without which the repo has not been finished);
-- **standard** (default): adds the standard-tier equipment: the multi-package split (tool + library), the dependency-direction gate (`lint:deps`), the test setup, and the tech-debt ledger;
+- **core**: the two-package engineering skeleton (tool + library), test runner, and release closure every repo in the collection carries (the layer without which the repo has not been finished);
+- **standard** (default): adds the standard-tier governance equipment on top of `core`: the dependency-direction gate (`lint:deps`, plus its unit tests) and the tech-debt ledger (`docs/designs/tech-debt.md`);
 - **full**: adds the enhanced tier on top: the transcription conformance kit (behavior contracts + a golden corpus + a deterministic verifier + mutation self-check) and its ledger reconciliation gate (`lint:coverage`). Only the mechanism ships; the contract, coverage table, and corpus under `packages/<name>/docs/protocol/` are content to fill in. Until you fill them, `bun run ci` stays red on `lint:coverage` and `conformance:bun` / `conformance:node` (`typecheck` stays green): a fresh full-tier project is not green out of the box (core and standard are).
 
 Two notes on shape. Every generated repo comes out in the two-package collection form (tool + library); the generator does not produce single-package repos, so prune one package by hand if that is what you want. And the tier is a packing list, not a stored field: nothing in the generated repo records it, so later upgrades or downgrades are manual, file-by-file affairs (the pruning rules are in [capability-tiers.md](https://github.com/iyowei/clis/blob/main/docs/designs/capability-tiers.md)).

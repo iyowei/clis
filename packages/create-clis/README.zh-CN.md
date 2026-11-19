@@ -81,8 +81,8 @@ npm create clis -- my-tool --tier core
 
 `--tier` 三选一, 默认 `standard`。三档是减法: `full` 是完整箱, `standard` 是 `full` 减增强档装备, `core` 是 `standard` 再减标准档装备。
 
-- **core**: 工程骨架与发布闭环 (集合里每个仓库都默认全带的那一层);
-- **standard** (默认): 再加标准档装备: 多包分层 (工具 + 库)、依赖方向闸门 (`lint:deps`)、测试体系、技术债登记册;
+- **core**: 双包工程骨架 (工具 + 库)、基础测试与发布闭环 (集合里每个仓库都默认全带的那一层);
+- **standard** (默认): 在 `core` 之上加标准档治理装备: 依赖方向闸门 (`lint:deps` 及其单测) 与技术债登记册 (`docs/designs/tech-debt.md`);
 - **full**: 再加增强档装备: 转写契约套件 (行为契约 + 金样本语料 + 确定性验收器 + 变异自证) 与它的台账对账闸门 (`lint:coverage`)。机制随模板, 内容要自填: `packages/<name>/docs/protocol/` 下的契约 / 覆盖表 / 语料填上之前, `bun run ci` 会在 `lint:coverage` 与 `conformance:bun` / `conformance:node` 上红 (`typecheck` 保持全绿), full 档开箱不是全绿 (core 与 standard 是)。
 
 生成物恒为双包集合仓形态 (工具 + 库): 生成器不产出单包仓, 要单包的话生成后自行裁剪。档位只是生成那一刻的装箱单: 它不写进任何配置文件, 之后升降档是手工的按件增删 (裁剪规则见 [capability-tiers.md](https://github.com/iyowei/clis/blob/main/docs/designs/capability-tiers.md))。
