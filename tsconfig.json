@@ -41,6 +41,8 @@
   "exclude": [
     "scripts/transcription/mutants",
     "packages/create-clis/assets",
-    "packages/create-clis/scripts/template-skeletons"
+    "packages/create-clis/scripts/template-skeletons",
+    "packages/codd/assets",
+    "packages/codd/template"
   ]
 }

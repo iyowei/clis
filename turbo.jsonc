@@ -50,6 +50,7 @@
         "!$TURBO_ROOT$/packages/**/.turbo/**",
         "!$TURBO_ROOT$/packages/**/node_modules/**",
         "!$TURBO_ROOT$/packages/create-clis/assets/**",
+        "!$TURBO_ROOT$/packages/codd/assets/**",
         "$TURBO_ROOT$/scripts/**",
         "$TURBO_ROOT$/tsconfig.json",
       ],

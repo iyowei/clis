@@ -17,9 +17,16 @@
         "typescript": "7.0.2",
       },
     },
+    "packages/codd": {
+      "name": "@iyowei/codd",
+      "version": "1.0.0",
+      "bin": {
+        "codd": "bin/codd.mjs",
+      },
+    },
     "packages/create-clis": {
       "name": "create-clis",
-      "version": "0.1.0",
+      "version": "1.0.0",
       "bin": {
         "create-clis": "bin/create-clis.mjs",
       },
@@ -39,7 +46,7 @@
         "sweep-nm": "bin/sweep-nm.mjs",
       },
       "devDependencies": {
-        "@iyowei/sweep-node-modules": "*",
+        "@iyowei/sweep-node-modules": "0.5.1",
       },
     },
   },
@@ -73,6 +80,8 @@
     "@colors/colors": ["@colors/colors@1.6.1", "https://registry.npmmirror.com/@colors/colors/-/colors-1.6.1.tgz", {}, "sha512-dTmUJzXSuayBK+hZydEaXd2mhx61qWQwkwaBBY6LyEOVx/L9aQU5ac8eFNEsd9nrD1+zb9zvDCphLSe8g1F4Qw=="],
 
     "@dabh/diagnostics": ["@dabh/diagnostics@2.0.9", "https://registry.npmmirror.com/@dabh/diagnostics/-/diagnostics-2.0.9.tgz", { "dependencies": { "@so-ric/colorspace": "^1.1.6", "enabled": "2.0.x", "kuler": "^2.0.0" } }, "sha512-R6siwR65Hm+3yfgP7o8DKhNvputQAwfoz9zTc3kyDudnomj2/BcLmD+uGQQPICjuFUp8ounPBU+jmKsocwVVAg=="],
+
+    "@iyowei/codd": ["@iyowei/codd@workspace:packages/codd"],
 
     "@iyowei/sweep-node-modules": ["@iyowei/sweep-node-modules@workspace:packages/sweep-node-modules"],
 

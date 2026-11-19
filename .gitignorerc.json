@@ -16,6 +16,8 @@
     "*.modified",
     "packages/sweep-node-modules/bench/results/",
     "scripts/transcription/mutants/gen-*/",
-    ".turbo/"
+    ".turbo/",
+    "packages/create-clis/assets/",
+    "packages/codd/assets/"
   ]
 }

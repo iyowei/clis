@@ -407,3 +407,4 @@ scripts/transcription/mutants/gen-*/
 .turbo/
 
 packages/create-clis/assets/
+packages/codd/assets/

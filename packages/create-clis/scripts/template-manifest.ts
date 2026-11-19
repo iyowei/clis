@@ -385,6 +385,16 @@ export const TEMPLATE_MANIFEST: readonly ManifestEntry[] = [
     note: '生成器自身 (本仓工具); 生成物不含生成器',
   },
   {
+    path: 'packages/codd/',
+    disposition: 'exclude',
+    note: 'MongoDB 模板化装配生成器包 (本仓领域工具); 新项目模板不含该工具',
+  },
+  {
+    path: 'docs/codd/',
+    disposition: 'exclude',
+    note: 'codd 产品区文档与可视化看板; 新项目模板不含该产品区',
+  },
+  {
     path: 'docs/sweep/',
     disposition: 'exclude',
     note: '产品区领域内容 (sweep 设计 / 契约 / 语料) 整体排除; 空产品区占位由 docs 骨架承担',

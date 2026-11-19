@@ -31,6 +31,8 @@ export const SKIP_DIRS: ReadonlySet<string> = new Set([
 export const SKIP_PATHS: readonly string[] = [
   'packages/create-clis/assets/',
   'packages/create-clis/scripts/template-skeletons/',
+  'packages/codd/assets/',
+  'packages/codd/template/',
 ];
 
 /** 相对路径是否落在跳过面内 (目录前缀匹配) */

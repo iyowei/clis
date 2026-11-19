@@ -13,4 +13,4 @@ registry = "https://registry.npmmirror.com"
 # 语境里被误跑 (同款排除见 .gitignore / .prettierignore / .oxlintrc.json 与 tsconfig.json;
 # 包内一次测试由 packages/create-clis 的 test 脚本自带同款旗标)
 [test]
-pathIgnorePatterns = ["packages/create-clis/assets/**"]
+pathIgnorePatterns = ["packages/create-clis/assets/**", "packages/codd/assets/**", "packages/codd/template/**"]

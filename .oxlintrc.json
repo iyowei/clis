@@ -47,6 +47,8 @@
     "dist/**",
     "node_modules/**",
     "scripts/transcription/mutants/**",
-    "packages/create-clis/assets/**"
+    "packages/create-clis/assets/**",
+    "packages/codd/assets/**",
+    "packages/codd/template/**"
   ]
 }

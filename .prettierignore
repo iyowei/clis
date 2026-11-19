@@ -9,3 +9,6 @@ CODE_OF_CONDUCT.md
 *.modified
 *.deleted
 packages/create-clis/assets
+packages/codd/assets
+packages/codd/template/helm
+packages/codd/template/podman/*.tmpl
