@@ -3,8 +3,11 @@
  */
 export {
   ASSET_CARRIERS,
+  copyTemplateFile,
   readPackageVersion,
+  readTemplateFile,
   resolvePackageRoot,
+  resolveTemplateFilePath,
   resolveTemplateRoot,
 } from './assets.ts';
 export {
@@ -44,4 +47,10 @@ export {
   type ParsedSshTarget,
   type RotateMode,
 } from './types.ts';
-export { assertBunEngineCompatible, validateManifest } from './validate.ts';
+export {
+  assertBunEngineCompatible,
+  DNS_LABEL_RE,
+  DNS_SUBDOMAIN_RE,
+  IPV4_RE,
+  validateManifest,
+} from './validate.ts';
