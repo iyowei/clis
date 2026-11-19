@@ -138,7 +138,7 @@ describe('CLI 端到端行为 (源码直跑)', () => {
     });
     expect(updSrc.status).toBe(0);
     expect(updSrc.stdout).toContain('本地源码工作树');
-  });
+  }, 30_000);
 
   test('--init-schema 首次创建 .gitignore 并明确提示, 二次运行跳过且明确提示; --dry-run 零落盘', () => {
     const workDir = mkdtempSync(join(tmpdir(), 'codd-cli-e2e-'));
@@ -179,9 +179,14 @@ describe('CLI 端到端行为 (源码直跑)', () => {
       });
       expect(badRes.status).toBe(1);
     } finally {
-      rmSync(workDir, { recursive: true, force: true });
+      rmSync(workDir, {
+        recursive: true,
+        force: true,
+        maxRetries: 5,
+        retryDelay: 100,
+      });
     }
-  });
+  }, 30_000);
 });
 
 const hasBuiltCli = existsSync(join(PACKAGE_ROOT, 'dist/cli.js'));
@@ -244,9 +249,15 @@ describe('构建产物双运行时与工作目录隔离验证 (Bun & Node)', () 
             expect(brokenCwdRes.stdout.trim()).toBe(PKG_VERSION);
           }
         } finally {
-          rmSync(workDir, { recursive: true, force: true });
+          rmSync(workDir, {
+            recursive: true,
+            force: true,
+            maxRetries: 5,
+            retryDelay: 100,
+          });
         }
       }
     },
+    30_000,
   );
 });

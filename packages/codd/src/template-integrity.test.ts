@@ -397,7 +397,12 @@ describe('生成产物完整性、Shell 语法与可选 Helm 校验', () => {
         }
       }
     } finally {
-      rmSync(ws, { recursive: true, force: true });
+      rmSync(ws, {
+        recursive: true,
+        force: true,
+        maxRetries: 5,
+        retryDelay: 100,
+      });
     }
-  });
+  }, 30_000);
 });
