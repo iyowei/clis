@@ -3,7 +3,7 @@
  *
  * 职责: 把一条 api 语料的调用指令 (stdin JSON) 物化为对 API 包真实导出的调用, 把末步返回值 /
  * 抛错 / 收集的进度事件写成 stdout JSON。它与 CLI 面「被测命令是参数」同构: 任何语言的实现
- * 按协议 (docs/sweep/protocol/conformance/api-harness-protocol.md) 提供自己的 harness 可执行,
+ * 按协议 (packages/sweep-node-modules/docs/protocol/conformance/api-harness-protocol.md) 提供自己的 harness 可执行,
  * 套件零改动即可验收。
  *
  * 指令形状 (stdin):
@@ -27,9 +27,95 @@
  * mutant 副本按同相对结构复制本文件即自动指向副本源码 (见 make-mutants.ts)。bun 与 node
  * (≥ 22.18 类型剥离) 均可直跑。
  */
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync } from 'node:fs';
+import { dirname, join, resolve } from 'node:path';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
-import * as api from '../../packages/sweep-node-modules/src/index.ts';
+/**
+ * 基于仓根动态解析主 API 包的源码入口 (src/index.ts):
+ * 与 scripts/lib/workspace.ts 同算法 (带 bin 的主 CLI 包依赖的仓内无 bin 包),
+ * 但内联仅依赖 node:fs / node:path 以便 make-mutants.ts 单独复制本文件到副本根下时零外部依赖、
+ * 自动指向副本内的 API 源码 (无论仓库或副本包目录名如何变化)。
+ */
+function resolveApiEntry(): string {
+  const root = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
+  let patterns = ['packages/*'];
+  const rootPkgPath = join(root, 'package.json');
+  if (existsSync(rootPkgPath)) {
+    const parsed = JSON.parse(readFileSync(rootPkgPath, 'utf8')) as {
+      workspaces?: unknown;
+    };
+    if (Array.isArray(parsed.workspaces)) {
+      patterns = parsed.workspaces.filter(
+        (item): item is string => typeof item === 'string',
+      );
+    }
+  }
+  const packages: {
+    name: string;
+    dir: string;
+    manifest: Record<string, unknown>;
+  }[] = [];
+  for (const pattern of patterns) {
+    const match = pattern.match(/^([^/*]+)\/\*$/);
+    if (match === null) continue;
+    const parent = join(root, match[1]!);
+    if (!existsSync(parent)) continue;
+    const entries = readdirSync(parent, { withFileTypes: true }).sort((a, b) =>
+      a.name.localeCompare(b.name),
+    );
+    for (const entry of entries) {
+      if (!entry.isDirectory()) continue;
+      const dir = join(parent, entry.name);
+      const manifestPath = join(dir, 'package.json');
+      if (!existsSync(manifestPath)) continue;
+      const manifest = JSON.parse(readFileSync(manifestPath, 'utf8')) as Record<
+        string,
+        unknown
+      >;
+      if (typeof manifest.name !== 'string') continue;
+      packages.push({ name: manifest.name, dir, manifest });
+    }
+  }
+  packages.sort((a, b) => a.dir.localeCompare(b.dir));
+  const apiCandidates = packages.filter((pkg) => {
+    if (pkg.manifest.bin !== undefined) return false;
+    return packages.some((other) => {
+      if (other === pkg || other.manifest.bin === undefined) return false;
+      const deps = (other.manifest.dependencies ?? {}) as Record<
+        string,
+        unknown
+      >;
+      const devDeps = (other.manifest.devDependencies ?? {}) as Record<
+        string,
+        unknown
+      >;
+      return pkg.name in deps || pkg.name in devDeps;
+    });
+  });
+  let apiPkg = apiCandidates.length === 1 ? apiCandidates[0]! : null;
+  if (apiPkg === null && apiCandidates.length > 1) {
+    const withProtocol = apiCandidates.filter((pkg) =>
+      existsSync(join(pkg.dir, 'docs', 'protocol')),
+    );
+    if (withProtocol.length === 1) {
+      apiPkg = withProtocol[0]!;
+    } else {
+      throw new Error(
+        `仓内存在多个 API 候选包 (${apiCandidates.map((p) => p.name).join(', ')}), 无法唯一确定带 docs/protocol 的被测包`,
+      );
+    }
+  }
+  if (apiPkg === null) {
+    throw new Error(`无法基于仓根 (${root}) 定位 API 包源码入口`);
+  }
+  return join(apiPkg.dir, 'src', 'index.ts');
+}
+
+const api = (await import(pathToFileURL(resolveApiEntry()).href)) as Record<
+  string,
+  unknown
+>;
 
 /** harness 自身问题 (指令非法 / 探针未知 / 导出与方法不存在), 与被测 API 的抛错同形态输出 */
 class HarnessError extends Error {
@@ -41,7 +127,7 @@ class HarnessError extends Error {
  * - pathops.posix / pathops.win32: 真实 PathStyle (纯 path 语义, 可直接充当被测的注入面);
  * - deviceProbe.uniform: 恒报同一设备号的 DeviceProbe stub (同设备基准面; 跨设备类场景的
  *   细分 stub 按条款需求增补, 增补不破坏既有语料)。
- * 增补探针时须同步 docs/sweep/protocol/conformance/api-harness-protocol.md 的注册表清单。
+ * 增补探针时须同步 packages/sweep-node-modules/docs/protocol/conformance/api-harness-protocol.md 的注册表清单。
  */
 const PROBES: Record<string, unknown> = {
   'pathops.posix': api.POSIX_STYLE,
