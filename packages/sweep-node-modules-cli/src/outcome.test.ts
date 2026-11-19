@@ -14,6 +14,7 @@ import {
   ABORTED_HINT,
   abortedUnattemptedCount,
   toExecuteEntry,
+  toRenderEntry,
 } from './outcome.ts';
 
 function makeEntry(
@@ -83,5 +84,19 @@ describe('abortedUnattemptedCount (整批中止未删计数)', () => {
     const rendered = toExecuteEntry(entries[2]!);
     expect(rendered.ok).toBe(false);
     expect(rendered.error).toBe(ABORTED_HINT);
+  });
+
+  test('根目录项目 (project="/") 保留 "/" 而非空串 (SWEEPCLI-P1-3)', () => {
+    const rootEntry: SweepOutcomeEntry = {
+      target: '/node_modules',
+      project: '/',
+      root: '/',
+      bytes: 1024,
+      basis: 'disk-usage',
+      kind: 'project',
+      inBatch: true,
+      outcome: { kind: 'removed' },
+    };
+    expect(toRenderEntry(rootEntry).project).toBe('/');
   });
 });

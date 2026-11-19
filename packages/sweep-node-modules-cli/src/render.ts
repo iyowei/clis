@@ -344,18 +344,26 @@ const padEnd = (text: string, width: number): string =>
 const padStart = (text: string, width: number): string =>
   ' '.repeat(Math.max(0, width - displayWidth(text))) + text;
 
-/** 零宽组合标记 (Unicode Nonspacing_Mark, 如 macOS NFD 变音符): 终端占 0 列 */
-const COMBINING_MARK_RE = /\p{Mn}/u;
+/** 零宽组合标记 / 包围标记 (Unicode Mn / Me): 终端占 0 列 */
+const ZERO_WIDTH_MARK_RE = /[\p{Mn}\p{Me}]/u;
 
 /**
- * 终端显示列宽: 组合标记 (\p{Mn}) 按 0 列计, 汉字 / 全角标点 / 韩文按 2 列计, 其余按 1 列。
+ * 终端显示列宽: 零宽标记 (\p{Mn}/\p{Me}/ZWJ/变体选择符) 按 0 列计,
+ * 汉字 (含扩展 B+) / 全角标点 / 韩文 / 常用宽 Emoji 按 2 列计, 其余按 1 列。
  * 只覆盖常见全角区间, 不求穷尽 East Asian Width 全表 (紧凑对齐够用即止)。
  */
 function displayWidth(text: string): number {
   let width = 0;
   for (const char of text) {
-    if (COMBINING_MARK_RE.test(char)) continue;
     const code = char.codePointAt(0) ?? 0;
+    if (
+      code === 0x200d ||
+      code === 0xfe0e ||
+      code === 0xfe0f ||
+      ZERO_WIDTH_MARK_RE.test(char)
+    ) {
+      continue;
+    }
     width += isFullWidth(code) ? 2 : 1;
   }
   return width;
@@ -369,6 +377,10 @@ function isFullWidth(code: number): boolean {
     (code >= 0xf900 && code <= 0xfaff) ||
     (code >= 0xfe30 && code <= 0xfe6f) ||
     (code >= 0xff00 && code <= 0xff60) ||
-    (code >= 0xffe0 && code <= 0xffe6)
+    (code >= 0xffe0 && code <= 0xffe6) ||
+    (code >= 0x1f300 && code <= 0x1f64f) ||
+    (code >= 0x1f680 && code <= 0x1f6ff) ||
+    (code >= 0x1f900 && code <= 0x1faff) ||
+    (code >= 0x20000 && code <= 0x3fffd)
   );
 }

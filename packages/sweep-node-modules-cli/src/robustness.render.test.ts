@@ -306,4 +306,37 @@ describe('路径风味矩阵 (posix / win32)', () => {
     expect(rows[0]).toContain('cafe\u0301    ~/a/cafe');
     expect(rows[1]).toContain('cafe    ~/b/cafe');
   });
+
+  test('宽 Emoji / CJK 扩展 B / 变体选择符与零宽连字符按准确显示列宽对齐 (SWEEPCLI-P1-3)', () => {
+    // "🚀\ufe0fa" = 宽 Emoji (2) + 变体选择符 (0) + 'a' (1) = 3 列
+    // "𠀀a" = CJK 扩展 B U+20000 (2) + 'a' (1) = 3 列
+    // "abc" = 3 列; 三者显示宽均为 3, 路径起始前均精确隔 4 空格
+    const out = render({
+      ...previewOptions,
+      entries: [
+        {
+          project: '🚀\ufe0fa',
+          bytes: 30 * MIB,
+          target: `${HOME}/a/e/node_modules`,
+          suspect: false,
+        },
+        {
+          project: '𠀀a',
+          bytes: 20 * MIB,
+          target: `${HOME}/b/c/node_modules`,
+          suspect: false,
+        },
+        {
+          project: 'abc',
+          bytes: 10 * MIB,
+          target: `${HOME}/c/d/node_modules`,
+          suspect: false,
+        },
+      ],
+    });
+    const rows = linesOf(out).slice(1, 4);
+    expect(rows[0]).toContain('🚀\ufe0fa    ~/a/e');
+    expect(rows[1]).toContain('𠀀a    ~/b/c');
+    expect(rows[2]).toContain('abc    ~/c/d');
+  });
 });

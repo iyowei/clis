@@ -39,7 +39,7 @@ export function toRenderEntry(entry: SweepEntry): RenderEntry {
   return {
     target: entry.target,
     bytes: entry.bytes,
-    project: basename(entry.project),
+    project: basename(entry.project) || entry.project,
     suspect: entry.kind === 'suspect-install-tree',
     ...(notes.length > 0 ? { note: notes.join('  ') } : {}),
   };
