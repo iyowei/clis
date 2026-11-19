@@ -1,0 +1,24 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "emitDeclarationOnly": true,
+    "declaration": true,
+    "rootDir": "src",
+    "outDir": "dist"
+  },
+  "include": [
+    "src/index.ts",
+    "src/assets.ts",
+    "src/types.ts",
+    "src/formulas.ts",
+    "src/validate.ts",
+    "src/ssh.ts",
+    "src/state.ts",
+    "src/render.ts",
+    "src/emit-podman.ts",
+    "src/emit-k8s.ts",
+    "src/generate.ts"
+  ],
+  "exclude": ["src/**/*.test.ts", "src/cli.ts", "src/wizard.ts", "src/ui/**"]
+}

@@ -1,0 +1,26 @@
+#!/bin/sh
+# codd 启动器 (POSIX): 挑选运行时 (Bun 优先, 其次 Node) 后交给分发入口 (bin/codd.mjs)。
+# 支持多级符号链接解析 (如 ~/.local/bin/codd -> ...); 显式固定 --config 与 --no-env-file
+# 防止用户工作目录中损坏的 bunfig.toml 或 .env 干扰启动; bin/codd.mjs 在目标运行时内直接 import
+# 产物而不二次派生子进程。
+
+target="$0"
+while [ -L "$target" ]; do
+  link=$(readlink "$target" 2>/dev/null) || break
+  case "$link" in
+    /*) target="$link" ;;
+    *) target="$(dirname "$target")/$link" ;;
+  esac
+done
+root=$(cd "$(dirname "$target")/.." && pwd)
+
+if command -v bun >/dev/null 2>&1; then
+  exec bun --config="$root/bin/bunfig.toml" --no-env-file "$root/bin/codd.mjs" "$@"
+fi
+
+if command -v node >/dev/null 2>&1; then
+  exec node "$root/bin/codd.mjs" "$@"
+fi
+
+echo "codd: 未找到 bun 或 node, 请至少安装其一" >&2
+exit 1

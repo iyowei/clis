@@ -11,7 +11,7 @@ import {
   rmSync,
   writeFileSync,
 } from 'node:fs';
-import { dirname, join, relative, resolve } from 'node:path';
+import { dirname, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { ASSET_CARRIERS } from '../src/assets.ts';
@@ -22,6 +22,9 @@ export const PACKAGE_ROOT = resolve(
 );
 
 export { ASSET_CARRIERS };
+
+export const toPosixPath = (p: string): string =>
+  p.split(sep).join('/').replaceAll('\\', '/');
 
 const toCarrierName = (fileName: string): string =>
   ASSET_CARRIERS[fileName] ?? fileName;
@@ -43,7 +46,7 @@ const collectTemplateFiles = (
     if (entry.isDirectory()) {
       collectTemplateFiles(abs, baseDir, out);
     } else if (entry.isFile()) {
-      out.push(relative(baseDir, abs));
+      out.push(toPosixPath(relative(baseDir, abs)));
     }
   }
   return out.sort();
@@ -63,16 +66,17 @@ export const buildCoddAssets = (pkgRoot: string = PACKAGE_ROOT): string[] => {
   const emitted: string[] = [];
 
   for (const rel of relFiles) {
-    const parts = rel.split('/');
+    const normalized = toPosixPath(rel);
+    const parts = normalized.split('/');
     const lastIdx = parts.length - 1;
     parts[lastIdx] = toCarrierName(parts[lastIdx]!);
     const carrierRel = parts.join('/');
     if (parts[lastIdx]!.startsWith('.')) {
-      throw new Error(`模板资产存在未登记的隐藏点文件: ${rel}`);
+      throw new Error(`模板资产存在未登记的隐藏点文件: ${normalized}`);
     }
-    const dstPath = join(dstRoot, carrierRel);
+    const dstPath = join(dstRoot, ...parts);
     mkdirSync(dirname(dstPath), { recursive: true });
-    copyFileSync(join(srcRoot, rel), dstPath);
+    copyFileSync(join(srcRoot, ...normalized.split('/')), dstPath);
     emitted.push(carrierRel);
   }
 

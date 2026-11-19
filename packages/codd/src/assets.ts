@@ -1,7 +1,8 @@
 /**
  * 包内置模板资产定位与点号载体文件名还原。
- * 源码态 (src/assets.ts) 与打包态 (dist/cli.js) 均位于包根一级子目录下,
- * 故 new URL('..', import.meta.url) 恒定解析到 packages/codd 包根目录。
+ * 向上逐级查找同时存在 package.json 与模板目录 (assets/template 或 template) 的包根,
+ * 确保在源码态 (packages/codd/src/assets.ts)、API 产物态 (packages/codd/dist/index.js)、
+ * CLI 打包态 (packages/codd-cli/dist/cli.js) 与 npm 装包态下全部精准命中各自包根。
  */
 import { copyFileSync, existsSync, readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
@@ -17,16 +18,40 @@ export const ASSET_CARRIERS: Readonly<Record<string, string>> = {
   '.helmignore': '_helmignore',
 };
 
+const MAX_PACKAGE_ASCENT = 8;
+
+const hasTemplateDir = (dir: string): boolean =>
+  existsSync(join(dir, 'assets/template')) || existsSync(join(dir, 'template'));
+
 export const resolvePackageRoot = (
   moduleUrl: string = import.meta.url,
-): string => resolve(dirname(fileURLToPath(moduleUrl)), '..');
+): string => {
+  const startDir = dirname(fileURLToPath(moduleUrl));
+  let cur = startDir;
+  let nearestPkgDir: string | null = null;
 
-export const resolveTemplateRoot = (overrideDir?: string): string => {
+  for (let depth = 0; depth < MAX_PACKAGE_ASCENT; depth += 1) {
+    if (existsSync(join(cur, 'package.json'))) {
+      if (nearestPkgDir === null) nearestPkgDir = cur;
+      if (hasTemplateDir(cur)) return cur;
+    }
+    const parent = dirname(cur);
+    if (parent === cur) break;
+    cur = parent;
+  }
+
+  return nearestPkgDir ?? resolve(startDir, '..');
+};
+
+export const resolveTemplateRoot = (
+  overrideDir?: string,
+  moduleUrl: string = import.meta.url,
+): string => {
   if (overrideDir) return resolve(overrideDir);
   const envDir = process.env.CODD_TEMPLATE_DIR?.trim();
   if (envDir) return resolve(envDir);
 
-  const pkgRoot = resolvePackageRoot();
+  const pkgRoot = resolvePackageRoot(moduleUrl);
   const builtAssetsDir = join(pkgRoot, 'assets/template');
   if (existsSync(builtAssetsDir)) {
     return builtAssetsDir;
@@ -69,10 +94,22 @@ export const copyTemplateFile = (
   copyFileSync(resolveTemplateFilePath(subDir, realFileName), targetPath);
 };
 
-export const readPackageVersion = (): string => {
-  const pkgPath = join(resolvePackageRoot(), 'package.json');
-  const parsed = JSON.parse(readFileSync(pkgPath, 'utf8')) as {
-    version?: string;
-  };
-  return parsed.version ?? '1.0.0';
+export const readPackageVersion = (
+  moduleUrl: string = import.meta.url,
+): string => {
+  const startDir = dirname(fileURLToPath(moduleUrl));
+  let cur = startDir;
+  for (let depth = 0; depth < MAX_PACKAGE_ASCENT; depth += 1) {
+    const pkgPath = join(cur, 'package.json');
+    if (existsSync(pkgPath)) {
+      const parsed = JSON.parse(readFileSync(pkgPath, 'utf8')) as {
+        version?: string;
+      };
+      return parsed.version ?? '1.0.0';
+    }
+    const parent = dirname(cur);
+    if (parent === cur) break;
+    cur = parent;
+  }
+  return '1.0.0';
 };

@@ -1,13 +1,17 @@
 /**
- * 发布侧闸门: 校验干净检出 + dist/cli.js 产物摘要 + assets/manifest.json + npm pack 发行面白名单。
+ * 发布侧闸门 (@iyowei/codd API 包):
+ * 校验干净检出 + dist/index.js 摘要 + 递归 .d.ts 零 .ts 残留 + assets/manifest.json + npm pack 白名单。
+ *
+ * 用法: bun scripts/verify-release.ts
+ * 退出码: 0 通过; 1 拒绝 (原因与处置见 stderr)
  */
 import { join } from 'node:path';
 
 import {
   PACKAGE_ROOT,
   type PackExpectation,
-  type PackFacts,
-  type ReleaseFacts,
+  type VerifyFacts,
+  findDtsTsSpecifiers,
   judgeRelease,
   normalizeCommit,
   readDistState,
@@ -22,18 +26,23 @@ export interface ReleaseIo {
   err: (line: string) => void;
 }
 
+export const collectFacts = (root: string): VerifyFacts => {
+  const distDir = join(root, 'dist');
+  return {
+    gitStatus: readGitText(root, ['status', '--porcelain']),
+    gitHead: normalizeCommit(readGitText(root, ['rev-parse', 'HEAD'])),
+    dist: readDistState(distDir),
+    dtsTsSpecifierHits: findDtsTsSpecifiers(distDir),
+    pack: readPackFiles(root),
+  };
+};
+
 export const verifyRelease = (
   root: string,
   io: ReleaseIo,
-  packFacts: PackFacts = readPackFiles(root),
+  facts: VerifyFacts = collectFacts(root),
   expectation: PackExpectation = readPackExpectation(root),
 ): number => {
-  const facts: ReleaseFacts = {
-    gitStatus: readGitText(root, ['status', '--porcelain']),
-    gitHead: normalizeCommit(readGitText(root, ['rev-parse', 'HEAD'])),
-    dist: readDistState(join(root, 'dist')),
-    pack: packFacts,
-  };
   const verdict = judgeRelease(facts, expectation);
   if (verdict.ok) {
     io.out(
