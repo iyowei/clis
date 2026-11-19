@@ -223,12 +223,25 @@ describe('三入口解析形态 (静态钉住)', () => {
     );
   });
 
-  test('npm 启动器: POSIX 分支走 resolvePosixExecutables (形态不被摘掉)', () => {
+  test('npm 启动器: POSIX 分支走 resolvePosixExecutables 且启用 bunfig 隔离', () => {
     const source = readLauncher('bin/create-clis.mjs');
 
     expect(source).toContain(
       'resolvePosixExecutables(name, pathEnv, fileProbe)',
     );
+    expect(source).toContain('bin');
+    expect(source).toContain('bunfig.toml');
+    expect(source).toContain('--no-env-file');
+  });
+
+  test('cmd 启动器: IS_BUN 仅在 RUNNER 命中 bun 后独立单行置位, 不污染 node 回退', () => {
+    const source = readLauncher('bin/create-clis.cmd');
+
+    expect(source).toContain('if defined RUNNER set "IS_BUN=1"');
+    expect(source).toContain(
+      'if defined IS_BUN "%RUNNER%" "--config=%BUNFIG%" --no-env-file "%ENTRY%" %*',
+    );
+    expect(source).not.toMatch(/set "RUNNER=%%~\$PATH:I"\s*&/);
   });
 });
 

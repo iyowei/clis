@@ -26,6 +26,7 @@
   },
   "files": [
     "bin/{{BIN_NAME}}.mjs",
+    "bin/bunfig.toml",
     "dist"
   ],
   "engines": {
