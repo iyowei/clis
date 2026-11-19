@@ -2,7 +2,12 @@
  * 严格模板渲染器: 确保每个 {{TOKEN}} 占位符被精确替换, 不留未定义或遗漏占位。
  */
 
-export class TemplateRenderError extends Error {}
+export class TemplateRenderError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'TemplateRenderError';
+  }
+}
 
 const TOKEN_RE = /\{\{([A-Z0-9_]+)\}\}/g;
 const GO_FORMAT_RE = /\{\{\.[A-Za-z0-9_.]+\}\}/g;
