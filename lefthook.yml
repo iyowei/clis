@@ -2,22 +2,10 @@
 #
 # 分层策略:
 #   pre-commit 增量门禁: prettier / oxlint 只扫暂存文件; type-check 例外,
-#               不传 {staged_files}, 跑全项目 tsc --noEmit; prettier 格式化后
-#               自动重暂存
+#               不传 {staged_files}, 跑全项目 typecheck (覆盖各包与根 scripts/);
+#               prettier 格式化后自动重暂存
 #   pre-push   全量门禁: rebase / merge / cherry-pick 重放提交不触发 pre-commit,
-#               base 的改动会让本次提交产生「语义冲突」(如 import 失配),
 #               push 是代码外流的唯一必经闸门, 在此全量只读兜底
-#
-# 注意 {staged_files} 模板只在 pre-commit 阶段成立, push 阶段没有暂存区概念,
-# 因此 pre-push 一律只读: prettier 用 --check 而非 --write, 不设 stage_fixed
-# (--write 在 push 阶段是纯副作用: 改动进不了正在推送的提交, 只在本地凭空多出
-# 未提交改动)。
-#
-# 执行链的 lefthook 取用: 官方生成的钩子模板探测链不含 bunx, 且默认「找不到即
-# 静默放行」(门禁悄悄失效); 这里用官方两个配置键补齐 —— lefthook: 指定经 bunx
-# 取 pin 版 (无全局 lefthook 的机器也能跑, 与 LEFTHOOK_BIN / PATH 的优先级由
-# 模板决定), assert_lefthook_installed: true 让整链失败时退非零而非静默通过。
-# 依据见 ADR 0005 决策第 1 条。
 
 lefthook: bunx lefthook@2.1.14
 assert_lefthook_installed: true
@@ -25,31 +13,30 @@ assert_lefthook_installed: true
 pre-commit:
   parallel: false
   commands:
-    # TypeScript 类型检查 (两包, 经 turbo 编排): 不传 {staged_files}, 天然全项目执行
+    # TypeScript 类型检查 (全仓包 + 根 scripts/, 单源复用根 package.json typecheck)
     type-check:
-      glob: '*.{ts,tsx,mts,mjs}'
-      run: bunx turbo run typecheck
+      glob: '*.{ts,tsx,mts,mjs,js,cjs}'
+      run: bun run typecheck
 
-    # JS/TS (含 .mts / .mjs): prettier 格式化后自动重暂存, 再 oxlint
+    # JS/TS (含 .mts / .mjs / .js / .cjs): prettier 格式化后自动重暂存, 再 oxlint
     prettier-js:
-      glob: '*.{ts,tsx,mts,mjs}'
+      glob: '*.{ts,tsx,mts,mjs,js,cjs}'
       run: bunx prettier --write --log-level error {staged_files}
       stage_fixed: true
 
     oxlint:
-      glob: '*.{ts,tsx,mts,mjs}'
+      glob: '*.{ts,tsx,mts,mjs,js,cjs}'
       run: bunx oxlint {staged_files}
 
     # 非 JS/TS: 仅 prettier 格式化
     prettier-other:
-      glob: '*.{md,mdx,json,yaml,yml}'
+      glob: '*.{md,mdx,json,jsonc,yaml,yml}'
       run: bunx prettier --write --log-level error {staged_files}
       stage_fixed: true
 
 pre-push:
   parallel: false
   commands:
-    # 全量预演 (验证组 + 验收组): 步骤集合的单一事实来源在 scripts/ci.ts,
-    # 与 CI 的两个 job 及 Release 的 verify job 同集合, 此处不再逐项枚举
+    # 全量预演 (验证组 + 验收组): 步骤集合的单一事实来源在 scripts/ci.ts
     ci:
       run: bun run ci
