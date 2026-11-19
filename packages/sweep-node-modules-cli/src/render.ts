@@ -85,8 +85,8 @@ export const neutralLine = (text: string, color: boolean): string =>
  * 一维 k-means 的自然断点落在中 / 大之间 (约 405 MiB), 但红块须保持「稀有而醒目」, 取更保守的 512 MiB (半 GiB)。
  * 样本量小, 该组阈值属可再重标者, 不是一次定死的分位规则。
  */
-const TIER_BIG = 512 * 1024 ** 2;
-const TIER_MID = 100 * 1024 ** 2;
+export const TIER_BIG = 512 * 1024 ** 2;
+export const TIER_MID = 100 * 1024 ** 2;
 
 export interface RenderOptions {
   /** 预览 (零副作用) 或执行 (逐行结果 + 汇总) */
@@ -186,11 +186,13 @@ export function render(options: RenderOptions): string {
   }
 
   const rows = [...entries].sort((a, b) => (b.bytes ?? -1) - (a.bytes ?? -1));
-  const volumeWidth = Math.max(
-    ...rows.map((row) => displayWidth(volumeOf(row))),
+  const volumeWidth = rows.reduce(
+    (max, row) => Math.max(max, displayWidth(volumeOf(row))),
+    0,
   );
-  const nameWidth = Math.max(
-    ...rows.map((row) => displayWidth(sanitizeLine(row.project))),
+  const nameWidth = rows.reduce(
+    (max, row) => Math.max(max, displayWidth(sanitizeLine(row.project))),
+    0,
   );
 
   const body = rows.map((row) => {
@@ -280,13 +282,24 @@ const sum = (rows: RenderEntry[]): number =>
 const fold = (text: string, style: PathStyle): string =>
   style.caseInsensitive ? text.toLowerCase() : text;
 
-/** 家目录缩写: 命中前缀 (含家目录本身) 才替换为 ~; 前缀按风味分隔符拼装, 比较按风味折叠 */
+/** 家目录缩写: 先规范去除 home 尾斜杠 (文件系统根除外), 命中前缀 (含家目录本身) 才替换为 ~ */
 function shortenPath(path: string, style: PathStyle, home?: string): string {
   if (!home) return path;
-  if (fold(path, style) === fold(home, style)) return '~';
-  const prefix = `${home}${style.ops.sep}`;
+  const sep = style.ops.sep;
+  const fsRoot = style.ops.parse(home).root;
+  let normalizedHome = home;
+  while (
+    normalizedHome.length > fsRoot.length &&
+    normalizedHome.endsWith(sep)
+  ) {
+    normalizedHome = normalizedHome.slice(0, -sep.length);
+  }
+  if (fold(path, style) === fold(normalizedHome, style)) return '~';
+  const prefix = normalizedHome.endsWith(sep)
+    ? normalizedHome
+    : `${normalizedHome}${sep}`;
   return fold(path, style).startsWith(fold(prefix, style))
-    ? `~${path.slice(home.length)}`
+    ? `~${sep}${path.slice(prefix.length)}`
     : path;
 }
 
@@ -300,7 +313,7 @@ export function shortenHome(path: string, home?: string): string {
 
 /**
  * 展示路径: 先剥掉尾部 node_modules (每行恒定的后缀, 与左侧项目名重复, 属噪声;
- * 示意里展示的是项目目录), 再做家目录缩写。后缀与前缀均按风味分隔符拼装。
+ * 示意里展示的是项目目录), 剥除后为空时回退分隔符 (如 '/node_modules' → '/'), 再做家目录缩写。
  * keepSuffix 为真 (疑似安装树) 时保留后缀: 这类行剥掉后缀后剩下的目录 (如 ~/.bun/install/global)
  * 会被读成项目目录, 而它恰恰不是项目 —— 后缀在这里是唯一的类别线索, 与行尾标记互为印证。
  */
@@ -311,10 +324,11 @@ function displayPath(
   keepSuffix = false,
 ): string {
   const suffix = `${style.ops.sep}node_modules`;
-  const dir =
-    keepSuffix || !fold(target, style).endsWith(fold(suffix, style))
-      ? target
-      : target.slice(0, -suffix.length);
+  let dir = target;
+  if (!keepSuffix && fold(target, style).endsWith(fold(suffix, style))) {
+    const stripped = target.slice(0, -suffix.length);
+    dir = stripped === '' ? style.ops.sep : stripped;
+  }
   return shortenPath(dir, style, home);
 }
 
@@ -326,13 +340,17 @@ const padEnd = (text: string, width: number): string =>
 const padStart = (text: string, width: number): string =>
   ' '.repeat(Math.max(0, width - displayWidth(text))) + text;
 
+/** 零宽组合标记 (Unicode Nonspacing_Mark, 如 macOS NFD 变音符): 终端占 0 列 */
+const COMBINING_MARK_RE = /\p{Mn}/u;
+
 /**
- * 终端显示列宽: 汉字 / 全角标点 / 韩文按 2 列计, 其余按 1 列。
+ * 终端显示列宽: 组合标记 (\p{Mn}) 按 0 列计, 汉字 / 全角标点 / 韩文按 2 列计, 其余按 1 列。
  * 只覆盖常见全角区间, 不求穷尽 East Asian Width 全表 (紧凑对齐够用即止)。
  */
 function displayWidth(text: string): number {
   let width = 0;
   for (const char of text) {
+    if (COMBINING_MARK_RE.test(char)) continue;
     const code = char.codePointAt(0) ?? 0;
     width += isFullWidth(code) ? 2 : 1;
   }

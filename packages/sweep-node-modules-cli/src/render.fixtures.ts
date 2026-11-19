@@ -12,9 +12,8 @@ const ROOTS = [ROOT_DEV];
 export const GIB = 1024 ** 3;
 export const MIB = 1024 ** 2;
 
-/** 档位阈值 (与实现约定的绝对阈值, 双方同步: 重标时此处与 render.ts 常量必须一并更新; 依据见 render.ts 常量注释) */
-export const TIER_BIG = 512 * MIB;
-export const TIER_MID = 100 * MIB;
+/** 档位阈值: 直接复用 render.ts 单源常量 (单一事实来源, 避免漂移) */
+export { TIER_BIG, TIER_MID } from './render.ts';
 
 /** 固定样例: 覆盖大 / 中 / 小三档 + 中文项目名与中文路径 */
 export const ACME_WEB: RenderEntry = {

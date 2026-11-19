@@ -22,6 +22,7 @@ import {
   render,
   sanitizeLine,
   sanitizeOutputLine,
+  shortenHome,
 } from './render.ts';
 
 describe('控制字符与换行净化', () => {
@@ -247,5 +248,60 @@ describe('路径风味矩阵 (posix / win32)', () => {
 
     expect(out).toContain('~/work/acme-web');
     expect(out).not.toContain('node_modules');
+  });
+
+  test('带尾斜杠的 home 仍正常缩写为 ~ 与 ~/...', () => {
+    expect(shortenHome('/Users/iyowei', '/Users/iyowei/')).toBe('~');
+    expect(shortenHome('/Users/iyowei/work/app', '/Users/iyowei/')).toBe(
+      '~/work/app',
+    );
+    const out = render({
+      ...previewOptions,
+      home: `${HOME}/`,
+      entries: [ACME_WEB],
+    });
+    expect(out).toContain('~/workspace/development/acme-web');
+  });
+
+  test('根下直挂 /node_modules 剥后缀后不为空串, 回退根分隔符', () => {
+    const out = render({
+      ...previewOptions,
+      roots: ['/'],
+      home: undefined,
+      entries: [
+        {
+          project: 'root-nm',
+          bytes: 12 * MIB,
+          target: '/node_modules',
+          suspect: false,
+        },
+      ],
+    });
+    expect(out).toContain('root-nm    /');
+  });
+
+  test('组合变音符 (\\p{Mn}) 按 0 宽计算, 与等宽 ASCII 项目名对齐一致', () => {
+    // "cafe\u0301" 含 1 个零宽组合急性重音, 显示宽与 "cafe" 同为 4
+    const out = render({
+      ...previewOptions,
+      entries: [
+        {
+          project: 'cafe\u0301',
+          bytes: 20 * MIB,
+          target: `${HOME}/a/cafe/node_modules`,
+          suspect: false,
+        },
+        {
+          project: 'cafe',
+          bytes: 10 * MIB,
+          target: `${HOME}/b/cafe/node_modules`,
+          suspect: false,
+        },
+      ],
+    });
+    const rows = linesOf(out).slice(1, 3);
+    // 两行路径前均保持相同 4 空格间隔 (无多余或缺失补位)
+    expect(rows[0]).toContain('cafe\u0301    ~/a/cafe');
+    expect(rows[1]).toContain('cafe    ~/b/cafe');
   });
 });
