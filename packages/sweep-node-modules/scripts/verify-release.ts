@@ -23,13 +23,15 @@ import {
   readDistState,
   readGitText,
   readPackFiles,
+  shortHash,
 } from '../../../scripts/lib/release-verify.ts';
 
 export const PACKAGE_ROOT = resolve(import.meta.dir, '..');
 
 /**
  * 发行面包的期望文件集: files 白名单 (dist) 的物化 + npm 强制包含项 (README / LICENSE /
- * package.json)。增删产物文件 (如新增源模块的 .d.ts) 须同步本表, 闸门拒绝时会指出差集。
+ * package.json)。非公开内部模块 (runtime / scan-* / size-du / size-js) 的 .d.ts 已从构建产物剔除;
+ * 增删公开产物文件须同步本表, 闸门拒绝时会指出差集。
  */
 export const PACK_FILES_EXPECTED: readonly string[] = [
   'LICENSE',
@@ -46,13 +48,7 @@ export const PACK_FILES_EXPECTED: readonly string[] = [
   'dist/index.d.ts',
   'dist/index.js',
   'dist/manifest.json',
-  'dist/runtime.d.ts',
-  'dist/scan-native.d.ts',
-  'dist/scan-parallel.d.ts',
-  'dist/scan-prune.d.ts',
   'dist/scan.d.ts',
-  'dist/size-du.d.ts',
-  'dist/size-js.d.ts',
   'dist/size.d.ts',
   'dist/skip.d.ts',
   'dist/summary.d.ts',
@@ -87,23 +83,31 @@ export type VerifyFacts = ReleaseFacts & {
 
 export type VerifyVerdict = ReleaseVerdict;
 
-/** d.ts specifier 残留检查: 后处理 (build.ts 第 4 步) 失效或手工产物混入的确定性信号 */
+/** 匹配残留相对 .ts specifier: from '...' / import '...' / import('./...ts') */
+const DTS_TS_SPECIFIER_RE =
+  /(?:from\s+['"]|import\s+['"]|import\(\s*['"])\.[^'"]+\.ts['"]/;
+
+/** d.ts specifier 残留检查: 递归扫描 dist/ 全树 (后处理失效或手工产物混入的确定性信号) */
 const dtsHits = (distDir: string): string[] => {
   const hits: string[] = [];
-  try {
-    for (const file of readdirSync(distDir)) {
-      if (!file.endsWith('.d.ts')) continue;
-      const text = readFileSync(join(distDir, file), 'utf8');
-      if (
-        /from\s+['"]\.[^'"]+\.ts['"]/.test(text) ||
-        /import\s+['"]\.[^'"]+\.ts['"]/.test(text)
-      )
-        hits.push(file);
+  const walk = (dir: string, prefix: string): void => {
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      const rel = prefix === '' ? entry.name : `${prefix}/${entry.name}`;
+      const abs = join(dir, entry.name);
+      if (entry.isDirectory()) {
+        walk(abs, rel);
+      } else if (entry.isFile() && entry.name.endsWith('.d.ts')) {
+        const text = readFileSync(abs, 'utf8');
+        if (DTS_TS_SPECIFIER_RE.test(text)) hits.push(rel);
+      }
     }
+  };
+  try {
+    walk(distDir, '');
   } catch {
     // dist 不在: 产物缺失由判定层统一报出, 此处保持空集
   }
-  return hits;
+  return hits.sort();
 };
 
 /**
@@ -147,7 +151,7 @@ export const verifyRelease = (
   const verdict = judgeRelease(facts);
   if (verdict.ok) {
     io.out(
-      `发布前置校验通过: 提交 ${verdict.commit.slice(0, 7)} · 产物摘要 ${verdict.sha256.slice(0, 7)}`,
+      `发布前置校验通过: 提交 ${shortHash(verdict.commit)} · 产物摘要 ${shortHash(verdict.sha256)}`,
     );
     return 0;
   }

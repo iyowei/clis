@@ -9,11 +9,13 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
+import { cleanGitEnv } from '../../../scripts/lib/git-env.ts';
 import {
   PACK_FILES_EXPECTED,
   type VerifyFacts,
   collectFacts,
   judgeRelease,
+  verifyRelease,
 } from './verify-release.ts';
 
 const SHA = 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855';
@@ -163,6 +165,19 @@ describe('judgeRelease 判定链', () => {
     expect(missing.ok).toBe(false);
     if (!missing.ok) expect(missing.reason).toContain('缺少 dist/index.js');
   });
+  test('verifyRelease: 放行输出使用 12 位 shortHash 对齐共享库', () => {
+    const out: string[] = [];
+    const err: string[] = [];
+    const code = verifyRelease(
+      '/unused',
+      { out: (line) => out.push(line), err: (line) => err.push(line) },
+      validFacts(),
+    );
+    expect(code).toBe(0);
+    expect(err).toEqual([]);
+    expect(out[0]).toContain(HEAD.slice(0, 12));
+    expect(out[0]).toContain(SHA.slice(0, 12));
+  });
 });
 
 describe('collectFacts 集成采集', () => {
@@ -172,11 +187,15 @@ describe('collectFacts 集成采集', () => {
       rmSync(dir, { recursive: true, force: true });
   });
 
-  test('临时仓库: git 事实 / 清单 / 摘要 / d.ts 复查 / pack 清单逐项落地', () => {
+  test('临时仓库: git 事实 / 清单 / 摘要 / 递归 d.ts 复查 (含 import 类型查询) / pack 清单逐项落地', () => {
     const root = mkdtempSync(join(tmpdir(), 'sweep-verify-'));
     dirs.push(root);
     const git = (args: string[]) =>
-      spawnSync('git', args, { cwd: root, encoding: 'utf8' });
+      spawnSync('git', args, {
+        cwd: root,
+        encoding: 'utf8',
+        env: cleanGitEnv(),
+      });
     git(['init', '-q']);
     writeFileSync(
       join(root, 'package.json'),
@@ -186,13 +205,17 @@ describe('collectFacts 集成采集', () => {
         files: ['dist'],
       }),
     );
-    mkdirSync(join(root, 'dist'));
+    mkdirSync(join(root, 'dist/nested'), { recursive: true });
     writeFileSync(join(root, 'dist/index.js'), 'export const x = 1;\n');
     writeFileSync(
       join(root, 'dist/index.d.ts'),
       "export { x } from './index.js';\n",
     );
     writeFileSync(join(root, 'dist/bad.d.ts'), "export { y } from './y.ts';\n");
+    writeFileSync(
+      join(root, 'dist/nested/query.d.ts'),
+      "export type Q = import('../y.ts').Y;\n",
+    );
     git(['add', '-A']);
     git(['-c', 'user.email=t@t', '-c', 'user.name=t', 'commit', '-qm', 'init']);
 
@@ -201,12 +224,13 @@ describe('collectFacts 集成采集', () => {
     expect(facts.gitHead).toMatch(/^[0-9a-f]{40}$/);
     expect(facts.dist.manifest).toBeNull();
     expect(facts.dist.entrySha256).toMatch(/^[0-9a-f]{64}$/);
-    expect(facts.dtsTsSpecifierHits).toEqual(['bad.d.ts']);
+    expect(facts.dtsTsSpecifierHits).toEqual(['bad.d.ts', 'nested/query.d.ts']);
     expect(facts.pack.files).toEqual(
       [
         'dist/bad.d.ts',
         'dist/index.d.ts',
         'dist/index.js',
+        'dist/nested/query.d.ts',
         'package.json',
       ].sort(),
     );
