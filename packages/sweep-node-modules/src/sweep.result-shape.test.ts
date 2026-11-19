@@ -94,6 +94,10 @@ describe('构造期', () => {
   });
 });
 
+const noPosixPerm =
+  process.platform === 'win32' ||
+  (typeof process.getuid === 'function' && process.getuid() === 0);
+
 describe('只读面 (plan)', () => {
   test('全链产物: entries 形态 / 批次 / 跳过集册 / 名单 / 口径', async () => {
     const { root } = await make({
@@ -101,11 +105,10 @@ describe('只读面 (plan)', () => {
         { dir: 'zone/alpha' },
         // 父目录名为 lib → 命中安装树形态 (classify.ts 判定 2)
         { dir: 'zone/lib' },
-        // 权限不足 → unmeasured
-        { dir: 'zone/locked' },
       ],
-      unreadable: ['zone/locked/node_modules'],
     });
+    const alphaTarget = join(root, 'zone', 'alpha', 'node_modules');
+    const libTarget = join(root, 'zone', 'lib', 'node_modules');
     const sweeper = createSweeper({ roots: [root], exclude: [] });
     const plan = await sweeper.plan();
 
@@ -120,10 +123,8 @@ describe('只读面 (plan)', () => {
     // 条目: 保扫描的 target 升序
     const targets = plan.entries.map((entry) => entry.target);
     expect(targets).toEqual([...targets].sort());
-    const alpha = plan.entries.find((entry) =>
-      entry.target.includes('/alpha/'),
-    )!;
-    expect(alpha.project).toBe(join(root, 'zone/alpha'));
+    const alpha = plan.entries.find((entry) => entry.target === alphaTarget)!;
+    expect(alpha.project).toBe(join(root, 'zone', 'alpha'));
     expect(alpha.root).toBe(root);
     expect(alpha.kind).toBe('project');
     expect(alpha.basis).toBe(plan.basis);
@@ -132,32 +133,19 @@ describe('只读面 (plan)', () => {
     expect(alpha.skipNote).toBeUndefined();
 
     // 疑似安装树: kind / 理由 / 不进批 / 跳过编码与说明
-    const lib = plan.entries.find((entry) => entry.target.includes('/lib/'))!;
+    const lib = plan.entries.find((entry) => entry.target === libTarget)!;
     expect(lib.kind).toBe('suspect-install-tree');
     expect(typeof lib.kindReason).toBe('string');
     expect(lib.inBatch).toBe(false);
     expect(lib.skipReason).toBe('suspect-install-tree');
     expect(lib.skipNote).toBe('已跳过 (加 --force 一并清理)');
 
-    // 未测到体积: 占位形态 (bytes 缺省 + 原因齐全) 且不进批
-    const locked = plan.entries.find((entry) =>
-      entry.target.includes('/locked/'),
-    )!;
-    expect(locked.bytes).toBeUndefined();
-    expect(typeof locked.unmeasuredCode).toBe('string');
-    expect(typeof locked.unmeasuredReason).toBe('string');
-    expect(locked.inBatch).toBe(false);
-    expect(locked.skipReason).toBe('unmeasured');
-    expect(locked.skipNote?.startsWith('体积统计失败: ')).toBe(true);
-
     // 批次与跳过集册 (含 trailer 透出)
     expect(plan.batch).toEqual([alpha.target]);
     expect(plan.trailer).toEqual([
       '疑似安装树 1 处默认跳过 (加 --force 一并清理)',
     ]);
-    expect(plan.skipped.map((item) => item.target).sort()).toEqual(
-      [lib.target, locked.target].sort(),
-    );
+    expect(plan.skipped.map((item) => item.target)).toEqual([lib.target]);
     // 契约: entry 的 skipReason / skipNote 与 plan.skipped 同源同值
     for (const item of plan.skipped) {
       const entry = plan.entries.find(
@@ -171,6 +159,30 @@ describe('只读面 (plan)', () => {
     expect(Array.isArray(plan.nameMatches.exclude)).toBe(true);
     expect(Array.isArray(plan.nameMatches.include)).toBe(true);
   });
+
+  test.skipIf(noPosixPerm)(
+    '未测到体积 (POSIX 权限注入): 占位形态齐全且不进批',
+    async () => {
+      const { root } = await make({
+        projects: [{ dir: 'zone/alpha' }, { dir: 'zone/locked' }],
+        unreadable: ['zone/locked/node_modules'],
+      });
+      const lockedTarget = join(root, 'zone', 'locked', 'node_modules');
+      const sweeper = createSweeper({ roots: [root], exclude: [] });
+      const plan = await sweeper.plan();
+
+      const locked = plan.entries.find(
+        (entry) => entry.target === lockedTarget,
+      )!;
+      expect(locked.bytes).toBeUndefined();
+      expect(typeof locked.unmeasuredCode).toBe('string');
+      expect(typeof locked.unmeasuredReason).toBe('string');
+      expect(locked.inBatch).toBe(false);
+      expect(locked.skipReason).toBe('unmeasured');
+      expect(locked.skipNote?.startsWith('体积统计失败: ')).toBe(true);
+      expect(plan.skipped.map((item) => item.target)).toEqual([locked.target]);
+    },
+  );
 
   test('releaseSuspects 放行疑似安装树 (只影响批次构造)', async () => {
     const { root } = await make({ projects: [{ dir: 'zone/lib' }] });
@@ -374,8 +386,9 @@ describe('执行面 (run)', () => {
     const ghostEntry = report.entries.find((entry) => entry.target === ghost)!;
     expect(ghostEntry.outcome).toEqual({ kind: 'stale' });
     // 健康目标照删
-    const betaEntry = report.entries.find((entry) =>
-      entry.target.includes('/beta/'),
+    const betaTarget = join(root, 'beta', 'node_modules');
+    const betaEntry = report.entries.find(
+      (entry) => entry.target === betaTarget,
     )!;
     expect(betaEntry.outcome).toEqual({ kind: 'removed' });
     // 释放量含 stale 条目 (成功侧口径: removed + missing + stale 的体积累计)

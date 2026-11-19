@@ -26,8 +26,10 @@ const CLI_VERSION = (
   ) as { version: string }
 ).version;
 
-/** 权限注入用例在 root 下失效 (chmod 拦不住 root), 与 guard 契约测试同一口径 */
-const isRoot = typeof process.getuid === 'function' && process.getuid() === 0;
+/** 权限注入用例在 root 或 Windows 下失效 (POSIX chmod 拦不住), 与 guard 契约测试同一口径 */
+const isRoot =
+  process.platform === 'win32' ||
+  (typeof process.getuid === 'function' && process.getuid() === 0);
 
 /** 伪终端冒烟可用性: 经 script 分配 pty (BSD 形式, 实测仅 darwin 可靠), 探针失败即 skip */
 const ptyAvailable =

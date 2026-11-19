@@ -31,7 +31,8 @@ interface Candidate {
 /** 与 size-du 同一探针约定, 供 du 组可用性判定 */
 const duAvailable = findDu() !== null;
 const runningAsRoot =
-  typeof process.getuid === 'function' && process.getuid() === 0;
+  process.platform === 'win32' ||
+  (typeof process.getuid === 'function' && process.getuid() === 0);
 /**
  * 包管理器安装的 GNU du 候选 (macOS 开发机复现 GNU 侧输出形态用; Linux 上 /usr/bin/du 即 GNU,
  * 由上方探针路径直接覆盖)。存在即注入给 createDuSizer 跑同一组怪名用例。

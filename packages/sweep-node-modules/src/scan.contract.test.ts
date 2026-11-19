@@ -254,28 +254,28 @@ for (const scanner of candidates) {
       expect(result.warnings).toEqual([]);
     });
 
-    test.skipIf(typeof process.getuid === 'function' && process.getuid() === 0)(
-      '不可读目录: 记告警并继续',
-      async () => {
-        const { root } = await make({
-          projects: [{ dir: 'beta' }],
-          unreadable: ['locked'],
-        });
+    test.skipIf(
+      process.platform === 'win32' ||
+        (typeof process.getuid === 'function' && process.getuid() === 0),
+    )('不可读目录: 记告警并继续', async () => {
+      const { root } = await make({
+        projects: [{ dir: 'beta' }],
+        unreadable: ['locked'],
+      });
 
-        const result = await scanner.scan({
-          roots: [root],
-          exclude: [],
-          include: [],
-        });
+      const result = await scanner.scan({
+        roots: [root],
+        exclude: [],
+        include: [],
+      });
 
-        expect(result.hits.map((hit) => hit.project)).toEqual([
-          join(root, 'beta'),
-        ]);
-        expect(
-          result.warnings.some((warning) => warning.message.includes('locked')),
-        ).toBe(true);
-      },
-    );
+      expect(result.hits.map((hit) => hit.project)).toEqual([
+        join(root, 'beta'),
+      ]);
+      expect(
+        result.warnings.some((warning) => warning.message.includes('locked')),
+      ).toBe(true);
+    });
   });
 }
 

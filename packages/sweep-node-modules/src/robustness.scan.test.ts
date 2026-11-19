@@ -23,9 +23,10 @@ const candidates = [
   createParallelScanner(),
 ];
 
-/** root 下 chmod 拦不住, 权限类用例一律 skip (与 size / cli 套件同口径) */
+/** root 或 Windows 下 POSIX chmod 拦不住, 权限类用例一律 skip (与 size / cli 套件同口径) */
 const runningAsRoot =
-  typeof process.getuid === 'function' && process.getuid() === 0;
+  process.platform === 'win32' ||
+  (typeof process.getuid === 'function' && process.getuid() === 0);
 
 const workspaces: Workspace[] = [];
 async function make(spec: WorkspaceSpec): Promise<Workspace> {
@@ -214,27 +215,30 @@ describe('鲁棒性 [parallel] 根病因分流', () => {
     },
   );
 
-  test('未识别错误码: 原码带出, 不吞不猜', async () => {
-    const { root } = await make({
-      projects: [],
-      symlinks: [{ at: 'loop', to: 'loop' }],
-    });
-    const loop = join(root, 'loop');
+  test.skipIf(process.platform === 'win32')(
+    '未识别错误码: 原码带出, 不吞不猜',
+    async () => {
+      const { root } = await make({
+        projects: [],
+        symlinks: [{ at: 'loop', to: 'loop' }],
+      });
+      const loop = join(root, 'loop');
 
-    const result = await createParallelScanner().scan({
-      roots: [loop],
-      exclude: [],
-      include: [],
-    });
+      const result = await createParallelScanner().scan({
+        roots: [loop],
+        exclude: [],
+        include: [],
+      });
 
-    // 本机 (darwin) 自指符号链接实报 ELOOP; 换平台若报别的码, 失败信息即带出实际值
-    expect(result.warnings).toEqual([
-      {
-        code: 'SCAN_ROOT_UNAVAILABLE',
-        message: `根不可用 (ELOOP), 已跳过: ${loop}`,
-        path: loop,
-        errno: 'ELOOP',
-      },
-    ]);
-  });
+      // 本机 (darwin) 自指符号链接实报 ELOOP; 换平台若报别的码, 失败信息即带出实际值
+      expect(result.warnings).toEqual([
+        {
+          code: 'SCAN_ROOT_UNAVAILABLE',
+          message: `根不可用 (ELOOP), 已跳过: ${loop}`,
+          path: loop,
+          errno: 'ELOOP',
+        },
+      ]);
+    },
+  );
 });
