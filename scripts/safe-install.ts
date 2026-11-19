@@ -1,39 +1,44 @@
 /**
- * safe-install: 干净重装 — 清掉可再生的构建产物与锁文件, 再按 package.json 重新安装。
+ * safe-install: 干净重装 — 清掉全部工作区包的可再生构建产物、派生资产、缓存与锁文件,
+ * 再按 package.json 重新安装。
  *
- * 为什么: ① dist 是带"身份绑定"的构建产物 (见 ADR 0009), 陈旧产物会让入口优先跑到
- * 与源码不一致的字节; ② 锁文件漂移或手改后, 声明与实装可能脱钩。两步合起来把依赖态
- * 重置回"由 package.json 唯一决定"的干净点。
- * 形态参考个人项目 buffett 的 `safe-install` (`clean report dist bunlock && bun i`);
- * 这里以仓库内实现替代其全局 `clean` 工具, 保持本仓库对贡献者零私有依赖。
+ * 为什么: ① dist 与 assets 是构建期派生件, 陈旧产物会让入口跑到与源码不一致的字节;
+ * ② 锁文件漂移或依赖树深脏时, 全量清掉可再生面再装回, 能重置回「由 package.json 唯一决定」的干净点。
  */
 import { spawnSync } from 'node:child_process';
-import { rmSync } from 'node:fs';
+import { existsSync, rmSync } from 'node:fs';
+import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+
+import { listWorkspacePackages } from './lib/workspace.ts';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
 
-/**
- * 本仓的可再生面: 构建产物、锁文件与依赖树本身
- * (与 buffett `clean` 的 `dist` / `bunlock` / `modules` 任务对应; 树小, 连树清才修得掉
- * bun install 只对齐、修不了的深脏: 被改过的包内容、平台错配残留等)。
- * 构建产物: CLI 包产物 (packages/sweep-node-modules-cli/dist) 在本脚本清理面内;
- * API 包产物 (packages/sweep-node-modules/dist) 不在清理面, 重建经 `bun run build`;
- * 依赖树走 hoisted linker (bunfig.toml), 集中在一处, 清根即够。
- */
-for (const target of [
-  'packages/sweep-node-modules-cli/dist',
-  'bun.lock',
-  'node_modules',
-]) {
-  rmSync(`${root}${target}`, { recursive: true, force: true });
+const targets: string[] = [];
+for (const pkg of listWorkspacePackages(root)) {
+  for (const sub of ['dist', 'assets', '.turbo']) {
+    const rel = `${pkg.dir}/${sub}`;
+    if (existsSync(join(root, rel))) targets.push(rel);
+  }
+}
+for (const rootTarget of ['.turbo', 'bun.lock', 'node_modules']) {
+  if (existsSync(join(root, rootTarget))) targets.push(rootTarget);
+}
+
+for (const target of targets) {
+  rmSync(join(root, target), { recursive: true, force: true });
   console.log(`[safe-install] 已清理: ${target}`);
 }
 
 console.log('[safe-install] 重新安装依赖 (bun install)…');
 const result = spawnSync('bun', ['install'], { cwd: root, stdio: 'inherit' });
+const code = result.status ?? 1;
+if (code !== 0) {
+  console.error(`[safe-install] bun install 失败 (退出码 ${code})`);
+  process.exit(code);
+}
 
 console.log(
-  '[safe-install] CLI 包 dist 已清 (API 包 dist 不在清理面); 跑测试 / 推送前先 bun run build 重建产物',
+  '[safe-install] 重装完成; 跑测试 / 推送前先执行 bun run build 重建全部包的 dist 与 assets',
 );
-process.exit(result.status ?? 1);
+process.exit(0);
