@@ -1,5 +1,6 @@
 /**
  * 交互式向导子步骤收集器: 硬件配额、业务库校验、Podman 节点与 Kubernetes 配置。
+ * 边界常量与校验逻辑全部单源复用 @iyowei/codd 导出, 避免 CLI 与核心引擎口径漂移。
  */
 import { userInfo } from 'node:os';
 
@@ -8,17 +9,17 @@ import {
   DNS_SUBDOMAIN_RE,
   type DeployManifest,
   type DeployMode,
+  HARDWARE_BOUNDS,
   type HardwareSpec,
-  IPV4_RE,
   type NodeInput,
   type WorkloadType,
   parseSshInput,
+  validateAppInput,
+  validateNodeBindIp,
+  validateSafeAbsPath,
 } from '@iyowei/codd';
 
 import { askText, printSubGroup, selectOption } from './ui/index.ts';
-
-const RESERVED_SYS_DBS = new Set(['admin', 'local', 'config']);
-const SAFE_ABS_PATH_RE = /^\/[A-Za-z0-9._@+-]+(?:\/[A-Za-z0-9._@+-]+)*\/?$/;
 
 const detectMacDefaultBackupRoot = (): string => {
   if (process.platform === 'darwin') {
@@ -43,46 +44,22 @@ export const validateAppsInput = (v: string): string | null => {
   const seen = new Set<string>();
   for (const e of entries) {
     const p = e.split(':');
-    if (
-      p.length !== 2 ||
-      !/^[A-Za-z0-9_-]+$/.test(p[0]!) ||
-      !/^[A-Za-z0-9]+$/.test(p[1]!)
-    ) {
-      return `「${e}」写法不对: 中间用英文冒号连接, 且账号名只能用字母和数字 (正确示例: app:appuser)`;
+    if (p.length !== 2) {
+      return `「${e}」写法不对: 中间用英文冒号连接「库名:账号名」(正确示例: app:appuser)`;
     }
-    if (RESERVED_SYS_DBS.has(p[0]!)) {
-      return `「${p[0]}」是 MongoDB 内部系统保留名字, 请换一个业务名字 (例如 myapp:${p[1]})`;
+    const [db, user] = p as [string, string];
+    const err = validateAppInput({ db, user });
+    if (err) return err;
+    if (seen.has(db)) {
+      return `数据库名「${db}」重复出现了两次, 每个库名需唯一`;
     }
-    if (seen.has(p[0]!)) {
-      return `数据库名「${p[0]}」重复出现了两次, 每个库名需唯一`;
-    }
-    seen.add(p[0]!);
-  }
-  return null;
-};
-
-const validateBackupPath = (
-  v: string,
-  nodeOs: 'linux' | 'macos',
-): string | null => {
-  if (
-    !SAFE_ABS_PATH_RE.test(v) ||
-    v.split('/').includes('..') ||
-    v.includes('CHANGE_ME')
-  ) {
-    return '请填写以 / 开头的安全绝对路径 (不含 ..、空格、引号或 Shell 元字符, 例如 /home/ops/srv/backups)';
-  }
-  if (
-    nodeOs === 'macos' &&
-    !v.startsWith('/Users/') &&
-    !v.startsWith('/private/')
-  ) {
-    return 'Mac 上的路径必须以 /Users/ 或 /private/ 开头, 否则 Podman 虚拟机无法把备份写到宿主机上';
+    seen.add(db);
   }
   return null;
 };
 
 export const collectHardware = async (): Promise<HardwareSpec> => {
+  const { cpuCores: cpuB, memoryGb: memB, diskGb: diskB } = HARDWARE_BOUNDS;
   const hwPreset = await selectOption<'2c2g' | '4c8g' | '8c16g' | 'custom'>({
     label: '留给这个数据库的服务器配置有多大?',
     summaryLabel: '硬件规格',
@@ -128,12 +105,14 @@ export const collectHardware = async (): Promise<HardwareSpec> => {
       await askText({
         label: '分配几核 CPU?',
         summaryLabel: 'CPU 核数',
-        hint: '填 1 到 256 之间的数字 (2 核及以上自动开启 zstd 省硬盘空间)',
+        hint: `填 ${cpuB.min} 到 ${cpuB.max} 之间的数字 (2 核及以上自动开启 zstd 省硬盘空间)`,
         defaultVal: '4',
-        validate: (v) =>
-          Number.isFinite(Number(v)) && Number(v) >= 1 && Number(v) <= 256
+        validate: (v) => {
+          const n = Number(v);
+          return Number.isFinite(n) && n >= cpuB.min && n <= cpuB.max
             ? null
-            : '请输入 1 到 256 之间的数字 (例如 2、4 或 8)',
+            : `请输入 ${cpuB.min} 到 ${cpuB.max} 之间的数字 (例如 2、4 或 8)`;
+        },
       }),
     );
     memoryGb = Number(
@@ -142,22 +121,26 @@ export const collectHardware = async (): Promise<HardwareSpec> => {
         summaryLabel: '内存上限',
         hint: '请扣除同机其他服务的内存再填 (建议至少留给数据库 2 GB)',
         defaultVal: '8',
-        validate: (v) =>
-          Number.isFinite(Number(v)) && Number(v) >= 1 && Number(v) <= 1024
+        validate: (v) => {
+          const n = Number(v);
+          return Number.isFinite(n) && n >= memB.min && n <= memB.max
             ? null
-            : '请输入 1 到 1024 之间的数字 (单位 GB, 例如 4 或 8)',
+            : `请输入 ${memB.min} 到 ${memB.max} 之间的数字 (单位 GB, 例如 4 或 8)`;
+        },
       }),
     );
     diskGb = Number(
       await askText({
         label: '准备了多大的数据硬盘 (GB)?',
         summaryLabel: '硬盘容量',
-        hint: '用来按比例推算 oplog 大小, 填可用数据盘容量即可 (至少 10 GB)',
+        hint: `用来按比例推算 oplog 大小, 填可用数据盘容量即可 (至少 ${diskB.min} GB)`,
         defaultVal: '100',
-        validate: (v) =>
-          Number.isFinite(Number(v)) && Number(v) >= 10 && Number(v) <= 65536
+        validate: (v) => {
+          const n = Number(v);
+          return Number.isFinite(n) && n >= diskB.min && n <= diskB.max
             ? null
-            : '请输入 10 到 65536 之间的数字 (单位 GB, 例如 50 或 100)',
+            : `请输入 ${diskB.min} 到 ${diskB.max} 之间的数字 (单位 GB, 例如 50 或 100)`;
+        },
       }),
     );
   }
@@ -194,6 +177,7 @@ export const collectPodmanNodes = async (
 ): Promise<NodeInput[]> => {
   const count = mode === 'single' ? 1 : 3;
   const nodes: NodeInput[] = [];
+  const usedBindIps = new Set<string>();
   const macBackupDefault = detectMacDefaultBackupRoot();
 
   for (let i = 0; i < count; i += 1) {
@@ -236,19 +220,19 @@ export const collectPodmanNodes = async (
       summaryLabel: `${defName} 绑定 IP`,
       hint:
         mode === 'replica-set'
-          ? '三台服务器之间需要互相访问, 请填这台机器的内网或 WireGuard IP (如 10.8.0.11, 不能填 127.0.0.1)'
+          ? '三台服务器之间需要互相访问, 请填这台机器的内网或 WireGuard IP (如 10.8.0.11, 不能填 127.0.0.1 或重复 IP)'
           : '云公网机器推荐回车用 127.0.0.1 (Compass 勾内置 SSH 隧道即可免命令直连); 若是内网主机想免隧道直连, 可填 0.0.0.0',
       defaultVal: defIp,
       validate: (v) => {
-        if (!IPV4_RE.test(v)) {
-          return '请输入四段数字格式的 IPv4 地址 (例如 127.0.0.1 或 192.168.1.10)';
-        }
-        if (mode === 'replica-set' && (v === '127.0.0.1' || v === '0.0.0.0')) {
-          return '三台服务器组集群不能填 127.0.0.1 或 0.0.0.0, 请填写这台机器真实的内网 IP (例如 10.8.0.11)';
+        const err = validateNodeBindIp(v, mode);
+        if (err) return err;
+        if (mode === 'replica-set' && usedBindIps.has(v)) {
+          return `IP「${v}」已被前一台节点使用, 三机副本集各节点必须填写互不相同的内网/WireGuard IP`;
         }
         return null;
       },
     });
+    usedBindIps.add(bindIp);
 
     const defBackup =
       nodeOs === 'macos' ? macBackupDefault : '/home/ops/srv/backups';
@@ -260,7 +244,7 @@ export const collectPodmanNodes = async (
           ? `填【目标 Mac 服务器】上的路径 (必须在 /Users/ 或 /private/ 下)。按 Tab 可修改默认路径; 自动加上 /mongo-${name}-<指纹> 防重名`
           : `填【目标 Linux 服务器】上的绝对路径。按 Tab 可修改默认路径; 自动加上 /mongo-${name}-<指纹> 防重名`,
       defaultVal: defBackup,
-      validate: (v) => validateBackupPath(v, nodeOs),
+      validate: (v) => validateSafeAbsPath(v, nodeOs),
     });
 
     const sshRaw = await askText({
