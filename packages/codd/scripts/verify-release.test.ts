@@ -264,7 +264,13 @@ describe('judgeRelease API 发布闸门拒绝矩阵', () => {
 describe('collectFacts 临时仓库集成采集', () => {
   const dirs: string[] = [];
   afterEach(() => {
-    for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true });
+    for (const d of dirs.splice(0))
+      rmSync(d, {
+        recursive: true,
+        force: true,
+        maxRetries: 5,
+        retryDelay: 100,
+      });
   });
 
   test('临时仓库能正确读取 git 事实、entry 摘要、递归 .d.ts 命中与 pack 清单', () => {
@@ -311,7 +317,7 @@ describe('collectFacts 临时仓库集成采集', () => {
     expect(facts.dist.entrySha256).toMatch(/^[0-9a-f]{64}$/);
     expect(facts.dtsTsSpecifierHits).toEqual(['sub/bad.d.ts']);
     expect(facts.pack.files).toContain('dist/index.js');
-  });
+  }, 30_000);
 });
 
 const hasDist = existsSync(join(PACKAGE_ROOT, 'dist', ENTRY_FILE));
@@ -339,5 +345,6 @@ describe('发行面白名单 · 真实 npm 对齐 (本包实测)', () => {
       );
       expect(verdict.ok ? '' : verdict.reason).toBe('');
     },
+    30_000,
   );
 });

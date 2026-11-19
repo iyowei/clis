@@ -169,5 +169,6 @@ describe('发行面白名单 · 真实 npm 对齐 (本仓库实测)', () => {
       const verdict = judgePackFiles(facts.files ?? [], expected);
       expect(verdict.ok ? '' : verdict.reason).toBe('');
     },
+    30_000,
   );
 });

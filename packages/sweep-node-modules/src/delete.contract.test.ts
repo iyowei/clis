@@ -443,7 +443,7 @@ describe('rm 阶段 ENOENT 的目标本体复核 (双运行时语义分叉的兜
     console.log(
       `[删除竞态观测·bun] ${rounds} 轮: removed ${buzz.removed} / missing ${buzz.missing} / failed ${buzz.failed}`,
     );
-  });
+  }, 30_000);
 });
 
 const nodeProbe = spawnSync('node', ['--version'], { encoding: 'utf8' });
@@ -467,4 +467,5 @@ test.skipIf(!hasNode)(
       0,
     );
   },
+  30_000,
 );

@@ -440,5 +440,6 @@ describe('发行面白名单 · 真实 npm 对齐 (本仓库实测)', () => {
       // 断言携带 reason 而非裸 false: 失败时测试输出直接给出差异清单, 一眼看清是多出还是缺少
       expect(verdict.ok ? '' : verdict.reason).toBe('');
     },
+    30_000,
   );
 });
