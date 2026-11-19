@@ -21,6 +21,7 @@ import {
   createSweeper,
   firstSymlinkOnRoot,
   firstSymlinkOnTarget,
+  isSweepError,
   loadResolvedConfig,
   mergeNames,
   resolveConfigPath,
@@ -60,9 +61,10 @@ const runtimeLabel = `${RUNTIME_NAME} ${
   'unknown'
 }`;
 
-/** 着色开关: stdout 与 stderr 分别判定各自 isTTY, 同受 NO_COLOR (空值按未设处理) 约束 */
+/** 着色开关: stdout 与 stderr 分别判定各自 isTTY, 同受 NO_COLOR 与 TERM=dumb 能力降级约束 */
 function colorChannels(): ColorChannels {
-  const allowed = !process.env.NO_COLOR;
+  const allowed =
+    !process.env.NO_COLOR && process.env.TERM?.toLowerCase() !== 'dumb';
   return {
     stdout: allowed && process.stdout.isTTY === true,
     stderr: allowed && process.stderr.isTTY === true,
@@ -96,6 +98,16 @@ function warn(line: string, stderrColor: boolean): void {
  */
 function notice(line: string): void {
   process.stderr.write(`${sanitizeOutputLine(line)}\n`);
+}
+
+// 有意匹配控制 / bidi / 零宽字符, 但保留多行换行与列对齐空格 (供 update 帮助与输出适配器使用)
+const UPDATE_CONTROL_RE =
+  // eslint-disable-next-line no-control-regex
+  /[\u0000-\u0008\u000b-\u001f\u007f-\u009f\u200b-\u200f\u202a-\u202e\u2066-\u2069\ufeff]/g;
+
+/** 拆分 update 子命令输出行并剥离控制字符, 保留列对齐空格 */
+function sanitizeUpdateLines(text: string): string[] {
+  return text.split(/\r?\n/).map((line) => line.replace(UPDATE_CONTROL_RE, ''));
 }
 
 /** 读 CLI 包版本号 (从相邻 package.json 读取, 源码态 src/cli.ts 与打包态 dist/cli.js 同相对路径) */
@@ -143,6 +155,7 @@ function runWizard(
   return runInit({
     configPath,
     configExists: pathExists,
+    configIsDirectory: rootIsDirectory,
     rootExists: pathExists,
     rootIsDirectory,
     firstSymlinkOnRoot,
@@ -397,27 +410,36 @@ async function main(): Promise<number> {
     print(helpText(colors.stdout));
     return 0;
   }
-  if (options.command === 'update') {
-    return await runSelfUpdate({
-      binName: 'sweep-nm',
-      entryMetaUrl: import.meta.url,
-      argv: options.updateArgs ?? [],
-      io: {
-        out: (line) => print(sanitizeOutputLine(line)),
-        err: (line) => warn(line, colors.stderr),
-      },
-    });
-  }
-
   // home 统一采样一次, 贯穿配置定位、向导、编排器与清单缩写 (同源语义)
   const home = homedir();
+  let activeConfigPath: string | undefined;
 
   try {
+    if (options.command === 'update') {
+      return await runSelfUpdate({
+        binName: 'sweep-nm',
+        entryMetaUrl: import.meta.url,
+        argv: options.updateArgs ?? [],
+        io: {
+          out: (text) => {
+            for (const line of sanitizeUpdateLines(text)) print(line);
+          },
+          err: (text) => {
+            for (const line of sanitizeUpdateLines(text)) {
+              if (line.startsWith('  ')) notice(line);
+              else warn(line, colors.stderr);
+            }
+          },
+        },
+      });
+    }
+
     // 路径与其来源一并保留: 来源决定「文件不存在」是硬错 (旗标 / 环境变量打错) 还是软态 (平台默认)
     const resolvedPath = resolveConfigPath({
       flag: options.config,
       homedir: home,
     });
+    activeConfigPath = resolvedPath.path;
 
     // init 子命令: 只跑向导重写配置, 不进入清理流程; 向导要逐问逐答, 无交互终端即报错退出
     if (options.command === 'init') {
@@ -431,7 +453,7 @@ async function main(): Promise<number> {
       const result = await runWizard(resolvedPath.path, colors.stdout, home);
       if (result.state === 'written')
         print(neutralLine('运行 sweep-nm 查看预览', colors.stdout));
-      else print('配置未变更');
+      else if (result.state === 'declined-overwrite') print('配置未变更');
       return 0;
     }
 
@@ -470,7 +492,14 @@ async function main(): Promise<number> {
       home,
     );
   } catch (error) {
-    warn(error instanceof Error ? error.message : String(error), colors.stderr);
+    const baseMessage = error instanceof Error ? error.message : String(error);
+    const message =
+      isSweepError(error) &&
+      error.code === 'INVALID_ARGUMENT' &&
+      activeConfigPath !== undefined
+        ? `${baseMessage} (配置: ${activeConfigPath})`
+        : baseMessage;
+    warn(message, colors.stderr);
     return 1;
   }
 }

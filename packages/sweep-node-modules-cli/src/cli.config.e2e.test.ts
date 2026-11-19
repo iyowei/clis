@@ -6,13 +6,14 @@
  */
 import { afterEach, describe, expect, test } from 'bun:test';
 
+import { spawnSync } from 'node:child_process';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { resolveConfigPath } from '@iyowei/sweep-node-modules';
 
-import { RUNNER_AVAILABILITY, runCli } from './cli.e2e.fixtures.ts';
+import { CLI, RUNNER_AVAILABILITY, runCli } from './cli.e2e.fixtures.ts';
 
 const dirs: string[] = [];
 
@@ -107,16 +108,58 @@ function defineQueryCases(runner: string, available: boolean): void {
     );
 
     test.skipIf(!available)(
-      'update: --help 退出 0 并列出自更新选项, 非法 --pm 退出 1',
+      'update: --help 退出 0 且保留多行帮助与列对齐, 非法 --pm 退出 1 (X-P0-2)',
       () => {
         const help = runCli(runner, ['update', '--help']);
         expect(help.status).toBe(0);
         expect(help.stdout).toContain('sweep-nm update');
         expect(help.stdout).toContain('--check');
+        // X-P0-2 回归断言: 禁止经 sanitizeOutputLine 压成单行, 必须保持完整多行结构
+        expect(help.stdout.split('\n').length).toBeGreaterThanOrEqual(10);
 
         const bad = runCli(runner, ['update', '--pm', 'bogus']);
         expect(bad.status).toBe(1);
         expect(bad.stderr).toContain('不支持');
+      },
+    );
+
+    test.skipIf(!available)(
+      'roots 为空数组: 报错退 1 且附带配置文件路径上下文 (SWEEPCLI-P1-3)',
+      () => {
+        const dir = tempDir();
+        const emptyRootsCfg = join(dir, 'empty-roots.json');
+        writeFileSync(emptyRootsCfg, JSON.stringify({ roots: [] }));
+
+        const result = runCli(runner, ['--config', emptyRootsCfg]);
+
+        expect(result.status).toBe(1);
+        expect(result.stderr).toContain('不能为空数组');
+        expect(result.stderr).toContain(emptyRootsCfg);
+      },
+    );
+
+    const canRunPty =
+      process.platform === 'darwin' &&
+      spawnSync('script', ['-q', '/dev/null', 'true'], { timeout: 10_000 })
+        .status === 0;
+
+    test.skipIf(!available || !canRunPty)(
+      'TERM=dumb 在 TTY 下同样降级为无 ANSI 纯文本 (SWEEPCLI-P0-2)',
+      () => {
+        const env: Record<string, string> = {
+          ...(process.env as Record<string, string>),
+          TERM: 'dumb',
+        };
+        delete env.NO_COLOR;
+        const result = spawnSync(
+          'script',
+          ['-q', '/dev/null', runner, CLI, '--help'],
+          { encoding: 'utf8', env, timeout: 10_000 },
+        );
+
+        expect(result.status).toBe(0);
+        expect(result.stdout).toContain('SWEEP-NM');
+        expect(result.stdout).not.toContain('\x1b[');
       },
     );
   });
