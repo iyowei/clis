@@ -7,46 +7,23 @@ on:
 permissions:
   contents: read
 
+env:
+  TURBO_TELEMETRY_DISABLED: '1'
+
 concurrency:
   group: release
   cancel-in-progress: false
 
 jobs:
-  # 发布前置门禁: 与 CI 同套检查, 发布不依赖另一个 workflow 的状态 (自足)。
-  verify:
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    steps:
-      - uses: actions/checkout@v7
-      - uses: oven-sh/setup-bun@v2
-        with:
-          bun-version-file: package.json
-      - uses: actions/setup-node@v7
-        with:
-          node-version-file: .nvmrc
-      - run: bun install --frozen-lockfile
-      # 验证组 (步骤集合的单一事实来源在 scripts/ci.ts, 与 CI verify 同集合)
-      - run: bun run ci -- --verify
-
-  # 与 CI 等价的金样本验收前置门禁: 缺此步则违背「发布自足」契约。
-  conformance:
-    runs-on: macos-latest
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@v7
-      - uses: oven-sh/setup-bun@v2
-        with:
-          bun-version-file: package.json
-      - uses: actions/setup-node@v7
-        with:
-          node-version-file: .nvmrc
-      - run: bun install --frozen-lockfile
-      - run: bun run ci -- --conformance
+  # 发布前置门禁 (单一事实来源): 直接复用 ci.yml 的全套三路检查 (verify / verify-windows /
+  # conformance), 既确保 main 推送零双跑、不白烧双倍 macOS runner, 又把 Windows 兼容正式纳入发版硬门禁。
+  checks:
+    uses: ./.github/workflows/ci.yml
 
   # 人工批准闸门 (environment: release, 配 required reviewers): 批准后才进入发布。
   # OIDC 发布: 不设任何 npm token; id-token: write 供 Trusted Publishing 换取短寿命凭据。
   release:
-    needs: [verify, conformance]
+    needs: checks
     runs-on: ubuntu-latest
     timeout-minutes: 30
     environment: release
@@ -66,6 +43,13 @@ jobs:
         with:
           node-version-file: .nvmrc # 自带 npm 11.x: OIDC 与 provenance 所需
           # 不设 registry-url: 它会生成带 NODE_AUTH_TOKEN 的 .npmrc, 压掉 OIDC 通道
+      - name: Cache Bun packages
+        uses: actions/cache@v5
+        with:
+          path: ~/.bun/install/cache
+          key: ${{ runner.os }}-bun-${{ hashFiles('bun.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-bun-
       - run: bun install --frozen-lockfile
       # 发布凭据预检 (发布特有, 经 ci.ts 单源调用): OIDC 换证即与 npm 侧 Trusted Publisher
       # 登记的全量核对 (含 environment 声明), 失配在发布前当场点名。必须放本 job: environment
