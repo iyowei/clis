@@ -13,7 +13,7 @@ Everyone taking part in this project is covered by the [Code of Conduct](CODE_OF
 - Send a change: open a pull request. For anything beyond a small fix, open an issue first, so the approach can be settled before work starts.
 - Report a security problem: do not open a public issue; follow [SECURITY.md](SECURITY.md).
 
-<!-- 模板骨架: 示例包是占位实现; 换成自己的工具后, 同步下面「Repository layout」与两条命令示例。 -->
+<!-- 模板骨架: 示例包是占位实现; 换成自己的工具后, 同步下面「Repository layout」。 -->
 
 ## Repository layout
 
@@ -36,6 +36,8 @@ bun install
 ```
 
 The hooks check code on the way in (pre-commit: a project-wide type check, plus prettier and oxlint over the staged files) and re-run the full checks before a push (pre-push runs `bun scripts/ci.ts`, the single source of the gate list). Where lefthook is not installed, the hook chain falls back to a pinned version fetched through bunx. Configuration: [lefthook.yml](lefthook.yml).
+
+Manage custom ignore entries in `.gitignorerc.json` and regenerate `.gitignore` via `fgi` rather than editing `.gitignore` directly.
 
 ## Common commands
 

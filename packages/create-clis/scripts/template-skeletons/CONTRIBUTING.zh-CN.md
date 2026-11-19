@@ -13,7 +13,7 @@
 - 提改动: 开一个 pull request。超出小修的改动请先开 issue, 把做法谈定再动手;
 - 报安全问题: 不要开公开 issue, 按 [SECURITY.md](SECURITY.md) 走。
 
-<!-- 模板骨架: 示例包是占位实现; 换成自己的工具后, 同步下面「仓库结构」与两条命令示例。 -->
+<!-- 模板骨架: 示例包是占位实现; 换成自己的工具后, 同步下面「仓库结构」。 -->
 
 ## 仓库结构
 
@@ -36,6 +36,8 @@ bun install
 ```
 
 钩子在入口把关 (pre-commit: 全项目类型检查 + prettier / oxlint 扫暂存文件), 推送前再跑一遍全量检查 (pre-push 跑 `bun scripts/ci.ts`, 步骤清单的单一来源)。机器上没有 lefthook 时, 钩子链经 bunx 取 pin 版兜底。配置见 [lefthook.yml](lefthook.yml)。
+
+仓库的 `.gitignore` 由 `.gitignorerc.json` 维护, 新增规则请写入 `.gitignorerc.json` 的 `custom` 数组并重跑 `fgi`, 不要直接手改 `.gitignore`。
 
 ## 常用命令
 

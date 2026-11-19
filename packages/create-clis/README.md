@@ -80,10 +80,10 @@ Under `npm create`, flags go after `--` (`npm create clis -- --tier core`); npm 
 `--tier` takes `core`, `standard`, or `full`; the default is `standard`. The tiers subtract: `full` is the complete box, `standard` is `full` minus the enhanced tier, and `core` is `standard` minus the standard tier.
 
 - **core**: the engineering skeleton and release closure every repo in the collection carries (the layer without which the repo has not been finished);
-- **standard** (default): adds the standard-tier equipment: the multi-package split (tool + library), the test setup, and the tech-debt ledger;
-- **full**: adds the enhanced tier on top: the transcription conformance kit (behavior contracts + a golden corpus + a deterministic verifier + mutation self-check) and its ledger reconciliation gate (`lint:coverage`). Only the mechanism ships; the contract, coverage table, and corpus under `docs/sweep/protocol/` are content to fill in. Until you fill them, `bun run ci` stays red on `lint:coverage` and `conformance:bun` / `conformance:node`: a fresh full-tier project is not green out of the box (core and standard are).
+- **standard** (default): adds the standard-tier equipment: the multi-package split (tool + library), the dependency-direction gate (`lint:deps`), the test setup, and the tech-debt ledger;
+- **full**: adds the enhanced tier on top: the transcription conformance kit (behavior contracts + a golden corpus + a deterministic verifier + mutation self-check) and its ledger reconciliation gate (`lint:coverage`). Only the mechanism ships; the contract, coverage table, and corpus under `packages/<name>/docs/protocol/` are content to fill in. Until you fill them, `bun run ci` stays red on `lint:coverage` and `conformance:bun` / `conformance:node` (`typecheck` stays green): a fresh full-tier project is not green out of the box (core and standard are).
 
-Two notes on shape. Every generated repo comes out in the two-package collection form (tool + library); the generator does not produce single-package repos, so prune one package by hand if that is what you want. And the tier is a packing list, not a stored field: nothing in the generated repo records it, so later upgrades or downgrades are manual, file-by-file affairs (the pruning rules are in [capability-tiers.md](../../docs/designs/capability-tiers.md)).
+Two notes on shape. Every generated repo comes out in the two-package collection form (tool + library); the generator does not produce single-package repos, so prune one package by hand if that is what you want. And the tier is a packing list, not a stored field: nothing in the generated repo records it, so later upgrades or downgrades are manual, file-by-file affairs (the pruning rules are in [capability-tiers.md](https://github.com/iyowei/clis/blob/main/docs/designs/capability-tiers.md)).
 
 ## What you get
 
@@ -109,11 +109,11 @@ Package scripts:
 
 - `bun run build`: emits both artifacts: the template assets (`assets/template/`, built from this repo by the skeleton manifest) and the executable bundle (`dist/`, with the manifest the launcher reconciles it against);
 - `bun run verify:release`: the pre-release check: clean checkout, artifacts built from this commit, manifest consistency, and the packed tarball matching the file whitelist;
-- `bun run heavy-smoke`: the heavyweight smoke: generate a complete core-tier project and run its whole gate chain, green or nothing.
+- `bun run heavy-smoke`: the heavyweight smoke: generate a complete default `standard`-tier project using the already-verified immutable assets and run its whole gate chain, green or nothing.
 
-`prepublishOnly` strings the three together, so every published version carries its own proof: the project it generates is green. The design docs (package design / contract / tiers / snapshot mechanism) are all in [docs/designs/](../../docs/designs/).
+`prepublishOnly` strings the three together, so every published version carries its own proof: the project it generates is green. The design docs (package design / contract / tiers / snapshot mechanism) are all in [docs/designs/](https://github.com/iyowei/clis/tree/main/docs/designs).
 
 ---
 
-- Design: [scaffold-package.md](../../docs/designs/scaffold-package.md);
-- Package docs entry: [docs/README.md](docs/README.md).
+- Design: [scaffold-package.md](https://github.com/iyowei/clis/blob/main/docs/designs/scaffold-package.md)
+- Contract: [scaffold-contract.md](https://github.com/iyowei/clis/blob/main/docs/designs/scaffold-contract.md)

@@ -28,29 +28,35 @@ bun run format
 # 测试 (经 turbo 编排各包, 带缓存)
 bun run test
 
-# 本地 CI 预演 (与 GitHub Actions 的 verify job 同集合; 推前必跑, pre-push 钩子按同集合自动执行)
+# 本地 CI 预演 (与 GitHub Actions 同集合; 推前必跑, pre-push 钩子自动执行)
 bun run ci
 
 # 打包各包发布产物; 发布时由各自的 prepublishOnly 自动跑
 bun run build
+
+# 干净重装 (清掉全部工作区包产物 / 锁文件 / node_modules 后重新 bun install)
+bun run safe-install
 ```
+
+> 双运行时提示: 机器上未安装的运行时 (bun / node) 在单测中会被跳过, 完整验证请同时安装两者。
 
 ## 提交与推送
 
 由 lefthook 把关 (操作级细节以仓库根 `lefthook.yml` 为准):
 
-- **pre-commit** (增量): prettier 重暂存 + oxlint 扫暂存文件; 类型检查例外, 跑全项目 `tsc --noEmit`;
-- **pre-push** (全量): 单条调用 `bun scripts/ci.ts`; 步骤集合的单一事实来源在 `scripts/ci.ts`, CI 与 Release 的 verify job 共用同一套步骤定义。
+- **pre-commit** (增量): prettier 重暂存 + oxlint 扫暂存文件; 类型检查例外, 跑全项目 `bun run typecheck`;
+- **pre-push** (全量): 单条调用 `bun scripts/ci.ts`; 步骤集合的单一事实来源在 `scripts/ci.ts`, CI 与 Release 的前置门禁共用同一套步骤定义。
 
 提交信息按 Conventional Commits 前缀 (`feat` / `fix` / `chore` / `test` 等), 并守单一主题原则: 一个提交只含一个完整逻辑变更, 跨主题须拆分。
 
 ## 发布
 
-主路径是 CI 自动链 (`.github/workflows/release.yml`): 推送到 `main` 后, `verify` job 先跑与 CI 同套的检查, 通过后 `release` job 停在 `environment: release` 的人工批准闸门外, 批准即由 multi-semantic-release 执行发布; npm 侧走 OIDC Trusted Publishing, 不设 token、无 OTP。
+主路径是 CI 自动链 (`.github/workflows/release.yml`): 推送到 `main` 后, 前置门禁先跑与 CI 同套的检查, 通过后 `release` job 停在 `environment: release` 的人工批准闸门外, 批准后先经 `bun run ci -- --only npm-trust` 做 OIDC Trusted Publisher 预检, 通过即由 multi-semantic-release 执行免密发布。
 
-发布动作统一过 `prepublishOnly` 闸门 (链上链下同一道, 各包各自): 构建 (`bun run build`) + 发布前置闸门 (`bun run verify:release`, 在各自包目录跑); 闸门按序短路, 任一命中即退 1 拒发。
-
-**README / LICENSE 类备份别落包目录**: npm 会把包根的 `README*` / `LICENSE*` 无条件收进发行包, 且没有任何配置可以排除; 备份一律落仓库外。
+- **本地凭据对账与修复**: `bun scripts/npm-trust-guard.ts check` 只读核对 npm Trusted Publisher 登记, `bun scripts/npm-trust-guard.ts fix` 自动创建或重建登记 (需 npm 登录态与交互式终端);
+- **待首发新包隔离**: 尚未首发的新包在自身 `package.json` 标 `"private": true`, 首发时移除并完成首次发布与 Trusted Publisher 登记;
+- **包级前置闸门**: 发布动作统一过 `prepublishOnly` (`build` + `verify:release`), 任一检查不过即退 1 拒发;
+- **README / LICENSE 类备份别落包目录**: npm 会把包根的 `README*` / `LICENSE*` 无条件收进发行包, 备份一律落仓库外 (`~/tmp/`), 由 `lint:backups` 全树兜底。
 
 ## 相关文档
 

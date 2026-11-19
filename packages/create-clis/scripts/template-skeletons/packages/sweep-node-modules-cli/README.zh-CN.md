@@ -2,7 +2,7 @@
 
 <!-- 模板骨架: 示例命令是 {{BIN_NAME}} --name <名字>; 换成自己的命令后, 同步本节与包内文档。 -->
 
-本集合仓的命令行工具: API 包 ([{{SCOPE}}/{{NAME}}](../{{NAME}}/README.zh-CN.md)) 的薄壳, 领域逻辑在 API 包里。
+本集合仓的命令行工具: API 包 ([{{SCOPE}}/{{NAME}}]({{REPO_URL}}/blob/main/packages/{{NAME}}/README.zh-CN.md)) 的薄壳, 领域逻辑在 API 包里。
 
 ## 安装
 

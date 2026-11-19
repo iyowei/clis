@@ -2,7 +2,7 @@
 
 <!-- 模板骨架: 示例包的可编程 API 是一个 greet 占位实现; 换成自己的领域逻辑后, 同步本节与包内文档。 -->
 
-The programmable API package of this collection: replace the example implementation with your own domain logic. The command-line surface lives in the sibling CLI package ([{{SCOPE}}/{{NAME}}-cli](../{{NAME}}-cli/README.md)).
+The programmable API package of this collection: replace the example implementation with your own domain logic. The command-line surface lives in the sibling CLI package ([{{SCOPE}}/{{NAME}}-cli]({{REPO_URL}}/blob/main/packages/{{NAME}}-cli/README.md)).
 
 ## Install
 
@@ -21,10 +21,10 @@ console.log(greet({ who: 'world' })); // Hello, world!
 ## Development
 
 ```shell
-# 类型检查与测试 (在包目录内)
+# Typecheck and test (inside the package directory)
 bun run typecheck && bun run test
 
-# 打包发布产物 (dist/) 并跑发布自证闸门 (自证要求干净工作树)
+# Bundle release artifacts (dist/) and run the pre-release gate (requires a clean git tree)
 bun run build && bun run verify:release
 ```
 

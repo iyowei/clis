@@ -2,7 +2,7 @@
 
 <!-- 模板骨架: 示例包的可编程 API 是一个 greet 占位实现; 换成自己的领域逻辑后, 同步本节与包内文档。 -->
 
-本集合仓的可编程 API 包: 示例实现换成自己的领域逻辑即可; 命令行面在同级 CLI 包 ([{{SCOPE}}/{{NAME}}-cli](../{{NAME}}-cli/README.zh-CN.md))。
+本集合仓的可编程 API 包: 示例实现换成自己的领域逻辑即可; 命令行面在同级 CLI 包 ([{{SCOPE}}/{{NAME}}-cli]({{REPO_URL}}/blob/main/packages/{{NAME}}-cli/README.zh-CN.md))。
 
 ## 安装
 

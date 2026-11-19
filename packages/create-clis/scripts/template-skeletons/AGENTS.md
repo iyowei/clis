@@ -21,5 +21,5 @@ This block is written and re-added by `turbo` before repository-scoped commands 
 
 ## 结构事实
 
-- 工程闸门链只有一份步骤清单, 就是 `scripts/ci.ts` (本地全链、pre-push、CI、Release verify 跑的是同一套);
+- 工程闸门链只有一份步骤清单, 就是 `scripts/ci.ts` (本地全链、pre-push、CI 与 Release 前置门禁共用; Release 获批后额外经 `--only npm-trust` 跑 OIDC 凭据预检, 见 [开发指南](docs/development.md)「发布」章);
 - 提交信息与发布链的约定见 [CONTRIBUTING.md](CONTRIBUTING.md)。
