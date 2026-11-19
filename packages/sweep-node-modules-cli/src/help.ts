@@ -17,6 +17,7 @@ const COMMANDS: readonly (readonly [string, string])[] = [
   ['sweep-nm --config <path>', '指定配置文件 (优先于 SWEEP_NM_CONFIG)'],
   ['sweep-nm config', '查看实际生效的配置: 来源 + 路径 + 文件状态'],
   ['sweep-nm init', '初始化向导: 交互生成配置文件'],
+  ['sweep-nm update', '自更新: 自动识别安装器升级到最新版 (--check 仅检查)'],
   ['sweep-nm --version', '显示版本号'],
   ['sweep-nm -V', '--version 的别名'],
   ['sweep-nm --help', '帮助'],
@@ -54,6 +55,6 @@ export function helpText(color: boolean): string {
     `  默认配置位置 (平台自适应; 用了 --config 或 SWEEP_NM_CONFIG 时实际读的不是它): ${sanitizeLine(defaultConfigPath())}`,
     '  查实际生效的路径: sweep-nm config',
     '',
-    '退出码: 0 成功 (含预览、空结果、config 与 --help); 1 删除失败、跳过、整批拒绝或中止 / 无配置 --yes / 配置损坏 / 参数错误',
+    '退出码: 0 成功 (含预览、空结果、config、update 与 --help); 1 删除失败、跳过、整批拒绝或中止 / 无配置 --yes / 配置损坏 / 参数错误',
   ].join('\n');
 }

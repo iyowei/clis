@@ -9,6 +9,7 @@ import { lstat, mkdir, writeFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { dirname } from 'node:path';
 
+import { runSelfUpdate } from '@iyowei/cli-updater';
 import {
   type Config,
   type ConfigSource,
@@ -395,6 +396,17 @@ async function main(): Promise<number> {
   if (options.help) {
     print(helpText(colors.stdout));
     return 0;
+  }
+  if (options.command === 'update') {
+    return await runSelfUpdate({
+      binName: 'sweep-nm',
+      entryMetaUrl: import.meta.url,
+      argv: options.updateArgs ?? [],
+      io: {
+        out: (line) => print(sanitizeOutputLine(line)),
+        err: (line) => warn(line, colors.stderr),
+      },
+    });
   }
 
   // home 统一采样一次, 贯穿配置定位、向导、编排器与清单缩写 (同源语义)

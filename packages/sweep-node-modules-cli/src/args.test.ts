@@ -148,4 +148,20 @@ describe('parseArgs', () => {
     expect(parseArgs(['init', 'extra']).ok).toBe(false);
     expect(parseArgs(['unknown-subcmd']).ok).toBe(false);
   });
+
+  test('update 子命令原样透传后续参数给自更新引擎解析', () => {
+    expect(parseArgs(['update', '--check', '--pm', 'bun'])).toEqual({
+      ok: true,
+      options: {
+        command: 'update',
+        yes: false,
+        force: false,
+        exclude: [],
+        include: [],
+        updateArgs: ['--check', '--pm', 'bun'],
+        help: false,
+        version: false,
+      },
+    });
+  });
 });

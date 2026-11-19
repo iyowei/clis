@@ -10,6 +10,8 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
+import { resolveConfigPath } from '@iyowei/sweep-node-modules';
+
 import { RUNNER_AVAILABILITY, runCli } from './cli.e2e.fixtures.ts';
 
 const dirs: string[] = [];
@@ -58,10 +60,12 @@ function defineQueryCases(runner: string, available: boolean): void {
 
         expect(result.status).toBe(0);
         // 降级形态 (管道 + NO_COLOR): 零 ANSI 但保留顶栏与中性块字符
+        const expectedDefault = resolveConfigPath({
+          homedir: home,
+          env: { APPDATA: join(home, 'AppData', 'Roaming') },
+        }).path;
         expect(result.stdout).toContain('▍ SWEEP-NM  配置 · 来源: 平台默认');
-        expect(result.stdout).toContain(
-          join(home, '.config', 'sweep-node-modules', 'config.json'),
-        );
+        expect(result.stdout).toContain(expectedDefault);
         expect(result.stdout).toContain('  ░ 文件状态: 不存在');
       },
     );
@@ -99,6 +103,20 @@ function defineQueryCases(runner: string, available: boolean): void {
         );
         expect(result.stdout).toContain(config);
         expect(result.stdout).toContain('文件状态: 存在');
+      },
+    );
+
+    test.skipIf(!available)(
+      'update: --help 退出 0 并列出自更新选项, 非法 --pm 退出 1',
+      () => {
+        const help = runCli(runner, ['update', '--help']);
+        expect(help.status).toBe(0);
+        expect(help.stdout).toContain('sweep-nm update');
+        expect(help.stdout).toContain('--check');
+
+        const bad = runCli(runner, ['update', '--pm', 'bogus']);
+        expect(bad.status).toBe(1);
+        expect(bad.stderr).toContain('不支持');
       },
     );
   });

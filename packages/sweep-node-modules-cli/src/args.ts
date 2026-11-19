@@ -5,8 +5,8 @@
  */
 
 export interface CliOptions {
-  /** 子命令: 缺省为清理流程, init 只跑向导, config 只报告配置 */
-  command: 'sweep' | 'init' | 'config';
+  /** 子命令: 缺省为清理流程, init 只跑向导, config 只报告配置, update 自更新 */
+  command: 'sweep' | 'init' | 'config' | 'update';
   /** 执行删除 (缺省为预览) */
   yes: boolean;
   /** 连同疑似安装树一并纳入删除批 (缺省跳过; 只影响批次构造, 不放宽安全闸的不变量) */
@@ -17,6 +17,8 @@ export interface CliOptions {
   include: string[];
   /** `--config` 旗标值 (配置路径的最高优先级来源, 不可重复指定) */
   config?: string;
+  /** `update` 子命令透传参数 (由 @iyowei/cli-updater 统一解析) */
+  updateArgs?: string[];
   help: boolean;
   version: boolean;
 }
@@ -80,6 +82,24 @@ function splitEqualsFlag(
  * ```
  */
 export function parseArgs(argv: string[]): ParseOutcome {
+  // update 子命令自带独立旗标面 (--check / --pm / --registry / --force / --help),
+  // 首位命中即原样透传给 @iyowei/cli-updater 解析, 避免与主命令旗标语义冲突
+  if (argv[0] === 'update') {
+    return {
+      ok: true,
+      options: {
+        command: 'update',
+        yes: false,
+        force: false,
+        exclude: [],
+        include: [],
+        updateArgs: argv.slice(1),
+        help: false,
+        version: false,
+      },
+    };
+  }
+
   const options: CliOptions = {
     command: 'sweep',
     yes: false,
