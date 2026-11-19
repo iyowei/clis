@@ -3,7 +3,7 @@
  * 并注入单点缺陷, 生成到 mutants/gen-<id>/; 副本自带 node_modules 链接 (指向 api 副本), 可独立运行。
  *
  * 用途 (变异自证): 语料必须能抓住每一个 mutant; 抓不住 = 语料盲区 (或该 mutant 定义过弱),
- * 不是「实现没问题」。注入面见下方 MUTANTS 清单 (重跑纪律见 docs/sweep/protocol/README.md「维护规则」),
+ * 不是「实现没问题」。注入面见下方 MUTANTS 清单 (重跑纪律见对应 API 包的 docs/protocol/README.md「维护规则」),
  * 每个 mutant 只做一行级补丁。
  *
  * 幂等: 每次重建自己的 gen-* 目录, 并清掉清单之外的陈旧 gen-*; 锚点失配 (源码在漂移) 时显式
@@ -20,6 +20,7 @@
  * 运行某 mutant (api 面): --api-target "bun scripts/transcription/mutants/gen-<id>/scripts/transcription/api-harness.ts"
  * (两者均与 run-conformance.ts 配合)。
  */
+import { existsSync } from 'node:fs';
 import {
   mkdir,
   readFile,
@@ -29,16 +30,30 @@ import {
   symlink,
   writeFile,
 } from 'node:fs/promises';
-import { dirname, join, resolve } from 'node:path';
+import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { resolveCliAndApi } from '../lib/workspace.ts';
+import { resolveProductPairs } from '../lib/workspace.ts';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 /** 仓库根 (scripts/transcription/ 上溯两级): 两包源码与配置的定位基准 */
 const REPO_ROOT = resolve(HERE, '..', '..');
-/** 两包坐标: 由根 package.json 的 workspaces 派生 (包目录 / 包名变更时本文件零修改) */
-const { api: API_PKG, cli: CLI_PKG } = resolveCliAndApi(REPO_ROOT);
+
+/** 在多产品仓中按 docs/protocol 锚点唯一定位承接转写套件的双包产品 (单产品仓直接取唯一对) */
+function resolveProtocolProductPair(root: string) {
+  const pairs = resolveProductPairs(root);
+  if (pairs.length === 1) return pairs[0]!;
+  const matched = pairs.filter(({ api }) =>
+    existsSync(join(root, api.dir, 'docs', 'protocol')),
+  );
+  if (matched.length === 1) return matched[0]!;
+  throw new Error(
+    `无法唯一确定承接转写协议的双包产品 (现有 ${pairs.length} 组, 带 docs/protocol 的 ${matched.length} 组)`,
+  );
+}
+
+/** 两包坐标: 由根 package.json 的 workspaces 与 docs/protocol 锚点派生 */
+const { api: API_PKG, cli: CLI_PKG } = resolveProtocolProductPair(REPO_ROOT);
 /** 被测源: 两包的 src (mutant 是整仓实现的注入副本) 与各自 package.json (副本自足可跑) */
 const API_SRC_DIR = join(REPO_ROOT, API_PKG.dir, 'src');
 const CLI_SRC_DIR = join(REPO_ROOT, CLI_PKG.dir, 'src');
@@ -67,11 +82,16 @@ interface PatchSpec {
   effect: string;
 }
 
+/** 预期抓住该 mutant 的测试面 (三态: cli / api / both) */
+export type MutantSurface = 'cli' | 'api' | 'both';
+
 interface MutantSpec {
   id: string;
   title: string;
-  /** 预期抓住它的语料类型; 变异自证时逐条核对 */
-  expectCaughtBy: string;
+  /** 预期被哪一面语料抓住 (三态: cli / api / both); 变异自证时按面核对 */
+  expectCaughtBy: MutantSurface;
+  /** 预期抓住它的典型用例说明 (人读, 随 mutant.json 存档) */
+  expectNote: string;
   patches: PatchSpec[];
 }
 
@@ -79,7 +99,9 @@ const MUTANTS: MutantSpec[] = [
   {
     id: 'prune-negated',
     title: '剪枝谓词取反',
-    expectCaughtBy: '任一命中 node_modules 的用例 (stdoutExact / fs 断言)',
+    expectCaughtBy: 'both',
+    expectNote:
+      '任一命中 node_modules 的 CLI / API 用例 (stdoutExact / hits / fs 断言)',
     patches: [
       {
         file: 'scan-parallel.ts',
@@ -93,8 +115,9 @@ const MUTANTS: MutantSpec[] = [
   {
     id: 'exit-swallowed',
     title: '退出码吞掉',
-    expectCaughtBy:
-      '期望 exitCode 为 1 的用例 (参数错误 / 配置损坏 / 删除失败 / 无配置 --yes)',
+    expectCaughtBy: 'cli',
+    expectNote:
+      '期望 exitCode 为 1 的 CLI 用例 (参数错误 / 配置损坏 / 删除失败 / 无配置 --yes)',
     patches: [
       {
         file: 'cli.ts',
@@ -107,7 +130,9 @@ const MUTANTS: MutantSpec[] = [
   {
     id: 'sort-missing',
     title: '排序缺失',
-    expectCaughtBy: '≥2 个命中的用例 (stdoutExact 逐字节比较), 或复现性三连跑',
+    expectCaughtBy: 'both',
+    expectNote:
+      '≥2 个命中的 CLI / API 用例 (stdoutExact / hits 升序断言), 或复现性三连跑',
     patches: [
       {
         file: 'scan-parallel.ts',
@@ -121,8 +146,9 @@ const MUTANTS: MutantSpec[] = [
   {
     id: 'exclude-silent',
     title: '排除静默失效',
-    expectCaughtBy:
-      '使用 exclude (配置 exclude 或 --exclude) 的用例: 被排除子树重新出现在清单里',
+    expectCaughtBy: 'both',
+    expectNote:
+      '使用 exclude 的 CLI / API 用例 (被排除子树重新出现在清单或 hits 里)',
     patches: [
       {
         file: 'scan-parallel.ts',
@@ -136,8 +162,9 @@ const MUTANTS: MutantSpec[] = [
   {
     id: 'message-removed',
     title: '提示语删改',
-    expectCaughtBy:
-      '空结果用例 (stdoutExact / stdoutContains 对「未发现」文案的断言)',
+    expectCaughtBy: 'cli',
+    expectNote:
+      '空结果 CLI 用例 (stdoutExact / stdoutContains 对「未发现」文案的断言)',
     patches: [
       {
         file: 'render.ts',
@@ -150,14 +177,59 @@ const MUTANTS: MutantSpec[] = [
   {
     id: 'size-unit-wrong',
     title: '体积计数单位错',
-    expectCaughtBy:
-      '带体积数字断言的用例; 注意: 仅 du 可用平台 (unix) 生效, Windows 走 js 候选时抓不住',
+    expectCaughtBy: 'cli',
+    expectNote:
+      '带体积数字断言的 CLI 用例; 注意: 仅 du 可用平台 (unix) 生效, Windows 走 js 候选时抓不住',
     patches: [
       {
         file: 'size-du.ts',
         find: '    sizes.set(path, Number(sizeKiB) * 1024);',
         replace: '    sizes.set(path, Number(sizeKiB) * 1000);',
         effect: 'du 的 Ki 单位换算错误 (1024 → 1000), 展示体积全线偏移',
+      },
+    ],
+  },
+  {
+    id: 'size-gone-dropped',
+    title: '体积 gone 桶丢弃 (破坏 BC-43 三桶完备性)',
+    expectCaughtBy: 'api',
+    expectNote:
+      '断言 SizeResult.gone 的 API 用例 (api-size-gone-bucket / api-size-three-buckets-and-warning)',
+    patches: [
+      {
+        file: 'size-du.ts',
+        find: '          gone.push(target);',
+        replace: '          /* mutant: drop gone target */',
+        effect:
+          'du 候选丢弃已消失目标的 gone 记录, 破坏 SizeResult 三桶完备性恒等式',
+      },
+      {
+        file: 'size-js.ts',
+        find: '            gone.push(target);',
+        replace: '            /* mutant: drop gone target */',
+        effect:
+          'js 候选丢弃已消失目标的 gone 记录, 破坏 SizeResult 三桶完备性恒等式',
+      },
+    ],
+  },
+  {
+    id: 'terminal-event-dropped',
+    title: '编排终结事件丢失 (破坏 BC-44)',
+    expectCaughtBy: 'api',
+    expectNote:
+      '断言 plan-done / done 终结事件的 API 用例 (api-sweep-plan-terminal-event / api-plan-onprogress-override / api-sweep-run-terminal-event)',
+    patches: [
+      {
+        file: 'sweep.ts',
+        find: "      planOptions?.onProgress?.({\n        kind: 'plan-done',\n        plan,\n        elapsedMs: Date.now() - startedAt,\n      });",
+        replace: '      /* mutant: drop plan-done terminal event */',
+        effect: 'sweeper.plan() 不再发射 plan-done 终结事件',
+      },
+      {
+        file: 'sweep.ts',
+        find: "  emit?.({ kind: 'done', status, elapsedMs: Date.now() - startedAt });",
+        replace: '  /* mutant: drop done terminal event */',
+        effect: 'sweeper.run() 不再发射 done 终结事件',
       },
     ],
   },
@@ -190,18 +262,24 @@ function countOccurrences(text: string, needle: string): number {
 const lineOf = (text: string, needle: string): number =>
   text.slice(0, text.indexOf(needle)).split('\n').length;
 
-/** 取 src 下应复制的文件清单: 全部 .ts, 排除测试文件; 排序保证复制次序确定 */
-async function listSourceFiles(srcDir: string): Promise<string[]> {
-  const entries = await readdir(srcDir, { withFileTypes: true });
-  return entries
-    .filter(
-      (entry) =>
-        entry.isFile() &&
-        entry.name.endsWith('.ts') &&
-        !entry.name.endsWith('.test.ts'),
-    )
-    .map((entry) => entry.name)
-    .sort();
+/** 递归取 src 下应复制的相对路径清单: 全部 .ts, 排除测试文件; 排序保证复制次序确定 */
+async function listSourceFiles(srcDir: string, prefix = ''): Promise<string[]> {
+  const dir = prefix === '' ? srcDir : join(srcDir, prefix);
+  const entries = await readdir(dir, { withFileTypes: true });
+  const files: string[] = [];
+  for (const entry of entries) {
+    const rel = prefix === '' ? entry.name : join(prefix, entry.name);
+    if (entry.isDirectory()) {
+      files.push(...(await listSourceFiles(srcDir, rel)));
+    } else if (
+      entry.isFile() &&
+      entry.name.endsWith('.ts') &&
+      !entry.name.endsWith('.test.ts')
+    ) {
+      files.push(rel);
+    }
+  }
+  return files.sort();
 }
 
 interface AppliedPatch {
@@ -269,11 +347,10 @@ async function makeMutant(mutant: MutantSpec): Promise<AppliedPatch[]> {
     [API_SRC_DIR, join(outDir, API_PKG.dir)],
     [CLI_SRC_DIR, join(outDir, CLI_PKG.dir)],
   ] as const) {
-    for (const name of await listSourceFiles(srcDir)) {
-      await writeFile(
-        join(pkgDir, 'src', name),
-        await readFile(join(srcDir, name)),
-      );
+    for (const rel of await listSourceFiles(srcDir)) {
+      const dest = join(pkgDir, 'src', rel);
+      await mkdir(dirname(dest), { recursive: true });
+      await writeFile(dest, await readFile(join(srcDir, rel)));
     }
   }
   // 套件的 API 参考 harness 副本: 按仓库同相对结构放入, 使 api 面语料可直接以
@@ -313,13 +390,14 @@ async function makeMutant(mutant: MutantSpec): Promise<AppliedPatch[]> {
   );
 
   // cli 副本对 API 包名的解析必须落在 api 副本上 (而非宿主仓库的真包);
-  // 链接置于副本根 node_modules, 按就近解析优先于仓库根的真实 workspace 链接。
+  // 链接目标按 relative(dirname(apiLink), apiTarget) 动态算深度, 同时兼容 scoped (@scope/pkg → ../..) 与无 scope (pkg → ..)
   const apiLink = join(outDir, 'node_modules', API_PKG_NAME);
+  const apiTarget = join(outDir, API_PKG.dir);
   await mkdir(dirname(apiLink), { recursive: true });
   await symlink(
     process.platform === 'win32'
-      ? join(outDir, API_PKG.dir)
-      : join('..', '..', API_PKG.dir),
+      ? apiTarget
+      : relative(dirname(apiLink), apiTarget),
     apiLink,
     process.platform === 'win32' ? 'junction' : 'dir',
   );
@@ -344,6 +422,7 @@ async function makeMutant(mutant: MutantSpec): Promise<AppliedPatch[]> {
     id: mutant.id,
     title: mutant.title,
     expectCaughtBy: mutant.expectCaughtBy,
+    expectNote: mutant.expectNote,
     sourceDir: `${API_PKG.dir}/src + ${CLI_PKG.dir}/src`,
     runHint: `bun ${join(MUTANTS_DIR, `${GEN_PREFIX}${mutant.id}`, CLI_PKG.dir, 'src', 'cli.ts')}`,
     patches: applied,
