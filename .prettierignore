@@ -10,5 +10,6 @@ CODE_OF_CONDUCT.md
 *.deleted
 packages/create-clis/assets
 packages/codd/assets
+packages/codd-cli/assets
 packages/codd/template/helm
 packages/codd/template/podman/*.tmpl

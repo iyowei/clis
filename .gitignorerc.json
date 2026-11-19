@@ -12,12 +12,13 @@
   ],
   "custom": [
     "package-lock.json",
-    "*.log",
     "*.modified",
+    "*.deleted",
     "packages/sweep-node-modules/bench/results/",
     "scripts/transcription/mutants/gen-*/",
     ".turbo/",
     "packages/create-clis/assets/",
-    "packages/codd/assets/"
+    "packages/codd/assets/",
+    "packages/codd-cli/assets/"
   ]
 }

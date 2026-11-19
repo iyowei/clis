@@ -49,6 +49,7 @@
     "scripts/transcription/mutants/**",
     "packages/create-clis/assets/**",
     "packages/codd/assets/**",
-    "packages/codd/template/**"
+    "packages/codd/template/**",
+    "packages/codd-cli/assets/**"
   ]
 }
