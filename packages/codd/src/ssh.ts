@@ -37,11 +37,17 @@ export const resolveServerBackupDir = (
     ? `${stackPrefix}-${name}-${fingerprint}-${nodeSuffix}`
     : `${stackPrefix}-${name}-${fingerprint}`;
 
-  if (clean.includes(fingerprint)) {
+  const base = posix.basename(clean);
+  if (base === unitSlug) {
+    return clean;
+  }
+  if (nodeSuffix && base === `${stackPrefix}-${name}-${fingerprint}`) {
+    return posix.join(posix.dirname(clean), unitSlug);
+  }
+  if (!nodeSuffix && clean.split('/').includes(unitSlug)) {
     return clean;
   }
 
-  const base = posix.basename(clean);
   const legacySlugs = new Set([
     `${stackPrefix}-${name}`,
     name,
@@ -71,15 +77,20 @@ export const resolveServerStackDir = (
     return posix.join(home, 'srv/stacks', dirName);
   }
   const clean = rawStackDir.replace(/\/+$/, '') || '/';
-  if (clean.includes(fingerprint)) {
+  const base = posix.basename(clean);
+  if (base === dirName || clean.split('/').includes(dirName)) {
     return clean;
   }
-  const base = posix.basename(clean);
+  if (base === `${stackPrefix}-${name}-${fingerprint}`) {
+    return posix.join(posix.dirname(clean), dirName);
+  }
   if (base === `${stackPrefix}-${name}` || base === name) {
     return posix.join(posix.dirname(clean), dirName);
   }
   return posix.join(clean, dirName);
 };
+
+const UNSUPPORTED_SSH_CONFIG_FLAGS = new Set(['-F', '-J']);
 
 const SKIP_NEXT_ARG_FLAGS = new Set([
   '-L',
@@ -90,8 +101,6 @@ const SKIP_NEXT_ARG_FLAGS = new Set([
   '-c',
   '-E',
   '-e',
-  '-F',
-  '-J',
   '-m',
   '-O',
   '-Q',
@@ -100,6 +109,8 @@ const SKIP_NEXT_ARG_FLAGS = new Set([
 ]);
 
 const SKIP_BOOL_FLAGS = /^-[46AaCfGgKkMNnqsTtVvXxYy]+$/;
+const SSH_TARGET_RE =
+  /^(?:[A-Za-z0-9._-]+@)?[A-Za-z0-9](?:[A-Za-z0-9._-]*[A-Za-z0-9])?$/;
 
 const parsePortValue = (rawPort: string, field: string): number => {
   const p = Number(rawPort);
@@ -154,6 +165,11 @@ const scanSshTokens = (
       idx += 2;
       continue;
     }
+    if (UNSUPPORTED_SSH_CONFIG_FLAGS.has(tok)) {
+      throw new ConfigError(
+        `${field} 不支持直接传递 ${tok} 参数 (会导致 rsync 跳转或配置文件丢失), 请在 ~/.ssh/config 中配置主机别名后直接填写别名`,
+      );
+    }
     if (SKIP_NEXT_ARG_FLAGS.has(tok) && nextTok !== undefined) {
       idx += 2;
       continue;
@@ -203,7 +219,7 @@ export const parseSshInput = (
     scanned.explicitUser && !hostToken.includes('@')
       ? `${scanned.explicitUser}@${hostToken}`
       : hostToken;
-  if (target.startsWith('-') || !/^[A-Za-z0-9._@-]+$/.test(target)) {
+  if (target.startsWith('-') || !SSH_TARGET_RE.test(target)) {
     throw new ConfigError(`${field} 目标地址格式非法: '${target}'`);
   }
 
