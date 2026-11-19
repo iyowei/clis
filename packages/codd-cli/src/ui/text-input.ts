@@ -1,25 +1,26 @@
 /**
  * Apple 原生质感单行文本输入框 (细竖线光标 + 灰色幽灵默认值 + Tab 一键补全)。
- * 支持 stdin end/close 安全退出、stdout resize 防花屏重绘, Ctrl+C 抛 PromptCancelledError 由上层收口。
+ * 交互模式走 withRawModeSession; 非交互/管道模式走共享行队列读取器 (readNonInteractiveLine)。
  */
-import { stdin, stdout } from 'node:process';
-import { createInterface } from 'node:readline/promises';
+import { stdout } from 'node:process';
 
 import {
+  countPhysicalLines,
   currentTheme,
   displayWidth,
   eraseBlock,
   getBoxWidth,
+  getTermCols,
   hideCursor,
   isInteractive,
   paintSurface,
   palette,
-  restoreDefaultCursor,
   showAppleBarCursor,
   truncateDisplay,
-  wrapDisplay,
+  wrapMultiline,
 } from './ansi.ts';
-import { PromptCancelledError, tokenizeKeyStream } from './prompts.ts';
+import { readNonInteractiveLine } from './line-reader.ts';
+import { PromptCancelledError, withRawModeSession } from './raw-session.ts';
 import { printCompletedRow } from './widgets.ts';
 
 export interface AskTextConfig {
@@ -37,8 +38,10 @@ interface TextEditBuffer {
   cursor: number;
 }
 
-const HOME_KEYS = new Set(['\u0001', '\x1b[H', '\x1b[1~']);
-const END_KEYS = new Set(['\u0005', '\x1b[F', '\x1b[4~']);
+const LEFT_KEYS = new Set(['\x1b[D', '\x1bOD']);
+const RIGHT_KEYS = new Set(['\x1b[C', '\x1bOC']);
+const HOME_KEYS = new Set(['\u0001', '\x1b[H', '\x1bOH', '\x1b[1~']);
+const END_KEYS = new Set(['\u0005', '\x1b[F', '\x1bOF', '\x1b[4~']);
 
 const mutateTextBuffer = (
   buf: TextEditBuffer,
@@ -46,7 +49,7 @@ const mutateTextBuffer = (
   defaultVal: string,
 ): void => {
   if (
-    (key === '\t' || key === '\x1b[C') &&
+    (key === '\t' || RIGHT_KEYS.has(key)) &&
     buf.chars.length === 0 &&
     defaultVal
   ) {
@@ -54,11 +57,11 @@ const mutateTextBuffer = (
     buf.cursor = buf.chars.length;
     return;
   }
-  if (key === '\x1b[D') {
+  if (LEFT_KEYS.has(key)) {
     buf.cursor = Math.max(0, buf.cursor - 1);
     return;
   }
-  if (key === '\x1b[C') {
+  if (RIGHT_KEYS.has(key)) {
     buf.cursor = Math.min(buf.chars.length, buf.cursor + 1);
     return;
   }
@@ -138,26 +141,19 @@ const askTextNonInteractive = async (cfg: AskTextConfig): Promise<string> => {
     validate,
   } = cfg;
   const summaryKey = summaryLabel ?? label;
-  const rl = createInterface({ input: stdin, output: stdout });
-  try {
-    for (;;) {
-      const defText = defaultVal ? ` [默认: ${defaultVal}]` : '';
-      let raw: string;
-      try {
-        raw = await rl.question(`    ${label}${defText}: `);
-      } catch {
-        throw new PromptCancelledError('输入流已关闭, 已取消配置向导');
-      }
-      const val = raw.trim() || defaultVal;
-      const err = validate ? validate(val) : null;
-      if (!err) {
-        printCompletedRow(summaryKey, val || emptySummary);
-        return val;
-      }
-      console.log(`    ${palette.red(`✕ ${err}`)}`);
+  for (;;) {
+    const defText = defaultVal ? ` [默认: ${defaultVal}]` : '';
+    const raw = await readNonInteractiveLine(`    ${label}${defText}: `);
+    if (raw === null) {
+      throw new PromptCancelledError('输入流已关闭, 已取消配置向导');
     }
-  } finally {
-    rl.close();
+    const val = raw.trim() || defaultVal;
+    const err = validate ? validate(val) : null;
+    if (!err) {
+      printCompletedRow(summaryKey, val || emptySummary);
+      return val;
+    }
+    console.log(`    ${palette.red(`✕ ${err}`)}`);
   }
 };
 
@@ -194,12 +190,19 @@ export const askText = async (cfg: AskTextConfig): Promise<string> => {
     moveCursorToBottom();
     if (renderedLines > 0) eraseBlock(renderedLines);
 
-    const cardW = getBoxWidth() - 4;
+    const termCols = getTermCols();
+    const cardW = Math.max(16, getBoxWidth() - 4);
     const outLines: string[] = [];
 
-    outLines.push(`    ${palette.blue('▸', true)}  ${palette.title(label)}`);
+    const labelLines = wrapMultiline(label, Math.max(12, cardW - 4));
+    outLines.push(
+      `    ${palette.blue('▸', true)}  ${palette.title(labelLines[0] ?? '')}`,
+    );
+    for (let i = 1; i < labelLines.length; i += 1) {
+      outLines.push(`       ${palette.title(labelLines[i]!)}`);
+    }
     if (hint) {
-      for (const hl of wrapDisplay(hint, Math.max(20, cardW - 4))) {
+      for (const hl of wrapMultiline(hint, Math.max(12, cardW - 4))) {
         outLines.push(`       ${palette.muted(hl)}`);
       }
     }
@@ -213,7 +216,7 @@ export const askText = async (cfg: AskTextConfig): Promise<string> => {
       isLiveValid,
     );
 
-    const fieldInnerBudget = Math.max(16, cardW - 6);
+    const fieldInnerBudget = Math.max(10, cardW - 6);
     let fieldContent: string;
     let cursorColumn1Based: number;
 
@@ -221,7 +224,7 @@ export const askText = async (cfg: AskTextConfig): Promise<string> => {
       const ghostRaw = defaultVal || placeholder || '可留空, 直接按回车跳过';
       const ghostClipped = truncateDisplay(ghostRaw, fieldInnerBudget);
       fieldContent = `  ${promptGlyph}  ${palette.dim(ghostClipped)}`;
-      cursorColumn1Based = 10;
+      cursorColumn1Based = Math.min(termCols, 10);
     } else {
       let visBefore = editBuf.chars.slice(0, editBuf.cursor).join('');
       const after = editBuf.chars.slice(editBuf.cursor).join('');
@@ -234,7 +237,7 @@ export const askText = async (cfg: AskTextConfig): Promise<string> => {
       const remainW = Math.max(0, fieldInnerBudget - displayWidth(visBefore));
       const visAfter = truncateDisplay(after, remainW);
       fieldContent = `  ${promptGlyph}  ${palette.primary(`${visBefore}${visAfter}`)}`;
-      cursorColumn1Based = 10 + displayWidth(visBefore);
+      cursorColumn1Based = Math.min(termCols, 10 + displayWidth(visBefore));
     }
 
     const inputRowIndex = outLines.length;
@@ -243,7 +246,7 @@ export const askText = async (cfg: AskTextConfig): Promise<string> => {
     );
 
     if (errorMsg) {
-      for (const el of wrapDisplay(errorMsg, Math.max(20, cardW - 6))) {
+      for (const el of wrapMultiline(errorMsg, Math.max(12, cardW - 6))) {
         outLines.push(`       ${palette.red(`✕ ${el}`)}`);
       }
     }
@@ -253,56 +256,35 @@ export const askText = async (cfg: AskTextConfig): Promise<string> => {
     );
 
     stdout.write(outLines.map((l) => `\x1b[2K${l}\n`).join(''));
-    renderedLines = outLines.length;
+    renderedLines = countPhysicalLines(outLines, termCols);
 
-    cursorUpFromBottom = renderedLines - inputRowIndex;
+    cursorUpFromBottom = countPhysicalLines(
+      outLines.slice(inputRowIndex),
+      termCols,
+    );
     stdout.write(`\x1b[${cursorUpFromBottom}A\x1b[${cursorColumn1Based}G`);
     showAppleBarCursor();
   };
 
   render();
 
-  return await new Promise<string>((resolve, reject) => {
-    let settled = false;
-    const cleanup = (): void => {
-      stdin.off('data', onData);
-      stdin.off('end', onClose);
-      stdin.off('close', onClose);
-      stdout.off('resize', onResize);
-      if (stdin.isTTY) stdin.setRawMode(false);
-      stdin.pause();
-      restoreDefaultCursor();
-    };
-    const onResize = (): void => {
-      if (settled) return;
+  return await withRawModeSession<string>({
+    onResize: () => {
       moveCursorToBottom();
       renderedLines = 0;
       stdout.write('\r\x1b[0J');
       render();
-    };
-    const onClose = (): void => {
-      if (settled) return;
-      settled = true;
+    },
+    onBeforeClose: () => {
       moveCursorToBottom();
-      cleanup();
-      reject(new PromptCancelledError('输入流已关闭, 已取消配置向导'));
-    };
-
-    const onData = (buf: Buffer): void => {
-      const keys = tokenizeKeyStream(buf.toString('utf8'));
+    },
+    onAfterCancel: () => {
+      moveCursorToBottom();
+      eraseBlock(renderedLines);
+    },
+    onKeys: (keys, controls) => {
       let dirty = false;
-
       for (const s of keys) {
-        if (s === '\u0003') {
-          settled = true;
-          if (dirty) render();
-          moveCursorToBottom();
-          cleanup();
-          eraseBlock(renderedLines);
-          reject(new PromptCancelledError('已取消配置向导'));
-          return;
-        }
-
         if (s === '\r' || s === '\n') {
           if (dirty) {
             render();
@@ -312,31 +294,21 @@ export const askText = async (cfg: AskTextConfig): Promise<string> => {
           const err = validate ? validate(finalVal) : null;
           moveCursorToBottom();
           if (!err) {
-            settled = true;
-            cleanup();
-            eraseBlock(renderedLines);
-            printCompletedRow(summaryKey, finalVal || emptySummary);
-            resolve(finalVal);
+            controls.finish(finalVal, () => {
+              eraseBlock(renderedLines);
+              printCompletedRow(summaryKey, finalVal || emptySummary);
+            });
             return;
           }
           errorMsg = err;
           render();
           return;
         }
-
         dirty = true;
         errorMsg = null;
         mutateTextBuffer(editBuf, s, defaultVal);
       }
-
       if (dirty) render();
-    };
-
-    stdin.setRawMode(true);
-    stdin.resume();
-    stdin.on('data', onData);
-    stdin.once('end', onClose);
-    stdin.once('close', onClose);
-    stdout.on('resize', onResize);
+    },
   });
 };

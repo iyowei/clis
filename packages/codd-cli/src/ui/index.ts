@@ -5,6 +5,7 @@ export {
   SUMMARY_LABEL_COL,
   type SemanticTheme,
   charWidth,
+  countPhysicalLines,
   currentTheme,
   detectLightTerminal,
   displayWidth,
@@ -24,7 +25,14 @@ export {
   stripAnsi,
   truncateDisplay,
   wrapDisplay,
+  wrapMultiline,
 } from './ansi.ts';
+export {
+  type LineQueueReader,
+  closeSharedLineReader,
+  createLineQueueReader,
+  readNonInteractiveLine,
+} from './line-reader.ts';
 export {
   type AskConfirmConfig,
   PromptCancelledError,
@@ -35,10 +43,16 @@ export {
   selectOption,
   tokenizeKeyStream,
 } from './prompts.ts';
+export {
+  type RawSessionControls,
+  type RawSessionHandlers,
+  withRawModeSession,
+} from './raw-session.ts';
 export { type AskTextConfig, askText } from './text-input.ts';
 export {
   drawBox,
   formatBoxLines,
+  formatFormulaCardLines,
   formatKVLines,
   formatSummaryCardLines,
   printAlert,
@@ -49,5 +63,4 @@ export {
   printSection,
   printSubGroup,
   printSummaryCard,
-  wrapMultiline,
 } from './widgets.ts';
