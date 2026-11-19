@@ -227,6 +227,27 @@ describe('构建自检: 任一不过即抛错', () => {
     ).toThrow(/残留/);
   });
 
+  test('泛化零残留自检先于写盘: 失败时不破坏既有旧产物', () => {
+    const base = setupFixture();
+    const options = {
+      repoRoot: base.repoRoot,
+      outDir: base.outDir,
+      original: FIXTURE_ORIGINAL,
+      manifest: FIXTURE_MANIFEST,
+      skeletonRoot: base.skeletonRoot,
+    };
+    buildTemplate(options);
+    const sentinelPath = join(base.outDir, 'existing-good.txt');
+    writeFileSync(sentinelPath, 'kept-intact\n');
+
+    // 注入残留词触发自检失败
+    writeFileSync(join(base.repoRoot, 'conf/a.conf'), 'name=demo-app\n');
+    expect(() => buildTemplate(options)).toThrow(/残留/);
+    // 既有产物未被删旧覆写
+    expect(existsSync(sentinelPath)).toBe(true);
+    expect(readFileSync(sentinelPath, 'utf8')).toBe('kept-intact\n');
+  });
+
   test('清单完整性自检: 源文件缺失即抛错', () => {
     const base = setupFixture();
     rmSync(join(base.repoRoot, 'demo-app.json'));
@@ -314,6 +335,29 @@ describe('真实清单集成: 全量产出', () => {
         false,
       );
     }
+
+    // CREATE-P0-3: API 包构建脚本与 tsconfig.build.json 须为干净中性骨架 (不含 sweep 内部排除表)
+    const apiBuild = readFileSync(
+      join(outDir, 'packages/{{NAME}}/scripts/build.ts'),
+      'utf8',
+    );
+    expect(apiBuild).toContain(
+      'const INTERNAL_DTS_FILES: readonly string[] = [];',
+    );
+    expect(apiBuild).toContain("'--no-install'");
+    for (const sweepInternal of ['runtime.d.ts', 'scan-native', 'size-du']) {
+      expect(apiBuild).not.toContain(sweepInternal);
+    }
+    const apiTsBuild = JSON.parse(
+      readFileSync(
+        join(outDir, 'packages/{{NAME}}/tsconfig.build.json'),
+        'utf8',
+      ),
+    ) as { exclude: string[] };
+    expect(apiTsBuild.exclude).toEqual([
+      'src/**/*.test.ts',
+      'src/**/*smoke.ts',
+    ]);
   });
 
   test('npm 面包机制剔除的真实名以载体名落位 (TD-05 的载体面)', () => {

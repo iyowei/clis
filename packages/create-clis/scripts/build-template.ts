@@ -196,21 +196,11 @@ export function buildTemplate(
     }
   }
 
-  // 2. 写盘: 整目录重建并保留可执行权限位
-  rmSync(outDir, { recursive: true, force: true });
-  mkdirSync(outDir, { recursive: true });
-  for (const [file, { bytes, mode }] of planned) {
-    const target = join(outDir, file);
-    mkdirSync(dirname(target), { recursive: true });
-    writeFileSync(target, bytes, { mode });
-    if (process.platform !== 'win32') chmodSync(target, mode);
-  }
-
-  // 3. 泛化零残留 + 排除包零泄漏自检 (回读磁盘)
+  // 2. 内存自检: 泛化零残留 + 排除包零泄漏 (全检通过前不删旧写盘, 防失败留下脏产物)
   const leftovers: string[] = [];
-  for (const file of planned.keys()) {
+  for (const [file, { bytes }] of planned) {
     if (containsResidual(file, original)) leftovers.push(`${file} (路径)`);
-    const text = readFileSync(join(outDir, file), 'utf8');
+    const text = bytes.toString('utf8');
     if (containsResidual(text, original)) leftovers.push(`${file} (内容)`);
     for (const term of forbiddenTerms) {
       if (file.includes(term) || text.includes(term)) {
@@ -223,6 +213,16 @@ export function buildTemplate(
       `泛化零残留自检未过, 模板内仍含原项目词汇或私密配置:\n  ${leftovers.join('\n  ')}\n` +
         '  处置: 含该形态的源文件改标 generalize 走替换, 或改标 reset 换用干净骨架。',
     );
+  }
+
+  // 3. 写盘: 全部自检通过后再整目录重建并保留可执行权限位
+  rmSync(outDir, { recursive: true, force: true });
+  mkdirSync(outDir, { recursive: true });
+  for (const [file, { bytes, mode }] of planned) {
+    const target = join(outDir, file);
+    mkdirSync(dirname(target), { recursive: true });
+    writeFileSync(target, bytes, { mode });
+    if (process.platform !== 'win32') chmodSync(target, mode);
   }
 
   // 4. 资产清单
