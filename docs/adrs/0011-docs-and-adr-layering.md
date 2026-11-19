@@ -1,6 +1,6 @@
 # ADR 0011: 文档与 ADR 的仓库级 / 包级两级分层
 
-> **状态**: 已接受 (Accepted)
+> **状态**: 已取代 (Superseded by [ADR 0019](0019-two-tier-package-owned-docs.md), 2026-11-19)
 > **日期**: 2026-09-30
 > **决策者**: 沈委
 > **标签**: [文档]
@@ -41,4 +41,5 @@
 
 - 协议细节 (判据、结构、外链的固定位置、本批判定表): [文档分层协议](../designs/docs-layering.md);
 - 集合仓背景: [集合仓定位](../designs/collection-positioning.md);
-- 剩余仓库级事项与迁移计划: [重定位执行与验证](../designs/collection-relocation.md) / [技术债登记](../designs/tech-debt.md)。
+- 剩余仓库级事项与迁移计划: [重定位执行与验证](../designs/collection-relocation.md) / [技术债登记](../designs/tech-debt.md);
+- **修订指引 (2026-11-19)**: 本 ADR 预留的「第二个产品入仓时重新评估」已兑现, 已被 [ADR 0019](0019-two-tier-package-owned-docs.md) 取代: 撤销仓根 `docs/<product>/` 产品区, 全部产品文档与 ADR 随主包内聚于 `packages/<product>/docs/`, 包级 `docs/` 改为按需创建, 仓库根 `docs/` 彻底净化为纯工程治理。

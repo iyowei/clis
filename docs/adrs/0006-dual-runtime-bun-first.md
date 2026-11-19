@@ -37,7 +37,7 @@
 3. **语法约束 (为 Node 的类型剥离而设)**: 只用可擦除的 TS 语法 (不能用 `enum` / `namespace` / 参数属性这类需要真正产出代码的特性); tsconfig 打开 `erasableSyntaxOnly`, 让类型检查把这个约束钉死。
 4. **入口形态**: `src/cli.ts` 不再自带 shebang, 也不再被直接软链; 新增 `bin/sweep-nm` 启动器 (用 sh 写的), 先按「Bun 优先, Node 回退」挑好运行时, 再 `exec` 真实入口; `~/.local/bin/sweep-nm` 软链指向启动器 (这一步修订了 [ADR 0003](../../packages/sweep-node-modules/docs/adrs/0003-zero-runtime-deps.md) 的安装形态与运行时要求; 其零依赖与零构建策略不变, 只是「零构建」的适用范围后来被 [ADR 0009](0009-npm-distribution-form.md) 收窄为开发运行路径)。
 5. **版本要求**: 两侧都要「最新一代」: Bun 用任意近期版本; Node 要用原生支持直接跑 TypeScript 的版本, 下限为 `>= 22.18.0` (从这一版起类型剥离默认启用, 见 nodejs.org/api/typescript.html 的 History 表: v23.6.0 / v22.18.0「Type stripping is enabled by default」), 已经落到 package.json 的 `engines.node`。这个下限对两条获取方式一视同仁: 从源码运行需要直接跑 TS 的能力, npm 装到的是编译产物 JS, 跑 JS 本身不需要这个能力, 但两种获取方式取同一个数值下限, 不因为是哪种方式而放宽 (分发形态见 [ADR 0009](0009-npm-distribution-form.md))。本机实测: bun 1.4.2 和 node 26.7.0 跑同一个入口都通过。
-6. **性能取向**: 热路径 (目录遍历) 按 [扫描与体积](../sweep/designs/scan-and-size.md) 的「性能要点」执行 (withFileTypes 省掉逐个 lstat、命中就剪枝、跳过 `.git`、不跟进符号链接; 体积统计的候选与裁定见该分册)。
+6. **性能取向**: 热路径 (目录遍历) 按 [扫描与体积](../../packages/sweep-node-modules/docs/designs/scan-and-size.md) 的「性能要点」执行 (withFileTypes 省掉逐个 lstat、命中就剪枝、跳过 `.git`、不跟进符号链接; 体积统计的候选与裁定见该分册)。
 
 理由: 装哪个运行时都能用; Bun 主路径能拿到启动和 spawn 的性能; 只有一份源码, 没有分叉; 约束落在能自动校验的闸门 (tsconfig 选项) 上。
 
@@ -67,4 +67,4 @@
 **关联引用**
 
 - 安装形态与运行时要求被本文修订的地方见 [ADR 0003](../../packages/sweep-node-modules/docs/adrs/0003-zero-runtime-deps.md); npm 分发形态 (编译产物与入口) 见 [ADR 0009](0009-npm-distribution-form.md)。
-- 性能手册见 [扫描与体积](../sweep/designs/scan-and-size.md); 代码结构与运行时基座见 [设计总纲](../sweep/designs/sweep-node-modules-design.md)。
+- 性能手册见 [扫描与体积](../../packages/sweep-node-modules/docs/designs/scan-and-size.md); 代码结构与运行时基座见 [设计总纲](../../packages/sweep-node-modules/docs/designs/sweep-node-modules-design.md)。
