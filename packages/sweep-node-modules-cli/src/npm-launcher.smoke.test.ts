@@ -62,12 +62,16 @@ interface FakePackage {
   cleanup: () => void;
 }
 
-/** 临时包布局: <root>/bin/sweep-nm.mjs (启动器原样复制) + 空的 <root>/dist/ */
+/** 临时包布局: <root>/bin/sweep-nm.mjs + bin/bunfig.toml (启动器原样复制) + 空的 <root>/dist/ */
 const makePackage = (): FakePackage => {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'sweep-nm-pkg-')));
   mkdirSync(join(root, 'bin'), { recursive: true });
   mkdirSync(join(root, 'dist'), { recursive: true });
   copyFileSync(LAUNCHER, join(root, 'bin', 'sweep-nm.mjs'));
+  copyFileSync(
+    join(ROOT, 'bin', 'bunfig.toml'),
+    join(root, 'bin', 'bunfig.toml'),
+  );
   return {
     root,
     distDir: join(root, 'dist'),
@@ -262,6 +266,58 @@ describe('npm 启动器 · 产物自证', () => {
       expect(stdout).toContain('FAKE-SRC');
     } finally {
       pkg.cleanup();
+    }
+  });
+});
+
+describe('npm 启动器 · 工作目录配置与环境变量隔离', () => {
+  test('被扫目录存在损坏 bunfig.toml / 恶意 preload / .env 时, 经 node 启动器与 sh 启动器均安全运行且不受污染', () => {
+    const dirtyCwd = realpathSync(mkdtempSync(join(tmpdir(), 'sweep-dirty-')));
+    try {
+      writeFileSync(
+        join(dirtyCwd, 'bunfig.toml'),
+        'preload = ["./evil.js"]\n[[broken toml\n',
+      );
+      writeFileSync(
+        join(dirtyCwd, 'evil.js'),
+        "throw new Error('PRELOAD_HIJACKED');\n",
+      );
+      writeFileSync(
+        join(dirtyCwd, '.env'),
+        'SWEEP_NM_CONFIG=/hijacked/by/dotenv.json\nNO_COLOR=1\n',
+      );
+      const env = { ...process.env };
+      delete env.SWEEP_NM_CONFIG;
+
+      // 1) npm 分发态入口 (shebang 为 node, 由 .mjs 传 --config / --no-env-file 派生 bun)
+      const viaMjs = spawnSync('node', [LAUNCHER, 'config'], {
+        cwd: dirtyCwd,
+        encoding: 'utf8',
+        env,
+      });
+      if (viaMjs.error === undefined) {
+        expect(viaMjs.status, viaMjs.stderr).toBe(0);
+        expect(viaMjs.stdout).not.toContain('/hijacked/by/dotenv.json');
+        expect(viaMjs.stderr).not.toContain('PRELOAD_HIJACKED');
+      }
+
+      // 2) POSIX 源码入口 (bin/sweep-nm)
+      if (process.platform !== 'win32') {
+        const viaSh = spawnSync(
+          '/bin/sh',
+          [join(ROOT, 'bin', 'sweep-nm'), 'config'],
+          {
+            cwd: dirtyCwd,
+            encoding: 'utf8',
+            env,
+          },
+        );
+        expect(viaSh.status, viaSh.stderr).toBe(0);
+        expect(viaSh.stdout).not.toContain('/hijacked/by/dotenv.json');
+        expect(viaSh.stderr).not.toContain('PRELOAD_HIJACKED');
+      }
+    } finally {
+      rmSync(dirtyCwd, { recursive: true, force: true });
     }
   });
 });

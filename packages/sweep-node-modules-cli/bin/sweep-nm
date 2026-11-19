@@ -1,25 +1,21 @@
 #!/bin/sh
 # sweep-nm 启动器: 挑选运行时 (Bun 优先, 其次 Node) 后 exec 真实入口。
-# 经 ~/.local/bin/sweep-nm 软链调用; readlink 解出仓库内路径 (BSD / GNU 皆可)。
-#
-# 运行时解析防劫持 (安全审计项 runtime-resolution:bare-name-cwd-precedence-windows):
-# 本入口的 command -v 与 exec 都按 shell 的 PATH 查找; shell 层无法过滤 PATH 中的空 / 相对
-# 条目 (两者在 POSIX 下均意为当前目录), 该边界属已知前提: npm 分发入口 (bin/sweep-nm.mjs)
-# 已按 PATH 解析绝对路径并跳过这两类条目, 防御落在那一侧。对照实测与本条的证据面见
-# src/launcher.runtime-resolution.test.ts; win32 侧的对应处理见 bin/sweep-nm.cmd 与
-# bin/sweep-nm.mjs 的文件头。
+# 经 ~/.local/bin/sweep-nm 软链调用; 循环 readlink 解析多级符号链接 (BSD / GNU 皆可)。
+# 选中 Bun 时强制附加 --config="$root/bin/bunfig.toml" --no-env-file, 隔绝被扫目录的
+# bunfig.toml (preload / 损坏语法) 与 .env 环境变量污染。
 
-# readlink 为空 = 未经软链直跑, 此时 $0 即自身路径
-target=$(readlink "$0" 2>/dev/null)
-case "$target" in
-  "") target=$0 ;;
-  /*) ;;
-  *) target="$(dirname "$0")/$target" ;;
-esac
+target=$0
+while [ -L "$target" ]; do
+  link=$(readlink "$target" 2>/dev/null) || break
+  case "$link" in
+    /*) target=$link ;;
+    *) target="$(dirname "$target")/$link" ;;
+  esac
+done
 root=$(cd "$(dirname "$target")/.." && pwd)
 
 if command -v bun >/dev/null 2>&1; then
-  exec bun "$root/src/cli.ts" "$@"
+  exec bun --config="$root/bin/bunfig.toml" --no-env-file "$root/src/cli.ts" "$@"
 fi
 
 if command -v node >/dev/null 2>&1; then

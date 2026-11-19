@@ -195,6 +195,8 @@ describe('三入口解析形态 (静态钉住)', () => {
 
     expect(source).toContain('command -v bun');
     expect(source).toContain('command -v node');
+    expect(source).toContain('--no-env-file');
+    expect(source).toContain('bunfig.toml');
     expect(source).not.toMatch(/^\s*where\s/m);
   });
 
@@ -203,6 +205,8 @@ describe('三入口解析形态 (静态钉住)', () => {
 
     expect(source).toContain('set "RUNNER=%%~$PATH:I"');
     expect(source).toContain('"%RUNNER%" "%ENTRY%" %*');
+    expect(source).toContain('--no-env-file');
+    expect(source).toContain('bunfig.toml');
     // 防回归: where 的默认搜索含当前目录, 裸名赋值同理 —— 二者都不得回到解析链路
     expect(source).not.toMatch(/^\s*where\s/m);
     expect(source).not.toMatch(/set "RUNNER=(bun|node)"/);
@@ -215,6 +219,8 @@ describe('三入口解析形态 (静态钉住)', () => {
     expect(source).toContain(
       'resolveWin32Executable(name, pathEnv, fileProbe)',
     );
+    expect(source).toContain('--no-env-file');
+    expect(source).toContain('bunfig.toml');
   });
 
   test('npm 启动器: POSIX 分支走 resolvePosixExecutables (形态不被摘掉)', () => {
