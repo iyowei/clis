@@ -21,6 +21,8 @@ import {
 const { make, cleanup } = createWorkspaceTracker();
 afterEach(cleanup);
 
+const DIR_LINK = process.platform === 'win32' ? 'dir' : undefined;
+
 /** 根锚点面的用例组, 逐 runner 注册 */
 function defineAnchorCases(runner: string, available: boolean): void {
   describe(`cli e2e [${runner}] 根锚点面 (扫描照常 / 删除拒绝)`, () => {
@@ -29,7 +31,7 @@ function defineAnchorCases(runner: string, available: boolean): void {
       async () => {
         const workspace = await make({ projects: [{ dir: 'real-root/app' }] });
         const link = join(workspace.root, 'link-root');
-        await symlink(join(workspace.root, 'real-root'), link);
+        await symlink(join(workspace.root, 'real-root'), link, DIR_LINK);
         const config = writeConfig(workspace, [link]);
 
         // 扫描侧 (BC-11): 显式写出符号链接根即授权, 预览照常出清单、退 0
@@ -56,6 +58,7 @@ function defineAnchorCases(runner: string, available: boolean): void {
         await symlink(
           join(workspace.root, 'elsewhere'),
           join(workspace.root, 'link-parent'),
+          DIR_LINK,
         );
         const config = writeConfig(workspace, [
           join(workspace.root, 'link-parent', 'work'),

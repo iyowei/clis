@@ -115,8 +115,9 @@ export async function makeWorkspace(spec: WorkspaceSpec): Promise<Workspace> {
     }
   }
 
+  const dirLinkType = process.platform === 'win32' ? 'dir' : undefined;
   for (const link of spec.symlinks ?? []) {
-    await symlink(join(root, link.to), join(root, link.at));
+    await symlink(join(root, link.to), join(root, link.at), dirLinkType);
   }
 
   for (const dir of spec.unreadable ?? []) {

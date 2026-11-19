@@ -69,8 +69,11 @@ const exists = (p: string) =>
     () => false,
   );
 
-/** root 下权限位形同虚设 (0o500 照样可删), 依赖权限注入的用例跳过 */
-const isRoot = (process as { getuid?: () => number }).getuid?.() === 0;
+/** root 或 Windows 下 POSIX 权限位形同虚设 (0o500 / 0o000 照样可读写删), 依赖权限注入的用例跳过 */
+const isRoot =
+  process.platform === 'win32' ||
+  (process as { getuid?: () => number }).getuid?.() === 0;
+const DIR_LINK = process.platform === 'win32' ? 'dir' : undefined;
 
 describe('removeTargets 契约', () => {
   test('正常: 目标真删 (含多级路径), 邻居目录完整保留', async () => {
@@ -213,7 +216,7 @@ describe('removeTargets 契约', () => {
     await mkdir(join(root, 'app'), { recursive: true });
     const target = join(root, 'app', 'node_modules');
     // 目标位置被换成指向真实目录的符号链接 (末段替换: 由 fs.rm 的 lstat 语义安全处理)
-    await symlink(join(root, 'precious', 'node_modules'), target);
+    await symlink(join(root, 'precious', 'node_modules'), target, DIR_LINK);
 
     const result = await removeTargets([target], { roots: [trustRoot(root)] });
 
@@ -247,7 +250,7 @@ describe('组件级安全复核 (中间路径组件替换 → root 外删除)', 
     const victimFile = join(victim, 'pkg-0.js');
 
     // 攻击形态: 中间组件 sub 被换成指向 root 外的符号链接 (rm 会跟进它删到 root 外)
-    await symlink(join(root, 'outside'), join(trust, 'sub'));
+    await symlink(join(root, 'outside'), join(trust, 'sub'), DIR_LINK);
     expect(await exists(victimFile)).toBe(true);
 
     const result = await removeTargets([ok, swapped, later], {
@@ -346,7 +349,7 @@ describe('链头替换 (信任根被换成符号链接 → 删除导向他树)',
       ],
     });
     // 攻击形态: 配置里的根被改名搬走、原地换成指向他树的符号链接 (一次性布置, 无需竞态)
-    await symlink(join(root, 'target-tree'), join(root, 'link-root'));
+    await symlink(join(root, 'target-tree'), join(root, 'link-root'), DIR_LINK);
 
     // guard 侧 realpath 归一后拿到的正是链接的解析结果: 两侧一起漂移, 按 real 的比较恒真,
     // 唯一能识破的证据是配置拼写的形态

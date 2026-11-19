@@ -223,10 +223,12 @@ describe('不变量 ⑤ 根锚点链无符号链接 (纯判定)', () => {
   });
 });
 
+const DIR_LINK = process.platform === 'win32' ? 'dir' : undefined;
+
 describe('validateTargets · 不变量 ⑤ (根锚点链, 真实目录)', () => {
   test('根自身是符号链接: 拒绝并给出根锚点理由', async () => {
     const { root } = await make({ projects: [{ dir: 'real-root/app' }] });
-    await symlink(join(root, 'real-root'), join(root, 'link-root'));
+    await symlink(join(root, 'real-root'), join(root, 'link-root'), DIR_LINK);
 
     const target = join(root, 'link-root', 'app', 'node_modules');
     const result = await validateTargets([target], {
@@ -241,7 +243,7 @@ describe('validateTargets · 不变量 ⑤ (根锚点链, 真实目录)', () => 
 
   test('根的祖先链被换成符号链接: 同样拒绝 (根自身经解析仍是真目录)', async () => {
     const { root } = await make({ projects: [{ dir: 'elsewhere/work' }] });
-    await symlink(join(root, 'elsewhere'), join(root, 'link-parent'));
+    await symlink(join(root, 'elsewhere'), join(root, 'link-parent'), DIR_LINK);
 
     const target = join(root, 'link-parent', 'work', 'node_modules');
     const result = await validateTargets([target], {
@@ -257,7 +259,7 @@ describe('validateTargets · 不变量 ⑤ (根锚点链, 真实目录)', () => 
     const { root } = await make({
       projects: [{ dir: 'good/app' }, { dir: 'real-root/app' }],
     });
-    await symlink(join(root, 'real-root'), join(root, 'link-root'));
+    await symlink(join(root, 'real-root'), join(root, 'link-root'), DIR_LINK);
 
     const attacked = join(root, 'link-root', 'app', 'node_modules');
     const safe = join(root, 'good', 'app', 'node_modules');
@@ -272,7 +274,7 @@ describe('validateTargets · 不变量 ⑤ (根锚点链, 真实目录)', () => 
 
   test('悬空符号链接作根: 其下目标被拒 (realpath 不可解析), 校验不崩溃', async () => {
     const { root } = await make({ projects: [{ dir: 'zone/app' }] });
-    await symlink(join(root, 'nowhere'), join(root, 'dangling'));
+    await symlink(join(root, 'nowhere'), join(root, 'dangling'), DIR_LINK);
 
     const under = join(root, 'dangling', 'app', 'node_modules');
     const result = await validateTargets([under], {
@@ -299,7 +301,7 @@ describe('写入侧目标锚点 firstSymlinkOnTarget (真实目录)', () => {
     const { root } = await make({ projects: [] });
     await mkdir(join(root, 'real'), { recursive: true });
     await writeFile(join(root, 'real', 'config.json'), '{}\n');
-    await symlink(join(root, 'real'), join(root, 'link-dir'));
+    await symlink(join(root, 'real'), join(root, 'link-dir'), DIR_LINK);
 
     expect(
       await firstSymlinkOnTarget(join(root, 'link-dir', 'config.json')),
@@ -328,7 +330,7 @@ describe('写入侧目标锚点 firstSymlinkOnTarget (真实目录)', () => {
   test('与向导入口 firstSymlinkOnRoot 同源: 同一路径给同一结论', async () => {
     const { root } = await make({ projects: [] });
     await mkdir(join(root, 'real'), { recursive: true });
-    await symlink(join(root, 'real'), join(root, 'link-dir'));
+    await symlink(join(root, 'real'), join(root, 'link-dir'), DIR_LINK);
 
     const through = join(root, 'link-dir');
     const plain = join(root, 'real');
@@ -373,7 +375,7 @@ describe('validateTargets (真实目录)', () => {
     const { root } = await make({
       projects: [{ dir: 'zone' }, { dir: 'outside' }],
     });
-    await symlink(join(root, 'outside'), join(root, 'zone', 'link'));
+    await symlink(join(root, 'outside'), join(root, 'zone', 'link'), DIR_LINK);
 
     const target = join(root, 'zone', 'link', 'node_modules');
     const result = await validateTargets([target], {
@@ -391,6 +393,7 @@ describe('validateTargets (真实目录)', () => {
     await symlink(
       join(root, 'payload'),
       join(root, 'zone', 'app', 'node_modules'),
+      DIR_LINK,
     );
 
     const target = join(root, 'zone', 'app', 'node_modules');
@@ -406,6 +409,7 @@ describe('validateTargets (真实目录)', () => {
     await symlink(
       join(root, 'shared', 'node_modules'),
       join(root, 'zone', 'app2', 'node_modules'),
+      DIR_LINK,
     );
 
     const canonical = join(root, 'shared', 'node_modules');
