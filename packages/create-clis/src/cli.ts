@@ -66,12 +66,17 @@ function buildHooks(options: CliOptions): GenerateHooks {
  * full 档提示的原因: 转写契约套件随模板只带机制, 契约与语料是 exclude 面的自填内容, 填好前
  * 生成物 `bun run ci` 的 conformance 相关步骤必红; 不点破的话, 「验证全绿」这句就是误导。
  */
-function nextSteps(targetDir: string, installed: boolean, tier: Tier): string {
+function nextSteps(
+  targetDir: string,
+  installed: boolean,
+  tier: Tier,
+  projectName: string,
+): string {
   const lines = ['', '下一步:', `  cd ${targetDir}`];
   if (!installed) lines.push('  bun install         # 安装依赖');
   if (tier === 'full') {
     lines.push(
-      '  # full 档: 转写契约套件只带机制, 契约与语料需自填 (docs/sweep/protocol/);',
+      `  # full 档: 转写契约套件只带机制, 契约与语料需自填 (packages/${projectName}/docs/protocol/);`,
     );
     lines.push(
       '  # 填好前 bun run ci 的 lint:coverage 与 conformance 步骤会红',
@@ -150,7 +155,9 @@ async function main(): Promise<number> {
       process.stdout.write(`收尾已执行: ${executed.join(', ')}\n`);
     }
     process.stdout.write(`已生成: ${targetDir} (档位: ${tier})\n`);
-    process.stdout.write(`${nextSteps(targetDir, parsed.install, tier)}\n`);
+    process.stdout.write(
+      `${nextSteps(targetDir, parsed.install, tier, vocabulary.name)}\n`,
+    );
     return 0;
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
