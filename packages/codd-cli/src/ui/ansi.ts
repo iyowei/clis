@@ -8,15 +8,19 @@ import { stdin, stdout } from 'node:process';
 export const SUMMARY_LABEL_COL = 16;
 
 export const hasColor = (): boolean =>
-  Boolean(stdout.isTTY) && !process.env.NO_COLOR && process.env.TERM !== 'dumb';
+  Boolean(stdout.isTTY) &&
+  !process.env.NO_COLOR &&
+  process.env.TERM?.toLowerCase() !== 'dumb';
 
 export const isInteractive = (): boolean =>
-  Boolean(stdin.isTTY && stdout.isTTY) && process.env.TERM !== 'dumb';
+  Boolean(stdin.isTTY && stdout.isTTY) &&
+  process.env.TERM?.toLowerCase() !== 'dumb';
 
 // Apple Terminal.app 仅支持 256 色, 不支持 24-bit TrueColor, 不列入真彩白名单
 const TRUECOLOR_TERMS = ['iterm', 'vscode', 'ghostty', 'warp', 'wezterm'];
 
 export const isTrueColor = (): boolean => {
+  if (process.env.WT_SESSION) return true;
   const ct = (process.env.COLORTERM || '').toLowerCase();
   if (ct.includes('truecolor') || ct.includes('24bit')) return true;
   const termProg = (process.env.TERM_PROGRAM || '').toLowerCase();
@@ -117,37 +121,43 @@ const ANSI_CSI_RE = new RegExp(
   `${String.fromCharCode(0x1b)}\\[[0-9;?]*[ -/]*[@-~]`,
   'g',
 );
-const COMBINING_MARK_RE = /\p{Mn}/u;
+const ZERO_WIDTH_UNICODE_RE = /[\p{Mn}\p{Me}\p{Cf}]/u;
 
 export const stripAnsi = (str: string): string => str.replace(ANSI_CSI_RE, '');
 
 const isZeroWidthCodePoint = (ch: string, code: number): boolean =>
   code < 32 ||
-  code === 0x7f ||
+  (code >= 0x7f && code <= 0x9f) ||
   code === 0x00ad ||
   code === 0x2060 ||
   code === 0xfeff ||
   (code >= 0x200b && code <= 0x200f) ||
   (code >= 0xfe00 && code <= 0xfe0f) ||
   (code >= 0xe0100 && code <= 0xe01ef) ||
-  COMBINING_MARK_RE.test(ch);
+  ZERO_WIDTH_UNICODE_RE.test(ch);
+
+const isFullWidthCodePoint = (code: number): boolean =>
+  code === 0x3000 ||
+  (code >= 0x1100 && code <= 0x115f) ||
+  (code >= 0x2329 && code <= 0x232a) ||
+  (code >= 0x2e80 && code <= 0xa4cf) ||
+  (code >= 0xac00 && code <= 0xd7a3) ||
+  (code >= 0xf900 && code <= 0xfaff) ||
+  (code >= 0xfe10 && code <= 0xfe19) ||
+  (code >= 0xfe30 && code <= 0xfe6f) ||
+  (code >= 0xff01 && code <= 0xff60) ||
+  (code >= 0xffe0 && code <= 0xffe6) ||
+  (code >= 0x1f300 && code <= 0x1faff) ||
+  (code >= 0x20000 && code <= 0x2fffd) ||
+  (code >= 0x30000 && code <= 0x3fffd);
 
 export const charWidth = (ch: string): number => {
   const code = ch.codePointAt(0) ?? 0;
   if (isZeroWidthCodePoint(ch, code)) return 0;
-  const wide =
-    code === 0x3000 ||
-    (code >= 0x1100 && code <= 0x115f) ||
-    (code >= 0x2e80 && code <= 0xa4cf) ||
-    (code >= 0xac00 && code <= 0xd7a3) ||
-    (code >= 0xf900 && code <= 0xfaff) ||
-    (code >= 0xfe30 && code <= 0xfe6f) ||
-    (code >= 0xff00 && code <= 0xffef) ||
-    (code >= 0x1f300 && code <= 0x1faff);
-  return wide ? 2 : 1;
+  return isFullWidthCodePoint(code) ? 2 : 1;
 };
 
-/** 计算包含全角 CJK 字符与零宽组合符的精确终端显示列宽, 保证双栏与色块边缘零偏移 */
+/** 计算包含全角 CJK 字符、扩展 B+、半角片假名与零宽组合符的精确终端显示列宽 */
 export const displayWidth = (str: string): number => {
   const plain = stripAnsi(str);
   let w = 0;
@@ -155,6 +165,20 @@ export const displayWidth = (str: string): number => {
     w += charWidth(ch);
   }
   return w;
+};
+
+/** 统计一组输出行在给定终端列宽下实际占用的物理终端行数 (含软折行) */
+export const countPhysicalLines = (
+  lines: readonly string[],
+  termCols = getTermCols(),
+): number => {
+  const cols = Math.max(1, termCols);
+  let total = 0;
+  for (const line of lines) {
+    const w = displayWidth(line);
+    total += w === 0 ? 1 : Math.ceil(w / cols);
+  }
+  return total;
 };
 
 export const padEndDisplay = (str: string, width: number): string => {
@@ -247,8 +271,12 @@ export const eraseBlock = (lineCount: number): void => {
 
 export const getTermCols = (): number => stdout.columns || 80;
 
-export const getBoxWidth = (min = 58, max = 88): number =>
-  Math.min(max, Math.max(min, getTermCols() - 4));
+/** 严格钳制卡片宽度在终端实际列宽内 (<= Math.max(20, getTermCols() - 4)), 防止窄屏触发软折行残影 */
+export const getBoxWidth = (min = 58, max = 88): number => {
+  const hardCap = Math.max(20, getTermCols() - 4);
+  const boundedMin = Math.min(min, hardCap);
+  return Math.min(max, Math.max(boundedMin, hardCap));
+};
 
 /** 按终端显示宽度安全裁剪纯文本, 末尾补省略号 */
 export const truncateDisplay = (
@@ -287,7 +315,11 @@ const scanLineSegment = (
   while (end < chars.length) {
     const ch = chars[end]!;
     const cw = charWidth(ch);
-    if (w + cw > maxWidth) break;
+    if (w + cw > maxWidth) {
+      // 单个全角字符已超 maxWidth 时强制前进一步, 防止死循环
+      if (end === start) end += 1;
+      break;
+    }
     w += cw;
     if (BREAK_CHARS.has(ch)) {
       lastBreak = end;
@@ -328,5 +360,15 @@ export const wrapDisplay = (plainText: string, maxWidth: number): string[] => {
     }
   }
 
+  return lines.length > 0 ? lines : [''];
+};
+
+/** 先按换行符分段, 再对每段按显示宽度安全折行 */
+export const wrapMultiline = (text: string, maxWidth: number): string[] => {
+  const segments = text.split(/\r?\n/);
+  const lines: string[] = [];
+  for (const seg of segments) {
+    lines.push(...wrapDisplay(seg, maxWidth));
+  }
   return lines.length > 0 ? lines : [''];
 };

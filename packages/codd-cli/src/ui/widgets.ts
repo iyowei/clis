@@ -1,7 +1,9 @@
 /**
  * Apple System Settings 级终端排版组件: 页眉、分段步骤指示器、圆角面板与参数卡片。
- * 全部输出行在落框前先按换行符拆分, 防止含 \n 的多行文本撑裂圆角框与双栏对齐。
+ * 全部输出行在落框前先按换行符拆分, 并在窄屏下动态收缩左栏防止脱色与边框撑裂。
  */
+import { stderr, stdout } from 'node:process';
+
 import type { FormulaStep } from '@iyowei/codd';
 
 import {
@@ -13,21 +15,13 @@ import {
   palette,
   stripAnsi,
   truncateDisplay,
-  wrapDisplay,
+  wrapMultiline,
 } from './ansi.ts';
+
+export { wrapMultiline };
 
 const sanitizeSingleLine = (text: string): string =>
   text.replace(/\r?\n/g, ' ').trim();
-
-/** 先按换行符分段, 再对每段按显示宽度安全折行 */
-export const wrapMultiline = (text: string, maxWidth: number): string[] => {
-  const segments = text.split(/\r?\n/);
-  const lines: string[] = [];
-  for (const seg of segments) {
-    lines.push(...wrapDisplay(seg, maxWidth));
-  }
-  return lines.length > 0 ? lines : [''];
-};
 
 export const printCompletedRow = (label: string, value: string): void => {
   const paddedKey = padEndDisplay(sanitizeSingleLine(label), SUMMARY_LABEL_COL);
@@ -92,7 +86,7 @@ export const printSection = (
     `  ${track}   ${palette.dim(`步骤 ${step}`)}  ${palette.title(sanitizeSingleLine(title))}`,
   );
   if (subtitle) {
-    const w = getBoxWidth() - 4;
+    const w = Math.max(14, getBoxWidth() - 4);
     for (const ln of wrapMultiline(subtitle, w)) {
       console.log(`    ${palette.muted(ln)}`);
     }
@@ -110,23 +104,24 @@ export const formatKVLines = (
   indent = 4,
   termCols = getTermCols(),
 ): string[] => {
-  const maxW = termCols - indent - 2;
+  const maxW = Math.max(16, termCols - indent - 2);
   const cleanRows: Array<[string, string]> = rows.map(([k, v]) => [
     sanitizeSingleLine(k),
     v,
   ]);
+  const naturalKeyW = Math.max(...cleanRows.map(([k]) => displayWidth(k)), 8);
   const keyW = Math.min(
     24,
-    Math.max(...cleanRows.map(([k]) => displayWidth(k)), 12) + 2,
+    Math.max(6, Math.floor(maxW * 0.4)),
+    naturalKeyW + 2,
   );
-  const valW = Math.max(18, maxW - keyW - 1);
+  const valW = Math.max(8, maxW - keyW - 1);
   const pad = ' '.repeat(indent);
   const out: string[] = [];
   for (const [k, v] of cleanRows) {
+    const kFit = padEndDisplay(truncateDisplay(k, keyW), keyW);
     const wrapped = wrapMultiline(v, valW);
-    out.push(
-      `${pad}${palette.mono(padEndDisplay(k, keyW))} ${palette.muted(wrapped[0] ?? '')}`,
-    );
+    out.push(`${pad}${palette.mono(kFit)} ${palette.muted(wrapped[0] ?? '')}`);
     for (let i = 1; i < wrapped.length; i += 1) {
       out.push(`${pad}${' '.repeat(keyW)} ${palette.muted(wrapped[i]!)}`);
     }
@@ -148,19 +143,20 @@ export const formatBoxLines = (
   indent = 2,
   boxW = getBoxWidth(),
 ): string[] => {
-  const innerW = boxW - 6;
+  const safeBoxW = Math.max(20, boxW);
+  const innerW = safeBoxW - 6;
   const pad = ' '.repeat(indent);
-  const horiz = '─'.repeat(boxW - 2);
+  const horiz = '─'.repeat(safeBoxW - 2);
   const cleanTitle = sanitizeSingleLine(title);
   const out: string[] = [''];
 
   if (subtitle) {
     const cleanSub = sanitizeSingleLine(subtitle);
-    const maxSubW = Math.max(12, boxW - displayWidth(cleanTitle) - 4);
+    const maxSubW = Math.max(6, safeBoxW - displayWidth(cleanTitle) - 4);
     const subClipped = truncateDisplay(cleanSub, maxSubW);
     const gap = Math.max(
       2,
-      boxW - displayWidth(cleanTitle) - displayWidth(subClipped),
+      safeBoxW - displayWidth(cleanTitle) - displayWidth(subClipped),
     );
     out.push(
       `${pad}${palette.title(cleanTitle)}${' '.repeat(gap)}${palette.dim(subClipped)}`,
@@ -203,26 +199,34 @@ export const drawBox = (
   }
 };
 
-/** 面向初级工程师的直观参数配比面板: 中文名称 + 高亮结果 + 一句话通俗解释 */
-export const printFormulaCard = (
+/** 面向初级工程师的直观参数配比面板: 窄屏下动态收缩左两栏, 防止整行脱色 */
+export const formatFormulaCardLines = (
   hardwareSummary: string,
   steps: FormulaStep[],
-): void => {
-  const boxW = getBoxWidth();
-  const innerW = boxW - 6;
+  boxW = getBoxWidth(),
+): string[] => {
+  const safeBoxW = Math.max(20, boxW);
+  const innerW = safeBoxW - 6;
   const labels = steps.map((s) => sanitizeSingleLine(s.label || s.key));
-  const col1 = Math.min(
+  const rawCol1 = Math.min(
     18,
-    Math.max(...labels.map((l) => displayWidth(l)), 14),
+    Math.max(...labels.map((l) => displayWidth(l)), 10),
   );
-  const col2 = Math.min(
+  const rawCol2 = Math.min(
     15,
-    Math.max(
-      ...steps.map((s) => displayWidth(sanitizeSingleLine(s.value))),
-      10,
-    ),
+    Math.max(...steps.map((s) => displayWidth(sanitizeSingleLine(s.value))), 8),
   );
-  const descW = Math.max(16, innerW - col1 - col2 - 4);
+  const minDescW = Math.min(12, Math.max(6, Math.floor(innerW * 0.35)));
+  const maxColsBudget = Math.max(8, innerW - minDescW - 4);
+  const col1 =
+    rawCol1 + rawCol2 <= maxColsBudget
+      ? rawCol1
+      : Math.max(4, Math.floor(maxColsBudget * 0.55));
+  const col2 =
+    rawCol1 + rawCol2 <= maxColsBudget
+      ? rawCol2
+      : Math.max(4, maxColsBudget - col1);
+  const descW = Math.max(4, innerW - col1 - col2 - 4);
 
   const lines: string[] = [];
   for (const s of steps) {
@@ -242,7 +246,22 @@ export const printFormulaCard = (
       );
     }
   }
-  drawBox('已为你自动测算最佳运行参数', hardwareSummary, lines);
+  return formatBoxLines(
+    '已为你自动测算最佳运行参数',
+    hardwareSummary,
+    lines,
+    2,
+    safeBoxW,
+  );
+};
+
+export const printFormulaCard = (
+  hardwareSummary: string,
+  steps: FormulaStep[],
+): void => {
+  for (const line of formatFormulaCardLines(hardwareSummary, steps)) {
+    console.log(line);
+  }
 };
 
 export const formatSummaryCardLines = (
@@ -251,16 +270,16 @@ export const formatSummaryCardLines = (
   rows: Array<[string, string]>,
   boxW = getBoxWidth(),
 ): string[] => {
-  const innerW = boxW - 6;
+  const safeBoxW = Math.max(20, boxW);
+  const innerW = safeBoxW - 6;
   const cleanRows: Array<[string, string]> = rows.map(([k, v]) => [
     sanitizeSingleLine(k),
     v,
   ]);
-  const keyW = Math.min(
-    22,
-    Math.max(...cleanRows.map(([k]) => displayWidth(k)), 10) + 2,
-  );
-  const valW = Math.max(16, innerW - keyW - 2);
+  const naturalKeyW = Math.max(...cleanRows.map(([k]) => displayWidth(k)), 8);
+  const maxKeyW = Math.max(6, Math.min(22, Math.floor(innerW * 0.42)));
+  const keyW = Math.min(maxKeyW, naturalKeyW + 2);
+  const valW = Math.max(6, innerW - keyW - 2);
   const lines: string[] = [];
   for (const [k, v] of cleanRows) {
     const kPart = palette.muted(padEndDisplay(truncateDisplay(k, keyW), keyW));
@@ -270,7 +289,7 @@ export const formatSummaryCardLines = (
       lines.push(`${' '.repeat(keyW)}  ${palette.mono(wrapped[i]!)}`);
     }
   }
-  return formatBoxLines(title, badgeText, lines, 2, boxW);
+  return formatBoxLines(title, badgeText, lines, 2, safeBoxW);
 };
 
 export const printSummaryCard = (
@@ -296,12 +315,13 @@ const alertStyle = (kind: 'ok' | 'warn' | 'err'): ((t: string) => string) => {
 };
 
 export const printAlert = (kind: 'ok' | 'warn' | 'err', msg: string): void => {
-  const w = getBoxWidth() - 6;
+  const w = Math.max(12, getBoxWidth() - 6);
   const wrapped = wrapMultiline(msg, w);
   const glyph = alertGlyph(kind);
   const styleFn = alertStyle(kind);
-  console.log(`    ${glyph}  ${styleFn(wrapped[0] ?? '')}`);
+  const target = kind === 'err' ? stderr : stdout;
+  target.write(`    ${glyph}  ${styleFn(wrapped[0] ?? '')}\n`);
   for (let i = 1; i < wrapped.length; i += 1) {
-    console.log(`       ${styleFn(wrapped[i]!)}`);
+    target.write(`       ${styleFn(wrapped[i]!)}\n`);
   }
 };
