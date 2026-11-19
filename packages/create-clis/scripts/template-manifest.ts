@@ -84,8 +84,6 @@ export const TEMPLATE_MANIFEST: readonly ManifestEntry[] = [
     'scripts/transcription/validate.ts',
     'scripts/transcription/validate-coverage.ts',
     'scripts/transcription/validate-coverage.test.ts',
-    'packages/sweep-node-modules/tsconfig.build.json',
-    'packages/sweep-node-modules/scripts/build.ts',
     'packages/sweep-node-modules/scripts/verify-release.test.ts',
     'packages/sweep-node-modules-cli/tsconfig.json',
     'packages/sweep-node-modules-cli/bin/bunfig.toml',
@@ -174,6 +172,14 @@ export const TEMPLATE_MANIFEST: readonly ManifestEntry[] = [
   rst(
     'packages/sweep-node-modules/tsconfig.json',
     '换只含 src 的示例包 tsconfig 骨架',
+  ),
+  rst(
+    'packages/sweep-node-modules/tsconfig.build.json',
+    '本仓 API 包排除 sweep 内部模块 (fixtures/runtime/scan-*); 换干净中性排除表骨架',
+  ),
+  rst(
+    'packages/sweep-node-modules/scripts/build.ts',
+    '本仓 API 包构建脚本含 sweep 专属 INTERNAL_DTS_FILES 清理表; 换空清理表干净骨架并补 bunx --no-install',
   ),
   rst('packages/sweep-node-modules/README.md', '换最小示例 API 包 README 骨架'),
   rst(
