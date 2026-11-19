@@ -1,26 +1,6 @@
 /**
- * 模板快照构建链: 读骨架清单 (template-manifest) → 按四类处置产出 assets/template/ → 两条
- * 构建自检 (清单完整性 / 泛化零残留, 任一不过即抛错非零退出) → 落资产清单 assets/manifest.json。
- *
- * 四类处置与产出:
- * - snapshot:   原样复制 (逐字节, 不做任何文本处理);
- * - generalize: 内容与**路径**都经 renderTemplate 泛化为模板占位词汇 (原包名 / bin 名在路径里
- *               的形态如 packages/sweep-node-modules/、bin/sweep-nm* 一并落位);
- * - reset:      从包内 scripts/template-skeletons/ 取模板化骨架 (骨架按清单路径镜像存放, 内容
- *               已是占位形态, 原样搬运); 目录条目整棵搬运;
- * - exclude:    跳过, 不进模板。
- *
- * 产出面: outDir 的目录结构即新项目根 (生成期由 Task 7 按档裁剪并代入用户词汇; 唯一例外是
- * npm 面包机制剔除的真实名, 如 .gitignore / .npmrc, 以载体名 `_` 前缀落位, 生成期还原,
- * 见 src/template-snapshot.ts 的 ASSET_CARRIERS); 同级 manifest.json 列出全部产出文件
- * (相对 outDir, 排序稳定, 载体名形态), 是 Task 8 发行面白名单的输入。
- *
- * 自检口径 (词面 = 6 个无歧义复合形态, 裸词 sweep / clis 原样保留属既定裁定):
- * - 清单完整性: 每条非 exclude 条目都要产出文件 (源文件 / 骨架缺失、产出路径撞车均即抛错);
- * - 泛化零残留: 产出文件的路径与内容都不得再含原项目词汇任一复合形态。
- *
- * 用法: bun packages/create-clis/scripts/build-template.ts (产出到包内 assets/, 该目录是构建
- * 产物不入库, 由 .gitignore / 各闸门忽略清单统一排除)。
+ * 模板快照构建链: 读骨架清单 (template-manifest) → 按四类处置产出 assets/template/ →
+ * 三条构建自检 (清单完整性 / 泛化零残留 / 排除包路径零泄漏) → 落资产清单 assets/manifest.json。
  */
 import {
   existsSync,
@@ -47,7 +27,6 @@ import {
   TEMPLATE_MANIFEST,
 } from './template-manifest.ts';
 
-// 原项目词汇的唯一事实来源在 src/template-snapshot.ts (生成期同用), 此处重导出保持既有导入面
 export { ORIGINAL };
 
 /** 生成器包根 (scripts/ 的上一级) */
@@ -66,33 +45,40 @@ export const DEFAULT_SKELETON_ROOT = join(
 /** 默认产出目录 (构建产物, 不入库; 包内 assets/ 下) */
 export const DEFAULT_TEMPLATE_DIR = join(PACKAGE_ROOT, 'assets', 'template');
 
-/** 资产清单文件名 (落 outDir 同级; 与 dist 侧清单同用 schemaVersion 记形状版本) */
+/** 资产清单文件名 (落 outDir 同级) */
 export const ASSET_MANIFEST_FILE = 'manifest.json';
 
-/** assets/manifest.json 的内容契约 (Task 8 动态白名单的输入) */
+/** assets/manifest.json 的内容契约 */
 export interface AssetManifest {
-  /** 形状版本 */
   schemaVersion: number;
-  /** 全部产出文件, 相对 outDir, 排序稳定 */
   files: string[];
 }
 
 export interface BuildTemplateOptions {
-  /** 源仓库根 (清单路径的解析基准) */
   repoRoot: string;
-  /** 产出目录 (模板根); 同级写 manifest.json */
   outDir: string;
-  /** 原项目词汇 (替换面与零残留自检的判据) */
   original: Vocabulary;
-  /** 骨架清单 (默认 TEMPLATE_MANIFEST; 测试注入小清单) */
   manifest?: readonly ManifestEntry[];
-  /** 骨架根 (默认包内 scripts/template-skeletons; 测试注入小骨架) */
   skeletonRoot?: string;
+  /** 额外禁止在生成模板内容里出现的私密/私有包词面 (缺省按 manifest 中 exclude 的 packages/* 自动派生) */
+  forbiddenLiterals?: readonly string[];
 }
 
 export interface BuildTemplateResult {
-  /** 产出文件 (相对 outDir, 排序稳定) */
   files: string[];
+}
+
+/** 从清单中自动派生「被排除的非模板包」路径禁词 (如 packages/codd、packages/create-clis) */
+export function deriveExcludedPackageTerms(
+  manifest: readonly ManifestEntry[],
+): string[] {
+  const terms = new Set<string>();
+  for (const entry of manifest) {
+    if (entry.disposition !== 'exclude') continue;
+    const match = entry.path.match(/^(packages\/[^/]+)\/?$/);
+    if (match) terms.add(match[1]!);
+  }
+  return [...terms].sort();
 }
 
 /** 目录走查 (相对路径用 `/` 连接, 排序稳定; 只收文件) */
@@ -108,30 +94,7 @@ function walkSkeletonDir(root: string, prefix: string): string[] {
   return out.sort();
 }
 
-/**
- * 产出模板资产。
- *
- * ### 数据追踪示例
- * ```text
- * Input（真实 Payload）
- *   options = { repoRoot: '/repo', outDir: '/pkg/assets/template', original: ORIGINAL }
- *   清单条目 = { path: 'packages/sweep-node-modules-cli/bin/sweep-nm.mjs', disposition: 'generalize' }
- *
- * 步骤 1：逐条处置 (exclude 跳过)
- *   泛化路径 = 'packages/{{NAME}}-cli/bin/{{BIN_NAME}}.mjs'   *(路径同样过替换面)*
- *   泛化内容 = 启动器文本 (sweep-nm → {{BIN_NAME}}, @iyowei/... → {{SCOPE}}/...)
- *   清单完整性自检 = 源文件缺失 / 骨架缺失 / 产出路径撞车 → 抛错
- *
- * 步骤 2：写盘 (先清空 outDir)
- *   outDir 下按泛化路径落位; manifest.json 落 outDir 同级
- *
- * 步骤 3：泛化零残留自检 (回读磁盘)
- *   任一产出文件路径或内容含原词汇复合形态 → 抛错 (留下半成品, 下次构建整体重建)
- *
- * Output（数据契约）
- *   return { files: ['packages/{{NAME}}-cli/bin/{{BIN_NAME}}.mjs', ...] }  // 相对 outDir, 排序稳定
- * ```
- */
+/** 产出模板资产 */
 export function buildTemplate(
   options: BuildTemplateOptions,
 ): BuildTemplateResult {
@@ -141,12 +104,14 @@ export function buildTemplate(
   const placeholder = TEMPLATE_VOCABULARY;
   const manifest = options.manifest ?? TEMPLATE_MANIFEST;
   const skeletonRoot = options.skeletonRoot ?? DEFAULT_SKELETON_ROOT;
+  const forbiddenTerms = options.forbiddenLiterals ?? [
+    ...deriveExcludedPackageTerms(manifest),
+    'registry.npmmirror.com',
+  ];
 
   // 1. 逐条处置: 计划产出 (输出相对路径 → 字节), 路径一并泛化; 撞车即抛
   const planned = new Map<string, Buffer>();
   const claim = (file: string, bytes: Buffer, source: string): void => {
-    // 落包改名收口 (所有产出路径的唯一咽喉): npm 面包机制按文件名硬性剔除 .gitignore / .npmrc,
-    // 一律换成载体名随包, 生成期还原 (见 src/template-snapshot.ts 的 ASSET_CARRIERS 与 TD-05)
     const shipped = toCarrierPath(file);
     if (planned.has(shipped)) {
       throw new Error(
@@ -209,7 +174,7 @@ export function buildTemplate(
     }
   }
 
-  // 2. 写盘: 整目录重建 (清单可能收缩, 上一轮的残留文件不得混进新模板)
+  // 2. 写盘: 整目录重建
   rmSync(outDir, { recursive: true, force: true });
   mkdirSync(outDir, { recursive: true });
   for (const [file, bytes] of planned) {
@@ -218,21 +183,26 @@ export function buildTemplate(
     writeFileSync(target, bytes);
   }
 
-  // 3. 泛化零残留自检 (回读磁盘, 路径与内容都在判定面内)
+  // 3. 泛化零残留 + 排除包零泄漏自检 (回读磁盘)
   const leftovers: string[] = [];
   for (const file of planned.keys()) {
     if (containsResidual(file, original)) leftovers.push(`${file} (路径)`);
     const text = readFileSync(join(outDir, file), 'utf8');
     if (containsResidual(text, original)) leftovers.push(`${file} (内容)`);
+    for (const term of forbiddenTerms) {
+      if (file.includes(term) || text.includes(term)) {
+        leftovers.push(`${file} (泄漏本仓禁词: ${term})`);
+      }
+    }
   }
   if (leftovers.length > 0) {
     throw new Error(
-      `泛化零残留自检未过, 模板内仍含原项目词汇:\n  ${leftovers.join('\n  ')}\n` +
-        '  处置: 含该形态的源文件改标 generalize 走替换, 或改标 reset 换掉内容; 骨架内容必须写成模板占位形态。',
+      `泛化零残留自检未过, 模板内仍含原项目词汇或私密配置:\n  ${leftovers.join('\n  ')}\n` +
+        '  处置: 含该形态的源文件改标 generalize 走替换, 或改标 reset 换用干净骨架。',
     );
   }
 
-  // 4. 资产清单 (Task 8 动态白名单输入): 列出全部产出文件, 排序稳定
+  // 4. 资产清单
   const files = [...planned.keys()].sort();
   const assetManifest: AssetManifest = { schemaVersion: 1, files };
   writeFileSync(
@@ -243,7 +213,6 @@ export function buildTemplate(
   return { files };
 }
 
-// 入口: 真实构建本仓模板资产 (产出到包内 assets/template/) 并落资产清单
 if (import.meta.main) {
   try {
     const { files } = buildTemplate({

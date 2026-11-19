@@ -1,0 +1,39 @@
+name: Feature request
+description: Suggest an improvement for {{NAME}}.
+title: "[Feature]:\x20"
+labels: ['enhancement']
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for helping improve the project. Describe the problem first.
+  - type: checkboxes
+    id: preflight
+    attributes:
+      label: Preflight checklist
+      options:
+        - label: I searched the existing issues and did not find this request.
+          required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - 'CLI ({{BIN_NAME}})'
+        - 'Programmable API ({{SCOPE}}/{{NAME}})'
+        - Documentation
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: The problem
+    validations:
+      required: true
+  - type: textarea
+    id: solution
+    attributes:
+      label: Proposed solution
+    validations:
+      required: false

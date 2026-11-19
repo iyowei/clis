@@ -1,0 +1,14 @@
+{
+  "topics": [
+    "macOS",
+    "Windows",
+    "Linux",
+    "Node",
+    "JetBrains",
+    "VisualStudioCode",
+    "SublimeText",
+    "Vim",
+    "Archives"
+  ],
+  "custom": ["package-lock.json", "*.modified", "*.deleted", ".turbo/"]
+}

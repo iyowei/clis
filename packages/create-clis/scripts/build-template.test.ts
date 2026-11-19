@@ -329,16 +329,66 @@ describe('真实清单集成: 全量产出', () => {
     );
   });
 
-  test('排除面不进模板: 产品区 / 锁文件 / 生成器自身', () => {
-    const { files } = buildReal();
+  test('排除面不进模板且零私有包路径/镜像源泄漏', () => {
+    const { outDir, files } = buildReal();
     const excluded = files.filter(
       (file) =>
         file.startsWith('docs/sweep/') ||
+        file.startsWith('docs/codd/') ||
         file === 'bun.lock' ||
         file.startsWith('packages/create-clis/') ||
+        file.startsWith('packages/codd/') ||
+        file.startsWith('packages/codd-cli/') ||
         file.startsWith('.mailmap'),
     );
     expect(excluded).toEqual([]);
+    for (const file of files) {
+      const text = readFileSync(join(outDir, file), 'utf8');
+      expect(text, `${file} 不得泄漏 packages/codd`).not.toContain(
+        'packages/codd',
+      );
+      expect(text, `${file} 不得泄漏 packages/create-clis`).not.toContain(
+        'packages/create-clis',
+      );
+      expect(text, `${file} 不得泄漏 npmmirror`).not.toContain(
+        'registry.npmmirror.com',
+      );
+    }
+  });
+
+  test('骨架同步守卫: template-skeletons/package.json 与根 package.json 工具链版本逐项一致', () => {
+    const rootPkg = JSON.parse(
+      readFileSync(join(REPO_ROOT, 'package.json'), 'utf8'),
+    ) as {
+      packageManager: string;
+      engines: Record<string, string>;
+      devDependencies: Record<string, string>;
+    };
+    const skeletonPkg = JSON.parse(
+      readFileSync(
+        join(
+          REPO_ROOT,
+          'packages/create-clis/scripts/template-skeletons/package.json',
+        ),
+        'utf8',
+      ),
+    ) as typeof rootPkg;
+    const createClisPkg = JSON.parse(
+      readFileSync(
+        join(REPO_ROOT, 'packages/create-clis/package.json'),
+        'utf8',
+      ),
+    ) as { dependencies: Record<string, string> };
+
+    expect(skeletonPkg.packageManager).toBe(rootPkg.packageManager);
+    expect(skeletonPkg.engines).toEqual(rootPkg.engines);
+    expect(skeletonPkg.devDependencies).toEqual(rootPkg.devDependencies);
+    expect(createClisPkg.dependencies.prettier).toBe(
+      rootPkg.devDependencies.prettier,
+    );
+    expect(
+      createClisPkg.dependencies['@trivago/prettier-plugin-sort-imports'],
+    ).toBe(rootPkg.devDependencies['@trivago/prettier-plugin-sort-imports']);
   });
 
   test('清单完整性: 非 exclude 条目逐条落位 (真实清单全量对账)', () => {

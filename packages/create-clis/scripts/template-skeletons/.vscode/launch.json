@@ -1,0 +1,13 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "type": "bun",
+      "request": "launch",
+      "name": "调试 {{BIN_NAME}} (从源码运行)",
+      "program": "./packages/{{NAME}}-cli/src/cli.ts",
+      "cwd": "${workspaceFolder}",
+      "runtime": "bun"
+    }
+  ]
+}

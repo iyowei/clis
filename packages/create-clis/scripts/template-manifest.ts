@@ -1,28 +1,11 @@
 /**
  * 骨架清单登记表: 模板快照机制的唯一点 (设计见 docs/designs/scaffold-template-snapshot.md)。
  *
- * 快照只取登记在案的仓库文件, 四类处置:
- * - snapshot:   机制 / 配置文件, 与项目名和领域无关, 原样进模板;
- * - generalize: 机制文件但含原项目可识别形态 (包名 / scope / bin 名 / owner / 仓库地址 /
- *               作者名), 构建期替换为模板变量后进模板;
- * - reset:      槽位文件, 模板侧是重新编写的骨架 (README / CHANGELOG / docs 骨架 /
- *               最小示例包 / 包专属发布自证适配层), 现内容不复用, note 记录换成什么;
- * - exclude:    本仓领域内容与历史 (sweep 产品区 / 领域包实现 / ADR 记录 / 生成器自身),
- *               不进模板, note 记录排除依据。
- *
- * 登记口径 (判据自证, 由 template-manifest.test.ts 强制):
- * - 路径相对仓库根, 目录条目以 `/` 收尾;
- * - snapshot 条目不得含原项目词汇; generalize 条目必须含 (构建期零残留自检以此为前提);
- * - 含原项目词汇的仓内文件必须被清单捕获 (generalize, 或落在 reset / exclude 条目内);
- * - 未登记的文件不进模板: 新增文件须先在此分类 (测试兜底)。
- *
- * 词面收窄 (二轮裁定): 裸词 `sweep` / `clis` 不入词面 —— 子串误伤实证: `sweepStale`
- * 会被改名成含连字符的语法错误标识符, `create-clis` 会被写成生成物里不存在的包名。
- * 产品义一律走无歧义复合形态 (`sweep-node-modules` / `sweep-nm` / `@iyowei` / `iyowei/clis`);
- * 只有裸词形态、落不进复合面的 (产品区路径 `docs/sweep/`、产物名 `dist/sweep.d.ts` 等)
- * 按文件性质回 snapshot (原样保留 + note 移交) 或 reset (包专属适配层骨架重写)。
- *
- * 消费方: Task 3 替换引擎 (词汇面) 与 Task 4 构建链 (按处置产出 assets/template/)。
+ * 四类处置:
+ * - snapshot:   与项目名和领域无关的机制/配置文件, 原样进模板;
+ * - generalize: 含原项目复合词汇形态的机制文件, 构建期替换为模板变量后进模板;
+ * - reset:      槽位文件或含多产品本仓专属排除项的根配置, 改取 scripts/template-skeletons/ 干净骨架;
+ * - exclude:    本仓领域产品、历史 ADR 与生成器自身, 不进模板 (且 packages/<pkg>/ 自动派生为构建禁词)。
  */
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -40,453 +23,229 @@ export interface ManifestEntry {
   /** 相对仓库根的路径; 目录条目以 `/` 收尾 */
   path: string;
   disposition: Disposition;
-  /** 判定依据 (reset / exclude 必填): 一句说明换什么或为何排除 */
+  /** 判定依据 (reset / exclude 必填) */
   note?: string;
 }
 
+const snap = (path: string): ManifestEntry => ({
+  path,
+  disposition: 'snapshot',
+});
+const gen = (path: string): ManifestEntry => ({
+  path,
+  disposition: 'generalize',
+});
+const rst = (path: string, note: string): ManifestEntry => ({
+  path,
+  disposition: 'reset',
+  note,
+});
+const excl = (path: string, note: string): ManifestEntry => ({
+  path,
+  disposition: 'exclude',
+  note,
+});
+
 export const TEMPLATE_MANIFEST: readonly ManifestEntry[] = [
-  // snapshot: 原样进模板
-  { path: '.editorconfig', disposition: 'snapshot' },
-  { path: '.gitattributes', disposition: 'snapshot' },
-  { path: '.npmrc', disposition: 'snapshot' },
-  { path: '.nvmrc', disposition: 'snapshot' },
-  { path: '.oxlintrc.json', disposition: 'snapshot' },
-  { path: '.prettierignore', disposition: 'snapshot' },
-  { path: '.prettierrc', disposition: 'snapshot' },
-  { path: '.releaserc.json', disposition: 'snapshot' },
-  { path: 'bunfig.toml', disposition: 'snapshot' },
-  { path: 'lefthook.yml', disposition: 'snapshot' },
-  // 用 turbo.jsonc (非 turbo.json): 缓存键输入面需就地注释说明口径, 见该文件 inputs 处注释
-  { path: 'turbo.jsonc', disposition: 'snapshot' },
-  { path: '.github/PULL_REQUEST_TEMPLATE.md', disposition: 'snapshot' },
-  { path: '.github/workflows/ci.yml', disposition: 'snapshot' },
-  { path: '.github/workflows/release.yml', disposition: 'snapshot' },
-  { path: '.vscode/extensions.json', disposition: 'snapshot' },
-  { path: '.vscode/settings.json', disposition: 'snapshot' },
-  { path: 'scripts/ci.ts', disposition: 'snapshot' },
-  { path: 'scripts/install-git-hooks.mjs', disposition: 'snapshot' },
-  { path: 'scripts/lib/git-env.ts', disposition: 'snapshot' },
-  { path: 'scripts/lib/release-verify.ts', disposition: 'snapshot' },
-  { path: 'scripts/lib/tmp-root.ts', disposition: 'snapshot' },
-  { path: 'scripts/lib/workspace.ts', disposition: 'snapshot' },
-  { path: 'scripts/lib/workspace.test.ts', disposition: 'snapshot' },
-  { path: 'scripts/lint-doc-shared.ts', disposition: 'snapshot' },
-  {
-    path: 'scripts/lint-stray-backups.ts',
-    disposition: 'snapshot',
-    note: '补救提示含备份目录约定 ~/tmp/sweep_backups/ (产品短名, 落不进复合面); 裸词替换退出后原样进模板, 如需更名移交 T4/T8',
-  },
-  { path: 'scripts/lint-stray-backups.test.ts', disposition: 'snapshot' },
-  { path: 'scripts/transcription/compare.ts', disposition: 'snapshot' },
-  {
-    path: 'scripts/transcription/corpus.ts',
-    disposition: 'snapshot',
-    note: '注释与示例含产品区路径 (docs/sweep/...): 产品义但落不进复合面; 原样进模板, 路径同步移交 T4/T8',
-  },
-  { path: 'scripts/transcription/fixture.ts', disposition: 'snapshot' },
-  {
-    path: 'scripts/transcription/make-mutants.ts',
-    disposition: 'snapshot',
-    note: '函数名 sweepStale 为动词义 (裸词替换会破语法), 注释另含产品区路径; 原样进模板, 注释路径同步移交 T4/T8',
-  },
-  { path: 'scripts/transcription/report.ts', disposition: 'snapshot' },
-  {
-    path: 'scripts/transcription/validate.ts',
-    disposition: 'snapshot',
-    note: '注释引用产品区路径 (docs/sweep/...): 产品义但落不进复合面; 原样进模板, 路径同步移交 T4/T8',
-  },
-  {
-    path: 'scripts/transcription/validate-coverage.ts',
-    disposition: 'snapshot',
-    note: '缺省契约 / 覆盖表 / 语料常量为功能面产品区路径 (docs/sweep/...), 落不进复合面; 增强档自填内容时同步 (移交 T4/T8)',
-  },
-  {
-    path: 'scripts/transcription/validate-coverage.test.ts',
-    disposition: 'snapshot',
-    note: '夹具含产品区路径 (docs/sweep/...): 产品义但落不进复合面; 原样进模板, 路径同步移交 T4/T8',
-  },
-  {
-    path: 'packages/sweep-node-modules/tsconfig.json',
-    disposition: 'reset',
-    note: 'include 含 bench/ (模板排除面外, 随文件进生成物即悬空); 换只含 src 的示例包 tsconfig 骨架',
-  },
-  {
-    path: 'packages/sweep-node-modules/tsconfig.build.json',
-    disposition: 'snapshot',
-  },
-  {
-    path: 'packages/sweep-node-modules/scripts/build.ts',
-    disposition: 'snapshot',
-  },
-  {
-    path: 'packages/sweep-node-modules/scripts/verify-release.test.ts',
-    disposition: 'snapshot',
-    note: '判定链测试为通用面 (profile 经 import 注入); 夹具含领域产物名 codes.d.ts 与普通词临时前缀 sweep-verify-, 不依赖替换',
-  },
-  {
-    path: 'packages/sweep-node-modules-cli/tsconfig.json',
-    disposition: 'snapshot',
-  },
-  {
-    path: 'packages/sweep-node-modules-cli/scripts/release.fixtures.ts',
-    disposition: 'snapshot',
-    note: '夹具虚构实验室身份 (sweep-lab) 为普通词形; 不依赖替换, 原样进模板',
-  },
-  {
-    path: 'packages/sweep-node-modules-cli/scripts/verify-release.ts',
-    disposition: 'snapshot',
-  },
-  {
-    path: 'packages/sweep-node-modules-cli/scripts/write-dist-manifest.test.ts',
-    disposition: 'snapshot',
-    note: '夹具临时目录前缀 (sweep-lab-*) 为普通词形; 不依赖替换, 原样进模板',
-  },
-  {
-    path: 'packages/sweep-node-modules-cli/scripts/write-dist-manifest.ts',
-    disposition: 'snapshot',
-  },
+  // snapshot: 纯通用机制与配置, 原样进模板
+  ...[
+    '.editorconfig',
+    '.gitattributes',
+    '.npmrc',
+    '.nvmrc',
+    '.prettierrc',
+    '.releaserc.json',
+    'lefthook.yml',
+    '.github/PULL_REQUEST_TEMPLATE.md',
+    '.github/workflows/ci.yml',
+    '.github/workflows/release.yml',
+    '.vscode/extensions.json',
+    '.vscode/settings.json',
+    '.vscode/tasks.json',
+    'scripts/ci.ts',
+    'scripts/install-git-hooks.mjs',
+    'scripts/safe-install.ts',
+    'scripts/lib/git-env.ts',
+    'scripts/lib/npm-trust-parse.ts',
+    'scripts/lib/release-cli.ts',
+    'scripts/lib/release-verify.ts',
+    'scripts/lib/tmp-root.ts',
+    'scripts/lib/workspace.ts',
+    'scripts/lib/workspace.test.ts',
+    'scripts/lint-dependency-direction.ts',
+    'scripts/lint-dependency-direction.test.ts',
+    'scripts/lint-stray-backups.ts',
+    'scripts/lint-stray-backups.test.ts',
+    'scripts/transcription/compare.ts',
+    'scripts/transcription/compare.test.ts',
+    'scripts/transcription/fixture.ts',
+    'scripts/transcription/make-mutants.ts',
+    'scripts/transcription/report.ts',
+    'scripts/transcription/validate.ts',
+    'scripts/transcription/validate-coverage.ts',
+    'scripts/transcription/validate-coverage.test.ts',
+    'packages/sweep-node-modules/tsconfig.build.json',
+    'packages/sweep-node-modules/scripts/build.ts',
+    'packages/sweep-node-modules/scripts/verify-release.test.ts',
+    'packages/sweep-node-modules-cli/tsconfig.json',
+    'packages/sweep-node-modules-cli/bin/bunfig.toml',
+    'packages/sweep-node-modules-cli/scripts/release.fixtures.ts',
+    'packages/sweep-node-modules-cli/scripts/write-dist-manifest.test.ts',
+  ].map(snap),
 
-  // generalize: 替换原项目词汇后进模板
-  { path: '.gitignore', disposition: 'generalize' },
-  { path: '.gitignorerc.json', disposition: 'generalize' },
-  { path: '.vscode/launch.json', disposition: 'generalize' },
-  {
-    path: 'package.json',
-    disposition: 'reset',
-    note: '根 package.json 改判 reset (评判定): 泛化后 bench 脚本指向模板排除面外的 packages/<name>/bench/ (恒悬空), multi-release 发布隔离登记 (ignorePackages 一类字段, 本仓现已清空) 会登记生成物里不存在的包 —— 都是生成物不成立的形态; 骨架手写新项目形态 (无 bench / 无 multi-release 登记, 根名取 <name>-monorepo 避开裸包名与示例包同名). 注意: 工具链 devDependencies 版本是手写快照, 本仓升级依赖时须同步这份骨架',
-  },
-  {
-    path: 'tsconfig.json',
-    disposition: 'generalize',
-    note: '双态 paths 映射两包源码 (含 testing 子入口), 随泛化指向示例包',
-  },
-  {
-    path: 'CONTRIBUTING.md',
-    disposition: 'reset',
-    note: '本仓贡献指南含 bench 命令与两包领域描述 (bench 随模板排除面恒悬空, 同一回事); 换通用贡献指南骨架 (仓库结构 / 环境准备 / 常用命令 / 提交与 PR / 文档登记)',
-  },
-  {
-    path: 'CONTRIBUTING.zh-CN.md',
-    disposition: 'reset',
-    note: '同上 (中文版); 换通用贡献指南骨架',
-  },
-  { path: 'CODE_OF_CONDUCT.md', disposition: 'generalize' },
-  {
-    path: 'LICENSE',
-    disposition: 'generalize',
-    note: '含作者名形态 iTonyYo (spec 词汇表 {{OWNER}} 行的位置约定, 词汇表需覆盖该形态)',
-  },
-  {
-    path: '.github/ISSUE_TEMPLATE/bug_report.yml',
-    disposition: 'generalize',
-    note: '安全报告链接含仓库地址 (随 repoUrl 泛化)',
-  },
-  {
-    path: '.github/ISSUE_TEMPLATE/feature_request.yml',
-    disposition: 'generalize',
-  },
-  {
-    path: 'scripts/install-git-hooks.test.ts',
-    disposition: 'generalize',
-    note: '测试夹具含本仓包名路径 (泛化后为示例包等值形态)',
-  },
-  {
-    path: 'scripts/lint-doc-examples.ts',
-    disposition: 'generalize',
-    note: 'CLI 入口坐标与命令前缀含 bin 名, 泛化后指向示例 CLI 包',
-  },
-  { path: 'scripts/lint-doc-examples.test.ts', disposition: 'generalize' },
-  {
-    path: 'scripts/lint-doc-references.ts',
-    disposition: 'generalize',
-    note: 'DOC_ALIASES 含领域文档别名, 泛化后为悬空别名 (判定不受影响)',
-  },
-  { path: 'scripts/lint-doc-references.test.ts', disposition: 'generalize' },
-  {
-    path: 'scripts/npm-trust-guard.ts',
-    disposition: 'generalize',
-    note: '动机注释含本仓改名历史 (仓库名形态), 属前车之鉴, 泛化后保留',
-  },
-  { path: 'scripts/npm-trust-guard.test.ts', disposition: 'generalize' },
-  {
-    path: 'scripts/safe-install.ts',
-    disposition: 'generalize',
-    note: '清理面含 CLI 包 dist 路径, 泛化后指向示例包',
-  },
-  {
-    path: 'scripts/transcription/api-harness.ts',
-    disposition: 'generalize',
-    note: '直连 API 包源码单源路径, 泛化后指向示例包源码',
-  },
-  {
-    path: 'scripts/transcription/run-conformance.ts',
-    disposition: 'generalize',
-    note: '用法示例含 CLI 包路径 (复合面); 缺省语料目录为产品区裸词路径, 不随替换, 增强档自填内容时同步',
-  },
-  {
-    path: 'packages/sweep-node-modules/package.json',
-    disposition: 'reset',
-    note: '现 description 为原产品领域文案、version 为原产品版本 (词汇替换不改写内容面, 会原样带进生成物); 换中性示例包骨架 (greet 示例自述, version 0.0.0)',
-  },
-  { path: 'packages/sweep-node-modules/LICENSE', disposition: 'generalize' },
-  {
-    path: 'packages/sweep-node-modules-cli/package.json',
-    disposition: 'reset',
-    note: '现 description / keywords 为原产品领域文案与检索词, version 与内部依赖版本为原产品版本; 换中性示例包骨架 (description / keywords 泛化, version 0.0.0, 内部依赖同 0.0.0)',
-  },
-  {
-    path: 'packages/sweep-node-modules-cli/LICENSE',
-    disposition: 'generalize',
-  },
-  {
-    path: 'packages/sweep-node-modules-cli/bin/sweep-nm',
-    disposition: 'generalize',
-  },
-  {
-    path: 'packages/sweep-node-modules-cli/bin/sweep-nm.cmd',
-    disposition: 'generalize',
-  },
-  {
-    path: 'packages/sweep-node-modules-cli/bin/sweep-nm.d.mts',
-    disposition: 'generalize',
-  },
-  {
-    path: 'packages/sweep-node-modules-cli/bin/sweep-nm.mjs',
-    disposition: 'generalize',
-    note: '启动器组 (sh / cmd / mjs / d.mts): 文件名与内容均含 bin 名, 随路径泛化落位',
-  },
-  {
-    path: 'packages/sweep-node-modules-cli/scripts/release-artifact.ts',
-    disposition: 'generalize',
-    note: '发行面白名单含 bin 文件名, 随泛化落位',
-  },
-  {
-    path: 'packages/sweep-node-modules-cli/scripts/verify-release.test.ts',
-    disposition: 'generalize',
-    note: '夹具含包坐标 (tgz 文件名等)',
-  },
+  // generalize: 替换原项目复合词汇后进模板
+  ...[
+    'CODE_OF_CONDUCT.md',
+    'LICENSE',
+    'scripts/install-git-hooks.test.ts',
+    'scripts/lint-doc-examples.ts',
+    'scripts/lint-doc-examples.test.ts',
+    'scripts/lint-doc-references.ts',
+    'scripts/lint-doc-references.test.ts',
+    'scripts/npm-trust-guard.ts',
+    'scripts/npm-trust-guard.test.ts',
+    'scripts/transcription/corpus.ts',
+    'scripts/transcription/run-conformance.ts',
+    'packages/sweep-node-modules/LICENSE',
+    'packages/sweep-node-modules-cli/LICENSE',
+    'packages/sweep-node-modules-cli/bin/sweep-nm',
+    'packages/sweep-node-modules-cli/bin/sweep-nm.cmd',
+    'packages/sweep-node-modules-cli/bin/sweep-nm.d.mts',
+    'packages/sweep-node-modules-cli/bin/sweep-nm.mjs',
+    'packages/sweep-node-modules-cli/scripts/release-artifact.ts',
+    'packages/sweep-node-modules-cli/scripts/verify-release.ts',
+    'packages/sweep-node-modules-cli/scripts/verify-release.test.ts',
+    'packages/sweep-node-modules-cli/scripts/write-dist-manifest.ts',
+  ].map(gen),
 
-  // reset: 换模板化骨架
-  {
-    path: 'README.md',
-    disposition: 'reset',
-    note: '根 README 为领域用法; 换模板化骨架 (项目名 / 徽章 / 用法占位)',
-  },
-  {
-    path: 'README.zh-CN.md',
-    disposition: 'reset',
-    note: '根 README 中文版; 换模板化骨架',
-  },
-  {
-    path: 'AGENTS.md',
-    disposition: 'reset',
-    note: 'AI 导航图含本仓文档结构 (含产品区与生成器文档); 换模板化骨架 (turbo 托管块 + 文档导航)',
-  },
-  {
-    path: 'SECURITY.md',
-    disposition: 'reset',
-    note: '安全策略为本仓两包领域内容 (支持版本表 / 删除语义 scope / 领域文档链接); 换通用安全策略骨架',
-  },
-  {
-    path: 'docs/README.md',
-    disposition: 'reset',
-    note: '总索引登记本仓领域文档; 换骨架索引 (按文档分层协议)',
-  },
-  {
-    path: 'docs/development.md',
-    disposition: 'reset',
-    note: '开发指南为本仓发布链与双包实操 (含改名历史); 换通用开发指南骨架',
-  },
-  {
-    path: 'docs/designs/README.md',
-    disposition: 'reset',
-    note: '设计索引登记本仓仓库级设计; 换空组索引骨架',
-  },
-  {
-    path: 'docs/designs/tech-debt.md',
-    disposition: 'reset',
-    note: '技术债册内容为本仓债目; 换空册骨架 (标准档装备)',
-  },
-  {
-    path: 'docs/adrs/README.md',
-    disposition: 'reset',
-    note: 'ADR 索引登记本仓编号; 换空组索引骨架 (新项目从 0001 起)',
-  },
-  {
-    path: 'packages/sweep-node-modules/README.md',
-    disposition: 'reset',
-    note: '包 README 为领域用法; 换最小示例包骨架',
-  },
-  {
-    path: 'packages/sweep-node-modules/README.zh-CN.md',
-    disposition: 'reset',
-    note: '包 README 中文版; 换最小示例包骨架',
-  },
-  {
-    path: 'packages/sweep-node-modules/CHANGELOG.md',
-    disposition: 'reset',
-    note: 'CHANGELOG 为发布链生成的本仓历史; 换占位骨架 (首版由 semrel 生成)',
-  },
-  {
-    path: 'packages/sweep-node-modules/src/',
-    disposition: 'reset',
-    note: '包源码槽: 换最小示例包骨架; 现实现为 sweep 领域代码与测试, 不复用',
-  },
-  {
-    path: 'packages/sweep-node-modules/scripts/verify-release.ts',
-    disposition: 'reset',
-    note: '包专属发布自证适配层: 发行面包白名单 (dist/sweep.d.ts 等) 全为领域产物名, 落不进复合面; 换示例包自己的 profile 骨架',
-  },
-  {
-    path: 'packages/sweep-node-modules/docs/README.md',
-    disposition: 'reset',
-    note: '包级文档入口登记领域文档; 换最小示例包文档骨架',
-  },
-  {
-    path: 'packages/sweep-node-modules-cli/README.md',
-    disposition: 'reset',
-    note: '包 README 为领域用法; 换最小示例包骨架',
-  },
-  {
-    path: 'packages/sweep-node-modules-cli/README.zh-CN.md',
-    disposition: 'reset',
-    note: '包 README 中文版; 换最小示例包骨架',
-  },
-  {
-    path: 'packages/sweep-node-modules-cli/CHANGELOG.md',
-    disposition: 'reset',
-    note: 'CHANGELOG 为发布链生成的本仓历史; 换占位骨架 (首版由 semrel 生成)',
-  },
-  {
-    path: 'packages/sweep-node-modules-cli/src/',
-    disposition: 'reset',
-    note: 'CLI 包源码槽: 换最小示例包 (薄壳) 骨架; 现实现为 sweep 领域代码与测试, 不复用',
-  },
-  {
-    path: 'packages/sweep-node-modules-cli/docs/README.md',
-    disposition: 'reset',
-    note: '包级文档入口登记领域文档; 换最小示例包文档骨架',
-  },
+  // reset: 换用干净的模板化骨架 (隔离本仓私有包路径、镜像源与领域文案)
+  rst(
+    '.oxlintrc.json',
+    '根配置含本仓私有包 (create-clis/codd/codd-cli) 排除项; 换干净骨架防泄漏',
+  ),
+  rst('.prettierignore', '根配置含本仓私有包与模板排除项; 换干净骨架防泄漏'),
+  rst('tsconfig.json', '根配置含多产品 paths 与私有包排除; 换干净双包骨架'),
+  rst('bunfig.toml', '根配置含本仓私有包测试排除项; 换干净官方源骨架'),
+  rst('turbo.jsonc', '根配置含本仓注释与 bench 任务; 换干净通用 turbo 骨架'),
+  rst(
+    '.gitignore',
+    '根 .gitignore 含本仓私有包与 bench/mutants 路径; 换干净通用骨架',
+  ),
+  rst(
+    '.gitignorerc.json',
+    '根 .gitignorerc.json 含本仓私有包路径; 换干净通用骨架',
+  ),
+  rst(
+    'scripts/lint-doc-shared.ts',
+    '根脚本 SKIP_PATHS 含本仓私有包模板路径; 换空 SKIP_PATHS 干净骨架',
+  ),
+  rst(
+    'scripts/transcription/api-harness.ts',
+    '本仓 harness 引用 sweep 领域常量; 换直连示例包 greet 的骨架使 full 档 typecheck 归绿',
+  ),
+  rst('.vscode/launch.json', '根配置列全仓多产品调试项; 换新项目双包调试骨架'),
+  rst(
+    '.github/ISSUE_TEMPLATE/bug_report.yml',
+    '根模板列出本仓全量包清单; 换新项目双包缺陷报告骨架',
+  ),
+  rst(
+    '.github/ISSUE_TEMPLATE/feature_request.yml',
+    '根模板列出本仓全量包清单; 换新项目双包需求建议骨架',
+  ),
+  rst(
+    'package.json',
+    '根 package.json 换新项目骨架 (与本仓根 devDependencies 保持单测强制同步)',
+  ),
+  rst('CONTRIBUTING.md', '换通用贡献指南骨架'),
+  rst('CONTRIBUTING.zh-CN.md', '换通用贡献指南中文骨架'),
+  rst('README.md', '换模板化根 README 骨架'),
+  rst('README.zh-CN.md', '换模板化根 README 中文骨架'),
+  rst('AGENTS.md', '换模板化 AI 导航骨架'),
+  rst('SECURITY.md', '换通用安全策略骨架'),
+  rst('docs/README.md', '换两级文档骨架总索引'),
+  rst('docs/development.md', '换通用开发指南骨架'),
+  rst('docs/designs/README.md', '换空组设计索引骨架'),
+  rst('docs/designs/tech-debt.md', '换空技术债登记册骨架 (标准档装备)'),
+  rst('docs/adrs/README.md', '换空 ADR 索引骨架 (新项目从 0001 起)'),
+  rst(
+    'packages/sweep-node-modules/package.json',
+    '换中性示例 API 包清单骨架 (version 0.0.0)',
+  ),
+  rst(
+    'packages/sweep-node-modules/tsconfig.json',
+    '换只含 src 的示例包 tsconfig 骨架',
+  ),
+  rst('packages/sweep-node-modules/README.md', '换最小示例 API 包 README 骨架'),
+  rst(
+    'packages/sweep-node-modules/README.zh-CN.md',
+    '换最小示例 API 包中文 README 骨架',
+  ),
+  rst('packages/sweep-node-modules/CHANGELOG.md', '换占位 CHANGELOG 骨架'),
+  rst('packages/sweep-node-modules/src/', '换最小 greet 示例源码骨架'),
+  rst(
+    'packages/sweep-node-modules/scripts/verify-release.ts',
+    '换示例 API 包发布自证骨架',
+  ),
+  rst(
+    'packages/sweep-node-modules/docs/README.md',
+    '换最小示例包级文档入口骨架',
+  ),
+  rst(
+    'packages/sweep-node-modules-cli/package.json',
+    '换中性示例 CLI 包清单骨架 (version 0.0.0)',
+  ),
+  rst(
+    'packages/sweep-node-modules-cli/README.md',
+    '换最小示例 CLI 包 README 骨架',
+  ),
+  rst(
+    'packages/sweep-node-modules-cli/README.zh-CN.md',
+    '换最小示例 CLI 包中文 README 骨架',
+  ),
+  rst('packages/sweep-node-modules-cli/CHANGELOG.md', '换占位 CHANGELOG 骨架'),
+  rst('packages/sweep-node-modules-cli/src/', '换最小 greet CLI 薄壳骨架'),
+  rst(
+    'packages/sweep-node-modules-cli/docs/README.md',
+    '换最小示例 CLI 包级文档入口骨架',
+  ),
 
-  // exclude: 不进模板
-  {
-    path: '.mailmap',
-    disposition: 'exclude',
-    note: '维护者个人数据 (作者名与邮箱归一化); 不进模板',
-  },
-  {
-    path: 'bun.lock',
-    disposition: 'exclude',
-    note: '锁文件生成物; 新项目 bun install 自行重建',
-  },
-  {
-    path: 'packages/create-clis/',
-    disposition: 'exclude',
-    note: '生成器自身 (本仓工具); 生成物不含生成器',
-  },
-  {
-    path: 'packages/codd/',
-    disposition: 'exclude',
-    note: 'MongoDB 模板化装配生成器包 (本仓领域工具); 新项目模板不含该工具',
-  },
-  {
-    path: 'docs/codd/',
-    disposition: 'exclude',
-    note: 'codd 产品区文档与可视化看板; 新项目模板不含该产品区',
-  },
-  {
-    path: 'docs/sweep/',
-    disposition: 'exclude',
-    note: '产品区领域内容 (sweep 设计 / 契约 / 语料) 整体排除; 空产品区占位由 docs 骨架承担',
-  },
-  {
-    path: 'docs/adrs/0005-engineering-gates-and-hooks.md',
-    disposition: 'exclude',
-    note: '历史 ADR (本仓决策记录); 新项目自建编号',
-  },
-  {
-    path: 'docs/adrs/0006-dual-runtime-bun-first.md',
-    disposition: 'exclude',
-    note: '历史 ADR (本仓决策记录); 新项目自建编号',
-  },
-  {
-    path: 'docs/adrs/0009-npm-distribution-form.md',
-    disposition: 'exclude',
-    note: '历史 ADR (本仓决策记录); 新项目自建编号',
-  },
-  {
-    path: 'docs/adrs/0010-dual-package-monorepo.md',
-    disposition: 'exclude',
-    note: '历史 ADR (本仓决策记录); 新项目自建编号',
-  },
-  {
-    path: 'docs/adrs/0011-docs-and-adr-layering.md',
-    disposition: 'exclude',
-    note: '历史 ADR (本仓决策记录); 新项目自建编号',
-  },
-  {
-    path: 'docs/designs/collection-positioning.md',
-    disposition: 'exclude',
-    note: '本仓定位 (私有边界 / 生成器身份 / 重定位链接); 生成物无对应实体',
-  },
-  {
-    path: 'docs/designs/package-classification.md',
-    disposition: 'exclude',
-    note: '治理协议绑定本仓 ADR 引用与产品区链接, 链接面在模板内无法自洽; 不进模板',
-  },
-  {
-    path: 'docs/designs/dependency-direction.md',
-    disposition: 'exclude',
-    note: '依赖契约面向本仓实际包结构; 生成物按自身包结构另立, 不进模板',
-  },
-  {
-    path: 'docs/designs/docs-layering.md',
-    disposition: 'exclude',
-    note: '分层协议含本仓归属总表与 ADR 链接; 模板 docs 骨架按其声明的空组形态 (索引 / 空组 / 占位) 重建',
-  },
-  {
-    path: 'docs/designs/capability-tiers.md',
-    disposition: 'exclude',
-    note: '档位机制在生成时已应用; 与生成器 / 重定位文档互相链接, 不随模板',
-  },
-  {
-    path: 'docs/designs/collection-relocation.md',
-    disposition: 'exclude',
-    note: '本仓重定位执行计划与改名历史; 生成物无对应',
-  },
-  {
-    path: 'docs/designs/scaffold-package.md',
-    disposition: 'exclude',
-    note: '生成器本体设计; 生成物不含 create-clis 包',
-  },
-  {
-    path: 'docs/designs/scaffold-contract.md',
-    disposition: 'exclude',
-    note: '生成器命令与变量契约 (生成器自身文档); 不进模板',
-  },
-  {
-    path: 'docs/designs/scaffold-template-snapshot.md',
-    disposition: 'exclude',
-    note: '模板快照机制设计 (生成器自身文档); 不进模板',
-  },
-  {
-    path: 'packages/sweep-node-modules/bench/',
-    disposition: 'exclude',
-    note: '领域基准 (扫描 / 体积 / 真实工作区 / 压测); 不进模板',
-  },
-  {
-    path: 'packages/sweep-node-modules/docs/adrs/',
-    disposition: 'exclude',
-    note: '包级历史 ADR (sweep 产品决策); 不进模板',
-  },
-  {
-    path: 'packages/sweep-node-modules/docs/designs/',
-    disposition: 'exclude',
-    note: '领域设计 (api-surface); 不进模板',
-  },
-  {
-    path: 'packages/sweep-node-modules-cli/docs/designs/',
-    disposition: 'exclude',
-    note: '领域设计 (cli-surface); 不进模板',
-  },
+  // exclude: 本仓私有包、领域内容与历史记录 (packages/* 自动派生构建期禁词)
+  excl('.mailmap', '维护者个人提交映射; 不进模板'),
+  excl('bun.lock', '锁文件生成物; 新项目 bun install 重建'),
+  excl('packages/create-clis/', '生成器自身; 生成物不含生成器'),
+  excl(
+    'packages/codd/',
+    'MongoDB 模板化装配 API 主包与文档 (本仓领域工具); 不进模板',
+  ),
+  excl(
+    'packages/codd-cli/',
+    'MongoDB 模板化装配 CLI 包 (本仓领域工具); 不进模板',
+  ),
+  ...[
+    'docs/adrs/0005-engineering-gates-and-hooks.md',
+    'docs/adrs/0006-dual-runtime-bun-first.md',
+    'docs/adrs/0009-npm-distribution-form.md',
+    'docs/adrs/0010-dual-package-monorepo.md',
+    'docs/adrs/0011-docs-and-adr-layering.md',
+    'docs/adrs/0019-two-tier-package-owned-docs.md',
+  ].map((p) => excl(p, '本仓历史 ADR')),
+  ...[
+    'docs/designs/collection-positioning.md',
+    'docs/designs/package-classification.md',
+    'docs/designs/dependency-direction.md',
+    'docs/designs/docs-layering.md',
+    'docs/designs/capability-tiers.md',
+    'docs/designs/collection-relocation.md',
+    'docs/designs/scaffold-package.md',
+    'docs/designs/scaffold-contract.md',
+    'docs/designs/scaffold-template-snapshot.md',
+  ].map((p) => excl(p, '本仓治理与脚手架设计')),
+  excl('packages/sweep-node-modules/bench/', 'sweep 领域基准'),
+  excl('packages/sweep-node-modules/docs/adrs/', 'sweep 历史产品 ADR'),
+  excl('packages/sweep-node-modules/docs/designs/', 'sweep 领域产品设计'),
+  excl(
+    'packages/sweep-node-modules/docs/protocol/',
+    'sweep 转写契约与金样本语料',
+  ),
+  excl('packages/sweep-node-modules-cli/docs/designs/', 'sweep CLI 领域设计'),
 ];

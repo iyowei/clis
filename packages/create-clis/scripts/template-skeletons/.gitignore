@@ -1,0 +1,11 @@
+# Generated baseline; manage custom entries in .gitignorerc.json and re-run `fgi` when updating.
+node_modules/
+dist/
+coverage/
+.turbo/
+.DS_Store
+Thumbs.db
+*.log
+package-lock.json
+*.modified
+*.deleted

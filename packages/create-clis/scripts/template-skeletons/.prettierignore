@@ -1,0 +1,10 @@
+node_modules
+dist
+coverage
+package-lock.json
+bun.lock
+bun.lockb
+CHANGELOG.md
+CODE_OF_CONDUCT.md
+*.modified
+*.deleted
