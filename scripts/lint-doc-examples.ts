@@ -1,30 +1,24 @@
 /**
- * 文档示例闸门: ts 代码块的真实类型校验 + shell 块的 CLI 面核对。
- *
- * 动机: 2026-09-30 漂移复审实测抓到文档示例与真实签名不符 (api-surface 的
- * `isSuccessOutcome` 片段入参类型错误, 照抄编译报 TS2345), 属「只有人工审计才能发现」
- * 的类别; 示例可编译性是确定性事实, 故落为闸门 (镜像实现对: fiu-kits 的 lint-doc-examples)。
+ * 文档示例闸门: ts 代码块的真实类型校验 + shell 块的多 CLI 面核对。
  *
  * 两档:
- * - 类型档: 采集「自足」ts 块 (判据: 块内出现行首 import 语句), 拼成临时 tsc 工程对 API 包
- *   真实类型校验 (临时工程 extends 仓库根 tsconfig, paths 直连源码单源; typeRoots 指回仓
- *   内 @types, 临时目录解析不到 bun 类型实测 TS2688)。报错分类: 全为「名字未找到」类
- *   (TS2304 等) 的块判为片段 (依赖上文块, 不做跨块拼接), 打印 INFO 跳过; 含其他错误
- *   (TS2345 签名不符 / TS2339 成员不存在等) 的块判为真断裂, 红灯。
- * - CLI 档: 采集 shell 块内以 `sweep-nm` 开头的命令, 提取旗标与子命令, 对照 `--help`
- *   输出逐一核对存在性 (抓「新增旗标漏登记进文档 / 文档写了不存在的旗标」)。
+ * - 类型档: 采集「自足」ts 块 (行首 import), 拼成临时 tsc 工程对 API 包真实类型校验。
+ *   - 校验 tsc 执行本身未故障 (退出码非零且无块错误或 spawn 报错直接红灯, 防工具坏了假绿);
+ *   - 若 TS2307 (Cannot find module) 指向本仓 scope/包名, 判为真断裂 (防改包名后示例假绿);
+ *   - 仅非本仓虚构模块或未定义外部变量的块判为片段跳过。
+ * - CLI 档: 自动发现仓内所有带 `bin` 且具备 `src/cli.ts` 的 CLI 工具 (sweep-nm / codd /
+ *   create-clis 等), 采集 shell 块内以对应命令名开头的行, 对照各自 `--help` 核对旗标与子命令。
  *
  * 用法: bun scripts/lint-doc-examples.ts
  * 退出码: 0 全绿; 1 存在断裂。
  */
 import { spawnSync } from 'node:child_process';
-import { readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { makeTmpRoot } from './lib/tmp-root.ts';
+import { listWorkspacePackages } from './lib/workspace.ts';
 import { REPO_ROOT, walkFiles } from './lint-doc-shared.ts';
-
-const CLI_ENTRY = 'packages/sweep-node-modules-cli/src/cli.ts';
 
 /** 一个被采集到的 ts 代码块 */
 export interface TsBlock {
@@ -32,6 +26,20 @@ export interface TsBlock {
   /** 块内容首行的行号 (1 起) */
   startLine: number;
   content: string;
+}
+
+/** 被核对的一个 CLI 目标 */
+export interface CliTarget {
+  /** 命令名 (如 sweep-nm / codd / create-clis) */
+  binName: string;
+  /** CLI 源码入口相对仓库根路径 */
+  entryPath: string;
+}
+
+/** 从文本提取的带命令名的 shell 示例 */
+export interface NamedShellCommand {
+  binName: string;
+  command: string;
 }
 
 /** 提取全文的 ```ts 块 (闭合围栏以 ``` 收尾; startLine 指向内容首行) */
@@ -61,13 +69,25 @@ export function isSelfContained(block: string): boolean {
   return /^import\b/m.test(block);
 }
 
-/** 提取 shell 块中以 sweep-nm 开头的命令行 (跳过注释行) */
-export function extractShellCommands(content: string): string[] {
-  const commands: string[] = [];
+/** 构造命令名前缀正则 (转义正则元字符) */
+const escapeRegex = (value: string): string =>
+  value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+/** 提取 shell/bash/sh 块中以指定命令名集合开头的命令行 (跳过注释行) */
+export function extractNamedShellCommands(
+  content: string,
+  cliNames: readonly string[],
+): NamedShellCommand[] {
+  if (cliNames.length === 0) return [];
+  const patterns = cliNames.map((binName) => ({
+    binName,
+    re: new RegExp(`^${escapeRegex(binName)}(?:\\s|$)`),
+  }));
+  const commands: NamedShellCommand[] = [];
   const lines = content.split('\n');
   let inShell = false;
   for (const line of lines) {
-    if (/^```shell\s*$/.test(line)) {
+    if (/^```(?:shell|bash|sh)\s*$/.test(line)) {
       inShell = true;
       continue;
     }
@@ -77,23 +97,46 @@ export function extractShellCommands(content: string): string[] {
     }
     if (!inShell) continue;
     const trimmed = line.trim();
-    if (trimmed.startsWith('#') || !/^sweep-nm(\s|$)/.test(trimmed)) continue;
-    commands.push(trimmed);
+    if (trimmed === '' || trimmed.startsWith('#')) continue;
+    for (const { binName, re } of patterns) {
+      if (re.test(trimmed)) {
+        commands.push({ binName, command: trimmed });
+        break;
+      }
+    }
   }
   return commands;
 }
 
-/** 从一条命令提取待核对 token: --旗标 (去掉 =值, 去重) 与首个位置参数 (子命令) */
+/** 兼容旧签名: 提取 shell 块中以 sweep-nm 开头的命令行 */
+export function extractShellCommands(
+  content: string,
+  cliName = 'sweep-nm',
+): string[] {
+  return extractNamedShellCommands(content, [cliName]).map(
+    (item) => item.command,
+  );
+}
+
+/** 从一条命令提取待核对 token: --旗标 (去掉 =值, 去重) 与纯标识符形态的首个子命令 */
 export function extractCommandTokens(command: string): string[] {
   const tokens: string[] = [];
   const parts = command.split(/\s+/).slice(1);
+  let sawFlag = false;
+  let sawSubcommand = false;
   for (const part of parts) {
+    if (part === '--') break;
+    if (part === '\\' || part === '&&' || part === '||' || part === '|') break;
     if (part.startsWith('-')) {
+      sawFlag = true;
       tokens.push(part.split('=')[0]!);
       continue;
     }
-    // 位置参数: 只认第一个 (子命令); 其余是旗标的值 (如 --exclude my-kits 的 my-kits)
-    if (tokens.length === 0) tokens.push(part);
+    // 仅在首个旗标之前、且形状为纯小写子命令标识符 (不含路径/扩展名/占位符) 时作为子命令核对
+    if (!sawFlag && !sawSubcommand && /^[a-z][a-z0-9-]*$/.test(part)) {
+      sawSubcommand = true;
+      tokens.push(part);
+    }
   }
   return [...new Set(tokens)];
 }
@@ -119,7 +162,7 @@ const FRAGMENT_ERROR_CODES: ReadonlySet<string> = new Set([
   'TS18046', // 'x' is of type 'unknown' (收窄所需的守卫未定义时连带)
   'TS2580', // Cannot find name 'require'
   'TS2503', // Cannot find namespace
-  'TS2307', // Cannot find module (片段引用未随块给出的模块)
+  'TS2307', // Cannot find module (仅限非本仓包名的片段模块; 本仓 scope 见下单独拦)
 ]);
 
 /** 分类一个块的错误集合: 'clean' | 'fragment' | 'real' */
@@ -130,6 +173,46 @@ export function classifyBlock(
   return [...codes].every((code) => FRAGMENT_ERROR_CODES.has(code))
     ? 'fragment'
     : 'real';
+}
+
+/** 收集工作区 scope 前缀与包名, 防止本仓包改名后被 TS2307 静默豁免 */
+function collectWorkspaceScopes(root: string): {
+  names: Set<string>;
+  scopes: Set<string>;
+} {
+  const names = new Set<string>();
+  const scopes = new Set<string>();
+  if (!existsSync(join(root, 'package.json'))) return { names, scopes };
+  try {
+    for (const pkg of listWorkspacePackages(root)) {
+      names.add(pkg.name);
+      if (pkg.name.startsWith('@') && pkg.name.includes('/')) {
+        scopes.add(`${pkg.name.slice(0, pkg.name.indexOf('/'))}/`);
+      }
+    }
+  } catch {
+    // 迷你测试根无 workspaces 时忽略
+  }
+  return { names, scopes };
+}
+
+/** 检查报错行里的 TS2307 是否指向本仓包/scope (是则真断裂, 不可豁免) */
+function hitsWorkspaceModuleNotFound(
+  blockLines: readonly string[],
+  workspace: { names: Set<string>; scopes: Set<string> },
+): boolean {
+  for (const line of blockLines) {
+    const match = line.match(
+      /error TS2307: Cannot find module ['"]([^'"]+)['"]/,
+    );
+    if (!match) continue;
+    const mod = match[1]!;
+    if (workspace.names.has(mod)) return true;
+    for (const scope of workspace.scopes) {
+      if (mod.startsWith(scope)) return true;
+    }
+  }
+  return false;
 }
 
 /** 类型档: 采集自足块 → 临时工程编译 → 返回 (真断裂条目, 片段 INFO 列表) */
@@ -148,7 +231,7 @@ export function checkTsExamples(root: string = REPO_ROOT): {
   }
   if (blocks.length === 0) return { real: [], fragments: [] };
 
-  // 临时工程: extends 仓库根 tsconfig (paths 直连单源), typeRoots 指回仓内 @types
+  const workspace = collectWorkspaceScopes(root);
   const tmp = makeTmpRoot('doc-examples-');
   try {
     for (const [index, block] of blocks.entries()) {
@@ -174,20 +257,46 @@ export function checkTsExamples(root: string = REPO_ROOT): {
       ['tsc', '-p', join(tmp, 'tsconfig.json')],
       { cwd: root, encoding: 'utf8' },
     );
-    const perBlock = parseTscErrors(`${result.stdout ?? ''}`);
+    const combinedOutput = `${result.stdout ?? ''}\n${result.stderr ?? ''}`;
+    if (result.error !== undefined) {
+      return {
+        real: [`tsc 执行失败: ${result.error.message}`],
+        fragments: [],
+      };
+    }
+    const perBlock = parseTscErrors(combinedOutput);
+    if (result.status !== 0 && perBlock.size === 0) {
+      const snippet = combinedOutput.trim().slice(0, 300);
+      return {
+        real: [
+          `tsc 异常退出 (exit ${String(result.status)}): ${snippet || '(无输出)'}`,
+        ],
+        fragments: [],
+      };
+    }
+
+    const allLines = combinedOutput.split('\n');
     const real: string[] = [];
     const fragments: string[] = [];
     for (const [index, block] of blocks.entries()) {
-      const kind = classifyBlock(perBlock.get(index));
+      const codes = perBlock.get(index);
+      const blockLines = allLines.filter((line) =>
+        line.includes(`block-${index}.ts(`),
+      );
+      let kind = classifyBlock(codes);
+      if (
+        kind === 'fragment' &&
+        hitsWorkspaceModuleNotFound(blockLines, workspace)
+      ) {
+        kind = 'real';
+      }
       const at = `${block.file}:${block.startLine}`;
       if (kind === 'fragment') {
         fragments.push(
-          `${at} (引用块外上下文, ${[...(perBlock.get(index) ?? [])].join('/')})`,
+          `${at} (引用块外上下文, ${[...(codes ?? [])].join('/')})`,
         );
       } else if (kind === 'real') {
-        const detail = `${result.stdout ?? ''}`
-          .split('\n')
-          .filter((line) => line.includes(`block-${index}.ts(`))
+        const detail = blockLines
           .map((line) => line.replace(/^.*block-\d+\.ts/, '行内'))
           .join('; ');
         real.push(`${at} :: ${detail}`);
@@ -199,24 +308,79 @@ export function checkTsExamples(root: string = REPO_ROOT): {
   }
 }
 
-/** CLI 档: 采集 README 类 shell 块的 sweep-nm 命令, 对照 --help 核对旗标与子命令 */
-export function checkCliExamples(root: string = REPO_ROOT): string[] {
-  const missing: string[] = [];
-  const help = spawnSync('bun', [join(root, CLI_ENTRY), '--help'], {
-    cwd: root,
-    encoding: 'utf8',
-  });
-  if (help.status !== 0) {
-    return [`CLI --help 执行失败 (exit ${String(help.status)}), 无法核对示例`];
+/** 从 package.json 的 bin 字段提取可执行命令名列表 */
+function extractBinNames(pkgName: string, binField: unknown): string[] {
+  if (typeof binField === 'string') {
+    return [
+      pkgName.includes('/') ? pkgName.slice(pkgName.indexOf('/') + 1) : pkgName,
+    ];
   }
-  const helpText = help.stdout ?? '';
+  if (binField !== null && typeof binField === 'object') {
+    return Object.keys(binField as Record<string, unknown>);
+  }
+  return [];
+}
+
+/** 发现仓内全部可核对的 CLI 工具目标 (兼容无根 package.json 的迷你测试根) */
+export function discoverCliTargets(root: string): CliTarget[] {
+  const targets: CliTarget[] = [];
+  if (existsSync(join(root, 'package.json'))) {
+    try {
+      for (const pkg of listWorkspacePackages(root)) {
+        const entryPath = `${pkg.dir}/src/cli.ts`;
+        if (!existsSync(join(root, entryPath))) continue;
+        for (const binName of extractBinNames(pkg.name, pkg.manifest.bin)) {
+          targets.push({ binName, entryPath });
+        }
+      }
+    } catch {
+      // 忽略非标准迷你根
+    }
+  }
+  if (targets.length === 0) {
+    const fallback = 'packages/sweep-node-modules-cli/src/cli.ts';
+    if (existsSync(join(root, fallback))) {
+      targets.push({ binName: 'sweep-nm', entryPath: fallback });
+    }
+  }
+  return targets.sort((a, b) => a.binName.localeCompare(b.binName));
+}
+
+/** CLI 档: 采集 shell 块内全部已发现 CLI 命令, 对照各自 --help 核对旗标与子命令 */
+export function checkCliExamples(root: string = REPO_ROOT): string[] {
+  const targets = discoverCliTargets(root);
+  if (targets.length === 0) return [];
+
+  const missing: string[] = [];
+  const helpByBin = new Map<string, string>();
+  for (const target of targets) {
+    const help = spawnSync('bun', [join(root, target.entryPath), '--help'], {
+      cwd: root,
+      encoding: 'utf8',
+    });
+    if (help.status !== 0) {
+      missing.push(
+        `CLI (${target.binName}) --help 执行失败 (exit ${String(help.status)}), 无法核对示例`,
+      );
+      continue;
+    }
+    helpByBin.set(target.binName, `${help.stdout ?? ''}\n${help.stderr ?? ''}`);
+  }
+
+  const cliNames = [...helpByBin.keys()];
+  if (cliNames.length === 0) return missing;
+
   for (const file of walkFiles(root, ['.md'])) {
     const content = readFileSync(join(root, file), 'utf8');
-    for (const command of extractShellCommands(content)) {
+    for (const { binName, command } of extractNamedShellCommands(
+      content,
+      cliNames,
+    )) {
+      const helpText = helpByBin.get(binName)!;
       for (const token of extractCommandTokens(command)) {
         if (!helpText.includes(token)) {
           missing.push(
-            `${file} :: 命令 "${command}" 的 ${token} 在 --help 输出中不存在`,
+            `${file} :: 命令 "${command}" 的 ${token} 在 ${binName} --help 输出中不存在`,
           );
         }
       }
@@ -245,5 +409,4 @@ function main(): void {
   process.exitCode = 1;
 }
 
-// 仅作为入口执行时跑主流程 (被 import 时不执行, 供测试)
 if (import.meta.main) main();

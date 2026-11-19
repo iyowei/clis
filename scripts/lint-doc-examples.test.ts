@@ -1,6 +1,6 @@
 /**
- * 文档示例闸门单测: 采集 / 判据 / 分类各纯函数逐一断言; 集成面用临时 mini 根验证
- * 「片段块判跳过」与「CLI 档旗标缺失抓得住」。
+ * 文档示例闸门单测: 采集 / 判据 / 分类各纯函数逐一断言; 集成面覆盖片段跳过、
+ * 本仓包名 TS2307 拦截与多 CLI 旗标核对。
  */
 import { afterAll, describe, expect, test } from 'bun:test';
 
@@ -13,6 +13,7 @@ import {
   checkTsExamples,
   classifyBlock,
   extractCommandTokens,
+  extractNamedShellCommands,
   extractShellCommands,
   extractTsBlocks,
   isSelfContained,
@@ -54,7 +55,7 @@ describe('isSelfContained', () => {
 });
 
 describe('extractShellCommands', () => {
-  test('只收 shell 块内以 sweep-nm 起首的非注释行, 前缀精确', () => {
+  test('只收 shell 块内以指定命令起首的非注释行, 前缀精确', () => {
     const text = [
       '```shell',
       '# 注释跳过',
@@ -66,10 +67,23 @@ describe('extractShellCommands', () => {
     ].join('\n');
     expect(extractShellCommands(text)).toEqual(['sweep-nm --yes']);
   });
+
+  test('多命令采集支持 shell / bash 块并精准归属 binName', () => {
+    const text = [
+      '```bash',
+      'extra --dry-run config.json',
+      'create-app my-app --tier standard',
+      '```',
+    ].join('\n');
+    expect(extractNamedShellCommands(text, ['extra', 'create-app'])).toEqual([
+      { binName: 'extra', command: 'extra --dry-run config.json' },
+      { binName: 'create-app', command: 'create-app my-app --tier standard' },
+    ]);
+  });
 });
 
 describe('extractCommandTokens', () => {
-  test('旗标去 = 值; 第一个位置参数当子命令; 旗标的值不采集', () => {
+  test('旗标去 = 值; 仅首个纯标识符位置参数当子命令; 路径/文件不误判为子命令', () => {
     expect(extractCommandTokens('sweep-nm --yes --force')).toEqual([
       '--yes',
       '--force',
@@ -78,6 +92,9 @@ describe('extractCommandTokens', () => {
       extractCommandTokens('sweep-nm --exclude my-kits --exclude url'),
     ).toEqual(['--exclude']);
     expect(extractCommandTokens('sweep-nm config')).toEqual(['config']);
+    expect(extractCommandTokens('extra ./deploy.json --dry-run')).toEqual([
+      '--dry-run',
+    ]);
     expect(extractCommandTokens('sweep-nm')).toEqual([]);
   });
 });
@@ -98,32 +115,51 @@ describe('parseTscErrors + classifyBlock', () => {
 });
 
 describe('checkTsExamples 集成', () => {
-  test('片段块 (引用块外上下文) 判跳过而非断裂', () => {
+  test('非本仓虚构模块判跳过, 本仓 scope 模块找不到直接判真断裂', () => {
     const root = makeRoot({
+      'package.json': JSON.stringify({ workspaces: ['packages/*'] }),
+      'packages/demo/package.json': JSON.stringify({ name: '@iyowei/demo' }),
       'tsconfig.json': '{"compilerOptions":{"noEmit":true}}',
       'docs/a.md': "```ts\nimport { nope } from 'nowhere-pkg';\nnope();\n```\n",
+      'docs/b.md':
+        "```ts\nimport { gone } from '@iyowei/renamed-pkg';\ngone();\n```\n",
     });
     const { real, fragments } = checkTsExamples(root);
-    expect(real).toEqual([]);
     expect(fragments).toHaveLength(1);
+    expect(real).toHaveLength(1);
+    expect(real[0]).toContain('docs/b.md');
   }, 120000);
 });
 
 describe('checkCliExamples 集成', () => {
-  test('文档写了 --help 里没有的旗标即抓出; 文档漏登记不误报', () => {
+  test('多 CLI 并存时各自按 --help 核对旗标, 缺旗标精准报出', () => {
     const root = makeRoot({
+      'package.json': JSON.stringify({ workspaces: ['packages/*'] }),
+      'packages/sweep-node-modules-cli/package.json': JSON.stringify({
+        name: '@iyowei/sweep-node-modules-cli',
+        bin: { 'sweep-nm': 'bin/sweep-nm.mjs' },
+      }),
       'packages/sweep-node-modules-cli/src/cli.ts':
         "console.log(['sweep-nm --yes  执行删除', 'sweep-nm config  查看配置'].join('\\n'));\n",
+      'packages/extra-cli/package.json': JSON.stringify({
+        name: '@iyowei/extra-cli',
+        bin: { extra: 'bin/extra.mjs' },
+      }),
+      'packages/extra-cli/src/cli.ts':
+        "console.log(['extra --dry-run  干跑', 'extra init  初始化'].join('\\n'));\n",
       'README.md': [
         '```shell',
         'sweep-nm --yes',
         'sweep-nm --nope',
         'sweep-nm config',
+        'extra init',
+        'extra --bogus',
         '```',
       ].join('\n'),
     });
     const missing = checkCliExamples(root);
-    expect(missing).toHaveLength(1);
-    expect(missing[0]).toContain('--nope');
+    expect(missing).toHaveLength(2);
+    expect(missing.some((line) => line.includes('--nope'))).toBe(true);
+    expect(missing.some((line) => line.includes('--bogus'))).toBe(true);
   }, 60000);
 });
