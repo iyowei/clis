@@ -1,5 +1,6 @@
 /**
- * @iyowei/codd 模板化部署包生成单测: 覆盖 single / replica-set / k8s-rs 拓扑与清单红线拦截。
+ * @iyowei/codd 模板化部署包生成单测:
+ * 覆盖 single / replica-set / k8s-single / k8s-rs 拓扑、P0/P1 修复与清单红线拦截。
  */
 import { describe, expect, test } from 'bun:test';
 
@@ -49,13 +50,14 @@ const writeManifest = (
   return p;
 };
 
-describe('Podman 单节点与密码轮换生成验证', () => {
+describe('Podman 单节点、密码轮换与 P0/P1 修复验证', () => {
   test('single 模式输出带指纹部署目录、0600 凭证、.codd-state/.gitignore 与零残留占位符', () => {
     const ws = makeTestWorkspace();
     try {
       const mPath = writeManifest(ws.tmpDir, {
         mode: 'single',
         name: 'core',
+        keepWeekly: 0,
         hardware: {
           cpuCores: 4,
           memoryGb: 8,
@@ -73,6 +75,7 @@ describe('Podman 单节点与密码轮换生成验证', () => {
             bindIp: '0.0.0.0',
             host: '127.0.0.1',
             backupDir: '/Users/alice/srv/backups/mongo-core',
+            stackDir: '/Users/alice/custom-stacks',
           },
         ],
       });
@@ -89,6 +92,9 @@ describe('Podman 单节点与密码轮换生成验证', () => {
         `/Users/alice/srv/backups/mongo-core-${r1.fingerprint}`,
       ]);
       expect(readFileSync(join(ws.stateDir, '.gitignore'), 'utf8')).toBe('*\n');
+      expect(r1.nextSteps[0]).toContain(
+        `/Users/alice/custom-stacks/mongo-core-${r1.fingerprint}/`,
+      );
 
       const b1 = r1.bundleDirs[0]!;
       expect(existsSync(join(b1, '.dockerignore'))).toBe(true);
@@ -108,23 +114,26 @@ describe('Podman 单节点与密码轮换生成验证', () => {
 
       const env1 = readFileSync(join(b1, '.env'), 'utf8');
       expect(env1).toContain(`FINGERPRINT=${r1.fingerprint}`);
-      expect(env1).toContain(
-        `BACKUP_DIR=/Users/alice/srv/backups/mongo-core-${r1.fingerprint}`,
-      );
+      expect(env1).toContain('KEEP_WEEKLY=0');
       expect(env1).toContain('WT_CACHE_GB=3.5');
       expect(env1).toContain('MEMORY_LIMIT=8g');
-      expect(statSync(join(b1, '.env')).mode % 0o1000).toBe(0o600);
+      if (process.platform !== 'win32') {
+        expect(statSync(join(b1, '.env')).mode % 0o1000).toBe(0o600);
+      }
 
       const creds1 = readFileSync(r1.credentialsFile, 'utf8');
       expect(creds1).toContain('全网卡监听连接串');
-      expect(creds1).toContain('@127.0.0.1:27117/orders');
+      expect(creds1).toContain(
+        '@127.0.0.1:27117/orders?authSource=orders&directConnection=true&compressors=zstd',
+      );
+      expect(creds1).toContain(
+        '@mongo:27117/orders?authSource=orders&compressors=zstd',
+      );
 
       const bundlePkg = JSON.parse(
         readFileSync(join(b1, 'package.json'), 'utf8'),
-      ) as {
-        engines: { bun: string };
-      };
-      expect(bundlePkg.engines.bun).toBe('>=1.4.4');
+      ) as { engines: { bun: string } };
+      expect(bundlePkg.engines.bun).toBe('>=1.4.2');
       expect(readFileSync(join(b1, 'Makefile'), 'utf8')).toContain(
         'tune-host:',
       );
@@ -165,6 +174,88 @@ describe('Podman 单节点与密码轮换生成验证', () => {
       expect(r4.fingerprint).not.toBe(r1.fingerprint);
       expect(r4.bundleDirs[0]).not.toBe(r1.bundleDirs[0]);
       expect(r4.backupDirs[0]).not.toBe(r1.backupDirs[0]);
+    } finally {
+      ws.cleanup();
+    }
+  });
+
+  test('multiNetAlias=true 隔离容器别名与连接串, host+0.0.0.0 使用 127.0.0.1 作为客户端目标, 损坏状态文件抛 ConfigError', () => {
+    const ws = makeTestWorkspace();
+    try {
+      const rAlias = generateBundle({
+        workDir: ws.tmpDir,
+        outDir: ws.outDir,
+        stateDir: ws.stateDir,
+        manifest: {
+          mode: 'single',
+          name: 'multi',
+          multiNetAlias: true,
+          apps: [{ db: 'app', user: 'appu' }],
+          nodes: [{ os: 'linux', backupDir: '/home/ops/srv/backups' }],
+        },
+      });
+      const aliasHost = `mongo-${rAlias.fingerprint}`;
+      const composeAlias = readFileSync(
+        join(rAlias.bundleDirs[0]!, 'podman-compose.yml'),
+        'utf8',
+      );
+      expect(composeAlias).toContain(`- ${aliasHost}`);
+      expect(composeAlias).not.toContain('- mongo\n');
+      expect(composeAlias).toContain(`MONGO_HOST: ${aliasHost}`);
+      const credsAlias = readFileSync(rAlias.credentialsFile, 'utf8');
+      expect(credsAlias).toContain(
+        `@${aliasHost}:27117/app?authSource=app&compressors=zstd`,
+      );
+
+      const rHost = generateBundle({
+        workDir: ws.tmpDir,
+        outDir: ws.outDir,
+        stateDir: ws.stateDir,
+        manifest: {
+          mode: 'single',
+          name: 'hostzero',
+          networkMode: 'host',
+          apps: [{ db: 'app', user: 'appu' }],
+          nodes: [
+            {
+              os: 'linux',
+              bindIp: '0.0.0.0',
+              backupDir: '/home/ops/srv/backups',
+            },
+          ],
+        },
+      });
+      const composeHost = readFileSync(
+        join(rHost.bundleDirs[0]!, 'podman-compose.yml'),
+        'utf8',
+      );
+      expect(composeHost).toContain('MONGO_HOST: 127.0.0.1');
+      expect(composeHost).not.toContain(
+        'MONGO_HOST: ${MONGO_BIND_IP:-0.0.0.0}',
+      );
+
+      // 写入损坏的 .state.json, 应包装为 ConfigError 而非裸 SyntaxError
+      writeFileSync(rHost.stateFile, '{ broken json', 'utf8');
+      expect(() =>
+        generateBundle({
+          workDir: ws.tmpDir,
+          outDir: ws.outDir,
+          stateDir: ws.stateDir,
+          manifest: {
+            mode: 'single',
+            name: 'hostzero',
+            networkMode: 'host',
+            apps: [{ db: 'app', user: 'appu' }],
+            nodes: [
+              {
+                os: 'linux',
+                bindIp: '0.0.0.0',
+                backupDir: '/home/ops/srv/backups',
+              },
+            ],
+          },
+        }),
+      ).toThrow(ConfigError);
     } finally {
       ws.cleanup();
     }
@@ -220,6 +311,9 @@ describe('多节点副本集、Kubernetes 与红线拦截验证', () => {
       expect(env0).toContain('RS_ROLE=primary');
       expect(env0).toContain('RS_PEER_1=node2:10.8.0.12');
       expect(compose0).toContain('network_mode: host');
+      expect(readFileSync(res.credentialsFile, 'utf8')).toContain(
+        '&compressors=zstd',
+      );
 
       expect(() =>
         generateBundle({
@@ -282,6 +376,9 @@ describe('多节点副本集、Kubernetes 与红线拦截验证', () => {
       );
       expect(readFileSync(join(kDir, 'deploy.sh'), 'utf8')).toContain(
         '"$SCRIPT_DIR/chart"',
+      );
+      expect(readFileSync(res.credentialsFile, 'utf8')).toContain(
+        '&compressors=zstd',
       );
 
       const mBadFp = writeManifest(

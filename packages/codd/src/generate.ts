@@ -5,7 +5,7 @@
 import { existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 
-import { readTemplateFile, resolveTemplateRoot } from './assets.ts';
+import { resolveTemplateRoot } from './assets.ts';
 import { emitK8sBundle } from './emit-k8s.ts';
 import { emitPodmanBundles } from './emit-podman.ts';
 import { type HardwareSpec, computeSizing } from './formulas.ts';
@@ -22,7 +22,7 @@ import {
   type GenerateResult,
   type RotateMode,
 } from './types.ts';
-import { assertBunEngineCompatible, validateManifest } from './validate.ts';
+import { validateManifest } from './validate.ts';
 
 const DEFAULT_HARDWARE: HardwareSpec = {
   cpuCores: 2,
@@ -59,14 +59,7 @@ export const generateBundle = (
 ): GenerateResult => {
   const workDir = resolve(options.workDir ?? options.rootDir ?? process.cwd());
   const templateRoot = resolveTemplateRoot(options.templateDir);
-
   const podmanTplDir = join(templateRoot, 'podman');
-  const toolsMeta = JSON.parse(
-    readTemplateFile(podmanTplDir, 'tools.package.json'),
-  ) as {
-    engines?: { bun?: string };
-  };
-  assertBunEngineCompatible(toolsMeta.engines?.bun);
 
   const outDir = resolve(workDir, options.outDir ?? 'dist');
   const stateDir = resolve(workDir, options.stateDir ?? '.codd-state');

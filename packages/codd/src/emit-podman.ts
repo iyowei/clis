@@ -2,9 +2,16 @@
  * Podman 部署包渲染器 (支持单节点与 3 物理节点高可用副本集)。
  */
 import { chmodSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
-import { join, posix } from 'node:path';
+import { join } from 'node:path';
 
 import { copyTemplateFile, readTemplateFile } from './assets.ts';
+import {
+  type ResolvedPodmanNode,
+  appendSingleCreds,
+  buildNetworkFragments,
+  computeRsMemberHost,
+  emitMacosPlist,
+} from './emit-podman-helpers.ts';
 import type { ComputedSizing, HardwareSpec } from './formulas.ts';
 import { renderTemplate } from './render.ts';
 import {
@@ -18,7 +25,6 @@ import type {
   DeployManifest,
   GenerateState,
   NetworkMode,
-  NodeInput,
 } from './types.ts';
 
 const STATIC_PODMAN_FILES = [
@@ -40,13 +46,6 @@ interface ToolsPackageManifest {
   devDependencies: Record<string, string>;
 }
 
-interface ResolvedPodmanNode extends NodeInput {
-  nodeName: string;
-  host: string;
-  bindIp: string;
-  isolatedBackupDir: string;
-}
-
 export interface PodmanEmitContext {
   podmanTplDir: string;
   outDir: string;
@@ -61,17 +60,6 @@ export interface PodmanEmitContext {
   nextSteps: string[];
 }
 
-interface SingleCredsInput {
-  manifest: DeployManifest;
-  state: GenerateState;
-  networkMode: NetworkMode;
-  stackPrefix: string;
-  port: number;
-  hostPort: number;
-  rawBindIp: string;
-  credLines: string[];
-}
-
 interface PodmanTemplates {
   composeTmpl: string;
   mongodTmpl: string;
@@ -81,62 +69,6 @@ interface PodmanTemplates {
   toolsPkg: string;
   toolsLock: string;
 }
-
-const computeRsMemberHost = (opts: {
-  manifest: DeployManifest;
-  networkMode: NetworkMode;
-  host: string;
-  port: number;
-  stackPrefix: string;
-  fingerprint: string;
-}): string => {
-  if (opts.manifest.mode !== 'single') return '';
-  if (opts.networkMode === 'host') return `${opts.host}:${opts.port}`;
-  if (opts.manifest.multiNetAlias)
-    return `${opts.stackPrefix}-${opts.fingerprint}:${opts.port}`;
-  return '';
-};
-
-const appendSingleCreds = (input: SingleCredsInput): void => {
-  const {
-    manifest,
-    state,
-    networkMode,
-    stackPrefix,
-    port,
-    hostPort,
-    rawBindIp,
-    credLines,
-  } = input;
-  if (networkMode === 'bridge') {
-    credLines.push(
-      `# 同网络容器连接串 (需挂 ${stackPrefix}-${state.fingerprint}-net):`,
-    );
-    for (const app of manifest.apps) {
-      credLines.push(
-        `mongodb://${app.user}:${state.appPasswords[app.db]}@mongo:${port}/${app.db}?authSource=${app.db}`,
-      );
-    }
-    credLines.push('');
-  }
-  const singleHostIp = rawBindIp === '0.0.0.0' ? '127.0.0.1' : rawBindIp;
-  if (rawBindIp === '0.0.0.0') {
-    credLines.push(
-      '# 全网卡监听连接串 (本机填 127.0.0.1, 局域网或 WireGuard 远程免隧道直连直接把 127.0.0.1 换成服务器内网/WG IP):',
-    );
-  } else if (singleHostIp === '127.0.0.1') {
-    credLines.push(
-      '# 宿主机回环连接串 (Compass 远程连请在 Advanced -> Proxy/SSH 勾 SSH with Identity File):',
-    );
-  } else {
-    credLines.push(`# 绑定网卡 (${singleHostIp}) 连接串:`);
-  }
-  for (const app of manifest.apps) {
-    credLines.push(
-      `mongodb://${app.user}:${state.appPasswords[app.db]}@${singleHostIp}:${hostPort}/${app.db}?authSource=${app.db}&directConnection=true`,
-    );
-  }
-};
 
 const emitSinglePodmanNode = (opts: {
   ctx: PodmanEmitContext;
@@ -151,19 +83,11 @@ const emitSinglePodmanNode = (opts: {
     opts;
   const { podmanTplDir, outDir, deployId, manifest, hw, sizing, state } = ctx;
   const node = resolvedNodes[idx]!;
-
   const stackPrefix = manifest.stackPrefix ?? 'mongo';
-  const toolsImageName = `${stackPrefix}-tools`;
-  const imageName = manifest.imageName ?? 'mongo';
-  const imageTag = manifest.imageTag ?? '9.0.8';
-  const bunImage = manifest.bunImage ?? 'oven/bun:1-slim';
-  const tz = manifest.tz ?? 'Asia/Shanghai';
   const port = manifest.port ?? 27117;
   const hostPort = manifest.hostPort ?? port;
   const rsName = manifest.rsName ?? 'rs0';
   const networkMode: NetworkMode = manifest.networkMode ?? 'bridge';
-  const keepDaily = manifest.keepDaily ?? 7;
-  const keepWeekly = manifest.keepWeekly ?? 4;
 
   const dirName =
     manifest.mode === 'single'
@@ -180,62 +104,29 @@ const emitSinglePodmanNode = (opts: {
   chmodSync(join(bundleDir, 'tune-linux-host.sh'), 0o755);
 
   const peers = resolvedNodes.filter((_, j) => j !== idx);
-  const peer1 = peers[0] ? `${peers[0].host}:${peers[0].bindIp}` : '';
-  const peer2 = peers[1] ? `${peers[1].host}:${peers[1].bindIp}` : '';
   const rsRole = idx === 0 ? 'primary' : 'secondary';
-  const rsMemberHost = computeRsMemberHost({
+  const net = buildNetworkFragments({
     manifest,
     networkMode,
-    host: node.host,
-    port,
+    node,
     stackPrefix,
     fingerprint: state.fingerprint,
+    port,
+    hostPort,
   });
 
-  const mongoNetworkSection =
-    networkMode === 'host'
-      ? '    network_mode: host'
-      : [
-          '    ports:',
-          `      - "\${MONGO_BIND_IP:-${node.bindIp}}:\${MONGO_HOST_PORT:-${hostPort}}:\${MONGO_PORT:-${port}}"`,
-          '    networks:',
-          '      mongo-net:',
-          '        aliases:',
-          '          - mongo',
-          '          - ${RS_SELF_HOST:-mongo-self}',
-        ].join('\n');
-
-  const clientNetworkSection =
-    networkMode === 'host'
-      ? '    network_mode: host'
-      : ['    networks:', '      - mongo-net'].join('\n');
-
-  const topNetworksSection =
-    networkMode === 'host'
-      ? ''
-      : [
-          '',
-          'networks:',
-          '  mongo-net:',
-          `    name: ${stackPrefix}-\${FINGERPRINT}-net`,
-          '    driver: bridge',
-        ].join('\n');
-
-  const mongoClientHost =
-    networkMode === 'host' ? `\${MONGO_BIND_IP:-${node.bindIp}}` : 'mongo';
-
-  const sharedFormulaVars = {
+  const sharedVars = {
     DEPLOY_ID: deployId,
     NODE_NAME: node.nodeName,
     HARDWARE_SUMMARY: sizing.hardwareSummary,
     FORMULA_SUMMARY: sizing.formulaSummary,
     STACK_PREFIX: stackPrefix,
     FINGERPRINT: state.fingerprint,
-    TZ: tz,
-    MONGO_IMAGE_NAME: imageName,
-    MONGO_IMAGE_TAG: imageTag,
-    BUN_IMAGE: bunImage,
-    TOOLS_IMAGE_NAME: toolsImageName,
+    TZ: manifest.tz ?? 'Asia/Shanghai',
+    MONGO_IMAGE_NAME: manifest.imageName ?? 'mongo',
+    MONGO_IMAGE_TAG: manifest.imageTag ?? '9.0.8',
+    BUN_IMAGE: manifest.bunImage ?? 'oven/bun:1-slim',
+    TOOLS_IMAGE_NAME: `${stackPrefix}-tools`,
     MONGO_BIND_IP: node.bindIp,
     MONGO_PORT: port,
     MONGO_HOST_PORT: hostPort,
@@ -246,26 +137,25 @@ const emitSinglePodmanNode = (opts: {
     MEMORY_LIMIT: sizing.memoryLimitPodman,
     MEMORY_RESERVATION: sizing.memoryReservationPodman,
     BACKUP_CONCURRENCY: sizing.backupConcurrency,
-    KEEP_DAILY: keepDaily,
-    KEEP_WEEKLY: keepWeekly,
+    KEEP_DAILY: manifest.keepDaily ?? 7,
+    KEEP_WEEKLY: manifest.keepWeekly ?? 4,
   };
 
   const composeRendered = renderTemplate(
     'podman-compose.yml.tmpl',
     tpls.composeTmpl,
     {
-      ...sharedFormulaVars,
+      ...sharedVars,
       STOP_GRACE_PERIOD: sizing.stopGracePeriodSec,
       NOFILE_ULIMIT: sizing.nofileUlimit,
       NPROC_ULIMIT: sizing.nprocUlimit,
       LOG_MAX_SIZE: sizing.logMaxSize,
-      MONGO_NETWORK_SECTION: mongoNetworkSection,
-      CLIENT_NETWORK_SECTION: clientNetworkSection,
-      TOP_NETWORKS_SECTION: topNetworksSection,
-      MONGO_CLIENT_HOST: mongoClientHost,
+      MONGO_NETWORK_SECTION: net.mongoNetworkSection,
+      CLIENT_NETWORK_SECTION: net.clientNetworkSection,
+      TOP_NETWORKS_SECTION: net.topNetworksSection,
+      MONGO_CLIENT_HOST: net.mongoClientHost,
     },
   );
-
   const mongodRendered = renderTemplate('mongod.conf.tmpl', tpls.mongodTmpl, {
     DEPLOY_ID: deployId,
     NODE_NAME: node.nodeName,
@@ -281,9 +171,8 @@ const emitSinglePodmanNode = (opts: {
     OPLOG_SIZE_MB: sizing.oplogSizeMb,
     SLOW_OP_THRESHOLD_MS: sizing.slowOpThresholdMs,
   });
-
   const envRendered = renderTemplate('.env.tmpl', tpls.envTmpl, {
-    ...sharedFormulaVars,
+    ...sharedVars,
     MONGO_INITDB_ROOT_USERNAME: state.rootUsername,
     MONGO_INITDB_ROOT_PASSWORD: state.rootPassword,
     MONGO_APP_DATABASE: primaryApp.db,
@@ -292,12 +181,19 @@ const emitSinglePodmanNode = (opts: {
     MONGO_EXTRA_APPS: extraAppsStr,
     MONGO_BACKUP_USER: state.backupUsername,
     MONGO_BACKUP_PASSWORD: state.backupPassword,
-    RS_MEMBER_HOST: rsMemberHost,
+    RS_MEMBER_HOST: computeRsMemberHost({
+      manifest,
+      networkMode,
+      host: node.host,
+      port,
+      stackPrefix,
+      fingerprint: state.fingerprint,
+    }),
     MONGO_KEYFILE: manifest.mode === 'replica-set' ? state.keyFile : '',
     RS_SELF_HOST: manifest.mode === 'replica-set' ? node.host : '',
     RS_MEMBERS: rsMembers,
-    RS_PEER_1: peer1,
-    RS_PEER_2: peer2,
+    RS_PEER_1: peers[0] ? `${peers[0].host}:${peers[0].bindIp}` : '',
+    RS_PEER_2: peers[1] ? `${peers[1].host}:${peers[1].bindIp}` : '',
     BACKUP_DIR: node.isolatedBackupDir,
   });
 
@@ -309,43 +205,31 @@ const emitSinglePodmanNode = (opts: {
   writeSecretFile(join(bundleDir, '.env'), envRendered, 0o600);
 
   if (node.os === 'macos') {
-    const home =
-      deriveRemoteHome(node.isolatedBackupDir, 'macos') ?? '/Users/<用户名>';
-    const stackDir = resolveServerStackDir(
-      node.stackDir,
-      home,
+    emitMacosPlist({
+      node,
+      bundleDir,
       dirName,
       stackPrefix,
-      manifest.name,
-      state.fingerprint,
-    );
-    const logPath = posix.join(
-      home,
-      'srv/logs',
-      `mongo-backup-${state.fingerprint}.log`,
-    );
-    const podmanBin = node.podmanBin ?? '/opt/homebrew/bin/podman';
-    const plistRendered = renderTemplate(
-      'mongo-backup.plist.tmpl',
-      tpls.plistTmpl,
-      {
-        FINGERPRINT: state.fingerprint,
-        PODMAN_DIR: posix.dirname(podmanBin),
-        STACK_DIR: stackDir,
-        LOG_PATH: logPath,
-      },
-    );
-    writeFileSync(
-      join(bundleDir, `com.codd.mongo-backup-${state.fingerprint}.plist`),
-      plistRendered,
-      'utf8',
-    );
+      manifestName: manifest.name,
+      fingerprint: state.fingerprint,
+      plistTmpl: tpls.plistTmpl,
+    });
   }
 
   const parsedSsh = node.sshTarget ? parseSshInput(node.sshTarget) : null;
+  const remoteStackDir = node.stackDir
+    ? resolveServerStackDir(
+        node.stackDir,
+        deriveRemoteHome(node.isolatedBackupDir, node.os) ?? '~',
+        dirName,
+        stackPrefix,
+        manifest.name,
+        state.fingerprint,
+      )
+    : `~/srv/stacks/${dirName}`;
   const targetDesc = parsedSsh
-    ? `${parsedSsh.target}:~/srv/stacks/${dirName}/`
-    : `~/srv/stacks/${dirName}/`;
+    ? `${parsedSsh.target}:${remoteStackDir}/`
+    : `${remoteStackDir}/`;
   const rshFlag = parsedSsh ? parsedSsh.rsyncRshFlag : '';
   ctx.nextSteps.push(
     `[${node.nodeName}/${rsRole}] rsync -av ${rshFlag}${bundleDir}/ ${targetDesc}`,
@@ -413,16 +297,13 @@ export const emitPodmanBundles = (ctx: PodmanEmitContext): void => {
   };
 
   const resolvedNodes: ResolvedPodmanNode[] = manifest.nodes!.map((n, idx) => {
-    const fallbackName = manifest.mode === 'single' ? 'main' : `node${idx + 1}`;
-    const nodeName = n.name || fallbackName;
-    const fallbackHost = manifest.mode === 'single' ? '127.0.0.1' : nodeName;
-    const host = n.host || fallbackHost;
-    const bindIp = n.bindIp ?? '127.0.0.1';
+    const nodeName =
+      n.name || (manifest.mode === 'single' ? 'main' : `node${idx + 1}`);
     return {
       ...n,
       nodeName,
-      host,
-      bindIp,
+      host: n.host || (manifest.mode === 'single' ? '127.0.0.1' : nodeName),
+      bindIp: n.bindIp ?? '127.0.0.1',
       isolatedBackupDir: ctx.backupDirs[idx]!,
     };
   });
@@ -460,7 +341,7 @@ export const emitPodmanBundles = (ctx: PodmanEmitContext): void => {
     ctx.credLines.push('# 3 物理节点高可用自动切主连接串:');
     for (const app of manifest.apps) {
       ctx.credLines.push(
-        `mongodb://${app.user}:${state.appPasswords[app.db]}@${hostsJoined}/${app.db}?replicaSet=${rsName}&authSource=${app.db}`,
+        `mongodb://${app.user}:${state.appPasswords[app.db]}@${hostsJoined}/${app.db}?replicaSet=${rsName}&authSource=${app.db}&compressors=zstd`,
       );
     }
     ctx.nextSteps.push(
