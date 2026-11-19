@@ -67,6 +67,10 @@ codd deploy-prod.json --rotate
 
 # 通过 -- 终止旗标解析, 读取以短横线开头的清单文件名
 codd -- -staging.json
+
+# 自更新 (自动识别 bun / npm / pnpm / yarn / volta 等安装器)
+codd update --check
+codd update
 ```
 
 ## 命令与选项
@@ -75,6 +79,7 @@ codd -- -staging.json
 | -------------------------------- | --------------------------------------------------------------------------------------------------- |
 | `codd wizard` / `-i`, `--wizard` | 打开交互式 4 步向导, 引导生成配置清单与部署安装包                                                   |
 | `codd init` / `--init-schema`    | 在当前目录导出 `deploy.schema.json`、`deploy-2c2g.json` 与安全 `.gitignore`                         |
+| `codd update`                    | 自动识别当前安装器升级到最新版 (`--check` 仅检查, 支持 `--pm` / `--registry` / `--force`)           |
 | `codd [配置文件.json]`           | 按指定 JSON 清单生成部署包 (不传默认读取 `./deploy.json`)                                           |
 | `-c`, `--config <文件路径>`      | 显式指定 JSON 配置文件路径 (与位置参数等效)                                                         |
 | `-o`, `--out <输出目录>`         | 指定部署安装包的导出目录 (默认 `./dist`)                                                            |
