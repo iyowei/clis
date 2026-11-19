@@ -170,12 +170,30 @@ const CONFORMANCE_GROUP: readonly string[] = [
   'conformance:node',
 ];
 
-/** 组装单步环境变量 (可选叠加隔离 HOME 与步骤专有 env) */
+/** 预建隔离家目录内的标准配置子目录 (Windows 上 SHGetKnownFolderPath 校验 AppData\Roaming 存在) */
+function prepareIsolatedHome(home: string): void {
+  for (const parts of [
+    ['.config', 'turborepo'],
+    ['.config', 'vercel'],
+    ['AppData', 'Roaming'],
+    ['AppData', 'Local'],
+  ]) {
+    fs.mkdirSync(join(home, ...parts), { recursive: true });
+  }
+}
+
+/** 组装单步环境变量 (可选叠加隔离 HOME / XDG / AppData / Turbo 配置路径与步骤专有 env) */
 function buildStepEnv(step: Step, home: string | undefined): NodeJS.ProcessEnv {
   const env: NodeJS.ProcessEnv = { ...process.env, ...step.env };
   if (home !== undefined) {
+    const configDir = join(home, '.config');
     env.HOME = home;
     env.USERPROFILE = home;
+    env.XDG_CONFIG_HOME = configDir;
+    env.APPDATA = join(home, 'AppData', 'Roaming');
+    env.LOCALAPPDATA = join(home, 'AppData', 'Local');
+    env.TURBO_CONFIG_DIR_PATH = join(configDir, 'turborepo');
+    env.VERCEL_CONFIG_DIR_PATH = join(configDir, 'vercel');
   }
   return env;
 }
@@ -187,7 +205,10 @@ function runStep(name: string): void {
   const args = typeof step.args === 'function' ? step.args() : step.args;
   const home = step.isolatedHome === true ? makeTmpRoot('ci-home-') : undefined;
   try {
-    if (home !== undefined) process.stdout.write(`隔离 HOME: ${home}\n`);
+    if (home !== undefined) {
+      prepareIsolatedHome(home);
+      process.stdout.write(`隔离 HOME: ${home}\n`);
+    }
     const result = spawnSync(step.command, args, {
       stdio: 'inherit',
       env: buildStepEnv(step, home),
