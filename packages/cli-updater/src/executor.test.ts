@@ -3,11 +3,16 @@
  */
 import { describe, expect, test } from 'bun:test';
 
+import { type SpawnSyncReturns } from 'node:child_process';
+
 import {
+  type SpawnLike,
   buildIsolatedEnv,
   buildUpgradePlan,
+  executeUpgradePlan,
   formatUpgradeDisplayCommand,
   isYarnBerryVersion,
+  probeGlobalRoots,
   resolveExecutableInPath,
   resolvePmInvocation,
 } from './executor.ts';
@@ -59,7 +64,7 @@ describe('resolvePmInvocation 跨平台调用构造', () => {
     });
   });
 
-  test('Windows 下 .cmd 批处理走显式 ComSpec /d /s /c', () => {
+  test('Windows 下 .cmd 批处理走 ComSpec /d /s /c 单串转义并启用 windowsVerbatimArguments', () => {
     const existing = new Set(['C:\\pnpm\\pnpm.cmd']);
     const inv = resolvePmInvocation(
       'pnpm',
@@ -74,12 +79,132 @@ describe('resolvePmInvocation 跨平台调用构造', () => {
         '/d',
         '/s',
         '/c',
-        'C:\\pnpm\\pnpm.cmd',
-        'add',
-        '-g',
-        'create-clis@1.1.0',
+        '""C:\\pnpm\\pnpm.cmd" add -g create-clis@1.1.0"',
       ],
+      windowsVerbatimArguments: true,
     });
+  });
+
+  test('Windows .cmd 含空格/括号/&/% 路径及 cmd 元字符参数安全转义, 拒绝引号与换行注入', () => {
+    const spacesPath = 'C:\\Program Files (x86)\\Yarn\\bin\\yarn.cmd';
+    const invSpaces = resolvePmInvocation(
+      'yarn',
+      ['global', 'add', 'create-clis@1.2.0'],
+      'win32',
+      {
+        PATH: 'C:\\Program Files (x86)\\Yarn\\bin',
+        ComSpec: 'C:\\Windows\\System32\\cmd.exe',
+      },
+      (p) => p === spacesPath,
+    );
+    expect(invSpaces).toEqual({
+      command: 'C:\\Windows\\System32\\cmd.exe',
+      args: [
+        '/d',
+        '/s',
+        '/c',
+        '""C:\\Program Files (x86)\\Yarn\\bin\\yarn.cmd" global add create-clis@1.2.0"',
+      ],
+      windowsVerbatimArguments: true,
+    });
+
+    const ampPath = 'C:\\R&D\\Tools (x64)\\pnpm.cmd';
+    const invAmp = resolvePmInvocation(
+      'pnpm',
+      ['add', '-g', 'a&b|c(1)', '%PATH%'],
+      'win32',
+      {
+        PATH: 'C:\\R&D\\Tools (x64)',
+        ComSpec: 'C:\\Windows\\System32\\cmd.exe',
+      },
+      (p) => p === ampPath,
+    );
+    expect(invAmp).toEqual({
+      command: 'C:\\Windows\\System32\\cmd.exe',
+      args: [
+        '/d',
+        '/s',
+        '/c',
+        '""C:\\R&D\\Tools (x64)\\pnpm.cmd" add -g "a&b|c(1)" ^^^%"PATH"^^^%"',
+      ],
+      windowsVerbatimArguments: true,
+    });
+
+    const pctPath = 'C:\\100%dev\\pnpm.cmd';
+    const invPct = resolvePmInvocation(
+      'pnpm',
+      ['--version'],
+      'win32',
+      { PATH: 'C:\\100%dev', ComSpec: 'C:\\Windows\\System32\\cmd.exe' },
+      (p) => p === pctPath,
+    );
+    expect(invPct?.windowsVerbatimArguments).toBe(true);
+    expect(invPct?.args[3]).toBe('""C:\\100"^%"dev\\pnpm.cmd" --version"');
+
+    // 含双引号或换行的注入参数直接安全拒绝
+    expect(
+      resolvePmInvocation(
+        'pnpm',
+        ['add', 'bad" & calc'],
+        'win32',
+        { PATH: 'C:\\pnpm' },
+        (p) => p === 'C:\\pnpm\\pnpm.cmd',
+      ),
+    ).toBeNull();
+    expect(
+      resolvePmInvocation(
+        'pnpm',
+        ['add', 'bad\ncalc'],
+        'win32',
+        { PATH: 'C:\\pnpm' },
+        (p) => p === 'C:\\pnpm\\pnpm.cmd',
+      ),
+    ).toBeNull();
+  });
+
+  test('Windows 下 pnpm.cmd / yarn.cmd 优先探测并直调 node.exe + JS 入口, 且拒 /usr/bin 假绝对 PATH', () => {
+    const nodeExe = 'C:\\Program Files\\nodejs\\node.exe';
+    const pnpmCmd = 'C:\\Users\\dev\\AppData\\Roaming\\npm\\pnpm.cmd';
+    const pnpmCjs =
+      'C:\\Users\\dev\\AppData\\Roaming\\npm\\node_modules\\pnpm\\bin\\pnpm.cjs';
+    const existingPnpm = new Set([nodeExe, pnpmCmd, pnpmCjs]);
+    expect(
+      resolvePmInvocation(
+        'pnpm',
+        ['add', '-g', 'create-clis@1.2.0'],
+        'win32',
+        {
+          PATH: '/usr/bin;C:\\Users\\dev\\AppData\\Roaming\\npm;C:\\Program Files\\nodejs',
+        },
+        (p) => existingPnpm.has(p),
+      ),
+    ).toEqual({
+      command: nodeExe,
+      args: [pnpmCjs, 'add', '-g', 'create-clis@1.2.0'],
+    });
+
+    const yarnCmd = 'C:\\Program Files (x86)\\Yarn\\bin\\yarn.cmd';
+    const yarnJs = 'C:\\Program Files (x86)\\Yarn\\bin\\yarn.js';
+    const existingYarn = new Set([nodeExe, yarnCmd, yarnJs]);
+    expect(
+      resolvePmInvocation(
+        'yarn',
+        ['global', 'add', 'create-clis@1.2.0'],
+        'win32',
+        {
+          PATH: 'C:\\Program Files (x86)\\Yarn\\bin;C:\\Program Files\\nodejs',
+        },
+        (p) => existingYarn.has(p),
+      ),
+    ).toEqual({
+      command: nodeExe,
+      args: [yarnJs, 'global', 'add', 'create-clis@1.2.0'],
+    });
+
+    // Windows 拒绝 Git Bash 盘根相对 PATH (/usr/bin)
+    expect(
+      resolveExecutableInPath('bun', 'win32', { PATH: '/usr/bin' }, () => true),
+    ).toBeNull();
   });
 });
 
@@ -247,5 +372,111 @@ describe('buildUpgradePlan 五大包管理器与安全拦截', () => {
     expect(formatUpgradeDisplayCommand('volta', 'create-clis', '1.0.0')).toBe(
       'volta install create-clis@1.0.0',
     );
+    expect(
+      formatUpgradeDisplayCommand(
+        'volta',
+        'create-clis',
+        '1.0.0',
+        'https://registry.npmmirror.com/',
+      ),
+    ).toBe(
+      'NPM_CONFIG_REGISTRY=https://registry.npmmirror.com volta install create-clis@1.0.0',
+    );
+  });
+});
+
+describe('executeUpgradePlan 与 probeGlobalRoots 隔离与透传', () => {
+  test('executeUpgradePlan 透传 windowsVerbatimArguments 并保留子进程终止 signal', () => {
+    let seenVerbatim: boolean | undefined;
+    const mockSpawn: SpawnLike = (_cmd, _args, opts) => {
+      seenVerbatim = opts.windowsVerbatimArguments;
+      return {
+        pid: 123,
+        output: [null, '', ''],
+        stdout: '',
+        stderr: '',
+        status: null,
+        signal: 'SIGINT',
+      } as SpawnSyncReturns<string>;
+    };
+
+    const res = executeUpgradePlan(
+      {
+        command: 'C:\\Windows\\System32\\cmd.exe',
+        args: [
+          '/d',
+          '/s',
+          '/c',
+          '""C:\\pnpm\\pnpm.cmd" add -g create-clis@1.0.0"',
+        ],
+        displayCommand: 'pnpm add -g create-clis@1.0.0',
+        windowsVerbatimArguments: true,
+      },
+      { PATH: 'C:\\pnpm' },
+      mockSpawn,
+    );
+    expect(seenVerbatim).toBe(true);
+    expect(res.status).toBeNull();
+    expect(res.signal).toBe('SIGINT');
+  });
+
+  test('probeGlobalRoots 复用单一临时目录、注 COREPACK_ENABLE_DOWNLOAD_PROMPT=0、透传 verbatim 并读 bunfig globalDir', () => {
+    const seenCwds = new Set<string>();
+    const seenCorepack: (string | undefined)[] = [];
+    const seenVerbatim: (boolean | undefined)[] = [];
+
+    const mockSpawn: SpawnLike = (_cmd, args, opts) => {
+      if (opts.cwd !== undefined) seenCwds.add(opts.cwd);
+      seenCorepack.push(opts.env?.COREPACK_ENABLE_DOWNLOAD_PROMPT);
+      seenVerbatim.push(opts.windowsVerbatimArguments);
+      const joined = args.join(' ');
+      let stdout = '';
+      if (joined.includes('pnpm.cmd') && joined.includes('root -g')) {
+        stdout = 'C:\\custom\\pnpm\\global\n';
+      } else if (joined.includes('yarn.cmd') && joined.includes('--version')) {
+        stdout = '1.22.22\n';
+      } else if (joined.includes('yarn.cmd') && joined.includes('global dir')) {
+        stdout = 'C:\\custom\\yarn\\global\n';
+      }
+      return {
+        pid: 1,
+        output: [null, stdout, ''],
+        stdout,
+        stderr: '',
+        status: stdout === '' ? 1 : 0,
+        signal: null,
+      } as SpawnSyncReturns<string>;
+    };
+
+    const files = new Set(['C:\\tools\\pnpm.cmd', 'C:\\tools\\yarn.cmd']);
+    const existingDirs = new Set([
+      'C:\\custom\\pnpm\\global',
+      'C:\\custom\\yarn\\global',
+      '/home/dev/.custom-bun/global',
+    ]);
+
+    const roots = probeGlobalRoots(
+      'win32',
+      { PATH: 'C:\\tools', ComSpec: 'C:\\Windows\\System32\\cmd.exe' },
+      mockSpawn,
+      {
+        homeDir: '/home/dev',
+        readText: (p) =>
+          p.endsWith('.bunfig.toml')
+            ? '[install]\nglobalDir = "~/.custom-bun/global"\n'
+            : null,
+        pathExists: (p) =>
+          existingDirs.has(p.replaceAll('\\', '/')) || existingDirs.has(p),
+        isFile: (p) => files.has(p),
+      },
+    );
+
+    expect(seenCwds.size).toBe(1);
+    expect(seenCorepack.length).toBeGreaterThanOrEqual(3);
+    expect(seenCorepack.every((v) => v === '0')).toBe(true);
+    expect(seenVerbatim.every((v) => v === true)).toBe(true);
+    expect(roots.pnpm).toBe('C:\\custom\\pnpm\\global');
+    expect(roots.yarn).toBe('C:\\custom\\yarn\\global');
+    expect(roots.bun).toBe('/home/dev/.custom-bun/global');
   });
 });

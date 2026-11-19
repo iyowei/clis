@@ -5,13 +5,21 @@
  * 1. 防 cwd 劫持: 沿 PATH 绝对目录解析包管理器二进制, 跳过空与相对目录;
  * 2. 防项目目录配置污染: 升级与探测子进程一律在独立临时空目录 (tmpdir) 作为 cwd 执行,
  *    完全隔绝当前工作目录的 .npmrc / .yarnrc.yml / bunfig.toml / package.json#packageManager;
- * 3. 防 Windows 批处理壳层故障与注入: npm 优先直调 node.exe + npm-cli.js, 全部参数经白名单校验。
+ * 3. 防 Windows 批处理壳层故障与注入: npm / pnpm / yarn 优先直调 node.exe + JS 入口,
+ *    批处理兜底采用 windowsVerbatimArguments 单串转义, 全部参数经白名单校验。
  */
 import { type SpawnSyncReturns, spawnSync } from 'node:child_process';
-import { existsSync, mkdtempSync, rmSync, statSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import {
+  existsSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  statSync,
+} from 'node:fs';
+import { homedir, tmpdir } from 'node:os';
 import { join, posix, win32 } from 'node:path';
 
+import { parseGlobalDirFromBunfig } from './config-parse.ts';
 import {
   type GlobalRootMap,
   type PackageManager,
@@ -23,6 +31,12 @@ import {
   isValidRegistryUrl,
   isValidTargetSpec,
 } from './semver.ts';
+import {
+  type PmInvocation,
+  isWin32AbsolutePath,
+  resolveWindowsBatchInvocation,
+  resolveWindowsNpmDirect,
+} from './windows-exec.ts';
 
 /** 子进程调用描述符 */
 export interface CommandSpec {
@@ -34,6 +48,8 @@ export interface CommandSpec {
   displayCommand: string;
   /** 若需为本次调用注入额外环境变量 (如显式 --registry) */
   envOverlay?: Record<string, string>;
+  /** Windows 经 ComSpec /d /s /c 调用 .cmd/.bat 时需置 true 避免二次加引号 */
+  windowsVerbatimArguments?: boolean;
 }
 
 /** 构造升级计划的输入 */
@@ -64,11 +80,25 @@ export type SpawnLike = (
     stdio?:
       'inherit' | ['ignore', 'pipe', 'pipe'] | ['ignore', 'pipe', 'ignore'];
     timeout?: number;
+    windowsVerbatimArguments?: boolean;
   },
 ) => SpawnSyncReturns<string>;
 
+/** 动态探测全局目录的可选依赖注入 */
+export interface ProbeGlobalRootsOptions {
+  homeDir?: string;
+  readText?: (path: string) => string | null;
+  pathExists?: (path: string) => boolean;
+  isFile?: (path: string) => boolean;
+}
+
 const WIN32_NATIVE_EXTS = ['.exe', '.com'] as const;
 const WIN32_BATCH_EXTS = ['.cmd', '.bat'] as const;
+
+/** 探针环境变量覆盖: 禁 Corepack 交互下载提示, 防阻塞挂起 */
+const PROBE_ENV_OVERLAY: Record<string, string> = {
+  COREPACK_ENABLE_DOWNLOAD_PROMPT: '0',
+};
 
 /** 默认常规文件探针 */
 function defaultIsFile(path: string): boolean {
@@ -79,7 +109,16 @@ function defaultIsFile(path: string): boolean {
   }
 }
 
-/** 切分 PATH 并剔除空白、包裹引号与相对路径 (防当前目录劫持) */
+/** 安全读文本文件 (不存在或不可读返回 null) */
+function defaultReadText(path: string): string | null {
+  try {
+    return readFileSync(path, 'utf8');
+  } catch {
+    return null;
+  }
+}
+
+/** 切分 PATH 并剔除空白、包裹引号与相对路径 (防当前目录与盘根相对路径劫持) */
 function parseAbsolutePathDirs(
   env: NodeJS.ProcessEnv,
   platform: NodeJS.Platform,
@@ -97,7 +136,7 @@ function parseAbsolutePathDirs(
     if (cleaned === '') continue;
     const absolute =
       platform === 'win32'
-        ? win32.isAbsolute(cleaned)
+        ? isWin32AbsolutePath(cleaned)
         : cleaned.startsWith('/');
     if (absolute) out.push(cleaned);
   }
@@ -132,27 +171,6 @@ export function resolveExecutableInPath(
   return null;
 }
 
-/** Windows 上优先绕开 npm.cmd 壳层, 直调同目录 node.exe + npm-cli.js */
-function resolveWindowsNpmDirect(
-  args: readonly string[],
-  env: NodeJS.ProcessEnv,
-  isFile: (path: string) => boolean,
-): { command: string; args: string[] } | null {
-  const dirs = parseAbsolutePathDirs(env, 'win32');
-  for (const dir of dirs) {
-    const npmCli = win32.join(dir, 'node_modules', 'npm', 'bin', 'npm-cli.js');
-    if (!isFile(npmCli)) continue;
-    const nodeExe = win32.join(dir, 'node.exe');
-    const resolvedNode = isFile(nodeExe)
-      ? nodeExe
-      : resolveExecutableInPath('node', 'win32', env, isFile)?.path;
-    if (resolvedNode !== undefined) {
-      return { command: resolvedNode, args: [npmCli, ...args] };
-    }
-  }
-  return null;
-}
-
 /** 构造安全调用包管理器的底层 command + args (零 shell: true) */
 export function resolvePmInvocation(
   pm: PackageManager,
@@ -160,19 +178,35 @@ export function resolvePmInvocation(
   platform: NodeJS.Platform = process.platform,
   env: NodeJS.ProcessEnv = process.env,
   isFile: (path: string) => boolean = defaultIsFile,
-): { command: string; args: string[] } | null {
+): PmInvocation | null {
+  const findNativeNode = (): string | null => {
+    const nodeFound = resolveExecutableInPath('node', 'win32', env, isFile);
+    return nodeFound !== null && !nodeFound.isBatch ? nodeFound.path : null;
+  };
+
   if (platform === 'win32' && pm === 'npm') {
-    const direct = resolveWindowsNpmDirect(pmArgs, env, isFile);
+    const dirs = parseAbsolutePathDirs(env, 'win32');
+    const direct = resolveWindowsNpmDirect(
+      dirs,
+      pmArgs,
+      isFile,
+      findNativeNode,
+    );
     if (direct !== null) return direct;
   }
+
   const found = resolveExecutableInPath(pm, platform, env, isFile);
   if (found === null) return null;
+
   if (platform === 'win32' && found.isBatch) {
-    const comspec = env.ComSpec ?? env.COMSPEC ?? 'cmd.exe';
-    return {
-      command: comspec,
-      args: ['/d', '/s', '/c', found.path, ...pmArgs],
-    };
+    return resolveWindowsBatchInvocation(
+      pm,
+      found.path,
+      pmArgs,
+      env,
+      isFile,
+      findNativeNode,
+    );
   }
   return { command: found.path, args: [...pmArgs] };
 }
@@ -207,7 +241,9 @@ export function formatUpgradeDisplayCommand(
         ? `yarn global add ${spec}`
         : `yarn global add ${spec} --registry ${reg}`;
     case 'volta':
-      return `volta install ${spec}`;
+      return reg === undefined
+        ? `volta install ${spec}`
+        : `NPM_CONFIG_REGISTRY=${reg} volta install ${spec}`;
   }
 }
 
@@ -217,6 +253,22 @@ export function isYarnBerryVersion(versionText: string | null): boolean {
   const m = /^v?(\d+)\./.exec(versionText.trim());
   if (m === null) return false;
   return Number(m[1]) >= 2;
+}
+
+/** 按包管理器构造全局安装参数数组 */
+function buildPmUpgradeArgs(
+  pm: PackageManager,
+  spec: string,
+  reg: string | undefined,
+): string[] {
+  if (pm === 'volta') return ['install', spec];
+  if (pm === 'yarn') {
+    return reg === undefined
+      ? ['global', 'add', spec]
+      : ['global', 'add', spec, '--registry', reg];
+  }
+  const base = pm === 'npm' ? ['install', '-g', spec] : ['add', '-g', spec];
+  return reg === undefined ? base : [...base, `--registry=${reg}`];
 }
 
 /** 构造各包管理器升级子进程参数 (含 Yarn Berry 前置拦截与强输入校验) */
@@ -264,36 +316,7 @@ export function buildUpgradePlan(
   }
 
   const spec = `${input.packageName}@${targetSpec}`;
-  let pmArgs: string[];
-  switch (input.pm) {
-    case 'bun':
-      pmArgs =
-        reg === undefined
-          ? ['add', '-g', spec]
-          : ['add', '-g', spec, `--registry=${reg}`];
-      break;
-    case 'npm':
-      pmArgs =
-        reg === undefined
-          ? ['install', '-g', spec]
-          : ['install', '-g', spec, `--registry=${reg}`];
-      break;
-    case 'pnpm':
-      pmArgs =
-        reg === undefined
-          ? ['add', '-g', spec]
-          : ['add', '-g', spec, `--registry=${reg}`];
-      break;
-    case 'yarn':
-      pmArgs =
-        reg === undefined
-          ? ['global', 'add', spec]
-          : ['global', 'add', spec, '--registry', reg];
-      break;
-    case 'volta':
-      pmArgs = ['install', spec];
-      break;
-  }
+  const pmArgs = buildPmUpgradeArgs(input.pm, spec, reg);
 
   const invocation = resolvePmInvocation(
     input.pm,
@@ -315,15 +338,17 @@ export function buildUpgradePlan(
       ? undefined
       : { npm_config_registry: reg, NPM_CONFIG_REGISTRY: reg };
 
-  return {
-    ok: true,
-    plan: {
-      command: invocation.command,
-      args: invocation.args,
-      displayCommand,
-      envOverlay,
-    },
+  const plan: CommandSpec = {
+    command: invocation.command,
+    args: invocation.args,
+    displayCommand,
+    envOverlay,
+    ...(invocation.windowsVerbatimArguments === true
+      ? { windowsVerbatimArguments: true }
+      : {}),
   };
+
+  return { ok: true, plan };
 }
 
 /** 构造隔离后的子进程环境变量 (剥离可能干扰子管理器的 npm 生命周期残留变量) */
@@ -360,6 +385,28 @@ function withIsolatedCwd<T>(fn: (cwd: string) => T): T {
   }
 }
 
+/** 在指定隔离目录内执行轻量只读探针 (注入防 Corepack 阻塞变量并透传 windowsVerbatimArguments) */
+function runIsolatedProbe(
+  cwd: string,
+  invocation: PmInvocation,
+  env: NodeJS.ProcessEnv,
+  spawnFn: SpawnLike,
+): string | null {
+  const res = spawnFn(invocation.command, invocation.args, {
+    cwd,
+    env: buildIsolatedEnv(env, PROBE_ENV_OVERLAY),
+    encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'ignore'],
+    timeout: 3000,
+    ...(invocation.windowsVerbatimArguments === true
+      ? { windowsVerbatimArguments: true }
+      : {}),
+  });
+  if (res.status !== 0 || typeof res.stdout !== 'string') return null;
+  const text = res.stdout.trim();
+  return text === '' ? null : text;
+}
+
 /** 探测本机 Yarn 版本号 (用于判断是否 Yarn Berry); 失败返回 null */
 export function probeYarnVersion(
   platform: NodeJS.Platform = process.platform,
@@ -368,78 +415,109 @@ export function probeYarnVersion(
 ): string | null {
   const invocation = resolvePmInvocation('yarn', ['--version'], platform, env);
   if (invocation === null) return null;
-  return withIsolatedCwd((cwd) => {
-    const res = spawnFn(invocation.command, invocation.args, {
-      cwd,
-      env: buildIsolatedEnv(env),
-      encoding: 'utf8',
-      stdio: ['ignore', 'pipe', 'ignore'],
-      timeout: 3000,
-    });
-    if (res.status !== 0 || typeof res.stdout !== 'string') return null;
-    const text = res.stdout.trim();
-    return text === '' ? null : text;
-  });
+  return withIsolatedCwd((cwd) =>
+    runIsolatedProbe(cwd, invocation, env, spawnFn),
+  );
+}
+
+/** 展开 bunfig.toml 中可能以 `~` 开头的 globalDir 路径 */
+function expandHomeDir(rawPath: string, home: string): string {
+  if (rawPath === '~') return home;
+  if (rawPath.startsWith('~/') || rawPath.startsWith('~\\')) {
+    return join(home, rawPath.slice(2));
+  }
+  return rawPath;
+}
+
+/** 从 ~/.bunfig.toml 读取 [install] globalDir 填入自定义 Bun 全局根 */
+function resolveBunGlobalDirFromConfig(
+  home: string,
+  readText: (path: string) => string | null,
+  pathExists: (path: string) => boolean,
+): string | null {
+  const bunfig = readText(join(home, '.bunfig.toml'));
+  if (bunfig === null) return null;
+  const rawDir = parseGlobalDirFromBunfig(bunfig);
+  if (rawDir === null) return null;
+  const expanded = expandHomeDir(rawDir, home);
+  if (!pathExists(expanded)) return null;
+  return safeRealpath(expanded);
 }
 
 /**
  * 动态实查兜底: 仅在纯路径特征未命中时, 轻探测本机包管理器自定义全局根目录。
- * 每个探针在独立临时空目录执行、带 3 秒超时, 失败静默跳过。
+ * 全探针复用单一临时空目录、注入 COREPACK_ENABLE_DOWNLOAD_PROMPT=0、带 3 秒超时, 失败静默跳过。
  */
 export function probeGlobalRoots(
   platform: NodeJS.Platform = process.platform,
   env: NodeJS.ProcessEnv = process.env,
   spawnFn: SpawnLike = spawnSync as unknown as SpawnLike,
+  options?: ProbeGlobalRootsOptions,
 ): GlobalRootMap {
   const roots: GlobalRootMap = {};
-  const probe = (
-    pm: PackageManager,
-    args: readonly string[],
-  ): string | null => {
-    const invocation = resolvePmInvocation(pm, args, platform, env);
-    if (invocation === null) return null;
-    return withIsolatedCwd((cwd) => {
-      const res = spawnFn(invocation.command, invocation.args, {
-        cwd,
-        env: buildIsolatedEnv(env),
-        encoding: 'utf8',
-        stdio: ['ignore', 'pipe', 'ignore'],
-        timeout: 3000,
-      });
-      if (res.status !== 0 || typeof res.stdout !== 'string') return null;
-      const line = res.stdout.trim().split(/\r?\n/)[0]?.trim() ?? '';
-      if (line === '' || !existsSync(line)) return null;
+  const home = options?.homeDir ?? homedir();
+  const readText = options?.readText ?? defaultReadText;
+  const pathExists = options?.pathExists ?? existsSync;
+  const isFile = options?.isFile ?? defaultIsFile;
+
+  const bunDir = resolveBunGlobalDirFromConfig(home, readText, pathExists);
+  if (bunDir !== null) roots.bun = bunDir;
+
+  withIsolatedCwd((cwd) => {
+    const probeDir = (
+      pm: PackageManager,
+      args: readonly string[],
+    ): string | null => {
+      const invocation = resolvePmInvocation(pm, args, platform, env, isFile);
+      if (invocation === null) return null;
+      const stdout = runIsolatedProbe(cwd, invocation, env, spawnFn);
+      if (stdout === null) return null;
+      const line = stdout.split(/\r?\n/)[0]?.trim() ?? '';
+      if (line === '' || !pathExists(line)) return null;
       return safeRealpath(line);
-    });
-  };
+    };
 
-  const pnpmRoot = probe('pnpm', ['root', '-g']);
-  if (pnpmRoot !== null) roots.pnpm = pnpmRoot;
+    const pnpmRoot = probeDir('pnpm', ['root', '-g']);
+    if (pnpmRoot !== null) roots.pnpm = pnpmRoot;
 
-  const npmRoot = probe('npm', ['root', '-g']);
-  if (npmRoot !== null) roots.npm = npmRoot;
+    const npmRoot = probeDir('npm', ['root', '-g']);
+    if (npmRoot !== null) roots.npm = npmRoot;
 
-  const yarnVer = probeYarnVersion(platform, env, spawnFn);
-  if (yarnVer !== null && !isYarnBerryVersion(yarnVer)) {
-    const yarnDir = probe('yarn', ['global', 'dir']);
-    if (yarnDir !== null) roots.yarn = yarnDir;
-  }
+    const yarnVerInv = resolvePmInvocation(
+      'yarn',
+      ['--version'],
+      platform,
+      env,
+      isFile,
+    );
+    const yarnVer =
+      yarnVerInv !== null
+        ? runIsolatedProbe(cwd, yarnVerInv, env, spawnFn)
+        : null;
+    if (yarnVer !== null && !isYarnBerryVersion(yarnVer)) {
+      const yarnDir = probeDir('yarn', ['global', 'dir']);
+      if (yarnDir !== null) roots.yarn = yarnDir;
+    }
+  });
 
   return roots;
 }
 
-/** 在隔离空目录执行升级计划 (stdio 透传给用户实时可见进度) */
+/** 在隔离空目录执行升级计划 (stdio 透传给用户实时可见进度, 保留 signal 与 windowsVerbatimArguments) */
 export function executeUpgradePlan(
   plan: CommandSpec,
   env: NodeJS.ProcessEnv = process.env,
   spawnFn: SpawnLike = spawnSync as unknown as SpawnLike,
-): { status: number | null; error?: Error } {
+): { status: number | null; signal?: NodeJS.Signals | null; error?: Error } {
   return withIsolatedCwd((cwd) => {
     const res = spawnFn(plan.command, plan.args, {
       cwd,
       env: buildIsolatedEnv(env, plan.envOverlay),
       stdio: 'inherit',
+      ...(plan.windowsVerbatimArguments === true
+        ? { windowsVerbatimArguments: true }
+        : {}),
     });
-    return { status: res.status, error: res.error };
+    return { status: res.status, signal: res.signal, error: res.error };
   });
 }
