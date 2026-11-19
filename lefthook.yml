@@ -25,7 +25,7 @@ pre-commit:
       stage_fixed: true
 
     # --no-error-on-unmatched-pattern: 暂存文件若全落在 .oxlintrc.json 的
-    # ignorePatterns 内 (如 packages/codd/template/**), oxlint 收不到可检文件,
+    # ignorePatterns 内 (如各包的模板源码空间), oxlint 收不到可检文件,
     # 默认以空集错误退出 1 并拦死提交。该旗标把这种情形视为无需检查。
     oxlint:
       glob: '*.{ts,tsx,mts,mjs,js,cjs}'
