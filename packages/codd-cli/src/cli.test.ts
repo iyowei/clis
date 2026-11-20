@@ -351,6 +351,12 @@ describe('构建产物双运行时与工作目录隔离验证 (Bun & Node)', () 
           expect(readFileSync(join(bundleRoot, 'Makefile'), 'utf8')).toContain(
             'rotate-backup-log:',
           );
+          expect(
+            readFileSync(join(bundleRoot, 'restore.ts'), 'utf8'),
+          ).toContain('resolveBackupArchivePath');
+          expect(readFileSync(join(bundleRoot, 'drill.ts'), 'utf8')).toContain(
+            'resolveBackupArchivePath',
+          );
           expect(existsSync(join(workDir, '.codd-state/.gitignore'))).toBe(
             true,
           );

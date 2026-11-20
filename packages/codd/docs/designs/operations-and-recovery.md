@@ -83,22 +83,24 @@ Compose 里的 `MEMORY_LIMIT`、`CPU_LIMIT` 都是上限而不是预分配。出
 
 - **从节点优先热备 (`make backup`)**: 使用仅有 `admin.backup` 只读权限的专用账号, 多节点副本集下自动路由至 `SECONDARY` 从节点读取 (`secondaryPreferred`), 并按核数动态设置 `--numParallelCollections`。
 - **零污染隔离演练 (`make drill`)**: 在 `mongo-tools` 临时容器内创建 `0700` 私有目录, 通过 Unix Domain Socket (`--bind_ip <sockPath>`, 零 TCP 端口占用与暴露, `0.25GB` 缓存上限) 拉起独立沙箱 `mongod` 导入备份归档, 再通过只读 `backup` 账号对比线上各实体集合索引数量, 对线上生产库写入量为 0。
-- **按库独立留存**: 每库每日保留 `KEEP_DAILY=7` 份; 周日额外抄写进 `BACKUP_DIR/weekly/` 每库保留 `KEEP_WEEKLY=4` 份。
+- **按库独立留存**: 每库每日保留 `KEEP_DAILY=7` 份; 周日额外通过硬链接 (不支持时自动拷贝) 留存进 `BACKUP_DIR/weekly/` 每库保留 `KEEP_WEEKLY=4` 份。
 
 ```shell
-make backup                          # 自动遍历主库 + MONGO_EXTRA_APPS 逐库备份
-make drill                           # 在容器内独立沙箱演练全部已配置业务库最新归档
-make drill FILE=mongo-orders-...gz   # 指定单个归档演练
+make backup                                 # 自动遍历主库 + MONGO_EXTRA_APPS 逐库备份
+make drill                                  # 在容器内独立沙箱演练全部已配置业务库最新归档
+make drill FILE=mongo-orders-...gz          # 指定单个归档演练 (根目录无时自动查 weekly/)
+make drill FILE=weekly/mongo-orders-...gz   # 直接演练 weekly/ 下的周日归档
 ```
 
 ### [目标服务器] 紧急真实恢复 (`make restore`)
 
-> `restore` 使用 `--drop`, 会先删除对应业务库内同名集合再导入, 并根据文件名自动限定 `--nsInclude=<库名>.*`, 不波及同实例其它库。操作前务必先 `make drill FILE=<文件名>`; 周备份需先复制到 `BACKUP_DIR` 根目录。
+> `restore` 使用 `--drop`, 会先删除对应业务库内同名集合再导入, 并根据文件名自动限定 `--nsInclude=<库名>.*`, 不波及同实例其它库。操作前务必先 `make drill FILE=<文件名>`; 支持直接传 `FILE=weekly/<文件名>` 或仅传纯文件名 (根目录无时自动回退查找 `weekly/`), 无需手工复制。
 
 ```shell
 set -a && . ./.env && set +a
-ls -lh "$BACKUP_DIR"
+ls -lh "$BACKUP_DIR" "$BACKUP_DIR/weekly"
 make restore FILE=mongo-app-20261118_033000.archive.gz CONFIRM=yes
+make restore FILE=weekly/mongo-app-20261115_033000.archive.gz CONFIRM=yes
 ```
 
 ## 五、[目标服务器] 迁移旧实例数据卷到新指纹

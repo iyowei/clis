@@ -3,11 +3,11 @@
  * 将备份归档恢复至沙箱实例后逐表统计文档数与索引数, 并通过只读 backup 账号与线上库比对索引结构。
  * 全程零 TCP 端口占用/暴露, 对线上生产库零写入, 零 oplog 膨胀, 零 WiredTiger 缓存冲刷。
  *
- * 用法: bun run drill.ts [备份文件名]   不带参数则按全部已配置业务库各自抽最新备份演练
+ * 用法: bun run drill.ts [备份文件名 | weekly/备份文件名]   不带参数则按全部已配置业务库各自抽最新备份演练
  */
 import { type ChildProcess, spawn } from 'node:child_process';
 import { mkdir, rm } from 'node:fs/promises';
-import { basename, join } from 'node:path';
+import { join } from 'node:path';
 
 import { MongoClient } from 'mongodb';
 
@@ -21,7 +21,7 @@ import {
   log,
   main,
   needAlnum,
-  parseBackupDb,
+  resolveBackupArchivePath,
   run,
   verifyGzip,
 } from './lib';
@@ -103,15 +103,15 @@ const drillOneArchive = async (
   sandboxClient: MongoClient,
   liveClient: MongoClient,
   sandboxUri: string,
-  name: string,
+  file: string,
+  relPath: string,
   targetDb: string,
 ): Promise<void> => {
-  const file = join(BACKUP_DIR, name);
   await verifyGzip(file);
 
   const drillDb = buildDrillDbName(targetDb);
   try {
-    log(`演练备份 ${name} -> 隔离沙箱 ${drillDb} (校验目标: ${targetDb})`);
+    log(`演练备份 ${relPath} -> 隔离沙箱 ${drillDb} (校验目标: ${targetDb})`);
     await run('mongorestore', [
       `--uri=${sandboxUri}`,
       `--archive=${file}`,
@@ -130,7 +130,9 @@ const drillOneArchive = async (
       .filter((colName) => !colName.startsWith('system.'))
       .sort();
     if (cols.length === 0) {
-      throw new FatalError(`恢复 ${name} 后没有任何集合 (目标库: ${targetDb})`);
+      throw new FatalError(
+        `恢复 ${relPath} 后没有任何集合 (目标库: ${targetDb})`,
+      );
     }
 
     log(`恢复结果 [${targetDb}] (集合: 文档数, 沙箱索引数 / 线上索引数)`);
@@ -194,20 +196,32 @@ main(async () => {
   const apps = getConfiguredApps();
 
   const arg = process.argv[2];
-  const targets: Array<{ name: string; db: string }> = [];
+  const targets: Array<{ file: string; relPath: string; db: string }> = [];
 
   if (arg) {
-    const name = basename(arg);
-    const db = parseBackupDb(name);
-    if (!db) throw new FatalError(`找不到可用的备份文件: ${name}`);
-    targets.push({ name, db });
+    targets.push(await resolveBackupArchivePath(arg));
   } else {
     for (const app of apps) {
-      const latest = (await listBackups(BACKUP_DIR, app.db))[0];
-      if (!latest) {
+      const latestRoot = (await listBackups(BACKUP_DIR, app.db))[0];
+      if (latestRoot) {
+        targets.push({
+          file: join(BACKUP_DIR, latestRoot),
+          relPath: latestRoot,
+          db: app.db,
+        });
+        continue;
+      }
+      const latestWeekly = (
+        await listBackups(join(BACKUP_DIR, 'weekly'), app.db).catch(() => [])
+      )[0];
+      if (!latestWeekly) {
         throw new FatalError(`找不到业务库 ${app.db} 的可用备份文件`);
       }
-      targets.push({ name: latest, db: app.db });
+      targets.push({
+        file: join(BACKUP_DIR, 'weekly', latestWeekly),
+        relPath: `weekly/${latestWeekly}`,
+        db: app.db,
+      });
     }
   }
 
@@ -238,7 +252,8 @@ main(async () => {
         sandboxClient,
         liveClient,
         sandboxUri,
-        t.name,
+        t.file,
+        t.relPath,
         t.db,
       );
     }

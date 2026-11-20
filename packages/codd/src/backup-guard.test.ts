@@ -29,6 +29,7 @@ import {
   formatBytes,
   linkOrCopyFile,
   pruneByTotalBudget,
+  resolveBackupArchivePath,
 } from '../template/podman/lib.ts';
 import {
   ConfigError,
@@ -203,6 +204,64 @@ describe('备份四重磁盘防爆守卫 (lib.ts)', () => {
     expect(res2.totalBytes).toBe(2 * 1024 * 1024);
     expect(existsSync(join(rootDir, fApp3))).toBe(true);
     expect(existsSync(join(rootDir, fOrd2))).toBe(true);
+  });
+
+  test('resolveBackupArchivePath 支持根目录、weekly/ 显式路径与纯文件名自动回退 weekly/, 严拒路径穿越与保留库', async () => {
+    const rootDir = makeTempDir();
+    const weeklyDir = join(rootDir, 'weekly');
+    mkdirSync(weeklyDir, { recursive: true });
+
+    const dailyName = 'mongo-app-20261120_033000.archive.gz';
+    const weeklyOnlyName = 'mongo-insight-20261108_033000.archive.gz';
+    writeFileSync(join(rootDir, dailyName), 'daily');
+    writeFileSync(join(weeklyDir, weeklyOnlyName), 'weekly');
+
+    expect(await resolveBackupArchivePath(dailyName, rootDir)).toEqual({
+      file: join(rootDir, dailyName),
+      relPath: dailyName,
+      db: 'app',
+    });
+    expect(
+      await resolveBackupArchivePath(`weekly/${weeklyOnlyName}`, rootDir),
+    ).toEqual({
+      file: join(weeklyDir, weeklyOnlyName),
+      relPath: `weekly/${weeklyOnlyName}`,
+      db: 'insight',
+    });
+    expect(
+      await resolveBackupArchivePath(`./weekly/${weeklyOnlyName}`, rootDir),
+    ).toEqual({
+      file: join(weeklyDir, weeklyOnlyName),
+      relPath: `weekly/${weeklyOnlyName}`,
+      db: 'insight',
+    });
+    // 纯文件名在根目录不存在时自动回退命中 weekly/
+    expect(await resolveBackupArchivePath(weeklyOnlyName, rootDir)).toEqual({
+      file: join(weeklyDir, weeklyOnlyName),
+      relPath: `weekly/${weeklyOnlyName}`,
+      db: 'insight',
+    });
+
+    // 显式 weekly/ 不回退根目录 (文件确实不在 weekly/ 里则报错)
+    await expect(
+      resolveBackupArchivePath(`weekly/${dailyName}`, rootDir),
+    ).rejects.toThrow(FatalError);
+
+    for (const bad of [
+      '',
+      '   ',
+      `../${dailyName}`,
+      `weekly/../${dailyName}`,
+      `/backup/${dailyName}`,
+      `other/${dailyName}`,
+      'mongo-admin-20261120_033000.archive.gz',
+      'not-a-backup.tar.gz',
+      'mongo-app-20261101_033000.archive.gz',
+    ]) {
+      await expect(resolveBackupArchivePath(bad, rootDir)).rejects.toThrow(
+        FatalError,
+      );
+    }
   });
 });
 

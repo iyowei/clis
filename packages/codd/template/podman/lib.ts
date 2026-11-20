@@ -199,6 +199,66 @@ export const parseBackupDb = (name: string): string | null => {
 export const isBackupName = (name: string): boolean =>
   parseBackupDb(name) !== null;
 
+const isRegularFile = async (filePath: string): Promise<boolean> => {
+  try {
+    return (await stat(filePath)).isFile();
+  } catch {
+    return false;
+  }
+};
+
+/**
+ * 安全解析备份归档路径 (白名单仅放行根目录与 weekly/ 子目录, 严禁路径穿越):
+ * - 显式传入 weekly/<文件名>: 直接定位 <backupDir>/weekly/<文件名>;
+ * - 仅传入纯 <文件名>: 优先查找根目录, 若根目录无则自动回退查找 weekly/;
+ * - 拒绝绝对路径、..、多层目录与非法文件名。
+ */
+export const resolveBackupArchivePath = async (
+  rawArg: string,
+  backupDir = BACKUP_DIR,
+): Promise<{ file: string; relPath: string; db: string }> => {
+  const normalized = rawArg.trim().replaceAll('\\', '/').replace(/^\.\//, '');
+  if (!normalized || normalized.startsWith('/') || normalized.includes('\0')) {
+    throw new FatalError(`非法的备份文件路径: ${rawArg}`);
+  }
+  const parts = normalized.split('/');
+  let scope: 'auto' | 'weekly' = 'auto';
+  let name: string;
+  if (parts.length === 1) {
+    name = parts[0]!;
+  } else if (parts.length === 2 && parts[0] === 'weekly') {
+    scope = 'weekly';
+    name = parts[1]!;
+  } else {
+    throw new FatalError(
+      `只允许指定备份根目录文件名或 weekly/<文件名>, 拒绝路径: ${rawArg}`,
+    );
+  }
+  const parsedDb = parseBackupDb(name);
+  if (!parsedDb) throw new FatalError(`不是合法的备份文件名: ${name}`);
+  const db = validateDbName(parsedDb, '归档库名');
+
+  if (scope === 'weekly') {
+    const weeklyFile = join(backupDir, 'weekly', name);
+    if (await isRegularFile(weeklyFile)) {
+      return { file: weeklyFile, relPath: `weekly/${name}`, db };
+    }
+    throw new FatalError(`找不到周备份文件 ${weeklyFile}`);
+  }
+
+  const rootFile = join(backupDir, name);
+  if (await isRegularFile(rootFile)) {
+    return { file: rootFile, relPath: name, db };
+  }
+  const fallbackWeekly = join(backupDir, 'weekly', name);
+  if (await isRegularFile(fallbackWeekly)) {
+    return { file: fallbackWeekly, relPath: `weekly/${name}`, db };
+  }
+  throw new FatalError(
+    `找不到备份文件 ${rootFile} (在 weekly/ 下也未找到同名归档)`,
+  );
+};
+
 /** 按修改时间从新到旧列出目录下的备份文件 (可选按业务库名过滤) */
 export const listBackups = async (
   dir: string,
