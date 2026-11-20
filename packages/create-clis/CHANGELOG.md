@@ -1,3 +1,11 @@
+# create-clis [1.2.0](https://github.com/iyowei/clis/compare/create-clis@1.1.0...create-clis@1.2.0) (2026-11-20)
+
+
+### Features
+
+* 为 create-clis 示例 CLI 模板补齐 --version 与 -V 及双运行时回归测试 ([d571cf5](https://github.com/iyowei/clis/commit/d571cf5a093aa16e5eebeb2725bd8a4612d0ec79))
+* 重构全仓 CLI 帮助页为 Apple HIG 分层排版并补齐 codd -V 短旗标 ([7776a59](https://github.com/iyowei/clis/commit/7776a5962ff4ff0690b2d5afe7a1024b19846067))
+
 # create-clis [1.1.0](https://github.com/iyowei/clis/compare/create-clis@1.0.0...create-clis@1.1.0) (2026-11-20)
 
 
