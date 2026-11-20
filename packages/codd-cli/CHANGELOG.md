@@ -1,3 +1,15 @@
+# @iyowei/codd-cli [1.3.0](https://github.com/iyowei/clis/compare/@iyowei/codd-cli@1.2.0...@iyowei/codd-cli@1.3.0) (2026-11-20)
+
+
+### Features
+
+* **codd,codd-cli:** restore 与 drill 原生支持 weekly/ 周备解析及自动回退 ([eaebb2c](https://github.com/iyowei/clis/commit/eaebb2ce3c316c17780ebb0e2182f06c11e69e30))
+
+
+### Dependencies
+
+* **@iyowei/codd:** upgraded to 1.3.0
+
 # @iyowei/codd-cli [1.2.0](https://github.com/iyowei/clis/compare/@iyowei/codd-cli@1.1.0...@iyowei/codd-cli@1.2.0) (2026-11-20)
 
 
