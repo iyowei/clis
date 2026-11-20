@@ -420,28 +420,32 @@ export function probeYarnVersion(
   );
 }
 
+/** 按目标平台分隔符拼接路径 */
+const joinForPlatform = (p: NodeJS.Platform, ...parts: string[]): string =>
+  p === 'win32' ? win32.join(...parts) : posix.join(...parts);
+
 /** 展开 bunfig.toml 中可能以 `~` 开头的 globalDir 路径 */
-function expandHomeDir(rawPath: string, home: string): string {
-  if (rawPath === '~') return home;
-  if (rawPath.startsWith('~/') || rawPath.startsWith('~\\')) {
-    return join(home, rawPath.slice(2));
+function expandHomeDir(raw: string, home: string, p: NodeJS.Platform): string {
+  if (raw === '~') return home;
+  if (raw.startsWith('~/') || raw.startsWith('~\\')) {
+    return joinForPlatform(p, home, raw.slice(2));
   }
-  return rawPath;
+  return raw;
 }
 
 /** 从 ~/.bunfig.toml 读取 [install] globalDir 填入自定义 Bun 全局根 */
 function resolveBunGlobalDirFromConfig(
   home: string,
+  platform: NodeJS.Platform,
   readText: (path: string) => string | null,
   pathExists: (path: string) => boolean,
 ): string | null {
-  const bunfig = readText(join(home, '.bunfig.toml'));
+  const bunfig = readText(joinForPlatform(platform, home, '.bunfig.toml'));
   if (bunfig === null) return null;
   const rawDir = parseGlobalDirFromBunfig(bunfig);
   if (rawDir === null) return null;
-  const expanded = expandHomeDir(rawDir, home);
-  if (!pathExists(expanded)) return null;
-  return safeRealpath(expanded);
+  const expanded = expandHomeDir(rawDir, home, platform);
+  return pathExists(expanded) ? safeRealpath(expanded) : null;
 }
 
 /**
@@ -460,7 +464,12 @@ export function probeGlobalRoots(
   const pathExists = options?.pathExists ?? existsSync;
   const isFile = options?.isFile ?? defaultIsFile;
 
-  const bunDir = resolveBunGlobalDirFromConfig(home, readText, pathExists);
+  const bunDir = resolveBunGlobalDirFromConfig(
+    home,
+    platform,
+    readText,
+    pathExists,
+  );
   if (bunDir !== null) roots.bun = bunDir;
 
   withIsolatedCwd((cwd) => {

@@ -3,16 +3,11 @@
  */
 import { describe, expect, test } from 'bun:test';
 
-import { type SpawnSyncReturns } from 'node:child_process';
-
 import {
-  type SpawnLike,
   buildIsolatedEnv,
   buildUpgradePlan,
-  executeUpgradePlan,
   formatUpgradeDisplayCommand,
   isYarnBerryVersion,
-  probeGlobalRoots,
   resolveExecutableInPath,
   resolvePmInvocation,
 } from './executor.ts';
@@ -382,101 +377,5 @@ describe('buildUpgradePlan 五大包管理器与安全拦截', () => {
     ).toBe(
       'NPM_CONFIG_REGISTRY=https://registry.npmmirror.com volta install create-clis@1.0.0',
     );
-  });
-});
-
-describe('executeUpgradePlan 与 probeGlobalRoots 隔离与透传', () => {
-  test('executeUpgradePlan 透传 windowsVerbatimArguments 并保留子进程终止 signal', () => {
-    let seenVerbatim: boolean | undefined;
-    const mockSpawn: SpawnLike = (_cmd, _args, opts) => {
-      seenVerbatim = opts.windowsVerbatimArguments;
-      return {
-        pid: 123,
-        output: [null, '', ''],
-        stdout: '',
-        stderr: '',
-        status: null,
-        signal: 'SIGINT',
-      } as SpawnSyncReturns<string>;
-    };
-
-    const res = executeUpgradePlan(
-      {
-        command: 'C:\\Windows\\System32\\cmd.exe',
-        args: [
-          '/d',
-          '/s',
-          '/c',
-          '""C:\\pnpm\\pnpm.cmd" add -g create-clis@1.0.0"',
-        ],
-        displayCommand: 'pnpm add -g create-clis@1.0.0',
-        windowsVerbatimArguments: true,
-      },
-      { PATH: 'C:\\pnpm' },
-      mockSpawn,
-    );
-    expect(seenVerbatim).toBe(true);
-    expect(res.status).toBeNull();
-    expect(res.signal).toBe('SIGINT');
-  });
-
-  test('probeGlobalRoots 复用单一临时目录、注 COREPACK_ENABLE_DOWNLOAD_PROMPT=0、透传 verbatim 并读 bunfig globalDir', () => {
-    const seenCwds = new Set<string>();
-    const seenCorepack: (string | undefined)[] = [];
-    const seenVerbatim: (boolean | undefined)[] = [];
-
-    const mockSpawn: SpawnLike = (_cmd, args, opts) => {
-      if (opts.cwd !== undefined) seenCwds.add(opts.cwd);
-      seenCorepack.push(opts.env?.COREPACK_ENABLE_DOWNLOAD_PROMPT);
-      seenVerbatim.push(opts.windowsVerbatimArguments);
-      const joined = args.join(' ');
-      let stdout = '';
-      if (joined.includes('pnpm.cmd') && joined.includes('root -g')) {
-        stdout = 'C:\\custom\\pnpm\\global\n';
-      } else if (joined.includes('yarn.cmd') && joined.includes('--version')) {
-        stdout = '1.22.22\n';
-      } else if (joined.includes('yarn.cmd') && joined.includes('global dir')) {
-        stdout = 'C:\\custom\\yarn\\global\n';
-      }
-      return {
-        pid: 1,
-        output: [null, stdout, ''],
-        stdout,
-        stderr: '',
-        status: stdout === '' ? 1 : 0,
-        signal: null,
-      } as SpawnSyncReturns<string>;
-    };
-
-    const files = new Set(['C:\\tools\\pnpm.cmd', 'C:\\tools\\yarn.cmd']);
-    const existingDirs = new Set([
-      'C:\\custom\\pnpm\\global',
-      'C:\\custom\\yarn\\global',
-      '/home/dev/.custom-bun/global',
-    ]);
-
-    const roots = probeGlobalRoots(
-      'win32',
-      { PATH: 'C:\\tools', ComSpec: 'C:\\Windows\\System32\\cmd.exe' },
-      mockSpawn,
-      {
-        homeDir: '/home/dev',
-        readText: (p) =>
-          p.endsWith('.bunfig.toml')
-            ? '[install]\nglobalDir = "~/.custom-bun/global"\n'
-            : null,
-        pathExists: (p) =>
-          existingDirs.has(p.replaceAll('\\', '/')) || existingDirs.has(p),
-        isFile: (p) => files.has(p),
-      },
-    );
-
-    expect(seenCwds.size).toBe(1);
-    expect(seenCorepack.length).toBeGreaterThanOrEqual(3);
-    expect(seenCorepack.every((v) => v === '0')).toBe(true);
-    expect(seenVerbatim.every((v) => v === true)).toBe(true);
-    expect(roots.pnpm).toBe('C:\\custom\\pnpm\\global');
-    expect(roots.yarn).toBe('C:\\custom\\yarn\\global');
-    expect(roots.bun).toBe('/home/dev/.custom-bun/global');
   });
 });

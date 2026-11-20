@@ -2,7 +2,6 @@
  * `runSelfUpdate` 流程辅助函数: 来源文案、跨 PM 阴影警示、动态实查复核与升级后轻复核。
  */
 import { existsSync, readFileSync } from 'node:fs';
-import { join } from 'node:path';
 
 import {
   type EphemeralRunner,
@@ -13,6 +12,7 @@ import {
   type ProjectPackageManager,
   detectInstallOriginFromPath,
   isWithinDir,
+  joinForPath,
   safeRealpath,
 } from './detect.ts';
 import {
@@ -227,7 +227,7 @@ export function resolveOrigin(
 /** 升级 status === 0 后的轻复核: 检测原目录版本未变或 PATH 仍指向旧路径 */
 export function verifyPostUpgrade(input: PostUpgradeCheckInput): void {
   const readText = input.readText ?? defaultReadText;
-  const pkgText = readText(join(input.meta.packageRoot, 'package.json'));
+  const pkgText = readText(joinForPath(input.meta.packageRoot, 'package.json'));
   let unchangedAtOldRoot = false;
 
   if (pkgText !== null) {

@@ -7,7 +7,7 @@
  * 唯一真相来源是包本体在磁盘上的真实落位路径。
  */
 import { existsSync, realpathSync } from 'node:fs';
-import { join } from 'node:path';
+import { posix, win32 } from 'node:path';
 
 /** 支持自更新执行的包管理器 / 工具管理器 */
 export type PackageManager = 'bun' | 'npm' | 'pnpm' | 'yarn' | 'volta';
@@ -85,6 +85,12 @@ export const LIB_NODE_MODULES_HEURISTIC_REASON =
 /** 路径归一为 POSIX 分隔符并剥离尾部斜杠 */
 export function normalizeSlashes(path: string): string {
   return path.replaceAll('\\', '/').replace(/\/+$/, '');
+}
+
+/** 按基础路径自身风味拼接子路径 (避免跨平台注入路径被宿主 OS 分隔符污染) */
+export function joinForPath(base: string, ...parts: string[]): string {
+  const isWin = /^(?:[A-Za-z]:[/\\]|\\\\)/.test(base) || base.includes('\\');
+  return isWin ? win32.join(base, ...parts) : posix.join(base, ...parts);
 }
 
 /** 跨平台大小写折叠路径 (仅用于目录特征与前缀比较) */
@@ -379,7 +385,7 @@ function detectFromLibNodeModulesHeuristic(
   const libIdx = packageRoot.toLowerCase().lastIndexOf('/lib/node_modules/');
   if (libIdx <= 0) return null;
   const prefixDir = packageRoot.slice(0, libIdx);
-  if (pathExists(join(prefixDir, 'package.json'))) return null;
+  if (pathExists(joinForPath(prefixDir, 'package.json'))) return null;
   return {
     kind: 'global',
     pm: 'npm',
@@ -394,13 +400,13 @@ function detectProjectPm(
   pathExists: (path: string) => boolean,
 ): ProjectPackageManager {
   if (
-    pathExists(join(projectDir, 'bun.lock')) ||
-    pathExists(join(projectDir, 'bun.lockb'))
+    pathExists(joinForPath(projectDir, 'bun.lock')) ||
+    pathExists(joinForPath(projectDir, 'bun.lockb'))
   ) {
     return 'bun';
   }
-  if (pathExists(join(projectDir, 'pnpm-lock.yaml'))) return 'pnpm';
-  if (pathExists(join(projectDir, 'yarn.lock'))) return 'yarn';
+  if (pathExists(joinForPath(projectDir, 'pnpm-lock.yaml'))) return 'pnpm';
+  if (pathExists(joinForPath(projectDir, 'yarn.lock'))) return 'yarn';
   return 'npm';
 }
 
@@ -458,7 +464,7 @@ export function detectInstallOriginFromPath(
   // 1. 源码开发态 (覆盖直接跑 src/cli.ts、~/.local/bin 软链及 npm/bun link 软链进全局)
   if (
     !foldedRoot.includes('/node_modules/') &&
-    pathExists(join(input.packageRoot, 'src', 'cli.ts'))
+    pathExists(joinForPath(input.packageRoot, 'src', 'cli.ts'))
   ) {
     return {
       kind: 'source',
@@ -503,11 +509,14 @@ export function detectInstallOriginFromPath(
   const nmIdx = foldedRoot.indexOf('/node_modules/');
   if (nmIdx > 0) {
     const projectDir = packageRoot.slice(0, nmIdx);
-    if (pathExists(join(projectDir, 'package.json'))) {
+    const probeDir = input.packageRoot.startsWith('\\\\')
+      ? `\\\\${projectDir.slice(2)}`
+      : projectDir;
+    if (pathExists(joinForPath(probeDir, 'package.json'))) {
       return {
         kind: 'local-project',
         projectDir,
-        suggestedPm: detectProjectPm(projectDir, pathExists),
+        suggestedPm: detectProjectPm(probeDir, pathExists),
         reason: `位于项目本地 node_modules (${projectDir})`,
         packageRoot,
       };

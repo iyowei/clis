@@ -8,7 +8,6 @@
  */
 import { readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
-import { join } from 'node:path';
 
 import {
   normalizeRegistryUrl,
@@ -17,7 +16,7 @@ import {
   parseRegistryFromBunfig,
   parseRegistryFromNpmrc,
 } from './config-parse.ts';
-import { type PackageManager } from './detect.ts';
+import { type PackageManager, joinForPath } from './detect.ts';
 import {
   isValidPackageName,
   isValidRegistryUrl,
@@ -106,14 +105,14 @@ export function resolveRegistry(input: ResolveRegistryInput): string {
   const readText = input.readText ?? defaultReadText;
 
   if (input.pm === 'bun') {
-    const bunfig = readText(join(home, '.bunfig.toml'));
+    const bunfig = readText(joinForPath(home, '.bunfig.toml'));
     if (bunfig !== null) {
       const found = parseRegistryFromBunfig(bunfig, input.packageName);
       if (found !== null) return normalizeRegistryUrl(found);
     }
   }
 
-  const npmrc = readText(join(home, '.npmrc'));
+  const npmrc = readText(joinForPath(home, '.npmrc'));
   if (npmrc !== null) {
     const found = parseRegistryFromNpmrc(npmrc, input.packageName);
     if (found !== null) return normalizeRegistryUrl(found);
@@ -121,7 +120,7 @@ export function resolveRegistry(input: ResolveRegistryInput): string {
 
   // 仅当未确定包管理器时允许回退 ~/.bunfig.toml; 明确 npm/pnpm/yarn/volta 绝不读 bunfig
   if (input.pm === undefined) {
-    const bunfig = readText(join(home, '.bunfig.toml'));
+    const bunfig = readText(joinForPath(home, '.bunfig.toml'));
     if (bunfig !== null) {
       const found = parseRegistryFromBunfig(bunfig, input.packageName);
       if (found !== null) return normalizeRegistryUrl(found);
@@ -145,7 +144,7 @@ export function resolveRegistryAuthToken(
   const base = normalizeRegistryUrl(input.registry);
 
   if (input.pm === 'bun') {
-    const bunfig = readText(join(home, '.bunfig.toml'));
+    const bunfig = readText(joinForPath(home, '.bunfig.toml'));
     if (bunfig !== null) {
       const token = parseAuthTokenFromBunfig(
         bunfig,
@@ -157,14 +156,14 @@ export function resolveRegistryAuthToken(
     }
   }
 
-  const npmrc = readText(join(home, '.npmrc'));
+  const npmrc = readText(joinForPath(home, '.npmrc'));
   if (npmrc !== null) {
     const token = parseAuthTokenFromNpmrc(npmrc, base, env);
     if (token !== null) return token;
   }
 
   if (input.pm === undefined) {
-    const bunfig = readText(join(home, '.bunfig.toml'));
+    const bunfig = readText(joinForPath(home, '.bunfig.toml'));
     if (bunfig !== null) {
       const token = parseAuthTokenFromBunfig(
         bunfig,
