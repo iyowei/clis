@@ -70,6 +70,10 @@ const printUsage = (): void => {
     ],
     ['--dry-run', '只检查配置并预览计算出的参数, 不写入任何文件'],
     ['--init-schema', '与 codd init 等效, 导出 JSON Schema 与 2C2G 参考模板'],
+    [
+      '--',
+      '终止选项解析, 其后参数均按配置文件路径处理 (如 codd -- -staging.json)',
+    ],
     ['-v, --version', '打印当前 codd 版本号'],
     ['-h, --help', '打印本帮助说明'],
   ]);

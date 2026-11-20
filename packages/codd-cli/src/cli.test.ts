@@ -133,6 +133,7 @@ describe('CLI 端到端行为 (源码直跑)', () => {
     expect(helpRes.stdout).toContain('codd init');
     expect(helpRes.stdout).toContain('codd wizard');
     expect(helpRes.stdout).toContain('--init-schema');
+    expect(helpRes.stdout).toContain('终止选项解析');
 
     const verRes = spawnSync('bun', [cliEntry, '--version'], {
       encoding: 'utf8',

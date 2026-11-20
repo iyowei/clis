@@ -197,14 +197,45 @@ describe('共享行队列读取器与清单文件名校验', () => {
     reader.close();
   });
 
-  test('validateManifestFileName 拒绝 .json 无主名与非法字符, 放行合规路径', () => {
-    expect(validateManifestFileName('.json')).not.toBeNull();
-    expect(validateManifestFileName('configs/.json')).not.toBeNull();
-    expect(validateManifestFileName('..json')).not.toBeNull();
-    expect(validateManifestFileName('deploy.yaml')).not.toBeNull();
-    expect(validateManifestFileName('bad:name.json')).not.toBeNull();
-    expect(validateManifestFileName('deploy.json')).toBeNull();
-    expect(validateManifestFileName('configs/prod.json')).toBeNull();
+  test('validateManifestFileName 支持 POSIX/Windows 路径分隔符与合法盘符, 拒绝无主名、尾斜杠与非法字符', () => {
+    for (const valid of [
+      'deploy.json',
+      'configs/prod.json',
+      './deploy.json',
+      '.\\deploy.json',
+      'configs\\prod.json',
+      'C:\\ops\\deploy.json',
+      'C:/ops/deploy.json',
+    ]) {
+      expect(validateManifestFileName(valid)).toBeNull();
+    }
+
+    for (const invalid of [
+      '',
+      '   ',
+      '.json',
+      'configs/.json',
+      'configs\\.json',
+      '..json',
+      '...json',
+      'deploy.yaml',
+      'bad:name.json',
+      'a*b.json',
+      'a?b.json',
+      'a"b.json',
+      'a<b.json',
+      'a>b.json',
+      'a|b.json',
+      'a\0b.json',
+      'C:relative.json',
+      'C:dir\\deploy.json',
+      'C:\\',
+      'dir\\',
+      'dir/',
+      'deploy.json\\',
+    ]) {
+      expect(validateManifestFileName(invalid)).not.toBeNull();
+    }
   });
 });
 

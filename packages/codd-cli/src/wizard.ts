@@ -2,7 +2,7 @@
  * 交互式 MongoDB 部署配置向导主编排 (4 步引导 + --dry-run 跳过落盘 + 覆写确认 + 自动建父目录)。
  */
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
-import { basename, dirname, join, resolve } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 
 import {
   type AppInput,
@@ -30,13 +30,25 @@ import {
   validateAppsInput,
 } from './wizard-steps.ts';
 
-/** 校验待保存 JSON 清单路径合法性 (要求有非空主名并以 .json 结尾, 拒绝 .json 无主名) */
+const WIN_DRIVE_PREFIX_RE = /^[A-Za-z]:[\\/]/;
+const INVALID_PATH_SEGMENT_RE = /[:*?"<>|]/;
+
+/** 校验待保存 JSON 清单路径合法性 (支持 POSIX 与 Windows 分隔符/盘符, 要求非空主名并以 .json 结尾) */
 export const validateManifestFileName = (raw: string): string | null => {
   const trimmed = raw.trim();
-  if (!trimmed || /[\\:*?"<>|]/.test(trimmed)) {
+  if (!trimmed) {
     return '文件名须以 .json 结尾且不含非法路径字符 (例如 deploy.json 或 deploy-prod.json)';
   }
-  const base = basename(trimmed);
+  const body = trimmed.replace(WIN_DRIVE_PREFIX_RE, '');
+  const segments = body.split(/[\\/]/);
+  if (
+    segments.some(
+      (seg) => INVALID_PATH_SEGMENT_RE.test(seg) || seg.includes('\0'),
+    )
+  ) {
+    return '文件名须以 .json 结尾且不含非法路径字符 (例如 deploy.json 或 deploy-prod.json)';
+  }
+  const base = segments.at(-1) ?? '';
   if (!base.endsWith('.json')) {
     return '文件名须以 .json 结尾 (例如 deploy.json 或 deploy-prod.json)';
   }

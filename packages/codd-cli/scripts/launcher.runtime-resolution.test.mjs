@@ -201,6 +201,7 @@ describe('三入口与独立隔离配置静态形态钉住', () => {
     expect(source).toContain('process.env.Path');
     expect(source).toContain("process.on('SIGINT'");
     expect(source).toContain('isSupportedNodeVersion');
+    expect(source).toContain('realpathSync.native ?? realpathSync');
     expect(source).not.toContain('assets/template/podman/bunfig.toml');
   });
 });

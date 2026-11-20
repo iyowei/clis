@@ -143,10 +143,12 @@ const artifactProblem = (distDir) => {
   return null;
 };
 
+const realpath = realpathSync.native ?? realpathSync;
+
 const normalizeEntryPath = (p, platform = process.platform) => {
   let resolved = resolve(p);
   try {
-    resolved = realpathSync(resolved);
+    resolved = realpath(resolved);
   } catch {
     // realpath 不可用时保留规范绝对路径做字面比对
   }
