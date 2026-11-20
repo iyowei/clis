@@ -1,3 +1,10 @@
+# @iyowei/sweep-node-modules-cli [0.6.0](https://github.com/iyowei/clis/compare/@iyowei/sweep-node-modules-cli@0.5.1...@iyowei/sweep-node-modules-cli@0.6.0) (2026-11-20)
+
+
+### Features
+
+* 为 sweep-nm 增加 TTY 实时扫描与清理进度指示器 ([59936a4](https://github.com/iyowei/clis/commit/59936a40a4dae8b2f154019a40833483b442b1e8))
+
 ## @iyowei/sweep-node-modules-cli [0.5.1](https://github.com/iyowei/clis/compare/@iyowei/sweep-node-modules-cli@0.5.0...@iyowei/sweep-node-modules-cli@0.5.1) (2026-11-20)
 
 
