@@ -21,6 +21,14 @@ export {
   safeRealpath,
 } from './detect.ts';
 export {
+  type ExecuteUpgradeAsyncOptions,
+  type ExecuteUpgradeResult,
+  MAX_CAPTURE_BYTES,
+  type SpawnAsyncLike,
+  TailByteBuffer,
+  executeUpgradePlanAsync,
+} from './exec-async.ts';
+export {
   type BuildUpgradePlanInput,
   type CommandSpec,
   type SpawnLike,
@@ -35,6 +43,25 @@ export {
   resolveExecutableInPath,
   resolvePmInvocation,
 } from './executor.ts';
+export {
+  type SpinnerTimerHandle,
+  type UpdateSpinner,
+  type UpdateSpinnerOptions,
+  createUpdateSpinner,
+} from './spinner.ts';
+export {
+  BAR_BLOCK,
+  type ColorChannels,
+  type UpdateUi,
+  createUpdateUi,
+  detectColorChannels,
+  formatElapsedMs,
+  paint,
+  sanitizeMultilineTail,
+  sanitizeText,
+  stderrSupportsSpinner,
+  stripAnsi,
+} from './ui.ts';
 export {
   DEFAULT_FETCH_TIMEOUT_MS,
   DEFAULT_REGISTRY,

@@ -4,6 +4,7 @@
  */
 import { type PackageManager, SUPPORTED_PACKAGE_MANAGERS } from './detect.ts';
 import { isValidRegistryUrl } from './semver.ts';
+import { BAR_BLOCK, paint, sanitizeText } from './ui.ts';
 
 /** `update` 子命令解析结果 */
 export interface UpdateOptions {
@@ -11,6 +12,8 @@ export interface UpdateOptions {
   check: boolean;
   /** 即使远端版本未高于当前版本, 仍强制重新安装最新版 */
   force: boolean;
+  /** 实时透传包管理器原始输出 (默认静默捕获并在失败时展开尾部摘要) */
+  verbose: boolean;
   /** 手动覆盖自动探测的包管理器 */
   pm?: PackageManager;
   /** 临时指定本次查询与安装使用的 npm registry */
@@ -60,6 +63,7 @@ export function parseUpdateArgs(argv: readonly string[]): ParseUpdateOutcome {
   const options: UpdateOptions = {
     check: false,
     force: false,
+    verbose: false,
     help: false,
   };
 
@@ -75,6 +79,10 @@ export function parseUpdateArgs(argv: readonly string[]): ParseUpdateOutcome {
     }
     if (arg === '--force') {
       options.force = true;
+      continue;
+    }
+    if (arg === '--verbose') {
+      options.verbose = true;
       continue;
     }
     if (arg === '--pm') {
@@ -127,30 +135,47 @@ export function parseUpdateArgs(argv: readonly string[]): ParseUpdateOutcome {
   return { ok: true, options };
 }
 
-/** 渲染统一的 `update` 子命令帮助文本 (纯文本零 ANSI, 兼容各 CLI 输出净化器) */
-export function formatUpdateHelp(binName: string, packageName: string): string {
+/** 渲染统一的 `update` 子命令帮助文本 (与主视图同源标准 SGR 单色系, color=false 时零 ANSI 逐字等价) */
+export function formatUpdateHelp(
+  binName: string,
+  packageName: string,
+  color = false,
+): string {
+  const safeBin = sanitizeText(binName);
+  const safePkg = sanitizeText(packageName);
+  const badge = paint(
+    `${BAR_BLOCK} ${safeBin.toUpperCase()} UPDATE `,
+    '1;7',
+    color,
+  );
+  const bold = (t: string): string => paint(t, '1', color);
+  const dim = (t: string): string => paint(t, '2', color);
+  const token = (t: string): string => paint(t, '36', color);
+  const pmList = SUPPORTED_PACKAGE_MANAGERS.join(' | ');
+
   return [
     '',
-    `  ${binName} update  自更新工具 (${packageName})`,
-    '  自动识别当前安装器 (bun / npm / pnpm / yarn / volta) 并原地升级。',
-    '  ────────────────────────────────────────────────────────────────────────────',
+    `  ${badge}  ${bold(`自更新工具`)} ${dim(`(${safePkg})`)}`,
+    `  ${dim('自动识别当前安装器 (bun / npm / pnpm / yarn / volta) 并原地升级。')}`,
+    `  ${dim('────────────────────────────────────────────────────────────────────────────')}`,
     '',
-    '  用法',
-    `    ${binName} update [选项]`,
+    `  ${dim('用法')}`,
+    `    ${bold(`${safeBin} update`)} ${dim('[选项]')}`,
     '',
-    '  选项',
-    '    --check              仅检查最新版本与当前安装方式, 不执行更新',
-    `    --pm <管理器>        手动指定更新所用的包管理器 (${SUPPORTED_PACKAGE_MANAGERS.join(' | ')})`,
-    '    --registry <url>     临时指定本次查询与更新所用的 npm registry',
-    '    --force              即使已是最新版本仍强制重新安装',
+    `  ${dim('选项')}`,
+    `    ${token('--check')}              仅检查最新版本与当前安装方式, 不执行更新`,
+    `    ${token('--pm')} ${dim('<管理器>')}        手动指定更新所用的包管理器 (${pmList})`,
+    `    ${token('--registry')} ${dim('<url>')}     临时指定本次查询与更新所用的 npm registry`,
+    `    ${token('--force')}              即使已是最新版本仍强制重新安装`,
+    `    ${token('--verbose')}            实时显示包管理器原始输出 (默认静默接管进度)`,
     '',
-    '    -h, --help           显示本帮助',
+    `    ${token('-h, --help')}           显示本帮助`,
     '',
-    '  说明',
-    '    识别依据  按当前包在磁盘上的真实落位路径判定, 不受 bun / node 运行时切换影响',
-    '    安全边界  npx / bunx / dlx 临时运行或本地源码态不盲目覆盖全局安装',
-    '    环境隔离  更新子进程在独立临时空目录执行, 隔绝 cwd 配置干扰',
-    '    镜像源    默认走官方源 registry.npmjs.org, 自动遵循本机 ~/.bunfig.toml 或 ~/.npmrc',
+    `  ${dim('说明')}`,
+    `    ${bold('识别依据')}  按当前包在磁盘上的真实落位路径判定, 不受 bun / node 运行时切换影响`,
+    `    ${bold('安全边界')}  npx / bunx / dlx 临时运行或本地源码态不盲目覆盖全局安装`,
+    `    ${bold('环境隔离')}  更新子进程在独立临时空目录执行, 隔绝 cwd 配置干扰`,
+    `    ${bold('镜像源')}    默认走官方源 registry.npmjs.org, 自动遵循本机 ~/.bunfig.toml 或 ~/.npmrc`,
     '',
   ].join('\n');
 }

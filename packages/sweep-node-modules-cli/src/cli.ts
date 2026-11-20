@@ -101,16 +101,6 @@ function notice(line: string): void {
   process.stderr.write(`${sanitizeOutputLine(line)}\n`);
 }
 
-// 有意匹配控制 / bidi / 零宽字符, 但保留多行换行与列对齐空格 (供 update 帮助与输出适配器使用)
-const UPDATE_CONTROL_RE =
-  // eslint-disable-next-line no-control-regex
-  /[\u0000-\u0008\u000b-\u001f\u007f-\u009f\u200b-\u200f\u202a-\u202e\u2066-\u2069\ufeff]/g;
-
-/** 拆分 update 子命令输出行并剥离控制字符, 保留列对齐空格 */
-function sanitizeUpdateLines(text: string): string[] {
-  return text.split(/\r?\n/).map((line) => line.replace(UPDATE_CONTROL_RE, ''));
-}
-
 /** 读 CLI 包版本号 (从相邻 package.json 读取, 源码态 src/cli.ts 与打包态 dist/cli.js 同相对路径) */
 function readCliVersion(): string {
   try {
@@ -447,17 +437,7 @@ async function main(): Promise<number> {
         binName: 'sweep-nm',
         entryMetaUrl: import.meta.url,
         argv: options.updateArgs ?? [],
-        io: {
-          out: (text) => {
-            for (const line of sanitizeUpdateLines(text)) print(line);
-          },
-          err: (text) => {
-            for (const line of sanitizeUpdateLines(text)) {
-              if (line.startsWith('  ')) notice(line);
-              else warn(line, colors.stderr);
-            }
-          },
-        },
+        color: colors,
       });
     }
 

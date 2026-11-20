@@ -21,11 +21,12 @@ function captureIo(): { io: UpdateIO; out: string[]; err: string[] } {
 }
 
 describe('parseUpdateArgs 参数解析', () => {
-  test('支持 --check / --force / --pm / --registry / --help 及内联赋值', () => {
+  test('支持 --check / --force / --verbose / --pm / --registry / --help 及内联赋值', () => {
     expect(
       parseUpdateArgs([
         '--check',
         '--force',
+        '--verbose',
         '--pm=pnpm',
         '--registry',
         'https://registry.npmmirror.com',
@@ -35,6 +36,7 @@ describe('parseUpdateArgs 参数解析', () => {
       options: {
         check: true,
         force: true,
+        verbose: true,
         pm: 'pnpm',
         registry: 'https://registry.npmmirror.com',
         help: false,
@@ -42,7 +44,7 @@ describe('parseUpdateArgs 参数解析', () => {
     });
     expect(parseUpdateArgs(['-h'])).toEqual({
       ok: true,
-      options: { check: false, force: false, help: true },
+      options: { check: false, force: false, verbose: false, help: true },
     });
   });
 
