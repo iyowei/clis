@@ -179,7 +179,7 @@ export const TEMPLATE_MANIFEST: readonly ManifestEntry[] = [
   ),
   rst(
     'packages/sweep-node-modules/scripts/build.ts',
-    '本仓 API 包构建脚本含 sweep 专属 INTERNAL_DTS_FILES 清理表; 换空清理表干净骨架并补 bunx --no-install',
+    '本仓 API 包构建脚本含 sweep 专属 INTERNAL_DTS_FILES 清理表; 换空清理表干净骨架并补 bun x --no-install',
   ),
   rst('packages/sweep-node-modules/README.md', '换最小示例 API 包 README 骨架'),
   rst(
@@ -191,10 +191,6 @@ export const TEMPLATE_MANIFEST: readonly ManifestEntry[] = [
   rst(
     'packages/sweep-node-modules/scripts/verify-release.ts',
     '换示例 API 包发布自证骨架',
-  ),
-  rst(
-    'packages/sweep-node-modules/docs/README.md',
-    '换最小示例包级文档入口骨架',
   ),
   rst(
     'packages/sweep-node-modules-cli/package.json',
@@ -210,10 +206,6 @@ export const TEMPLATE_MANIFEST: readonly ManifestEntry[] = [
   ),
   rst('packages/sweep-node-modules-cli/CHANGELOG.md', '换占位 CHANGELOG 骨架'),
   rst('packages/sweep-node-modules-cli/src/', '换最小 greet CLI 薄壳骨架'),
-  rst(
-    'packages/sweep-node-modules-cli/docs/README.md',
-    '换最小示例 CLI 包级文档入口骨架',
-  ),
 
   // exclude: 本仓私有包、领域内容与历史记录 (packages/* 自动派生构建期禁词)
   excl('.mailmap', '维护者个人提交映射; 不进模板'),
@@ -251,11 +243,12 @@ export const TEMPLATE_MANIFEST: readonly ManifestEntry[] = [
     'docs/designs/scaffold-template-snapshot.md',
   ].map((p) => excl(p, '本仓治理与脚手架设计')),
   excl('packages/sweep-node-modules/bench/', 'sweep 领域基准'),
-  excl('packages/sweep-node-modules/docs/adrs/', 'sweep 历史产品 ADR'),
-  excl('packages/sweep-node-modules/docs/designs/', 'sweep 领域产品设计'),
   excl(
-    'packages/sweep-node-modules/docs/protocol/',
-    'sweep 转写契约与金样本语料',
+    'packages/sweep-node-modules/docs/',
+    'sweep 领域产品设计 / 协议语料 / 产品 ADR 与包级索引; 示例包按 ADR 0019 按需建 docs/, 不预置空壳',
   ),
-  excl('packages/sweep-node-modules-cli/docs/designs/', 'sweep CLI 领域设计'),
+  excl(
+    'packages/sweep-node-modules-cli/docs/',
+    'sweep CLI 领域设计与包级索引; 示例包按 ADR 0019 按需建 docs/, 不预置空壳',
+  ),
 ];

@@ -11,6 +11,7 @@ import { makeTmpRoot } from '../../../scripts/lib/tmp-root.ts';
 import {
   type HookSpawnResult,
   type HookSpawner,
+  buildBatchInvocation,
   cleanInstallEnv,
   createGitInitHook,
   createInstallHook,
@@ -85,6 +86,93 @@ describe('cleanInstallEnv 与 resolveHookCommand (CREATE-P0-4)', () => {
         fileProbe: () => true,
       }),
     ).toEqual({ command: 'bun', isBatch: false });
+  });
+});
+
+describe('buildBatchInvocation Windows .cmd 安全转义', () => {
+  test('含括号与空格的标准安装路径双引号包裹且绝不在引号内插入 ^', () => {
+    const inv = buildBatchInvocation(
+      'C:\\Program Files (x86)\\Git\\cmd\\git.cmd',
+      ['init', '--quiet'],
+      { ComSpec: 'C:\\Windows\\System32\\cmd.exe' },
+    );
+    expect(inv).toEqual({
+      command: 'C:\\Windows\\System32\\cmd.exe',
+      args: [
+        '/d',
+        '/s',
+        '/c',
+        '""C:\\Program Files (x86)\\Git\\cmd\\git.cmd" init --quiet"',
+      ],
+      windowsVerbatimArguments: true,
+    });
+  });
+
+  test('含 & 元字符路径由双引号保护, 不插入 ^ 破坏字面路径', () => {
+    const inv = buildBatchInvocation('C:\\Tools & Utils\\bun.cmd', ['install']);
+    expect(inv).toEqual({
+      command: 'cmd.exe',
+      args: ['/d', '/s', '/c', '""C:\\Tools & Utils\\bun.cmd" install"'],
+      windowsVerbatimArguments: true,
+    });
+  });
+
+  test('含 %VAR% / !VAR! 时拆分引号: 路径用 ^ 转义, 参数用 ^^^ 转义防双层展开', () => {
+    const inv = buildBatchInvocation(
+      'C:\\dir\\%VAR%\\!BANG!\\git.cmd',
+      ['commit', '-m', 'a%VAR%!BANG!'],
+      {},
+    );
+    expect(inv.args[3]).toBe(
+      '""C:\\dir\\\\"^%"VAR"^%"\\\\"^!"BANG"^!"\\git.cmd" commit -m "a"^^^%"VAR"^^^%^^^!"BANG"^^^!"',
+    );
+  });
+
+  test('常规段末尾反斜杠倍增防闭合引号被吞', () => {
+    const inv = buildBatchInvocation('C:\\tools\\git.cmd', [
+      'C:\\dir with space\\',
+      'C:\\two slashes\\\\',
+      '',
+    ]);
+    expect(inv.args[3]).toBe(
+      '""C:\\tools\\git.cmd" "C:\\dir with space\\\\" "C:\\two slashes\\\\\\\\" """',
+    );
+  });
+
+  test('空或纯空白 ComSpec / COMSPEC 回退到 cmd.exe', () => {
+    expect(
+      buildBatchInvocation('C:\\tools\\bun.cmd', ['install'], {
+        ComSpec: '',
+        COMSPEC: '   ',
+      }).command,
+    ).toBe('cmd.exe');
+
+    expect(
+      buildBatchInvocation('C:\\tools\\bun.cmd', ['install'], {
+        ComSpec: '  ',
+        COMSPEC: '  C:\\Windows\\System32\\cmd.exe  ',
+      }).command,
+    ).toBe('C:\\Windows\\System32\\cmd.exe');
+  });
+
+  test('路径或参数含双引号、换行、回车、空字节或空路径时直接拒收抛错', () => {
+    for (const badPath of [
+      '',
+      'C:\\a"b\\git.cmd',
+      'C:\\a\nb\\git.cmd',
+      'C:\\a\rb\\git.cmd',
+      'C:\\a\0b\\git.cmd',
+    ]) {
+      expect(() => buildBatchInvocation(badPath, ['init'])).toThrow();
+    }
+    for (const badArg of [
+      'hello"world',
+      'line1\nline2',
+      'line1\rline2',
+      'null\0byte',
+    ]) {
+      expect(() => buildBatchInvocation('C:\\git.cmd', [badArg])).toThrow();
+    }
   });
 });
 

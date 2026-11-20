@@ -213,6 +213,7 @@ describe('pruneTemplate workflow 校验与 codeChars 词法边界 (CREATE-P0-5)'
 
     const pruned = readFileSync(join(root, 'scripts/ci.ts'), 'utf8');
     expect(pruned).not.toContain('conformance:bun');
+    expect(pruned).not.toContain('CONFORMANCE_GROUP');
     expect(pruned).not.toContain('resolveConformanceCliSrc');
     expect(pruned).not.toContain('resolveProductPairs');
     expect(pruned).toContain(

@@ -212,6 +212,49 @@ const verifyCarrierRestored = (target: string): boolean => {
   return true;
 };
 
+/** 验收裁剪档 (standard / core) 的 ci.ts 已摘除 --conformance 入口 (防仅跑 build 却假绿) */
+const verifyConformancePruned = (
+  target: string,
+  tierLabel: string,
+  extraForbidden: readonly string[] = [],
+): boolean => {
+  const help = spawnSync('bun', ['scripts/ci.ts', '--help'], {
+    cwd: target,
+    encoding: 'utf8',
+  });
+  if (help.status !== 0) {
+    process.stderr.write(
+      `heavy-smoke: ${tierLabel} 档 scripts/ci.ts --help 失败: ${help.stderr ?? ''}\n`,
+    );
+    return false;
+  }
+  for (const forbidden of [
+    '--conformance',
+    'lint:coverage',
+    'conformance:bun',
+    'conformance:node',
+    ...extraForbidden,
+  ]) {
+    if ((help.stdout ?? '').includes(forbidden)) {
+      process.stderr.write(
+        `heavy-smoke: ${tierLabel} 档 ci --help 仍残留已摘除项 ${forbidden}\n`,
+      );
+      return false;
+    }
+  }
+  const conf = spawnSync('bun', ['scripts/ci.ts', '--conformance'], {
+    cwd: target,
+    encoding: 'utf8',
+  });
+  if (conf.status !== 2) {
+    process.stderr.write(
+      `heavy-smoke: ${tierLabel} 档 scripts/ci.ts --conformance 应以退出码 2 拒绝, 实得 ${String(conf.status)}\n`,
+    );
+    return false;
+  }
+  return true;
+};
+
 /** 验收 core 档 + --scope 生成物结构与中性构建脚本 */
 const verifyCoreScopedProject = (target: string): boolean => {
   if (!verifyCarrierRestored(target)) return false;
@@ -283,30 +326,7 @@ const verifyCoreScopedProject = (target: string): boolean => {
     return false;
   }
 
-  const help = spawnSync('bun', ['scripts/ci.ts', '--help'], {
-    cwd: target,
-    encoding: 'utf8',
-  });
-  if (help.status !== 0) {
-    process.stderr.write(
-      `heavy-smoke: core 档 scripts/ci.ts --help 失败: ${help.stderr ?? ''}\n`,
-    );
-    return false;
-  }
-  for (const forbidden of [
-    'lint:deps',
-    'lint:coverage',
-    'conformance:bun',
-    'conformance:node',
-  ]) {
-    if ((help.stdout ?? '').includes(forbidden)) {
-      process.stderr.write(
-        `heavy-smoke: core 档 ci --help 仍残留已摘除步骤 ${forbidden}\n`,
-      );
-      return false;
-    }
-  }
-  return true;
+  return verifyConformancePruned(target, 'core', ['lint:deps']);
 };
 
 const main = (): number => {
@@ -391,7 +411,10 @@ const main = (): number => {
     }
   }
 
-  // 5. 生成物自证: 跑它自己的完整闸门链
+  // 5. 生成物自证: 跑它自己的完整闸门链并确认 standard 档已摘除 --conformance
+  if (!verifyConformancePruned(target, 'standard')) {
+    return fail(workDir, 'standard 档 conformance 摘除断言');
+  }
   process.stdout.write('\n=== heavy-smoke: 生成物 bun run ci ===\n');
   if (!run('bun', ['run', 'ci'], target, CI_TIMEOUT_MS)) {
     return fail(workDir, '生成物 ci 步');

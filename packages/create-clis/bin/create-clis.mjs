@@ -143,19 +143,23 @@ const isEntry = () => {
     process.platform === 'win32' ? value.toLowerCase() : value;
   if (norm(entry) === norm(self)) return true;
   try {
-    const realSelf = realpathSync(self);
-    return norm(realpathSync(entry)) === norm(realSelf);
+    const realpath = realpathSync.native ?? realpathSync;
+    const realSelf = realpath(self);
+    return norm(realpath(entry)) === norm(realSelf);
   } catch {
     return false;
   }
 };
 
 /** 跨运行时异步派生并隔离父进程 SIGINT, 防止 Ctrl+C 先杀父进程留下孤儿进程 */
-const runChild = (command, args) =>
+const runChild = (command, args, extraEnv) =>
   new Promise((resolveExit) => {
     const onSigint = () => {};
     process.on('SIGINT', onSigint);
-    const child = spawn(command, args, { stdio: 'inherit' });
+    const child = spawn(command, args, {
+      stdio: 'inherit',
+      env: extraEnv ? { ...process.env, ...extraEnv } : process.env,
+    });
     child.on('error', (error) => {
       process.off('SIGINT', onSigint);
       process.stderr.write(`create-clis: 启动运行时失败 (${error.message})\n`);
@@ -226,12 +230,16 @@ const main = async () => {
       );
       process.exit(1);
     }
-    const result = await runChild(bunRuntime, [
-      `--config=${isolatedBunfig}`,
-      '--no-env-file',
-      entry,
-      ...process.argv.slice(2),
-    ]);
+    const result = await runChild(
+      bunRuntime,
+      [
+        `--config=${isolatedBunfig}`,
+        '--no-env-file',
+        entry,
+        ...process.argv.slice(2),
+      ],
+      { CLIS_BUN_ISOLATED: '1' },
+    );
     finishChild(result);
     return;
   }

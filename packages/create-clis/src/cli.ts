@@ -123,11 +123,17 @@ function nextSteps(
 async function main(): Promise<number> {
   const argv = process.argv.slice(2);
   if (argv[0] === 'update') {
-    return await runSelfUpdate({
-      binName: 'create-clis',
-      entryMetaUrl: import.meta.url,
-      argv: argv.slice(1),
-    });
+    try {
+      return await runSelfUpdate({
+        binName: 'create-clis',
+        entryMetaUrl: import.meta.url,
+        argv: argv.slice(1),
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      process.stderr.write(`更新失败: ${message}\n`);
+      return 1;
+    }
   }
 
   const parsed = parseFlags(argv);

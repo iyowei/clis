@@ -14,6 +14,7 @@
 import { existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
+import { pruneEmptyConformanceGroup } from './tier-conformance.ts';
 import { codeChars } from './tier-lexer.ts';
 import {
   findResidualWorkflowJobs,
@@ -134,8 +135,8 @@ export function removeRulesFor(tier: Tier): RemoveRule {
  * 步骤 2：落盘
  *   删 <targetDir>/scripts/transcription/ (整目录)
  *   回写 <targetDir>/scripts/ci.ts: STEPS 少三条; VERIFY_GROUP 少 'lint:coverage';
- *   CONFORMANCE_GROUP 余 ['build'] (转写步骤引用行同步摘除); CLI 入口坐标块与它的
- *   resolveCliAndApi 导入随 conformance 步骤摘净 (摘后全文已无引用 = 只服务被摘步骤)
+ *   CONFORMANCE_GROUP 及 `--conformance` 入口随转写步骤一并摘除 (全链直接返回 VERIFY_GROUP);
+ *   CLI 入口坐标块与它的 resolveProductPairs / resolveCliAndApi 导入同步摘净
  *   回写 <targetDir>/package.json: scripts 少 'conformance', 其余脚本原样
  *
  * Output（数据契约）
@@ -328,6 +329,7 @@ function pruneCiSource(
 
   let pruned = removeSpans(source, spans);
   pruned = removeGroupReferences(pruned, steps);
+  pruned = pruneEmptyConformanceGroup(source, pruned, CI_SCRIPT);
   pruned = pruneOrphanedCarriers(pruned);
   assertStepSurgery(source, pruned, steps, entries);
   return pruned;

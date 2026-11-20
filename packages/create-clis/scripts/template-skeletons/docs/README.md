@@ -8,15 +8,15 @@
 
 ## 决策与模板
 
-**架构决策记录**
-[架构决策记录索引](adrs/README.md)
-收录本仓演进过程中的重大技术决策 (ADRs), 以及当时的背景与权衡; 新项目从 0001 起编号。
+**仓库级架构决策记录**
+[仓库级架构决策记录索引](adrs/README.md)
+仅登记仓库级工程与治理决策 (ADRs); 全仓共用四位递增编号 (新项目从 0001 起), 包级 ADR 去中心化登记在各自 `packages/<pkg>/docs/adrs/README.md`。
 
 ## 设计文档
 
 **设计文档索引 (仓库级)**
 [设计文档索引](designs/README.md)
-仓库级设计 (仓库治理与脚手架) 的登记入口与推荐阅读顺序; 包级设计在各包 `packages/*/docs/designs/` 内。
+仓库级设计 (仓库治理与脚手架) 的登记入口与推荐阅读顺序; 包级设计按需建在各包 `packages/<pkg>/docs/designs/` 内。
 
 ## 开发
 
@@ -26,5 +26,5 @@
 
 ## 包
 
-- [API 包文档入口](../packages/{{NAME}}/docs/README.md) (可编程 API 与包级 ADR);
-- [CLI 包文档入口](../packages/{{NAME}}-cli/docs/README.md) (命令用法与输出)。
+- [API 包 README](../packages/{{NAME}}/README.md) (可编程 API; 有专属设计或包级 ADR 时按需在包内创建 `docs/`);
+- [CLI 包 README](../packages/{{NAME}}-cli/README.md) (命令用法与输出; 有专属命令面设计时按需在包内创建 `docs/`)。

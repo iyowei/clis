@@ -73,12 +73,30 @@ const CONFORMANCE_GROUP: readonly string[] = [
   'conformance:bun',
 ];
 
-const HELP_TEXT = ['步骤名: ' + Object.keys(STEPS).join(' / ')].join('\\n');
+const HELP_TEXT = [
+  '  --verify           验证组: ' + VERIFY_GROUP.join(' → '),
+  '  --conformance      验收组: ' + CONFORMANCE_GROUP.join(' → '),
+  '  (无旗标)           全链 = 验证组 + 验收组 (去重)',
+  '步骤名: ' + Object.keys(STEPS).join(' / '),
+].join('\\n');
+
+function resolveSteps(argv: string[]): string[] {
+  const modes: string[] = [];
+  for (const arg of argv) {
+    if (arg === '--verify' || arg === '--conformance') modes.push(arg);
+  }
+  if (modes[0] === '--verify') return [...VERIFY_GROUP];
+  if (modes[0] === '--conformance') return [...CONFORMANCE_GROUP];
+  // 全链: 验证组 + 验收组中未出现过的步骤 (build 去重)
+  return [
+    ...VERIFY_GROUP,
+    ...CONFORMANCE_GROUP.filter((name) => !VERIFY_GROUP.includes(name)),
+  ];
+}
 `;
 
-/** 夹具裁剪后的期望全文: 被摘条目 (含其前置注释) 与组数组引用行整体消失, 只服务被摘步骤的
- *  载体声明 (CLI 入口坐标块) 与它的来源导入一并摘净, 其余逐字节原样。
- *  注: 手术只做行级摘除, 不重排格式 —— 单元素组数组的折叠归生成期格式化收口 (T7)。 */
+/** 夹具裁剪后的期望全文: 被摘条目 (含其前置注释) 与组数组引用行整体消失, CONFORMANCE_GROUP 及
+ *  --conformance 分支随真实验收步骤同步摘净, 只服务被摘步骤的载体声明与导入一并摘净, 其余逐字节原样。 */
 const FIXTURE_CI_TS_PRUNED = `/**
  * 本地 CI 预演 (夹具, 形态对齐模板 scripts/ci.ts)
  */
@@ -100,11 +118,20 @@ const VERIFY_GROUP: readonly string[] = [
   'lint:backups',
 ];
 
-const CONFORMANCE_GROUP: readonly string[] = [
-  'build',
-];
+const HELP_TEXT = [
+  '  --verify           验证组: ' + VERIFY_GROUP.join(' → '),
+  '  (无旗标)           全链 = 验证组',
+  '步骤名: ' + Object.keys(STEPS).join(' / '),
+].join('\\n');
 
-const HELP_TEXT = ['步骤名: ' + Object.keys(STEPS).join(' / ')].join('\\n');
+function resolveSteps(argv: string[]): string[] {
+  const modes: string[] = [];
+  for (const arg of argv) {
+    if (arg === '--verify') modes.push(arg);
+  }
+  if (modes[0] === '--verify') return [...VERIFY_GROUP];
+  return [...VERIFY_GROUP];
+}
 `;
 
 /** 夹具根 package.json: 形态对齐模板 (含 conformance 脚本; 缩进 2 空格 + 末尾换行, 与模板同形) */
@@ -362,13 +389,21 @@ describe('真实模板端到端', () => {
       existsSync(join(fullDir, 'scripts/transcription/api-harness.ts')),
     ).toBe(true);
     expect(existsSync(join(fullDir, 'docs/designs/tech-debt.md'))).toBe(true);
-    // 满档保留根包的 conformance 脚本 (载体在场, 脚本不悬空)
+    // 满档保留根包的 conformance 脚本与 ci.ts --conformance 入口
     const fullScripts = (
       JSON.parse(readFileSync(join(fullDir, 'package.json'), 'utf8')) as {
         scripts: Record<string, string>;
       }
     ).scripts;
     expect(typeof fullScripts.conformance).toBe('string');
+    const fullHelp = spawnSync('bun', ['scripts/ci.ts', '--help'], {
+      cwd: fullDir,
+      encoding: 'utf8',
+    });
+    expect(fullHelp.status).toBe(0);
+    expect(fullHelp.stdout).toContain('--conformance');
+    expect(fullHelp.stdout).toContain('conformance:bun');
+    expect(fullHelp.stdout).toContain('conformance:node');
 
     // standard: 增强档整目录与 workflow job 摘除, 标准档 (技术债册子 + 依赖方向闸门) 保留
     const standardDir = buildTemplateCopy(root, 'standard');
@@ -405,6 +440,20 @@ describe('真实模板端到端', () => {
     expect(stdRelYml).not.toContain('\n  conformance:\n');
     expect(stdRelYml).toContain('uses: ./.github/workflows/ci.yml');
     expect(stdRelYml).toContain('needs: checks');
+    // standard 档同步摘除 --conformance 入口防假绿
+    const stdHelp = spawnSync('bun', ['scripts/ci.ts', '--help'], {
+      cwd: standardDir,
+      encoding: 'utf8',
+    });
+    expect(stdHelp.status).toBe(0);
+    expect(stdHelp.stdout).toContain('lint:deps');
+    expect(stdHelp.stdout).not.toContain('--conformance');
+    const stdConf = spawnSync('bun', ['scripts/ci.ts', '--conformance'], {
+      cwd: standardDir,
+      encoding: 'utf8',
+    });
+    expect(stdConf.status).toBe(2);
+    expect(stdConf.stderr).toContain('--conformance');
 
     // core: 连标准档一并摘除
     const coreDir = buildTemplateCopy(root, 'core');
@@ -437,7 +486,7 @@ describe('真实模板端到端', () => {
       "import { makeTmpRoot } from './lib/tmp-root.ts';",
     );
 
-    // 步骤表闭合 / 括号配平的实物验证: ci.ts 真跑一次 --help
+    // 步骤表闭合 / 括号配平的实物验证: ci.ts 真跑 --help 与 --conformance (必须退出码 2 防假绿)
     const help = spawnSync('bun', ['scripts/ci.ts', '--help'], {
       cwd: coreDir,
       encoding: 'utf8',
@@ -446,9 +495,16 @@ describe('真实模板端到端', () => {
     const printed = help.stdout;
     expect(printed).toContain('lint:backups');
     expect(printed).toContain('typecheck');
+    expect(printed).not.toContain('--conformance');
     expect(printed).not.toContain('lint:deps');
     expect(printed).not.toContain('lint:coverage');
     expect(printed).not.toContain('conformance:bun');
     expect(printed).not.toContain('conformance:node');
+    const coreConf = spawnSync('bun', ['scripts/ci.ts', '--conformance'], {
+      cwd: coreDir,
+      encoding: 'utf8',
+    });
+    expect(coreConf.status).toBe(2);
+    expect(coreConf.stderr).toContain('--conformance');
   });
 });

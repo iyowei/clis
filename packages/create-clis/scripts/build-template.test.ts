@@ -294,6 +294,42 @@ describe('构建自检: 任一不过即抛错', () => {
       }),
     ).toThrow(/重复/);
   });
+
+  test('禁词与排除包短名边界自检: 拦截 sweep-lab / docs/sweep/ 与排除包短名, 不误伤超集词', () => {
+    const manifestWithExcluded: readonly ManifestEntry[] = [
+      ...FIXTURE_MANIFEST,
+      { path: 'packages/secret/', disposition: 'exclude', note: '私有包' },
+    ];
+    for (const leaked of [
+      'user=sweep-lab\n',
+      'see docs/sweep/guide.md\n',
+      'cli: secret --help\n',
+    ]) {
+      const base = setupFixture();
+      writeFileSync(join(base.repoRoot, 'conf/a.conf'), leaked);
+      expect(() =>
+        buildTemplate({
+          repoRoot: base.repoRoot,
+          outDir: base.outDir,
+          original: FIXTURE_ORIGINAL,
+          manifest: manifestWithExcluded,
+          skeletonRoot: base.skeletonRoot,
+        }),
+      ).toThrow(/泄漏本仓/);
+    }
+    // 边界检查: 合法超集词 (secretive) 不被误伤
+    const clean = setupFixture();
+    writeFileSync(join(clean.repoRoot, 'conf/a.conf'), 'mode=secretive\n');
+    expect(() =>
+      buildTemplate({
+        repoRoot: clean.repoRoot,
+        outDir: clean.outDir,
+        original: FIXTURE_ORIGINAL,
+        manifest: manifestWithExcluded,
+        skeletonRoot: clean.skeletonRoot,
+      }),
+    ).not.toThrow();
+  });
 });
 
 describe('真实清单集成: 全量产出', () => {
@@ -344,9 +380,25 @@ describe('真实清单集成: 全量产出', () => {
     expect(apiBuild).toContain(
       'const INTERNAL_DTS_FILES: readonly string[] = [];',
     );
-    expect(apiBuild).toContain("'--no-install'");
+    expect(apiBuild).toContain("'x', '--no-install'");
+    expect(apiBuild).not.toContain("'bunx'");
     for (const sweepInternal of ['runtime.d.ts', 'scan-native', 'size-du']) {
       expect(apiBuild).not.toContain(sweepInternal);
+    }
+    // ADR 0019: 示例包不预置空壳 docs/README.md, 包根 README 不留未发包相对链接
+    expect(files).not.toContain('packages/{{NAME}}/docs/README.md');
+    expect(files).not.toContain('packages/{{NAME}}-cli/docs/README.md');
+    for (const readme of [
+      'packages/{{NAME}}/README.md',
+      'packages/{{NAME}}/README.zh-CN.md',
+      'packages/{{NAME}}-cli/README.md',
+      'packages/{{NAME}}-cli/README.zh-CN.md',
+    ]) {
+      const content = readFileSync(join(outDir, readme), 'utf8');
+      expect(content, `${readme} 不得含未发包相对链接`).not.toContain(
+        '](docs/README.md)',
+      );
+      expect(content).toContain('{{REPO_URL}}/blob/main/docs/README.md');
     }
     const apiTsBuild = JSON.parse(
       readFileSync(

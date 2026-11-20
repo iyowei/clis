@@ -15,9 +15,9 @@ This block is written and re-added by `turbo` before repository-scoped commands 
 
 ## 文档分层与读取路径
 
-- **仓库级文档**在 `docs/`: 先读[文档总索引](docs/README.md); 仓库级设计的入口是[设计文档索引](docs/designs/README.md);
-- **包级文档**在各包 `packages/*/docs/`, 入口固定是包内 `docs/README.md` (里面有该包的文档清单、包级 ADR 和指回上级的链接);
-- **ADR 编号全仓库共用一套, 不会重号**: 仓库级的在 `docs/adrs/`, 包级的在各包 `docs/adrs/`; 总索引 [docs/adrs/README.md](docs/adrs/README.md) 列出全部编号。
+- **仓库级文档**在 `docs/`: 先读[文档总索引](docs/README.md); 仓库级设计的入口是[设计文档索引](docs/designs/README.md), 仓库级 ADR 入口是 [docs/adrs/README.md](docs/adrs/README.md);
+- **包级文档**按需建在各包 `packages/<pkg>/docs/` (无独立包内文档时不建空壳目录, 总索引直链包根 `README.md`), 存在包内文档时入口为 `packages/<pkg>/docs/README.md`;
+- **ADR 编号全仓库共用一套四位递增编号, 跨级唯一、永不重编**: 仓库级 ADR 位于 `docs/adrs/` 并仅登记在 [docs/adrs/README.md](docs/adrs/README.md); 包级 ADR 位于各包 `packages/<pkg>/docs/adrs/` 并去中心化登记在各自 `packages/<pkg>/docs/adrs/README.md`, 引用闸门联合扫描两级防重号。
 
 ## 结构事实
 

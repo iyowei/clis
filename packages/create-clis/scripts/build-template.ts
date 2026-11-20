@@ -76,6 +76,9 @@ interface PlannedFile {
   mode: number;
 }
 
+const escapeRegExp = (value: string): string =>
+  value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
 /** 从清单中自动派生「被排除的非模板包」路径禁词 (如 packages/codd、packages/create-clis) */
 export function deriveExcludedPackageTerms(
   manifest: readonly ManifestEntry[],
@@ -87,6 +90,22 @@ export function deriveExcludedPackageTerms(
     if (match) terms.add(match[1]!);
   }
   return [...terms].sort();
+}
+
+/** 从清单中自动派生「被排除的非模板包」短名边界正则 (如 packages/codd → /\bcodd\b/) */
+export function deriveExcludedShortNamePatterns(
+  manifest: readonly ManifestEntry[],
+): { term: string; pattern: RegExp }[] {
+  const shortNames = new Set<string>();
+  for (const entry of manifest) {
+    if (entry.disposition !== 'exclude') continue;
+    const match = entry.path.match(/^packages\/([^/]+)\/?$/);
+    if (match) shortNames.add(match[1]!);
+  }
+  return [...shortNames].sort().map((term) => ({
+    term,
+    pattern: new RegExp(`\\b${escapeRegExp(term)}\\b`),
+  }));
 }
 
 /** 目录走查 (相对路径用 `/` 连接, 排序稳定; 只收文件) */
@@ -115,7 +134,13 @@ export function buildTemplate(
   const forbiddenTerms = options.forbiddenLiterals ?? [
     ...deriveExcludedPackageTerms(manifest),
     'registry.npmmirror.com',
+    'sweep-lab',
+    'docs/sweep/',
   ];
+  const forbiddenPatterns =
+    options.forbiddenLiterals !== undefined
+      ? []
+      : deriveExcludedShortNamePatterns(manifest);
 
   // 1. 逐条处置: 计划产出 (输出相对路径 → 字节 + 权限 mode), 路径一并泛化; 撞车即抛
   const planned = new Map<string, PlannedFile>();
@@ -205,6 +230,11 @@ export function buildTemplate(
     for (const term of forbiddenTerms) {
       if (file.includes(term) || text.includes(term)) {
         leftovers.push(`${file} (泄漏本仓禁词: ${term})`);
+      }
+    }
+    for (const { term, pattern } of forbiddenPatterns) {
+      if (pattern.test(file) || pattern.test(text)) {
+        leftovers.push(`${file} (泄漏本仓排除包短名: ${term})`);
       }
     }
   }

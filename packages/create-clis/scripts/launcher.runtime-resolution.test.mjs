@@ -273,6 +273,8 @@ describe('三入口解析形态 (静态钉住)', () => {
     expect(source).toContain('process.env.PATH ?? process.env.Path');
     expect(source).toContain('isSupportedNodeVersion');
     expect(source).toContain('CLIS_BUN_ISOLATED');
+    expect(source).toContain("{ CLIS_BUN_ISOLATED: '1' }");
+    expect(source).toContain('realpathSync.native ?? realpathSync');
     expect(source).toContain('pathToFileURL(entry).href');
     expect(source).toContain('process.kill(process.pid, result.signal)');
     expect(source).toContain('bunfig.toml');

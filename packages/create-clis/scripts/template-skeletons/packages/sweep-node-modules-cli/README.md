@@ -32,4 +32,4 @@ bun run build && bun run verify:release
 
 ## Documentation
 
-- [Package docs](docs/README.md): the package-level entry (designs and ADRs).
+- [Repository docs]({{REPO_URL}}/blob/main/docs/README.md): repository-level governance, designs, and development guide; create `docs/` inside this package on demand once package-specific CLI surface designs exist.

@@ -51,8 +51,6 @@ export const PACK_FILES_BASE: readonly string[] = [
   'README.zh-CN.md',
   'package.json',
   'bin/bunfig.toml',
-  'bin/create-clis',
-  'bin/create-clis.cmd',
   'bin/create-clis.mjs',
   `dist/${CLI_FILE}`,
   `dist/${MANIFEST_FILE}`,

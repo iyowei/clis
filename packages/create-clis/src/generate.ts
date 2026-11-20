@@ -184,7 +184,7 @@ function restoreCarrierNames(targetDir: string): void {
  *   'CHANGELOG.md' → getFileInfo: { ignored: true } → 跳过 (与产物 prettier --check 同口径)
  *
  * 步骤 2：逐文件格式化 (仅变更文件写回)
- *   'scripts/ci.ts' 的 CONFORMANCE_GROUP 单元素数组收正为 ['build']
+ *   'scripts/ci.ts' 裁剪后的条件表达式与数组缩进回到 prettier 稳定态
  *
  * Output（数据契约）
  *   return void; targetDir 全树通过 prettier --check (由 e2e 与 T8 heavy-smoke 在产物内实跑背书)
@@ -359,23 +359,80 @@ export function cleanInstallEnv(
   return env;
 }
 
-/** 构造安全的 Windows cmd.exe 批处理命令行 (逐元字符转义并用最外层引号包裹防 /s 剥离) */
-function escapeCmdMeta(value: string): string {
-  return value.replace(/[&|<>^()%!]/g, '^$&');
+/** cmd.exe 敏感元字符集合 */
+const CMD_META_OR_SPACE_RE = /[\s&|<>^()%!]/;
+
+/** 无法在 cmd.exe 批处理命令行中安全转义的危险字符 */
+const CMD_FORBIDDEN_RE = /[\r\n\0"]/;
+
+/** 将字符串包裹进双引号, 并将末尾连续反斜杠加倍防闭合引号被吞 */
+function wrapDoubleQuotes(segment: string): string {
+  const escaped = segment.replace(/(\\+)$/, '$1$1');
+  return `"${escaped}"`;
 }
 
-function buildBatchInvocation(
+/** 拆分含 `%` / `!` 的片段: 常规段双引号保护, 仅将 `%` / `!` 拆出引号并以指定前缀转义 */
+function escapePercentAndBang(value: string, prefix: '^' | '^^^'): string {
+  let out = '';
+  let buf = '';
+  for (const ch of value) {
+    if (ch === '%' || ch === '!') {
+      if (buf !== '') {
+        out += wrapDoubleQuotes(buf);
+        buf = '';
+      }
+      out += `${prefix}${ch}`;
+    } else {
+      buf += ch;
+    }
+  }
+  if (buf !== '') out += wrapDoubleQuotes(buf);
+  return out;
+}
+
+/** 转义 Windows .cmd/.bat 自身路径 (第一层 cmd.exe 解析: 常规段双引号保护, `%` / `!` 拆出用 `^`) */
+function escapeBatchPath(batchPath: string): string {
+  if (batchPath === '' || CMD_FORBIDDEN_RE.test(batchPath)) {
+    throw new Error(
+      'Windows 批处理路径包含非法控制字符或双引号, 拒绝经 cmd.exe 执行',
+    );
+  }
+  if (!/[%!]/.test(batchPath)) return wrapDoubleQuotes(batchPath);
+  return escapePercentAndBang(batchPath, '^');
+}
+
+/** 转义传入 .cmd/.bat 的单个参数 (防御外层 cmd.exe 与 .cmd 内部 `%*` 双层解析) */
+function escapeBatchArg(arg: string): string {
+  if (CMD_FORBIDDEN_RE.test(arg)) {
+    throw new Error(
+      'Windows 批处理参数包含非法控制字符或双引号, 拒绝经 cmd.exe 执行',
+    );
+  }
+  if (arg === '') return '""';
+  if (!CMD_META_OR_SPACE_RE.test(arg)) return arg;
+  if (!/[%!]/.test(arg)) return wrapDoubleQuotes(arg);
+  return escapePercentAndBang(arg, '^^^');
+}
+
+/**
+ * 构造安全的 Windows cmd.exe 批处理调用 (对齐 packages/cli-updater/src/windows-exec.ts):
+ * 搭配 `cmd.exe /d /s /c` + `windowsVerbatimArguments: true`, 外层额外包一对 `"..."` 供 `/s` 剥离。
+ */
+export function buildBatchInvocation(
   batchPath: string,
   args: readonly string[],
-  env: Record<string, string>,
+  env: Record<string, string> = {},
 ): { command: string; args: string[]; windowsVerbatimArguments: boolean } {
-  const comspec = env.ComSpec ?? env.COMSPEC ?? 'cmd.exe';
-  const quoted = [batchPath, ...args]
-    .map((item) => `"${escapeCmdMeta(item)}"`)
-    .join(' ');
+  const escapedPath = escapeBatchPath(batchPath);
+  const escapedArgs = args.map((arg) => escapeBatchArg(arg));
+  const inner =
+    escapedArgs.length === 0
+      ? escapedPath
+      : `${escapedPath} ${escapedArgs.join(' ')}`;
+  const comspec = env.ComSpec?.trim() || env.COMSPEC?.trim() || 'cmd.exe';
   return {
     command: comspec,
-    args: ['/d', '/s', '/c', `"${quoted}"`],
+    args: ['/d', '/s', '/c', `"${inner}"`],
     windowsVerbatimArguments: true,
   };
 }

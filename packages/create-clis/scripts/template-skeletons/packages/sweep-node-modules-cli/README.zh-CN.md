@@ -32,4 +32,4 @@ bun run build && bun run verify:release
 
 ## 文档
 
-- [包级文档入口](docs/README.md): 包内设计与包级 ADR 的登记入口。
+- [仓库文档索引]({{REPO_URL}}/blob/main/docs/README.md): 仓库级治理、设计与开发指南; 本包存在专属 CLI 命令面设计时再按需在本包下创建 `docs/` 目录。

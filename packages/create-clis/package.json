@@ -31,7 +31,8 @@
     "create-clis": "bin/create-clis.mjs"
   },
   "files": [
-    "bin",
+    "bin/create-clis.mjs",
+    "bin/bunfig.toml",
     "dist",
     "assets"
   ],
