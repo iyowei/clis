@@ -1,3 +1,43 @@
+# @iyowei/sweep-node-modules [1.0.0](https://github.com/iyowei/clis/compare/@iyowei/sweep-node-modules@0.5.1...@iyowei/sweep-node-modules@1.0.0) (2026-11-20)
+
+
+* feat!: 让 SweepError 的 details 按 code 收窄并透传底层 cause ([d6092d4](https://github.com/iyowei/clis/commit/d6092d47c831d45078057c5b508ef70f96ea886d))
+
+
+### Bug Fixes
+
+* 体积统计分批调用 du 并先去重再测 ([9aeba3f](https://github.com/iyowei/clis/commit/9aeba3f0412256eb9bda3e34619ba96342f47208))
+* 修正 win32 UNC 绝对路径正则兼容正斜杠 ([461558a](https://github.com/iyowei/clis/commit/461558a59081a932e6d1f7a878ea080a06e8e205))
+* 修正 Windows 路径校验、软链拦截与入口判定 ([106036c](https://github.com/iyowei/clis/commit/106036cb5822d3d0d88a0edcfbd0dc14c1480787))
+* 删除批次补 errno 并在回调抛错后立即停泵 ([f28c841](https://github.com/iyowei/clis/commit/f28c841158f0c0277431ded120af4e6d0ea1c96f))
+* 加固 guard 与 classify 的路径判定并冻结路径风格常量 ([0d9846a](https://github.com/iyowei/clis/commit/0d9846a79851737b81d0ff62b462fc21dfb1e4ef))
+* 加固 Windows 下 npm pack 的批处理调用与 PATH 解析 ([e775d51](https://github.com/iyowei/clis/commit/e775d51cbd8c32c1b73a29b067b31e77000817f5))
+* 加固删除前安全复核链并让中止事件只发射一次 ([0884ed1](https://github.com/iyowei/clis/commit/0884ed171f5cd55e231526336a4624da06110533))
+* 扫描器入口补齐取消预检并在目录不可读告警中透出 errno ([adb2ce5](https://github.com/iyowei/clis/commit/adb2ce562dffbe9d33ced83b3146154ebca084aa))
+* 扫描并发池遇异常或取消立即停泵 ([16adad6](https://github.com/iyowei/clis/commit/16adad6351b60290e7be37c6816da9a97da7958d))
+* 收窄发布类型面并加固构建与发布自证链 ([9654ef4](https://github.com/iyowei/clis/commit/9654ef4db3cfff458647be263d0c85ffeca2ddaf))
+* 补强构造参数与配置校验, 拒绝空或相对 roots 与空 home ([94093d6](https://github.com/iyowei/clis/commit/94093d678c51ba204bde26e65597aa9c5dfb47ed))
+* 重做 du stderr 解析以还原 GNU shell-escape 路径并降级子进程异常 ([bbc60e1](https://github.com/iyowei/clis/commit/bbc60e103f9a35c3c37b466e7fe120375cc12f84))
+
+
+### Features
+
+* collectFacts 支持注入 pack 事实 ([08f77b6](https://github.com/iyowei/clis/commit/08f77b699839e326f6ff20eb40baa4a71628c9a7))
+* 基准套件支持自定义工作区根与压测独立存档 ([fb25812](https://github.com/iyowei/clis/commit/fb25812be90bd5764f684412baffa9751fd69ba4))
+* 拆分拒绝与未尝试归因并透出清单 trailer ([114d46d](https://github.com/iyowei/clis/commit/114d46d960957635bfbf675de996a64d36120b31))
+* 路径风味可显式注入, 测试断言脱离宿主 OS ([00831a9](https://github.com/iyowei/clis/commit/00831a9f010698bac624cc79352334f4339576c9))
+
+
+### Performance Improvements
+
+* 为成功侧 kind 常量标注纯构造以支持消费方 tree-shaking ([64cce4e](https://github.com/iyowei/clis/commit/64cce4e7ca880e1e9a054448a1fe0b0189305061)), closes [#__PURE__](https://github.com/iyowei/clis/issues/__PURE__)
+* 体积统计改显式栈与 32 路有界并发并补 errno ([6fb1bec](https://github.com/iyowei/clis/commit/6fb1becac452a2d59426cea512006ccafc25cdae))
+
+
+### BREAKING CHANGES
+
+* isSweepError now narrows to a per-code union (NarrowedSweepError) instead of SweepError and rejects error-shaped objects without a string message; callers reading details fields without narrowing by code no longer type-check.
+
 ## @iyowei/sweep-node-modules [0.5.1](https://github.com/iyowei/sweep-node-modules/compare/@iyowei/sweep-node-modules@0.5.0...@iyowei/sweep-node-modules@0.5.1) (2026-09-30)
 
 
