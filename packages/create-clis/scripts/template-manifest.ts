@@ -208,6 +208,7 @@ export const TEMPLATE_MANIFEST: readonly ManifestEntry[] = [
   rst('packages/sweep-node-modules-cli/src/', '换最小 greet CLI 薄壳骨架'),
 
   // exclude: 本仓私有包、领域内容与历史记录 (packages/* 自动派生构建期禁词)
+  excl('.agents/', '本仓 AI 工作流 Skill 与确定性性能引擎; 不进脚手架模板'),
   excl('.mailmap', '维护者个人提交映射; 不进模板'),
   excl('bun.lock', '锁文件生成物; 新项目 bun install 重建'),
   excl('packages/create-clis/', '生成器自身; 生成物不含生成器'),
