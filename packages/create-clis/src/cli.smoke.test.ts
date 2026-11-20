@@ -12,6 +12,11 @@ const CLI = fileURLToPath(new URL('./cli.ts', import.meta.url));
 const DIST_CLI = fileURLToPath(
   new URL('../dist/create-clis.js', import.meta.url),
 );
+const PKG_VERSION = (
+  JSON.parse(
+    readFileSync(new URL('../package.json', import.meta.url), 'utf8'),
+  ) as { version: string }
+).version;
 
 /** 挂死守卫: 帮助秒回, 超时即判失败 */
 const TIMEOUT_MS = 10_000;
@@ -34,6 +39,21 @@ for (const runner of ['bun', 'node']) {
         }
       }
     });
+
+    test.skipIf(!available)(
+      '--version / -V: 退 0 且输出与 package.json 一致的版本号',
+      () => {
+        for (const flag of ['--version', '-V']) {
+          const result = spawnSync(runner, [CLI, flag], {
+            encoding: 'utf8',
+            timeout: TIMEOUT_MS,
+          });
+          const detail = `status=${result.status} stdout=${result.stdout} stderr=${result.stderr}`;
+          expect(result.status, `应退 0 (${detail})`).toBe(0);
+          expect(result.stdout.trim(), `flag=${flag}`).toBe(PKG_VERSION);
+        }
+      },
+    );
   });
 }
 

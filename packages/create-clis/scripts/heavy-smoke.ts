@@ -255,6 +255,32 @@ const verifyConformancePruned = (
   return true;
 };
 
+/** 验收生成物示例 CLI 打包产物在 bun / node 下均支持 --version 与 -V */
+const verifyGeneratedCliVersion = (target: string): boolean => {
+  const binEntry = join(
+    target,
+    'packages',
+    `${PROJECT_NAME}-cli`,
+    'bin',
+    `${PROJECT_NAME}.mjs`,
+  );
+  for (const runtime of ['bun', 'node']) {
+    for (const flag of ['--version', '-V']) {
+      const res = spawnSync(runtime, [binEntry, flag], {
+        cwd: target,
+        encoding: 'utf8',
+      });
+      if (res.status !== 0 || (res.stdout ?? '').trim() !== '0.0.0') {
+        process.stderr.write(
+          `heavy-smoke: 生成物 CLI (${runtime} ${flag}) 版本断言失败: status=${String(res.status)} stdout=${JSON.stringify(res.stdout)} stderr=${JSON.stringify(res.stderr)}\n`,
+        );
+        return false;
+      }
+    }
+  }
+  return true;
+};
+
 /** 验收 core 档 + --scope 生成物结构与中性构建脚本 */
 const verifyCoreScopedProject = (target: string): boolean => {
   if (!verifyCarrierRestored(target)) return false;
@@ -418,6 +444,9 @@ const main = (): number => {
   process.stdout.write('\n=== heavy-smoke: 生成物 bun run ci ===\n');
   if (!run('bun', ['run', 'ci'], target, CI_TIMEOUT_MS)) {
     return fail(workDir, '生成物 ci 步');
+  }
+  if (!verifyGeneratedCliVersion(target)) {
+    return fail(workDir, '生成物 CLI --version / -V 双运行时断言');
   }
 
   // 6. 场景 B: 经隔离入口生成 core 档 + --scope 项目并验结构

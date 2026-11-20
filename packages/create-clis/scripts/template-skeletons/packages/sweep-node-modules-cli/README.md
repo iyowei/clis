@@ -16,7 +16,10 @@ npm install -g {{SCOPE}}/{{NAME}}-cli
 # Print a greeting (example)
 {{BIN_NAME}} --name world
 
-# Show CLI help
+# Print CLI version (also -V)
+{{BIN_NAME}} --version
+
+# Show CLI help (also -h)
 {{BIN_NAME}} --help
 ```
 

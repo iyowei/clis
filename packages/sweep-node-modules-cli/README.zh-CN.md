@@ -111,6 +111,9 @@ sweep-nm init
 sweep-nm update
 sweep-nm update --check
 
+# 显示版本号 (亦可 -V)
+sweep-nm --version
+
 # 完整选项表 (亦可 -h)
 sweep-nm --help
 ```

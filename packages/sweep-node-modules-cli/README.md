@@ -111,6 +111,9 @@ sweep-nm init
 sweep-nm update
 sweep-nm update --check
 
+# print version (also -V)
+sweep-nm --version
+
 # full option list (also -h)
 sweep-nm --help
 ```

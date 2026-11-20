@@ -113,6 +113,28 @@ describe('create-clis CLI 前置目录校验、非 kebab 目录交互与 -- 分�
     expect(existsSync(join(myAppDir, 'packages/my-app/package.json'))).toBe(
       true,
     );
+
+    const sampleCli = join(myAppDir, 'packages/my-app-cli/src/cli.ts');
+    for (const flag of ['--version', '-V']) {
+      const ver = spawnSync('bun', [sampleCli, flag], {
+        cwd: myAppDir,
+        encoding: 'utf8',
+      });
+      expect(ver.status, `sampleCli ${flag} stderr=${ver.stderr}`).toBe(0);
+      expect(ver.stdout.trim(), `sampleCli ${flag}`).toBe('0.0.0');
+    }
+    const sampleHelp = spawnSync('bun', [sampleCli, '--help'], {
+      cwd: myAppDir,
+      encoding: 'utf8',
+    });
+    expect(sampleHelp.status).toBe(0);
+    expect(sampleHelp.stdout).toContain('-V, --version');
+    const nameWithFlag = spawnSync('bun', [sampleCli, '--name', '-V'], {
+      cwd: myAppDir,
+      encoding: 'utf8',
+    });
+    expect(nameWithFlag.status).toBe(0);
+    expect(nameWithFlag.stdout.trim()).toBe('Hello, -V!');
   }, 60_000);
 
   test('create-clis -- update 可创建名为 update 的目录而不误入 update 子命令', () => {

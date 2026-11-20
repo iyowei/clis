@@ -16,7 +16,10 @@ npm install -g {{SCOPE}}/{{NAME}}-cli
 # 打印一句问候 (示例)
 {{BIN_NAME}} --name world
 
-# 查看命令帮助
+# 查看命令版本号 (亦可 -V)
+{{BIN_NAME}} --version
+
+# 查看命令帮助 (亦可 -h)
 {{BIN_NAME}} --help
 ```
 
