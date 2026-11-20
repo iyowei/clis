@@ -65,7 +65,15 @@ const STEPS: Readonly<Record<string, Step>> = {
   test: { command: 'bun', args: ['run', 'test'], isolatedHome: true },
   'test:windows': {
     command: 'bun',
-    args: ['x', '--no-install', 'turbo', 'run', 'test', '--concurrency=2'],
+    args: [
+      'x',
+      '--no-install',
+      'turbo',
+      'run',
+      'test',
+      '--concurrency=2',
+      '--continue=dependencies-successful',
+    ],
     isolatedHome: true,
     env: WINDOWS_TEST_ENV,
   },

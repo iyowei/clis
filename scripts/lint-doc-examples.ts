@@ -252,11 +252,23 @@ export function checkTsExamples(root: string = REPO_ROOT): {
         2,
       )}\n`,
     );
-    const result = spawnSync(
-      'bunx',
-      ['tsc', '-p', join(tmp, 'tsconfig.json')],
-      { cwd: root, encoding: 'utf8' },
+    const localTsc = join(
+      REPO_ROOT,
+      'node_modules',
+      'typescript',
+      'bin',
+      'tsc',
     );
+    const result = existsSync(localTsc)
+      ? spawnSync(
+          process.execPath,
+          [localTsc, '-p', join(tmp, 'tsconfig.json')],
+          { cwd: root, encoding: 'utf8' },
+        )
+      : spawnSync('bun', ['x', 'tsc', '-p', join(tmp, 'tsconfig.json')], {
+          cwd: root,
+          encoding: 'utf8',
+        });
     const combinedOutput = `${result.stdout ?? ''}\n${result.stderr ?? ''}`;
     if (result.error !== undefined) {
       return {
@@ -304,7 +316,12 @@ export function checkTsExamples(root: string = REPO_ROOT): {
     }
     return { real, fragments };
   } finally {
-    rmSync(tmp, { recursive: true, force: true });
+    rmSync(tmp, {
+      recursive: true,
+      force: true,
+      maxRetries: 5,
+      retryDelay: 100,
+    });
   }
 }
 
