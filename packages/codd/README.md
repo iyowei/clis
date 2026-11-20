@@ -1,18 +1,29 @@
 # @iyowei/codd
 
 [![CI](https://github.com/iyowei/clis/actions/workflows/ci.yml/badge.svg)](https://github.com/iyowei/clis/actions/workflows/ci.yml)
+[![npm version](https://img.shields.io/npm/v/@iyowei/codd)](https://www.npmjs.com/package/@iyowei/codd)
+[![npm downloads](https://img.shields.io/npm/dm/@iyowei/codd)](https://www.npmjs.com/package/@iyowei/codd)
+![node](https://img.shields.io/node/v/@iyowei/codd)
+![bun](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Fiyowei%2Fclis%2Fmain%2Fpackage.json&query=%24.packageManager&label=bun)
 
 **English** | [中文](README.zh-CN.md)
 
 Programmable API and template assets for template-driven MongoDB 9.0 provisioning on Podman (Linux / macOS) and Kubernetes (Helm): deterministic hardware sizing formulas, strict manifest validation, and 100% collision-free fingerprint isolation.
 
-> **Package status (`private: true`)**: `@iyowei/codd` is currently prepared for initial publication and available within this workspace. This package is a **pure programmable library** (no `bin` command). For the interactive terminal wizard and `codd` CLI command, see [`@iyowei/codd-cli`](https://github.com/iyowei/clis/tree/main/packages/codd-cli).
+This package is a **pure programmable library** (no `bin` command). For the interactive terminal wizard and `codd` CLI command, install [`@iyowei/codd-cli`](https://www.npmjs.com/package/@iyowei/codd-cli).
 
 ## Requirements
 
 - **Dual runtime**: Bun or Node.js (`>= 22.18.0`, matching `engines.node`).
 - Zero third-party runtime dependencies (built-in runtime APIs only).
 - Full TypeScript declarations shipped alongside the ESM bundle.
+
+## Installation
+
+```shell
+npm install @iyowei/codd
+bun add @iyowei/codd
+```
 
 ## Quick start (TypeScript)
 

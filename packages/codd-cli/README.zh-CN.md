@@ -1,14 +1,16 @@
 # @iyowei/codd-cli
 
 [![CI](https://github.com/iyowei/clis/actions/workflows/ci.yml/badge.svg)](https://github.com/iyowei/clis/actions/workflows/ci.yml)
+[![npm version](https://img.shields.io/npm/v/@iyowei/codd-cli)](https://www.npmjs.com/package/@iyowei/codd-cli)
+[![npm downloads](https://img.shields.io/npm/dm/@iyowei/codd-cli)](https://www.npmjs.com/package/@iyowei/codd-cli)
+![node](https://img.shields.io/node/v/@iyowei/codd-cli)
+![bun](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Fiyowei%2Fclis%2Fmain%2Fpackage.json&query=%24.packageManager&label=bun)
 
 [English](README.md) | **中文**
 
 模板化 MongoDB 9.0 高性能部署装配 CLI (`codd`), 面向 Podman (Linux / macOS) 与 Kubernetes (Helm): 根据服务器 CPU、内存、硬盘与读写特征确定性推导缓存、连接数、oplog、全链路压缩与句柄上限, 一键导出干净、自包含且 100% 零命名冲突的上线部署包。
 
-本包是纯编程 API 包 [`@iyowei/codd`](https://github.com/iyowei/clis/tree/main/packages/codd) 的命令行薄壳 (参数解析、4 步交互式向导与终端排版 UI)。如需在脚本或自动化流水线中以 TypeScript/JavaScript 编程调用, 请直接使用 `@iyowei/codd`。
-
-> **发布状态 (`private: true`)**: 本包目前处于待首发阶段 (尚未发布至 npm registry), 当前可通过下文本地源码方式构建与调用。
+本包是纯编程 API 包 [`@iyowei/codd`](https://www.npmjs.com/package/@iyowei/codd) 的命令行薄壳 (参数解析、4 步交互式向导与终端排版 UI)。如需在脚本或自动化流水线中以 TypeScript/JavaScript 编程调用, 请直接使用 `@iyowei/codd`。
 
 ## 要求
 
@@ -16,7 +18,26 @@
 - 零第三方运行时依赖 (所有模板资产已随包内建在 `assets/template/`)。
 - 支持 macOS、Linux 与 Windows (启动器含 PATH 绝对化防劫持、独立 `bin/bunfig.toml` 隔离与 `dist/manifest.json` SHA-256 产物自证)。
 
-## 本地源码运行
+## 安装
+
+### 1. 免安装体验
+
+```shell
+# 使用 bun
+bunx @iyowei/codd-cli
+
+# 使用 node
+npx @iyowei/codd-cli
+```
+
+### 2. 全局安装 (日常使用推荐)
+
+```shell
+npm install -g @iyowei/codd-cli
+bun install -g @iyowei/codd-cli
+```
+
+### 3. 本地源码运行 (开发或纯 Bun 无 Node 环境)
 
 **macOS / Linux**:
 

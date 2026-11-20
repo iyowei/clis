@@ -1,14 +1,16 @@
 # @iyowei/codd-cli
 
 [![CI](https://github.com/iyowei/clis/actions/workflows/ci.yml/badge.svg)](https://github.com/iyowei/clis/actions/workflows/ci.yml)
+[![npm version](https://img.shields.io/npm/v/@iyowei/codd-cli)](https://www.npmjs.com/package/@iyowei/codd-cli)
+[![npm downloads](https://img.shields.io/npm/dm/@iyowei/codd-cli)](https://www.npmjs.com/package/@iyowei/codd-cli)
+![node](https://img.shields.io/node/v/@iyowei/codd-cli)
+![bun](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Fiyowei%2Fclis%2Fmain%2Fpackage.json&query=%24.packageManager&label=bun)
 
 **English** | [中文](README.zh-CN.md)
 
 Template-driven MongoDB 9.0 provisioning CLI (`codd`) for Podman (Linux & macOS) and Kubernetes (Helm): derive WiredTiger cache, connection limits, oplog sizing, zstd/snappy compression, and `ulimit` guards deterministically from server hardware specs, and emit self-contained, 100% collision-free deployment bundles.
 
-This package is a thin CLI shell (argument parser, interactive 4-step terminal wizard, and Hig-style terminal UI) over the programmable API package [`@iyowei/codd`](https://github.com/iyowei/clis/tree/main/packages/codd). For programmatic use in scripts or pipelines, import `@iyowei/codd` directly.
-
-> **Package status (`private: true`)**: `@iyowei/codd-cli` is currently pending initial publication on npm. Use the local source / workspace installation below until the first release ships.
+This package is a thin CLI shell (argument parser, interactive 4-step terminal wizard, and Hig-style terminal UI) over the programmable API package [`@iyowei/codd`](https://www.npmjs.com/package/@iyowei/codd). For programmatic use in scripts or pipelines, import `@iyowei/codd` directly.
 
 ## Requirements
 
@@ -16,7 +18,26 @@ This package is a thin CLI shell (argument parser, interactive 4-step terminal w
 - Zero third-party runtime dependencies (built-in runtime APIs only; template assets are bundled inside `assets/template/`).
 - Runs on macOS, Linux, and Windows (standalone launcher scripts with cwd-hijack protection and artifact SHA-256 self-verification).
 
-## Running locally from source
+## Installation
+
+### 1. Zero install (quick trial)
+
+```shell
+# with bun
+bunx @iyowei/codd-cli
+
+# with node
+npx @iyowei/codd-cli
+```
+
+### 2. Global install (recommended)
+
+```shell
+npm install -g @iyowei/codd-cli
+bun install -g @iyowei/codd-cli
+```
+
+### 3. From source (development or bun-only without node)
 
 **macOS / Linux**:
 

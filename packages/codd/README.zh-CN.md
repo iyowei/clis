@@ -1,18 +1,29 @@
 # @iyowei/codd
 
 [![CI](https://github.com/iyowei/clis/actions/workflows/ci.yml/badge.svg)](https://github.com/iyowei/clis/actions/workflows/ci.yml)
+[![npm version](https://img.shields.io/npm/v/@iyowei/codd)](https://www.npmjs.com/package/@iyowei/codd)
+[![npm downloads](https://img.shields.io/npm/dm/@iyowei/codd)](https://www.npmjs.com/package/@iyowei/codd)
+![node](https://img.shields.io/node/v/@iyowei/codd)
+![bun](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Fiyowei%2Fclis%2Fmain%2Fpackage.json&query=%24.packageManager&label=bun)
 
 [English](README.md) | **中文**
 
 模板化 MongoDB 9.0 部署装配的可编程 API 与模板资产包, 面向 Podman (Linux / macOS) 与 Kubernetes (Helm): 根据硬件规格确定性推算 WiredTiger 缓存、连接数、oplog、全链路压缩与句柄上限, 输出 100% 零命名冲突的自包含部署包。
 
-> **发布状态 (`private: true`)**: 本包目前处于待首发阶段, 可在本 monorepo workspace 内直接引用。本包是**纯编程 API 库** (不提供 `bin` 命令); 交互式终端向导与 `codd` 命令行工具位于配套包 [`@iyowei/codd-cli`](https://github.com/iyowei/clis/tree/main/packages/codd-cli)。
+本包是**纯编程 API 库** (不提供 `bin` 命令); 交互式终端向导与 `codd` 命令行工具请安装配套包 [`@iyowei/codd-cli`](https://www.npmjs.com/package/@iyowei/codd-cli)。
 
 ## 要求
 
 - **双运行时**: Bun 与 Node.js 均可直接导入 (`engines.node >= 22.18.0`)。
 - 零第三方运行时依赖 (仅使用运行时内置能力)。
 - 随包提供完整 TypeScript 类型声明 (`.d.ts`) 与模板资产 (`assets/template/`)。
+
+## 安装
+
+```shell
+npm install @iyowei/codd
+bun add @iyowei/codd
+```
 
 ## 快速上手 (TypeScript)
 

@@ -11,10 +11,10 @@
 | 类别           | 判定依据 (确定性字段)                                  | 发布              | 例子                                                                  |
 | -------------- | ------------------------------------------------------ | ----------------- | --------------------------------------------------------------------- |
 | **CLI 工具**   | `package.json` 有 `bin` 字段                           | 非 private 发 npm | `create-clis` / `@iyowei/sweep-node-modules-cli` / `@iyowei/codd-cli` |
-| **公开库**     | 没有 `bin`, 且非 `"private": true`                     | 发 npm            | `@iyowei/sweep-node-modules`                                          |
-| **仓内私有库** | 没有 `bin`, 且自身 `package.json` 标 `"private": true` | 不发 npm          | (含仓内复用私有库及待首发 API 主包如 `@iyowei/codd`)                  |
+| **公开库**     | 没有 `bin`, 且非 `"private": true`                     | 发 npm            | `@iyowei/sweep-node-modules` / `@iyowei/codd`                         |
+| **仓内私有库** | 没有 `bin`, 且自身 `package.json` 标 `"private": true` | 不发 npm          | `@iyowei/cli-updater` (及未来待首发新包)                              |
 
-> **待首发隔离边界**: 任何准备未来发往 npm 但尚未首发的包 (无论是带 `bin` 的 CLI 如 `@iyowei/codd-cli`, 还是不带 `bin` 的 API 主包如 `@iyowei/codd`) 均通过 npm 原生字段 `"private": true` 隔离于 `multi-semantic-release` (`ignorePrivate` 默认开启) 与 `scripts/npm-trust-guard.ts` 之外; 首发时移除 `"private": true` 并按[开发指南](../development.md)「发布」章完成首次发布与 Trusted Publisher 登记。
+> **待首发隔离边界**: 任何准备未来发往 npm 但尚未首发的包 (无论是带 `bin` 的 CLI 还是不带 `bin` 的 API 主包) 均通过 npm 原生字段 `"private": true` 隔离于 `multi-semantic-release` (`ignorePrivate` 默认开启) 与 `scripts/npm-trust-guard.ts` 之外; 首发时移除 `"private": true` 并按[开发指南](../development.md)「发布」章完成首次发布、补打首发 tag 与 Trusted Publisher 登记。
 
 ## 默认双包工具范式 (ADR 0010 / ADR 0019)
 
