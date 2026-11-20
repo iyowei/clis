@@ -17,66 +17,117 @@ import {
 } from '@iyowei/codd';
 
 import { parseCliArgs } from './args.ts';
+import { displayWidth, getBoxWidth } from './ui/ansi.ts';
 import {
   isPromptCancelledError,
   palette,
   printAlert,
   printFormulaCard,
   printHeader,
-  printKV,
   printSummaryCard,
+  wrapMultiline,
 } from './ui/index.ts';
 import { runWizard } from './wizard.ts';
+
+const printHelpSection = (title: string): void => {
+  console.log('');
+  console.log(`  ${palette.blue(title, true)}`);
+};
+
+const printHelpRows = (
+  rows: ReadonlyArray<readonly [string, string, string?]>,
+  colWidth: number,
+  leftStyle: 'title' | 'mono' = 'mono',
+): void => {
+  const maxWidth = Math.max(44, getBoxWidth());
+  const descWidth = Math.max(20, maxWidth - colWidth - 4);
+  for (const [token, desc, arg] of rows) {
+    const plainLeft = arg === undefined ? token : `${token} ${arg}`;
+    const pad = ' '.repeat(Math.max(2, colWidth - displayWidth(plainLeft)));
+    const styledToken =
+      leftStyle === 'title' ? palette.title(token) : palette.mono(token);
+    const styledLeft =
+      arg === undefined ? styledToken : `${styledToken} ${palette.dim(arg)}`;
+    const wrapped = wrapMultiline(desc, descWidth);
+    console.log(`    ${styledLeft}${pad}${palette.muted(wrapped[0] ?? '')}`);
+    const contIndent = ' '.repeat(
+      4 + Math.max(colWidth, displayWidth(plainLeft) + 2),
+    );
+    for (let i = 1; i < wrapped.length; i += 1) {
+      console.log(`${contIndent}${palette.muted(wrapped[i]!)}`);
+    }
+  }
+};
 
 const printUsage = (): void => {
   printHeader(
     'MongoDB 部署配置生成器',
     '根据你的服务器硬件自动推导缓存、压缩与安全参数, 一键导出可直接上线的 MongoDB 9.0 安装包。',
   );
+
+  const HELP_COL = 22;
+
+  printHelpSection('用法');
+  console.log(
+    `    ${palette.title('codd')} ${palette.dim('[配置文件.json] [选项]')}`,
+  );
+  console.log(`    ${palette.title('codd')} ${palette.dim('<子命令> [选项]')}`);
+
+  printHelpSection('子命令');
+  printHelpRows(
+    [
+      ['wizard', '启动 4 步交互式向导生成安装包 (同 -i / --wizard)'],
+      ['init', '导出 deploy.schema.json、参考清单与 .gitignore'],
+      ['update', '自动识别安装器升级到最新版 (--check 仅检查)'],
+    ],
+    HELP_COL,
+    'title',
+  );
+
+  printHelpSection('选项');
+  printHelpRows(
+    [
+      ['-c, --config', '指定 JSON 配置文件路径 (默认 ./deploy.json)', '<路径>'],
+      ['-o, --out', '指定安装包的导出位置 (默认 ./dist)', '<目录>'],
+      ['--rotate', '轮换业务库与备份账号密码 (线上 make init 生效)'],
+      ['--rotate-all', '轮换含 root 在内的全部密码与密钥 (全新部署前)'],
+      ['--new-fingerprint', '生成全新的实例唯一指纹 (同机并行部署新一套库)'],
+      ['--dry-run', '只检查配置并预览参数配比, 不写入任何磁盘文件'],
+      ['--init-schema', '与 codd init 等效, 导出 Schema 与参考模板'],
+      ['--', '终止选项解析, 其后按清单路径处理 (如 -- -a.json)'],
+    ],
+    HELP_COL,
+  );
   console.log('');
-  printKV([
+  printHelpRows(
     [
-      'codd wizard',
-      '打开交互式向导, 一步步引导生成配置与安装包 (新手推荐, 等效于 -i / --wizard)',
+      ['-V, -v, --version', '打印当前 codd 版本号'],
+      ['-h, --help', '打印本帮助说明'],
     ],
+    HELP_COL,
+  );
+
+  printHelpSection('示例');
+  printHelpRows(
     [
-      'codd init',
-      '在当前目录导出 deploy.schema.json、deploy-2c2g.json 参考清单与安全 .gitignore (等效于 --init-schema)',
+      ['codd wizard', '打开交互式配置向导'],
+      ['codd init', '导出 Schema 与 2C2G 参考清单'],
+      ['codd deploy-prod.json --dry-run', '预览参数配比与公式, 不写入文件'],
     ],
-    [
-      'codd update',
-      '自动识别当前安装器 (bun/npm/pnpm/yarn/volta) 升级到最新版 (--check 仅检查)',
-    ],
-    [
-      'codd [配置文件.json]',
-      '按指定 JSON 清单生成 (如 codd deploy-prod.json; 不传默认读 ./deploy.json)',
-    ],
-    [
-      '-c, --config <文件路径>',
-      '指定要读取的 JSON 配置文件路径 (与直接传文件名等效)',
-    ],
-    ['-o, --out <输出目录>', '指定安装包的导出位置 (默认 ./dist)'],
-    [
-      '--rotate',
-      '只更换业务库与备份账号的密码 (数据库运行时可执行 make init 生效)',
-    ],
-    [
-      '--rotate-all',
-      '更换包括管理员 root 在内的全部密码和密钥 (仅限全新部署前使用)',
-    ],
-    [
-      '--new-fingerprint',
-      '生成全新的实例唯一指纹 (同台服务器再装一套新库时使用)',
-    ],
-    ['--dry-run', '只检查配置并预览计算出的参数, 不写入任何文件'],
-    ['--init-schema', '与 codd init 等效, 导出 JSON Schema 与 2C2G 参考模板'],
-    [
-      '--',
-      '终止选项解析, 其后参数均按配置文件路径处理 (如 codd -- -staging.json)',
-    ],
-    ['-v, --version', '打印当前 codd 版本号'],
-    ['-h, --help', '打印本帮助说明'],
-  ]);
+    34,
+    'title',
+  );
+
+  printHelpSection('退出码');
+  console.log(
+    `    ${palette.green('0', true)}       ${palette.muted('成功 (含 --help、--version、init、--dry-run 与正常生成)')}`,
+  );
+  console.log(
+    `    ${palette.red('1', true)}       ${palette.muted('错误 (参数错误、清单校验失败、状态文件损坏或 I/O 失败)')}`,
+  );
+  console.log(
+    `    ${palette.amber('130', true)}     ${palette.muted('取消 (交互式向导被 Ctrl+C 或输入流关闭中断)')}`,
+  );
   console.log('');
 };
 

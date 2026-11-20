@@ -46,7 +46,9 @@ describe('parseCliArgs 参数解析', () => {
     expect(parseCliArgs(['init'])).toMatchObject({ initSchema: true });
     expect(parseCliArgs(['--init-schema'])).toMatchObject({ initSchema: true });
     expect(parseCliArgs(['-h'])).toMatchObject({ help: true });
+    expect(parseCliArgs(['-V'])).toMatchObject({ version: true });
     expect(parseCliArgs(['-v'])).toMatchObject({ version: true });
+    expect(parseCliArgs(['--version'])).toMatchObject({ version: true });
 
     expect(
       parseCliArgs([
@@ -134,12 +136,15 @@ describe('CLI 端到端行为 (源码直跑)', () => {
     expect(helpRes.stdout).toContain('codd wizard');
     expect(helpRes.stdout).toContain('--init-schema');
     expect(helpRes.stdout).toContain('终止选项解析');
+    expect(helpRes.stdout).toContain('-V, -v, --version');
 
-    const verRes = spawnSync('bun', [cliEntry, '--version'], {
-      encoding: 'utf8',
-    });
-    expect(verRes.status).toBe(0);
-    expect(verRes.stdout.trim()).toBe(PKG_VERSION);
+    for (const flag of ['--version', '-V', '-v']) {
+      const verRes = spawnSync('bun', [cliEntry, flag], {
+        encoding: 'utf8',
+      });
+      expect(verRes.status, `flag=${flag}`).toBe(0);
+      expect(verRes.stdout.trim(), `flag=${flag}`).toBe(PKG_VERSION);
+    }
 
     const updHelp = spawnSync('bun', [cliEntry, 'update', '--help'], {
       encoding: 'utf8',
@@ -270,11 +275,13 @@ describe('构建产物双运行时与工作目录隔离验证 (Bun & Node)', () 
     () => {
       const binEntry = join(PACKAGE_ROOT, 'bin/codd.mjs');
       for (const runtime of ['bun', 'node']) {
-        const verRes = spawnSync(runtime, [binEntry, '--version'], {
-          encoding: 'utf8',
-        });
-        expect(verRes.status).toBe(0);
-        expect(verRes.stdout.trim()).toBe(PKG_VERSION);
+        for (const flag of ['--version', '-V']) {
+          const verRes = spawnSync(runtime, [binEntry, flag], {
+            encoding: 'utf8',
+          });
+          expect(verRes.status, `${runtime} ${flag}`).toBe(0);
+          expect(verRes.stdout.trim(), `${runtime} ${flag}`).toBe(PKG_VERSION);
+        }
 
         const workDir = mkdtempSync(join(tmpdir(), `codd-dist-${runtime}-`));
         try {

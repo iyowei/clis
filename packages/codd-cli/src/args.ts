@@ -119,7 +119,7 @@ export const parseCliArgs = (argv: string[]): CliFlags => {
     }
     if (arg === '--help' || arg === '-h') {
       flags.help = true;
-    } else if (arg === '--version' || arg === '-v') {
+    } else if (arg === '--version' || arg === '-V' || arg === '-v') {
       flags.version = true;
     } else if (arg === 'wizard' || arg === '--wizard' || arg === '-i') {
       flags.wizard = true;

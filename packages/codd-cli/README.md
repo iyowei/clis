@@ -88,7 +88,7 @@ codd update
 | `--new-fingerprint`              | Generate a brand-new 12-hex instance fingerprint for side-by-side deployment                                                           |
 | `--dry-run`                      | Validate manifest and preview computed sizing formulas without writing any files (in wizard mode, also skips saving the manifest file) |
 | `--`                             | End of flags; treat the following argument as a literal manifest path                                                                  |
-| `-v`, `--version`                | Print the installed CLI version                                                                                                        |
+| `-V`, `-v`, `--version`          | Print the installed CLI version                                                                                                        |
 | `-h`, `--help`                   | Show usage help                                                                                                                        |
 
 ## Exit codes

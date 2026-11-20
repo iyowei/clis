@@ -127,23 +127,30 @@ export function parseUpdateArgs(argv: readonly string[]): ParseUpdateOutcome {
   return { ok: true, options };
 }
 
-/** 渲染统一的 `update` 子命令帮助文本 */
+/** 渲染统一的 `update` 子命令帮助文本 (纯文本零 ANSI, 兼容各 CLI 输出净化器) */
 export function formatUpdateHelp(binName: string, packageName: string): string {
   return [
-    `${binName} update: 自动识别当前安装方式 (bun / npm / pnpm / yarn / volta) 并更新 ${packageName}`,
     '',
-    `用法: ${binName} update [选项]`,
+    `  ${binName} update  自更新工具 (${packageName})`,
+    '  自动识别当前安装器 (bun / npm / pnpm / yarn / volta) 并原地升级。',
+    '  ────────────────────────────────────────────────────────────────────────────',
     '',
-    '选项:',
-    '  --check                  仅检查最新版本与当前安装方式, 不执行更新',
-    `  --pm <管理器>            手动指定更新所用的包管理器 (${SUPPORTED_PACKAGE_MANAGERS.join(' | ')})`,
-    '  --registry <url>         临时指定本次查询与更新所用的 npm registry',
-    '  --force                  即使已是最新版本仍强制重新安装',
-    '  -h, --help               显示本帮助',
+    '  用法',
+    `    ${binName} update [选项]`,
     '',
-    '说明:',
-    '  • 安装方式按当前包在磁盘上的真实落位路径判定, 不受运行时的 bun/node 切换影响',
-    '  • 通过 npx / bunx / pnpm dlx / yarn dlx 临时运行, 或处于本地源码开发态时不会盲目覆盖全局',
-    '  • 更新子进程在独立临时空目录执行, 隔绝当前工作目录的 .npmrc / bunfig.toml / package.json 干扰',
+    '  选项',
+    '    --check              仅检查最新版本与当前安装方式, 不执行更新',
+    `    --pm <管理器>        手动指定更新所用的包管理器 (${SUPPORTED_PACKAGE_MANAGERS.join(' | ')})`,
+    '    --registry <url>     临时指定本次查询与更新所用的 npm registry',
+    '    --force              即使已是最新版本仍强制重新安装',
+    '',
+    '    -h, --help           显示本帮助',
+    '',
+    '  说明',
+    '    识别依据  按当前包在磁盘上的真实落位路径判定, 不受 bun / node 运行时切换影响',
+    '    安全边界  npx / bunx / dlx 临时运行或本地源码态不盲目覆盖全局安装',
+    '    环境隔离  更新子进程在独立临时空目录执行, 隔绝 cwd 配置干扰',
+    '    镜像源    默认走官方源 registry.npmjs.org, 自动遵循本机 ~/.bunfig.toml 或 ~/.npmrc',
+    '',
   ].join('\n');
 }

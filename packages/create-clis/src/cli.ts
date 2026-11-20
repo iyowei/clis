@@ -19,6 +19,7 @@ import {
   createInstallHook,
   generateProject,
 } from './generate.ts';
+import { formatHelpText, stdoutSupportsColor } from './help.ts';
 import { askAll, createPromptIO } from './prompt.ts';
 import { ORIGINAL, defaultTemplateDir } from './template-snapshot.ts';
 import { type Tier } from './tier.ts';
@@ -30,34 +31,6 @@ import {
   provided,
   readGitUserName,
 } from './variables.ts';
-
-const HELP_TEXT = [
-  'create-clis: 从 clis 集合仓骨架快照生成独立的新集合仓',
-  '',
-  '用法:',
-  '  create-clis [目录] [选项]',
-  '  create-clis update [--check] [--pm <管理器>] [--registry <url>] [--force]',
-  '',
-  '目录缺省为当前目录下以项目名命名的子目录; 目标目录已存在且非空时直接拒绝 (不覆盖)。',
-  '',
-  '子命令:',
-  '  update            自动识别安装器 (bun/npm/pnpm/yarn/volta) 升级到最新版 (--check 仅检查)',
-  '',
-  '选项:',
-  '  --name <名>       项目名 (kebab-case; 缺省取目录 basename)',
-  '  --scope <@scope>  npm scope (缺省裸包名)',
-  '  --bin <名>        主命令名 (缺省由项目名派生短形态)',
-  '  --owner <名>      仓库所有者 (缺省取 git 全局 user.name)',
-  '  --repo <url>      仓库地址 (缺省 https://github.com/<owner>/<name>)',
-  '  --tier <档>       装备档位: core | standard | full (缺省 standard)',
-  '  --no-git          跳过 git init (默认执行)',
-  '  --no-install      跳过依赖安装 (默认执行)',
-  '  --yes             全部取默认值, 零交互',
-  '  -V, --version     显示版本号',
-  '  -h, --help        本帮助',
-  '',
-  '经 npm create 调用时旗标写在 -- 之后 (npm create clis -- --tier core), 该 -- 由 npm 剥离。',
-].join('\n');
 
 /** 由旗标构造收尾 hooks: 未提供的动作即不执行 (--no-git / --no-install 的折算点) */
 function buildHooks(options: CliOptions): GenerateHooks {
@@ -146,7 +119,7 @@ async function main(): Promise<number> {
     return 0;
   }
   if (parsed.help) {
-    process.stdout.write(`${HELP_TEXT}\n`);
+    process.stdout.write(`${formatHelpText(stdoutSupportsColor())}\n`);
     return 0;
   }
 

@@ -19,7 +19,7 @@ codd --rotate-all              轮换包括 root 与 keyFile 在内的全部凭�
 codd --new-fingerprint         重新生成 12 位十六进制唯一实例指纹 (同机并行部署新实例)
 codd --dry-run                 只校验清单并预览公式推导结果, 零磁盘落盘
 codd -- <文件路径>             终止旗标解析, 其后 token 按位置清单路径处理
-codd -v, --version             输出当前 @iyowei/codd-cli 版本号
+codd -V, -v, --version         输出当前 @iyowei/codd-cli 版本号
 codd -h, --help                输出帮助说明
 ```
 
