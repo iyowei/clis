@@ -41,7 +41,7 @@ turbo 跨工作区各包编排构建、类型检查与测试任务。代码对 b
 bun install
 ```
 
-钩子在代码进门时把关 (pre-commit: 全项目类型检查, 外加对暂存文件跑 prettier 与 oxlint), 推送前重跑一遍全量检查 (pre-push 只调用 `bun scripts/ci.ts` 这一条命令: 它是整套检查的唯一出处, 覆盖文档与仓库卫生的五道闸门, 以及双载体的转写契约套件)。机器上没有 lefthook 时, 钩子链会回退到经 bunx 取来的 pin 版。配置见 [lefthook.yml](lefthook.yml)。
+钩子在代码进门时把关 (pre-commit: 全项目 `bun check` 类型检查, 外加对暂存文件跑 `bun fmt` 与 oxlint), 推送前重跑一遍全量检查 (pre-push 只调用 `bun scripts/ci.ts` 这一条命令: 它是整套检查的唯一出处, 覆盖文档与仓库卫生的五道闸门, 以及双载体的转写契约套件)。机器上没有 lefthook 时, 钩子链会回退到经 bunx 取来的 pin 版。配置见 [lefthook.yml](lefthook.yml)。
 
 仓库的 `.gitignore` 由 fast-gitignore (`fgi`) 从 `.gitignorerc.json` 生成, 不要手改: 新增忽略规则写进这个配置的 `custom` 数组, 再在仓库根重跑 `fgi` (它会读取预设, 把 `.gitignore` 整个重新生成)。
 
@@ -50,13 +50,13 @@ bun install
 在仓库根目录执行:
 
 ```shell
-# 类型检查 (tsc --noEmit, 经 turbo)
+# 类型检查 (bun check, 经 turbo)
 bun run typecheck
 
 # 代码检查 (oxlint); `bun run lint:fix` 会自动修复
 bun run lint
 
-# 格式化 (prettier --write .)
+# 格式化 (bun fmt)
 bun run format
 
 # 单元测试: 契约 / 鲁棒性 / 双运行时 e2e / 冒烟测试

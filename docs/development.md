@@ -18,13 +18,13 @@ bun install
 以下命令除注明外均在仓库根执行:
 
 ```shell
-# 类型检查 (tsc --noEmit; 经 turbo 编排全仓各包并校验根 scripts/)
+# 类型检查 (bun check; 经 turbo 编排全仓各包并校验根 scripts/, 边界见 ADR 0020)
 bun run typecheck
 
 # 代码检查 (oxlint)
 bun run lint
 
-# 格式化 (prettier --write)
+# 格式化 (bun fmt; 读根 .prettierrc 与 .prettierignore)
 bun run format
 
 # 单元测试 (契约 / 鲁棒 / 压测 / 双载体 e2e / 伪终端冒烟 / 启动器冒烟 / 模板回归等; 经 turbo 编排全部工作区包 + 根 scripts/)
@@ -89,7 +89,7 @@ bun run conformance -- --target "node packages/sweep-node-modules-cli/src/cli.ts
 
 由 lefthook 把关 (操作级细节以仓库根 `lefthook.yml` 为准):
 
-- **pre-commit** (增量): prettier 重暂存 + oxlint 扫暂存文件; 类型检查例外, 跑全项目 `tsc --noEmit`
+- **pre-commit** (增量): `bun fmt` 重暂存 + oxlint 扫暂存文件; 类型检查例外, 跑全项目 `bun run typecheck` (`bun check`, 见 [ADR 0020](adrs/0020-bun-native-fmt-and-typecheck.md))
 - **pre-push** (全量): 单条调用 `bun scripts/ci.ts` (全链 = 验证组 + 验收组); 步骤集合的单一事实来源在 `scripts/ci.ts`, CI 三路 job (`--verify` / `--verify-windows` / `--conformance`) 与 Release 前置门禁 (`workflow_call` 复用 `ci.yml`) 共用同一套步骤定义 (Release 的 `release` job 获批后另加一步发布凭据预检, 见「发布」章; `bun scripts/ci.ts --help` 可查看步骤与分组)
 
 > 本地预演全绿不等于 CI 会绿: `bun scripts/ci.ts` 只覆盖「同一台机器 + 命令清单」两个维度, CI 是唯一在「干净环境 + 全部配置 + 真实时序」下运行的地方; 后三样恰是本地预演的全盲区, 全绿给的是虚假的安全感。

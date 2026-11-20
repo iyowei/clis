@@ -230,6 +230,7 @@ export const TEMPLATE_MANIFEST: readonly ManifestEntry[] = [
     'docs/adrs/0010-dual-package-monorepo.md',
     'docs/adrs/0011-docs-and-adr-layering.md',
     'docs/adrs/0019-two-tier-package-owned-docs.md',
+    'docs/adrs/0020-bun-native-fmt-and-typecheck.md',
   ].map((p) => excl(p, '本仓历史 ADR')),
   ...[
     'docs/designs/collection-positioning.md',

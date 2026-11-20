@@ -32,8 +32,9 @@
    - **lefthook 不列为依赖**: 它自带 postinstall, 且被包管理器默认信任 (bun 的内置信任名单里就有 lefthook), 以本地路径 / vendor 形态安装时会被装进使用方 `node_modules`, 还会把钩子写进使用方仓库。获取方式改为: 安装期优先用 PATH 上的 `lefthook` (如 `brew install lefthook`), 没有就取 `lefthook.yml` 里 `lefthook:` 配置的值 (安装期与执行期读的是同一行, 版本只有一个来源); 执行期锁定的版本也只在 `lefthook.yml` 这一处, 没有第二份写死的版本号。
    - **另有登记 (2026-09-27)**: 守卫脚本在 win32 上以 `shell: true` 直接用命令名 (不带路径) 执行 `git` / `lefthook` / `bunx` (Node 在 Windows 上执行 `.cmd` / `.bat` 必须经 shell 解析), 这个解析范围包含当前工作目录 (官方 path 文档: the current directory is always searched before the directories specified in the command path); 而它执行时所在的目录是本包自己或包副本的目录 (属于开发工具链范围), 不在 [ADR 0007](../../packages/sweep-node-modules/docs/adrs/0007-platform-portability.md) 决策第 4 条定下的 EC-08 三个入口解析防御范围之内。
 2. **Lint 用 oxlint, 格式用 prettier** (配 `@trivago/prettier-plugin-sort-imports` 的 import 排序); `.oxlintrc.json` 继承我已有项目的严格规则集 (max-depth / max-lines / import 族 / unicorn 族等)。
+   > **修订指引 (2026-11-20)**: 随工具链升级至 Bun `1.4.5`, 格式检查与纯类型检查已分别切换为 Bun 原生 `bun fmt` 与 `bun check`, `oxlint`、库包 `.d.ts` 生成用 `typescript` 及 `create-clis` 运行期 `prettier` 保留, 完整边界与理由见 [ADR 0020](0020-bun-native-fmt-and-typecheck.md)。
 3. **分层门禁**: pre-commit 增量 (prettier `--write` 后自动重暂存 + oxlint 只扫暂存文件; type-check 是例外, 不传 `{staged_files}`, 直接全项目跑 `tsc --noEmit`); pre-push 全量只读 (typecheck / test / oxlint / prettier `--check`, 不设 `stage_fixed`)。
-   > **修订指引 (2026-11-19)**: pre-push 已收口为单条 `bun run ci` (详见 `lefthook.yml`, 由 `scripts/ci.ts` 单源编排验证组 + 验收组全部步骤); pre-commit 的 `type-check` 同样单源复用根 `bun run typecheck`。其中 `build` 会写产物, 原来说的「全量只读」只对检查类步骤成立。
+   > **修订指引 (2026-11-19 / 2026-11-20)**: pre-push 已收口为单条 `bun run ci` (详见 `lefthook.yml`, 由 `scripts/ci.ts` 单源编排验证组 + 验收组全部步骤); pre-commit 的 `type-check` 同样单源复用根 `bun run typecheck` (现为 `bun check`), 增量格式化改由 `bun fmt` 执行 (见 [ADR 0020](0020-bun-native-fmt-and-typecheck.md))。其中 `build` 会写产物, 原来说的「全量只读」只对检查类步骤成立。
 4. **`.editorconfig`** 与我另外两个项目一致: 2 空格 / LF / UTF-8 / 去行尾空格 / 文件末换行, `*.md` 例外不去尾空格。
 5. **依赖版本精确锁定**: 全部 devDependencies 不带 `^` / `~` 范围符号, 安装后从 `node_modules` 读回实际装到的版本做校准 (见配置治理规范)。
 
