@@ -21,7 +21,7 @@ pre-commit:
     # JS/TS (含 .mts / .mjs / .js / .cjs): prettier 格式化后自动重暂存, 再 oxlint
     prettier-js:
       glob: '*.{ts,tsx,mts,mjs,js,cjs}'
-      run: bunx prettier --write --log-level error {staged_files}
+      run: bun x --no-install prettier --write --log-level error {staged_files}
       stage_fixed: true
 
     # --no-error-on-unmatched-pattern: 暂存文件若全落在 .oxlintrc.json 的
@@ -29,12 +29,12 @@ pre-commit:
     # 默认以空集错误退出 1 并拦死提交。该旗标把这种情形视为无需检查。
     oxlint:
       glob: '*.{ts,tsx,mts,mjs,js,cjs}'
-      run: bunx oxlint --no-error-on-unmatched-pattern {staged_files}
+      run: bun x --no-install oxlint --no-error-on-unmatched-pattern {staged_files}
 
     # 非 JS/TS: 仅 prettier 格式化
     prettier-other:
       glob: '*.{md,mdx,json,jsonc,yaml,yml}'
-      run: bunx prettier --write --log-level error {staged_files}
+      run: bun x --no-install prettier --write --log-level error {staged_files}
       stage_fixed: true
 
 pre-push:

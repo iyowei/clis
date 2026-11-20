@@ -83,7 +83,7 @@ const patchManifest = async (
 
 describe('发布前置闸门 · 临时检出端到端', () => {
   test('干净检出 + 本提交产物 + 清单自洽 → 通过 (退出码 0)', async () => {
-    const repo = await makeTempRepo('sweep-lab-release-ok-');
+    const repo = await makeTempRepo('cli-release-ok-');
     try {
       await stageArtifact(repo.root);
       const { io, out, err } = capture();
@@ -97,7 +97,7 @@ describe('发布前置闸门 · 临时检出端到端', () => {
   });
 
   test('工作树脏 → 拒绝 (退出码 1, 拒绝原因带未提交改动条数)', async () => {
-    const repo = await makeTempRepo('sweep-lab-release-dirty-');
+    const repo = await makeTempRepo('cli-release-dirty-');
     try {
       await stageArtifact(repo.root);
       await writeFile(join(repo.root, 'workspace.txt'), '半成品\n');
@@ -114,7 +114,7 @@ describe('发布前置闸门 · 临时检出端到端', () => {
   });
 
   test('产物缺失 → 拒绝 (退出码 1)', async () => {
-    const repo = await makeTempRepo('sweep-lab-release-nocli-');
+    const repo = await makeTempRepo('cli-release-nocli-');
     try {
       await stageArtifact(repo.root);
       await rm(join(repo.root, 'dist', CLI_FILE));
@@ -128,7 +128,7 @@ describe('发布前置闸门 · 临时检出端到端', () => {
   });
 
   test('产物被替换 (摘要不符) → 拒绝', async () => {
-    const repo = await makeTempRepo('sweep-lab-release-swapped-');
+    const repo = await makeTempRepo('cli-release-swapped-');
     try {
       await stageArtifact(repo.root);
       await writeFile(
@@ -145,7 +145,7 @@ describe('发布前置闸门 · 临时检出端到端', () => {
   });
 
   test('清单记录的是脏构建 → 拒绝', async () => {
-    const repo = await makeTempRepo('sweep-lab-release-dirtybuild-');
+    const repo = await makeTempRepo('cli-release-dirtybuild-');
     try {
       await stageArtifact(repo.root);
       await patchManifest(repo.root, { dirty: true });
@@ -159,7 +159,7 @@ describe('发布前置闸门 · 临时检出端到端', () => {
   });
 
   test('清单记录的提交与 HEAD 不一致 (构建后又有新提交) → 拒绝', async () => {
-    const repo = await makeTempRepo('sweep-lab-release-stale-');
+    const repo = await makeTempRepo('cli-release-stale-');
     try {
       await stageArtifact(repo.root);
       await patchManifest(repo.root, { commit: 'f'.repeat(40) });
@@ -173,7 +173,7 @@ describe('发布前置闸门 · 临时检出端到端', () => {
   });
 
   test('非 git 目录 → 拒绝 (读不到 git 状态)', async () => {
-    const temp = await makeTempDir('sweep-lab-release-nogit-');
+    const temp = await makeTempDir('cli-release-nogit-');
     try {
       const { io, err } = capture();
 

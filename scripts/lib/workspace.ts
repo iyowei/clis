@@ -5,7 +5,7 @@
  * - **双包产品对 (ProductPair)**: 带 `bin` 的 CLI 包, 其 dependencies 或 devDependencies
  *   引用某个仓内无 `bin` 包 (API 包), 按依赖关系单向锚定。
  * - `listWorkspacePackages` 按目录字典序稳定输出, 消除跨 OS readdir 顺序差异。
- * - 当仓内同时存在多个双包产品 (如 sweep 与 codd) 时, 调用方应使用 `resolveProductPairs`
+ * - 当仓内同时存在多个双包产品时, 调用方应使用 `resolveProductPairs`
  *   或为 `resolveCliAndApi` 传入明确的产品包名/目录提示, 不靠数组首项碰运气。
  *
  * 已知的单点同步 (无法运行时派生): `tsconfig.json` 的 paths 是静态配置, 新增 API 包或

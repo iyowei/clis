@@ -27,7 +27,7 @@ const makeDistDir = async (): Promise<{
   distDir: string;
   cleanup: () => Promise<void>;
 }> => {
-  const temp = await makeTempDir('sweep-lab-manifest-');
+  const temp = await makeTempDir('cli-manifest-');
   const distDir = join(temp.root, 'dist');
   mkdirSync(distDir, { recursive: true });
   return { distDir, cleanup: temp.cleanup };
@@ -97,7 +97,7 @@ describe('产物清单写入', () => {
   });
 
   test('非 git 检出: 事实如实落 null (不假装有提交)', async () => {
-    const temp = await makeTempDir('sweep-lab-nogit-');
+    const temp = await makeTempDir('cli-nogit-');
     try {
       expect(collectGitFacts(temp.root)).toEqual({ commit: null, dirty: null });
     } finally {
@@ -106,7 +106,7 @@ describe('产物清单写入', () => {
   });
 
   test('真实检出: 干净时采到提交与净状态, 改动后转脏', async () => {
-    const repo = await makeTempRepo('sweep-lab-facts-');
+    const repo = await makeTempRepo('cli-facts-');
     try {
       expect(collectGitFacts(repo.root)).toEqual({
         commit: runGit(repo.root, ['rev-parse', 'HEAD']).trim(),

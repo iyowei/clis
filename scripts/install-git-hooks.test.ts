@@ -92,7 +92,7 @@ const sandboxes: string[] = [];
 
 /** 建一个用例沙箱根 (mkdtemp 保证互不干扰) */
 const makeSandbox = (): string => {
-  const root = mkdtempSync(join(tmpdir(), 'sweep-hooks-'));
+  const root = mkdtempSync(join(tmpdir(), 'hooks-'));
   sandboxes.push(root);
   return root;
 };

@@ -6,8 +6,8 @@
  *   - 校验 tsc 执行本身未故障 (退出码非零且无块错误或 spawn 报错直接红灯, 防工具坏了假绿);
  *   - 若 TS2307 (Cannot find module) 指向本仓 scope/包名, 判为真断裂 (防改包名后示例假绿);
  *   - 仅非本仓虚构模块或未定义外部变量的块判为片段跳过。
- * - CLI 档: 自动发现仓内所有带 `bin` 且具备 `src/cli.ts` 的 CLI 工具 (sweep-nm / codd /
- *   create-clis 等), 采集 shell 块内以对应命令名开头的行, 对照各自 `--help` 核对旗标与子命令。
+ * - CLI 档: 自动发现仓内所有带 `bin` 且具备 `src/cli.ts` 的 CLI 工具,
+ *   采集 shell 块内以对应命令名开头的行, 对照各自 `--help` 核对旗标与子命令。
  *
  * 用法: bun scripts/lint-doc-examples.ts
  * 退出码: 0 全绿; 1 存在断裂。
@@ -30,7 +30,7 @@ export interface TsBlock {
 
 /** 被核对的一个 CLI 目标 */
 export interface CliTarget {
-  /** 命令名 (如 sweep-nm / codd / create-clis) */
+  /** 命令名 (package.json 的 bin 字段声明的可执行名) */
   binName: string;
   /** CLI 源码入口相对仓库根路径 */
   entryPath: string;
@@ -252,23 +252,20 @@ export function checkTsExamples(root: string = REPO_ROOT): {
         2,
       )}\n`,
     );
-    const localTsc = join(
-      REPO_ROOT,
-      'node_modules',
-      'typescript',
-      'bin',
-      'tsc',
-    );
+    const rootTsc = join(root, 'node_modules', 'typescript', 'bin', 'tsc');
+    const repoTsc = join(REPO_ROOT, 'node_modules', 'typescript', 'bin', 'tsc');
+    const localTsc = existsSync(rootTsc) ? rootTsc : repoTsc;
     const result = existsSync(localTsc)
       ? spawnSync(
           process.execPath,
           [localTsc, '-p', join(tmp, 'tsconfig.json')],
           { cwd: root, encoding: 'utf8' },
         )
-      : spawnSync('bun', ['x', 'tsc', '-p', join(tmp, 'tsconfig.json')], {
-          cwd: root,
-          encoding: 'utf8',
-        });
+      : spawnSync(
+          'bun',
+          ['x', '--no-install', 'tsc', '-p', join(tmp, 'tsconfig.json')],
+          { cwd: root, encoding: 'utf8' },
+        );
     const combinedOutput = `${result.stdout ?? ''}\n${result.stderr ?? ''}`;
     if (result.error !== undefined) {
       return {

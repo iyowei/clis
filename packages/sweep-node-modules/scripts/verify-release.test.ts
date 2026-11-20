@@ -194,7 +194,7 @@ describe('collectFacts 集成采集', () => {
   });
 
   test('临时仓库: git 事实 / 清单 / 摘要 / 递归 d.ts 复查 (含 import 类型查询) / pack 清单逐项落地', () => {
-    const root = mkdtempSync(join(tmpdir(), 'sweep-verify-'));
+    const root = mkdtempSync(join(tmpdir(), 'pkg-verify-'));
     dirs.push(root);
     const git = (args: string[]) =>
       spawnSync('git', args, {

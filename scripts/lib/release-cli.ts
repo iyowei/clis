@@ -59,7 +59,7 @@ export interface AssetPackConfig {
   schemaVersion?: number;
   /** npm 会静默过滤、严禁以原名落入模板资产的文件名黑名单 */
   unshippableBasenames: readonly string[];
-  /** 是否一并拒绝任何以 `.` 开头的隐藏文件名 (供 codd-cli 等严禁隐藏点文件随包的场景) */
+  /** 是否一并拒绝任何以 `.` 开头的隐藏文件名 (供严禁隐藏点文件随包的场景) */
   rejectDotfiles?: boolean;
 }
 

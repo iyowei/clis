@@ -102,7 +102,7 @@ const HELP_TEXT = [
  *   --target 收值 'bun packages/sweep-node-modules-cli/src/cli.ts'; --filter 收值 'scan-'; 其余取默认
  *
  * Output（数据契约）
- *   return { ok: true, options: { target: 'bun packages/sweep-node-modules-cli/src/cli.ts', corpusDir: 'docs/sweep/protocol/conformance/corpus', filter: 'scan-', timeoutMs: 15000, json: false, keep: false, help: false } }
+ *   return { ok: true, options: { target: 'bun packages/sweep-node-modules-cli/src/cli.ts', corpusDir: 'packages/sweep-node-modules/docs/protocol/conformance/corpus', filter: 'scan-', timeoutMs: 15000, json: false, keep: false, help: false } }
  * ```
  */
 function parseArgs(argv: string[]): ParseOutcome {
@@ -257,7 +257,7 @@ async function runCase(
   ctx: RunContext,
 ): Promise<CaseReport> {
   const startedAt = Date.now();
-  const rawRoot = makeTmpRoot('sweep-conformance-');
+  const rawRoot = makeTmpRoot('conformance-');
   // realpath 归一: macOS 上 /var 与 /private/var 是同一位置的两种拼写, 统一用 realpath 形态
   // 作 $FIXTURE 的替换值, 使期望文本与 process.cwd() / realpath 化输出一致。
   const root = await realpath(rawRoot);
