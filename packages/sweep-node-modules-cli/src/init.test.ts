@@ -144,7 +144,7 @@ describe('runInit: written 路径', () => {
     // 落盘回执: 成功标记 + 家目录缩写 (降级态只去色码);
     // 随后回显落盘 JSON 全文 (内容与文件逐字一致, 整体加两空格缩进与其余行同左缘)
     expect(prints).toContain(
-      '  配置已写入: ~/.config/sweep-node-modules/config.json  ✓',
+      `  配置已写入: ${join('~', '.config', 'sweep-node-modules', 'config.json')}  ✓`,
     );
     expect(prints).toContain(
       JSON.stringify(expected, null, 2)

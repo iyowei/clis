@@ -5,7 +5,7 @@
  */
 import { afterEach, describe, expect, test } from 'bun:test';
 
-import { join } from 'node:path';
+import { join, sep } from 'node:path';
 
 import {
   type Workspace,
@@ -85,7 +85,7 @@ describe('进度事件流', () => {
     );
     expect(skipped).toHaveLength(1);
     expect(skipped[0]?.reason).toBe('suspect-install-tree');
-    expect(skipped[0]?.target).toContain('/lib/');
+    expect(skipped[0]?.target).toContain(`${sep}lib${sep}`);
   });
 
   test('plan: warning 事件透传扫描段告警 (不存在的根)', async () => {

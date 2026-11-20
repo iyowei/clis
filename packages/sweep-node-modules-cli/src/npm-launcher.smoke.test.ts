@@ -78,7 +78,12 @@ const makePackage = (): FakePackage => {
     cliPath: join(root, 'dist', CLI_FILE),
     launcher: join(root, 'bin', 'sweep-nm.mjs'),
     cleanup: () => {
-      rmSync(root, { recursive: true, force: true });
+      rmSync(root, {
+        recursive: true,
+        force: true,
+        maxRetries: 5,
+        retryDelay: 100,
+      });
     },
   };
 };
@@ -297,9 +302,14 @@ describe('npm 启动器 · 产物自证', () => {
         pkg,
         'process.stdout.write(`ARGV1=${process.argv[1]}\\n`);\n',
       );
+      const emptyPathEnv: NodeJS.ProcessEnv = { ...process.env };
+      for (const key of Object.keys(emptyPathEnv)) {
+        if (key.toUpperCase() === 'PATH') delete emptyPathEnv[key];
+      }
+      emptyPathEnv.PATH = '';
       const res = spawnSync(nodeExecPath, [pkg.launcher, '--help'], {
         encoding: 'utf8',
-        env: { ...process.env, PATH: '' },
+        env: emptyPathEnv,
       });
 
       expect(res.status, res.stderr).toBe(0);
@@ -357,7 +367,12 @@ describe('npm 启动器 · 工作目录配置与环境变量隔离', () => {
         expect(viaSh.stderr).not.toContain('PRELOAD_HIJACKED');
       }
     } finally {
-      rmSync(dirtyCwd, { recursive: true, force: true });
+      rmSync(dirtyCwd, {
+        recursive: true,
+        force: true,
+        maxRetries: 5,
+        retryDelay: 100,
+      });
     }
   });
 });

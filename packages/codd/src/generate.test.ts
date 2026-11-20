@@ -36,7 +36,13 @@ const makeTestWorkspace = (): TestWorkspace => {
     tmpDir,
     outDir,
     stateDir,
-    cleanup: () => rmSync(tmpDir, { recursive: true, force: true }),
+    cleanup: () =>
+      rmSync(tmpDir, {
+        recursive: true,
+        force: true,
+        maxRetries: 5,
+        retryDelay: 100,
+      }),
   };
 };
 

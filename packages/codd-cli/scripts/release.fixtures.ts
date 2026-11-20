@@ -24,7 +24,12 @@ export const makeTempDir = async (prefix: string): Promise<TempDir> => {
   return {
     root,
     cleanup: async () => {
-      await rm(root, { recursive: true, force: true });
+      await rm(root, {
+        recursive: true,
+        force: true,
+        maxRetries: 5,
+        retryDelay: 100,
+      });
     },
   };
 };

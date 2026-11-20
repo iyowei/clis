@@ -35,7 +35,7 @@ import { createReadlineIO, runInit } from './init.ts';
 const SELF = fileURLToPath(new URL('./init.smoke.ts', import.meta.url));
 
 /** 派生 worker 的超时守卫: 单场景挂死 (历史缺陷形态) 即杀子进程判失败, 不拖垮整轮 */
-const WORKER_TIMEOUT_MS = 3000;
+const WORKER_TIMEOUT_MS = 10_000;
 
 /**
  * 注入路径先归一到真实形态: 向导的根锚点校验与删除侧同口径 (判在拼写上, 见 guard.ts 不变量 ⑤),
@@ -129,10 +129,12 @@ async function runWorker(name: string, configPath: string): Promise<void> {
   const victim = sceneVictim(configPath);
 
   // 清掉任何残留, 使场景可独立重复运行 (写入类场景需文件与子目录均不存在, decline 需预置配置)
-  rmSync(configPath, { force: true });
-  for (const root of roots) rmSync(root, { recursive: true, force: true });
-  rmSync(link, { force: true });
-  rmSync(victim, { force: true });
+  const rmOpts = { force: true, maxRetries: 5, retryDelay: 100 };
+  const rmDirOpts = { ...rmOpts, recursive: true };
+  rmSync(configPath, rmOpts);
+  for (const root of roots) rmSync(root, rmDirOpts);
+  rmSync(link, rmDirOpts);
+  rmSync(victim, rmOpts);
   if (
     name === 'written' ||
     name === 'written-default-exclude' ||
@@ -142,7 +144,13 @@ async function runWorker(name: string, configPath: string): Promise<void> {
     for (const root of roots) mkdirSync(root, { recursive: true });
   }
   // 符号链接根: 拼写上有链接介入 (删除侧据此整批拒绝), 向导须当场提示并重问
-  if (name === 'symlink-root') await symlink(roots[0], link);
+  if (name === 'symlink-root') {
+    await symlink(
+      roots[0],
+      link,
+      process.platform === 'win32' ? 'dir' : undefined,
+    );
+  }
   // 符号链接配置路径: 指向一个无关的第三方文件, 写入若跟随链接就会把它整篇改写
   if (name === 'symlink-config') {
     await writeFile(victim, VICTIM_TEXT);
@@ -255,10 +263,10 @@ async function runWorker(name: string, configPath: string): Promise<void> {
     );
   } finally {
     // 完成后清理, 不留残留 (断言已在清理前读盘完成; 配置路径是符号链接时 rm 只删链接本身)
-    rmSync(configPath, { force: true });
-    rmSync(victim, { force: true });
-    for (const root of roots) rmSync(root, { recursive: true, force: true });
-    rmSync(link, { force: true });
+    rmSync(configPath, rmOpts);
+    rmSync(victim, rmOpts);
+    for (const root of roots) rmSync(root, rmDirOpts);
+    rmSync(link, rmDirOpts);
   }
 
   if (failures.length > 0) {

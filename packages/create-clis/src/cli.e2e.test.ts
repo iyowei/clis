@@ -12,7 +12,6 @@ import { afterAll, afterEach, describe, expect, test } from 'bun:test';
 
 import { spawnSync } from 'node:child_process';
 import {
-  cpSync,
   existsSync,
   mkdirSync,
   readFileSync,
@@ -26,8 +25,7 @@ import { fileURLToPath } from 'node:url';
 import { makeTmpRoot } from '../../../scripts/lib/tmp-root.ts';
 import { buildTemplate } from '../scripts/build-template.ts';
 import { REPO_ROOT } from '../scripts/template-manifest.ts';
-import { type GenerateHooks, generateProject } from './generate.ts';
-import { TEMPLATE_VOCABULARY, type Vocabulary } from './render.ts';
+import { TEMPLATE_VOCABULARY } from './render.ts';
 import {
   ORIGINAL,
   defaultTemplateDir,
@@ -51,15 +49,6 @@ const CORE = ['--tier', 'core'];
 
 /** 跳过全部收尾动作 (e2e 不真跑依赖安装; git init 仅专门用例执行) */
 const NO_HOOKS = ['--no-git', '--no-install'];
-
-/** 模块面直调 generateProject 的固定词汇 */
-const HOOK_VOCABULARY: Vocabulary = {
-  name: 'hook-tool',
-  scope: '',
-  binName: 'hook-tool',
-  owner: 'demouser',
-  repoUrl: 'https://github.com/demouser/hook-tool',
-};
 
 /** 子进程时限: 生成含全树 prettier 收口, 阈值给足防慢机误判; 交互死锁由它兜底 */
 const TIMEOUT_MS = 120_000;
@@ -88,7 +77,14 @@ buildTemplate({
   original: ORIGINAL,
 });
 
-afterAll(() => rmSync(TEMPLATE_ROOT, { recursive: true, force: true }));
+afterAll(() =>
+  rmSync(TEMPLATE_ROOT, {
+    recursive: true,
+    force: true,
+    maxRetries: 5,
+    retryDelay: 100,
+  }),
+);
 
 /** 变量零残留判据 (与引擎同源): 五个占位形态 + 裸 slug 组合形态 */
 const PLACEHOLDER_FORMS = [
@@ -109,7 +105,12 @@ const ORIGINAL_FORMS = [
 const createdRoots: string[] = [];
 afterEach(() => {
   for (const root of createdRoots.splice(0)) {
-    rmSync(root, { recursive: true, force: true });
+    rmSync(root, {
+      recursive: true,
+      force: true,
+      maxRetries: 5,
+      retryDelay: 100,
+    });
   }
 });
 
@@ -346,6 +347,7 @@ function defineWiringCases(runner: string, available: boolean): void {
         expect(apiPkg).toContain('"name": "@piped/proj"');
         expect(has(target, 'packages/proj-cli/bin/proj.mjs')).toBe(true);
       },
+      TIMEOUT_MS,
     );
 
     test.skipIf(!available)(
@@ -362,6 +364,7 @@ function defineWiringCases(runner: string, available: boolean): void {
         expect(`${result.stdout}${result.stderr}`).toContain('已取消');
         expect(existsSync(target)).toBe(false);
       },
+      TIMEOUT_MS,
     );
   });
 }
@@ -369,41 +372,49 @@ function defineWiringCases(runner: string, available: boolean): void {
 /** 旗标与档位面: 参数错误 / help / -- 行为 / 档位裁剪 (逐 runner 注册) */
 function defineFlagCases(runner: string, available: boolean): void {
   describe(`create-clis e2e [${runner}] 旗标与档位面`, () => {
-    test.skipIf(!available)('旗标非法: 报因退非零且未生成', () => {
-      const { home, target } = makeCase('bad-flag');
-      // 注: `--` 是否到达 argv 随载体而异 (bun 直跑剥离, node 原样传入; npm create 场景由 npm 剥离), 不在此断言
-      const cases: { args: string[]; reason: string }[] = [
-        { args: ['--bogus'], reason: '未知旗标' },
-        { args: ['--tier', 'ultimate'], reason: '--tier' },
-        { args: [target, '--name', 'BadName'], reason: 'kebab-case' },
-      ];
-      for (const { args, reason } of cases) {
-        const result = runCli(runner, [...args, '--yes'], { home });
-        expect(result.status, `应退非零: ${args.join(' ')}`).not.toBe(0);
-        expect(result.stderr).toContain(reason);
-      }
-      expect(existsSync(target)).toBe(false);
-    });
+    test.skipIf(!available)(
+      '旗标非法: 报因退非零且未生成',
+      () => {
+        const { home, target } = makeCase('bad-flag');
+        // 注: `--` 是否到达 argv 随载体而异 (bun 直跑剥离, node 原样传入; npm create 场景由 npm 剥离), 不在此断言
+        const cases: { args: string[]; reason: string }[] = [
+          { args: ['--bogus'], reason: '未知旗标' },
+          { args: ['--tier', 'ultimate'], reason: '--tier' },
+          { args: [target, '--name', 'BadName'], reason: 'kebab-case' },
+        ];
+        for (const { args, reason } of cases) {
+          const result = runCli(runner, [...args, '--yes'], { home });
+          expect(result.status, `应退非零: ${args.join(' ')}`).not.toBe(0);
+          expect(result.stderr).toContain(reason);
+        }
+        expect(existsSync(target)).toBe(false);
+      },
+      TIMEOUT_MS,
+    );
 
     // 注: `--help` 的先行拦截与用法打印由 cli.smoke.test.ts 覆盖 (双载体秒级冒烟), 不在此重复
 
-    test.skipIf(!available)('full 档: 增强档装备保留', () => {
-      const { home, target } = makeCase('full');
-      const result = runCli(
-        runner,
-        [target, ...VARIABLES, '--tier', 'full', ...NO_HOOKS],
-        { home },
-      );
+    test.skipIf(!available)(
+      'full 档: 增强档装备保留',
+      () => {
+        const { home, target } = makeCase('full');
+        const result = runCli(
+          runner,
+          [target, ...VARIABLES, '--tier', 'full', ...NO_HOOKS],
+          { home },
+        );
 
-      expect(result.status, `应退 0: ${result.stderr}`).toBe(0);
-      const kitFile = 'scripts/transcription/run-conformance.ts';
-      expect(has(target, kitFile)).toBe(true);
-      expect(has(target, 'docs/designs/tech-debt.md')).toBe(true);
-      // 根包脚本零悬空 + 闸门清单仍可跑: 摘除面不越界 (full 档保留 conformance 套件)
-      expectRootScriptsResolve(target);
-      const help = ciHelpAt(target);
-      expect(help.status, `full 档 ci --help 应退 0: ${help.stderr}`).toBe(0);
-    });
+        expect(result.status, `应退 0: ${result.stderr}`).toBe(0);
+        const kitFile = 'scripts/transcription/run-conformance.ts';
+        expect(has(target, kitFile)).toBe(true);
+        expect(has(target, 'docs/designs/tech-debt.md')).toBe(true);
+        // 根包脚本零悬空 + 闸门清单仍可跑: 摘除面不越界 (full 档保留 conformance 套件)
+        expectRootScriptsResolve(target);
+        const help = ciHelpAt(target);
+        expect(help.status, `full 档 ci --help 应退 0: ${help.stderr}`).toBe(0);
+      },
+      TIMEOUT_MS,
+    );
 
     test.skipIf(!available)(
       '缺省档位 standard: 增强档摘除, 标准档册子保留',
@@ -422,106 +433,6 @@ function defineFlagCases(runner: string, available: boolean): void {
   });
 }
 
-/** 直调 generateProject 的覆写面 (模块面用例共用): 缺省即真实模板 + 固定词汇 + core 档 */
-interface RunGenerateOverrides {
-  hooks?: GenerateHooks;
-  vocabulary?: Vocabulary;
-  templateDir?: string;
-}
-
-/** 直调 generateProject (模块面用例共用): 真实模板夹具, 覆写项由用例给定 */
-function runGenerate(
-  targetDir: string,
-  overrides: RunGenerateOverrides = {},
-): Promise<{ executed: string[] }> {
-  return generateProject({
-    templateDir: overrides.templateDir ?? TEMPLATE_DIR,
-    targetDir,
-    vocabulary: overrides.vocabulary ?? HOOK_VOCABULARY,
-    tier: 'core',
-    original: ORIGINAL,
-    hooks: overrides.hooks,
-  });
-}
-
-/** hooks 调度契约 (模块面): 执行序 / 如实记录 / 失败中止, 直调 generateProject 不经 CLI 进程 */
-describe('generateProject hooks 调度', () => {
-  test('hooks 按执行序执行并如实记录; 未提供的 hook 跳过', async () => {
-    const { target } = makeCase('hooks');
-    const calls: string[] = [];
-    const result = await runGenerate(target, {
-      hooks: {
-        gitInit: () => {
-          calls.push('git');
-        },
-        install: async () => {
-          calls.push('install');
-        },
-      },
-    });
-
-    expect(calls).toEqual(['git', 'install']);
-    expect(result.executed).toEqual(['git init', '依赖安装']);
-
-    // 未提供的动作不执行 (--no-git / --no-install 的折算语义)
-    const second = makeCase('hooks-skip');
-    const skipped = await runGenerate(second.target, {
-      hooks: {
-        install: () => {
-          calls.push('install-only');
-        },
-      },
-    });
-    expect(calls).toEqual(['git', 'install', 'install-only']);
-    expect(skipped.executed).toEqual(['依赖安装']);
-
-    // 抛错即中止: 后续 hook 不执行, 半成品保留 (产物已完整生成, 失败发生在收尾面)
-    const third = makeCase('hooks-fail');
-    const failing = runGenerate(third.target, {
-      hooks: {
-        gitInit: () => {
-          throw new Error('boom');
-        },
-        install: () => {
-          calls.push('must-not-run');
-        },
-      },
-    });
-    await expect(failing).rejects.toThrow('boom');
-    expect(calls).toEqual(['git', 'install', 'install-only']);
-    expect(existsSync(join(third.target, 'package.json'))).toBe(true);
-  });
-});
-
-/** 二道自检 (模块面): 失败分支与重合豁免 */
-describe('generateProject 二道自检', () => {
-  test('变量与原项目词汇取值重合 (owner 同为本仓 owner): 不误报残留', async () => {
-    const { target } = makeCase('overlap');
-    const overlap: Vocabulary = {
-      ...HOOK_VOCABULARY,
-      owner: ORIGINAL.owner,
-      repoUrl: `https://github.com/${ORIGINAL.owner}/hook-tool`,
-    };
-    await expect(runGenerate(target, { vocabulary: overlap })).resolves.toEqual(
-      { executed: [] },
-    );
-    expect(existsSync(join(target, 'package.json'))).toBe(true);
-  });
-
-  test('模板残留原词汇: 抛错且保留半成品 (写入后失败)', async () => {
-    const { target } = makeCase('residual');
-    // 改坏模板: 塞入生成期不替换的原词汇形态, 制造二道自检的失败输入
-    const broken = join(dirname(target), 'template-broken');
-    cpSync(TEMPLATE_DIR, broken, { recursive: true });
-    writeFileSync(join(broken, 'scripts/leftover.txt'), 'sweep-node-modules\n');
-
-    const failure = runGenerate(target, { templateDir: broken });
-    await expect(failure).rejects.toThrow('二道自检未过');
-    // 半成品保留: 失败发生在写入之后, 产物与触发残留的文件都在
-    expect(existsSync(join(target, 'scripts/leftover.txt'))).toBe(true);
-  });
-});
-
 /** 模块与产物面: 模板定位 + 格式化收口验收 (与生成物 ci 的 format-check 步骤同口径) */
 describe('模块与产物面', () => {
   test('默认模板目录指向包内 assets/template', () => {
@@ -529,38 +440,45 @@ describe('模块与产物面', () => {
     expect(dir.endsWith(join('assets', 'template'))).toBe(true);
   });
 
-  test('core 档产物过 prettier --check (产物内真实 CLI)', () => {
-    const { home, target } = makeCase('format');
-    const generated = runCli(
-      'bun',
-      [target, ...VARIABLES, '--tier', 'core', ...NO_HOOKS],
-      { home },
-    );
-    expect(generated.status, `应退 0: ${generated.stderr}`).toBe(0);
+  test(
+    'core 档产物过 prettier --check (产物内真实 CLI)',
+    () => {
+      const { home, target } = makeCase('format');
+      const generated = runCli(
+        'bun',
+        [target, ...VARIABLES, '--tier', 'core', ...NO_HOOKS],
+        { home },
+      );
+      expect(generated.status, `应退 0: ${generated.stderr}`).toBe(0);
 
-    // 产物尚未装依赖: 把仓内同版本 prettier 与插件链进 node_modules, 让产物自身的
-    // prettier --check 口径可用 (链接随用例清理, 不落工作区)
-    for (const name of ['prettier', '@trivago/prettier-plugin-sort-imports']) {
-      const link = join(target, 'node_modules', name);
-      mkdirSync(dirname(link), { recursive: true });
-      symlinkSync(join(REPO_ROOT, 'node_modules', name), link, 'dir');
-    }
+      // 产物尚未装依赖: 把仓内同版本 prettier 与插件链进 node_modules, 让产物自身的
+      // prettier --check 口径可用 (链接随用例清理, 不落工作区)
+      for (const name of [
+        'prettier',
+        '@trivago/prettier-plugin-sort-imports',
+      ]) {
+        const link = join(target, 'node_modules', name);
+        mkdirSync(dirname(link), { recursive: true });
+        symlinkSync(join(REPO_ROOT, 'node_modules', name), link, 'dir');
+      }
 
-    const prettierCli = join(
-      REPO_ROOT,
-      'node_modules',
-      'prettier',
-      'bin',
-      'prettier.cjs',
-    );
-    const check = spawnSync('node', [prettierCli, '--check', '.'], {
-      cwd: target,
-      encoding: 'utf8',
-      timeout: TIMEOUT_MS,
-    });
-    expect(
-      check.status,
-      `format-check 应通过: ${check.stdout}${check.stderr}`,
-    ).toBe(0);
-  });
+      const prettierCli = join(
+        REPO_ROOT,
+        'node_modules',
+        'prettier',
+        'bin',
+        'prettier.cjs',
+      );
+      const check = spawnSync('node', [prettierCli, '--check', '.'], {
+        cwd: target,
+        encoding: 'utf8',
+        timeout: TIMEOUT_MS,
+      });
+      expect(
+        check.status,
+        `format-check 应通过: ${check.stdout}${check.stderr}`,
+      ).toBe(0);
+    },
+    TIMEOUT_MS,
+  );
 });

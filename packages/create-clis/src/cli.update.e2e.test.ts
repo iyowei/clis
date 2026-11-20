@@ -26,10 +26,22 @@ buildTemplate({
 const createdRoots: string[] = [];
 afterEach(() => {
   for (const root of createdRoots.splice(0)) {
-    rmSync(root, { recursive: true, force: true });
+    rmSync(root, {
+      recursive: true,
+      force: true,
+      maxRetries: 5,
+      retryDelay: 100,
+    });
   }
 });
-afterAll(() => rmSync(TEMPLATE_ROOT, { recursive: true, force: true }));
+afterAll(() =>
+  rmSync(TEMPLATE_ROOT, {
+    recursive: true,
+    force: true,
+    maxRetries: 5,
+    retryDelay: 100,
+  }),
+);
 
 describe('create-clis 版本与 update 子命令', () => {
   test('--version / -V 输出语义化版本号, update --help 与非法 --pm 行为准确', () => {
@@ -52,7 +64,7 @@ describe('create-clis 版本与 update 子命令', () => {
     });
     expect(bad.status).toBe(1);
     expect(bad.stderr).toContain('不支持');
-  });
+  }, 30_000);
 });
 
 describe('create-clis CLI 前置目录校验、非 kebab 目录交互与 -- 分隔符 (CREATE-P0-7 / CREATE-P1-2)', () => {
@@ -71,7 +83,7 @@ describe('create-clis CLI 前置目录校验、非 kebab 目录交互与 -- 分�
     expect(res.status).toBe(1);
     expect(res.stderr).toContain('非空');
     expect(res.stdout).not.toContain('已取消');
-  });
+  }, 30_000);
 
   test('非 kebab-case 目录 (MyApp/) 跑 create-clis . 交互命名可正常生成', () => {
     const root = makeTmpRoot('create-clis-myapp-');
@@ -101,7 +113,7 @@ describe('create-clis CLI 前置目录校验、非 kebab 目录交互与 -- 分�
     expect(existsSync(join(myAppDir, 'packages/my-app/package.json'))).toBe(
       true,
     );
-  });
+  }, 60_000);
 
   test('create-clis -- update 可创建名为 update 的目录而不误入 update 子命令', () => {
     const root = makeTmpRoot('create-clis-dashdash-');
@@ -139,5 +151,5 @@ describe('create-clis CLI 前置目录校验、非 kebab 目录交互与 -- 分�
     expect(existsSync(join(root, 'update/packages/update/package.json'))).toBe(
       true,
     );
-  });
+  }, 60_000);
 });

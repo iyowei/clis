@@ -7,7 +7,8 @@
  *      成立: Node 侧实测 rm 把内部条目 ENOENT 归一为成功 (不冒泡), 结果应为 removed 且
  *      目标确实消失; Bun 侧同一场景会冒泡为顶层 ENOENT 并由复核兜底归 failed (由 bun test 承载)。
  * 全通 exit 0; 有失败项则逐条打印后 exit 1 (失败响亮, 不中断以便一次看清)。
- * 命令路径为 POSIX, 只在类 Unix 环境可跑, 本机 macOS 实测。
+ * 全平台可跑: ①② 与 ③「无伪成功」安全不变量全平台硬断言; POSIX 上追加校验 Node rm 不冒泡 failed
+ * (Windows NTFS 句柄锁下并发删目录可能返回 EBUSY/EPERM 归入 failed, 属正确保守上报)。
  */
 import { mkdtemp, realpath, stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -102,10 +103,12 @@ try {
     buzz.falseSuccess === 0,
     '竞态压测: 无「目标仍在却归 missing」的伪成功',
   );
-  check(
-    buzz.failed === 0,
-    'Node 侧竞态不产生 failed (rm 内部归一为成功, 实测形态)',
-  );
+  if (process.platform !== 'win32') {
+    check(
+      buzz.failed === 0,
+      'Node 侧竞态不产生 failed (POSIX 上 rm 内部归一为成功, 实测形态)',
+    );
+  }
 } finally {
   // 自愈式清理: 残留降级为警告, 不抛断收尾 (见 removeDirResilient)
   await removeDirResilient(root);
