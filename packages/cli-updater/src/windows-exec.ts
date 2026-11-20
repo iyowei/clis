@@ -125,25 +125,7 @@ function resolveNodeExeForDir(
   return findNativeNode();
 }
 
-/** Windows 上优先绕开 npm.cmd 壳层, 直调同目录 node.exe + npm-cli.js */
-export function resolveWindowsNpmDirect(
-  dirs: readonly string[],
-  args: readonly string[],
-  isFile: (path: string) => boolean,
-  findNativeNode: () => string | null,
-): PmInvocation | null {
-  for (const dir of dirs) {
-    const npmCli = win32.join(dir, 'node_modules', 'npm', 'bin', 'npm-cli.js');
-    if (!isFile(npmCli)) continue;
-    const nodeExe = resolveNodeExeForDir(dir, isFile, findNativeNode);
-    if (nodeExe !== null) {
-      return { command: nodeExe, args: [npmCli, ...args] };
-    }
-  }
-  return null;
-}
-
-/** 根据找到的 .cmd 批处理目录探测 pnpm / yarn 相邻 JS 入口, 优先直调 node.exe 绕开 cmd.exe */
+/** 根据找到的 .cmd/.bat 批处理目录探测 npm / pnpm / yarn 相邻 JS 入口, 优先直调 node.exe 绕开 cmd.exe */
 export function resolveWindowsBatchDirectJs(
   pm: PackageManager,
   batchPath: string,
@@ -153,7 +135,9 @@ export function resolveWindowsBatchDirectJs(
 ): PmInvocation | null {
   const dir = win32.dirname(batchPath);
   let candidates: string[] = [];
-  if (pm === 'pnpm') {
+  if (pm === 'npm') {
+    candidates = [win32.join(dir, 'node_modules', 'npm', 'bin', 'npm-cli.js')];
+  } else if (pm === 'pnpm') {
     candidates = [
       win32.join(dir, 'node_modules', 'pnpm', 'bin', 'pnpm.cjs'),
       win32.join(dir, 'node_modules', 'corepack', 'dist', 'pnpm.js'),

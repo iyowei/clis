@@ -65,12 +65,28 @@ describe('安全白名单校验', () => {
     expect(isValidTargetSpec('$(id)')).toBe(false);
   });
 
-  test('registry URL 仅放行干净的 http(s) 地址', () => {
+  test('registry URL 仅放行干净无凭据无 query/hash 的 http(s) 地址', () => {
     expect(isValidRegistryUrl('https://registry.npmjs.org')).toBe(true);
     expect(isValidRegistryUrl('https://registry.npmmirror.com/')).toBe(true);
+    expect(
+      isValidRegistryUrl('https://artifactory.corp.com/api/npm/team/'),
+    ).toBe(true);
     expect(isValidRegistryUrl('http://127.0.0.1:4873')).toBe(true);
     expect(isValidRegistryUrl('file:///etc/passwd')).toBe(false);
     expect(isValidRegistryUrl('https://a.com;whoami')).toBe(false);
     expect(isValidRegistryUrl('https://a.com/foo\nbar')).toBe(false);
+    // 拒绝内嵌明文凭据 URL (防泄漏进日志与子进程 argv)
+    expect(isValidRegistryUrl('https://user:pass@npm.example.com/')).toBe(
+      false,
+    );
+    expect(isValidRegistryUrl('https://token@npm.example.com/')).toBe(false);
+    expect(isValidRegistryUrl('https://:secret@npm.example.com/')).toBe(false);
+    // 拒绝带 ?query 或 #hash 的 URL (防拼接包名时落入 query/fragment)
+    expect(isValidRegistryUrl('https://registry.npmjs.org/?foo=1')).toBe(false);
+    expect(isValidRegistryUrl('https://registry.npmjs.org/?')).toBe(false);
+    expect(isValidRegistryUrl('https://registry.npmjs.org/#section')).toBe(
+      false,
+    );
+    expect(isValidRegistryUrl('https://registry.npmjs.org/#')).toBe(false);
   });
 });

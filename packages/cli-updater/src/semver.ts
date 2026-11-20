@@ -33,12 +33,20 @@ export function isValidTargetSpec(spec: string): boolean {
   return TARGET_SPEC_RE.test(spec);
 }
 
-/** 校验 registry URL: 仅允许 http / https, 拒绝控制字符、空白与凭据泄漏 */
+/** 校验 registry URL: 仅允许无凭据、无 query/hash 的 http / https 地址, 拒绝控制字符与空白 */
 export function isValidRegistryUrl(raw: string): boolean {
-  if (raw.length === 0 || /[\s"'`$|;&<>\\\p{Cc}]/u.test(raw)) return false;
+  if (raw.length === 0 || /[\s"'`$|;&<>\\?#\p{Cc}]/u.test(raw)) return false;
   try {
     const parsed = new URL(raw);
     if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') {
+      return false;
+    }
+    if (
+      parsed.username !== '' ||
+      parsed.password !== '' ||
+      parsed.search !== '' ||
+      parsed.hash !== ''
+    ) {
       return false;
     }
     return parsed.hostname.length > 0;

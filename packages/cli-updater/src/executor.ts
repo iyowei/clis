@@ -35,7 +35,6 @@ import {
   type PmInvocation,
   isWin32AbsolutePath,
   resolveWindowsBatchInvocation,
-  resolveWindowsNpmDirect,
 } from './windows-exec.ts';
 
 /** 子进程调用描述符 */
@@ -179,26 +178,14 @@ export function resolvePmInvocation(
   env: NodeJS.ProcessEnv = process.env,
   isFile: (path: string) => boolean = defaultIsFile,
 ): PmInvocation | null {
-  const findNativeNode = (): string | null => {
-    const nodeFound = resolveExecutableInPath('node', 'win32', env, isFile);
-    return nodeFound !== null && !nodeFound.isBatch ? nodeFound.path : null;
-  };
-
-  if (platform === 'win32' && pm === 'npm') {
-    const dirs = parseAbsolutePathDirs(env, 'win32');
-    const direct = resolveWindowsNpmDirect(
-      dirs,
-      pmArgs,
-      isFile,
-      findNativeNode,
-    );
-    if (direct !== null) return direct;
-  }
-
   const found = resolveExecutableInPath(pm, platform, env, isFile);
   if (found === null) return null;
 
   if (platform === 'win32' && found.isBatch) {
+    const findNativeNode = (): string | null => {
+      const nodeFound = resolveExecutableInPath('node', 'win32', env, isFile);
+      return nodeFound !== null && !nodeFound.isBatch ? nodeFound.path : null;
+    };
     return resolveWindowsBatchInvocation(
       pm,
       found.path,

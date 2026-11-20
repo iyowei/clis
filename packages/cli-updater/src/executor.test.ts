@@ -40,12 +40,14 @@ describe('resolveExecutableInPath 防当前目录劫持', () => {
   });
 });
 
-describe('resolvePmInvocation 跨平台调用构造', () => {
-  test('Windows 下 npm 优先直调 node.exe + npm-cli.js 绕开 npm.cmd 壳层', () => {
-    const nodeDir = 'C:\\Program Files\\nodejs';
-    const nodeExe = `${nodeDir}\\node.exe`;
-    const npmCli = `${nodeDir}\\node_modules\\npm\\bin\\npm-cli.js`;
-    const existing = new Set([nodeExe, npmCli]);
+describe('resolvePmInvocation Windows npm 直调与 PATH 顺序', () => {
+  const nodeDir = 'C:\\Program Files\\nodejs';
+  const nodeExe = `${nodeDir}\\node.exe`;
+  const npmCmd = `${nodeDir}\\npm.cmd`;
+  const npmCli = `${nodeDir}\\node_modules\\npm\\bin\\npm-cli.js`;
+
+  test('Windows 下 npm 命中 npm.cmd 时优先直调同目录 node.exe + npm-cli.js 绕开批处理壳层', () => {
+    const existing = new Set([nodeExe, npmCmd, npmCli]);
     const inv = resolvePmInvocation(
       'npm',
       ['install', '-g', 'create-clis@1.1.0'],
@@ -59,6 +61,74 @@ describe('resolvePmInvocation 跨平台调用构造', () => {
     });
   });
 
+  test('Windows 下 resolvePmInvocation("npm") 严守 PATH 顺序, 绝不绕过前位原生 npm.exe 抢跑后位 npm-cli.js', () => {
+    const voltaNpmExe = 'C:\\Users\\dev\\.volta\\bin\\npm.exe';
+    const existingWithVolta = new Set([voltaNpmExe, nodeExe, npmCmd, npmCli]);
+    expect(
+      resolvePmInvocation(
+        'npm',
+        ['install', '-g', 'create-clis@1.2.0'],
+        'win32',
+        { PATH: `C:\\Users\\dev\\.volta\\bin;${nodeDir}` },
+        (p) => existingWithVolta.has(p),
+      ),
+    ).toEqual({
+      command: voltaNpmExe,
+      args: ['install', '-g', 'create-clis@1.2.0'],
+    });
+
+    // 前位为独立 npm.cmd (同目录无 npm-cli.js) 时同样严守 PATH 顺序走 ComSpec, 不越位抢跑后位 npm-cli.js
+    const customCmd = 'C:\\custom-npm\\npm.cmd';
+    const existingWithCustomCmd = new Set([customCmd, nodeExe, npmCmd, npmCli]);
+    expect(
+      resolvePmInvocation(
+        'npm',
+        ['install', '-g', 'create-clis@1.2.0'],
+        'win32',
+        {
+          PATH: `C:\\custom-npm;${nodeDir}`,
+          ComSpec: 'C:\\Windows\\System32\\cmd.exe',
+        },
+        (p) => existingWithCustomCmd.has(p),
+      ),
+    ).toEqual({
+      command: 'C:\\Windows\\System32\\cmd.exe',
+      args: [
+        '/d',
+        '/s',
+        '/c',
+        '""C:\\custom-npm\\npm.cmd" install -g create-clis@1.2.0"',
+      ],
+      windowsVerbatimArguments: true,
+    });
+
+    // 前位 npm.cmd 同目录含 npm-cli.js 但无同目录 node.exe 时, 借助 PATH 中 node.exe 直调前位 npm-cli.js
+    const userNpmDir = 'C:\\Users\\dev\\AppData\\Roaming\\npm';
+    const userNpmCmd = `${userNpmDir}\\npm.cmd`;
+    const userNpmCli = `${userNpmDir}\\node_modules\\npm\\bin\\npm-cli.js`;
+    const existingWithUserNpm = new Set([
+      userNpmCmd,
+      userNpmCli,
+      nodeExe,
+      npmCmd,
+      npmCli,
+    ]);
+    expect(
+      resolvePmInvocation(
+        'npm',
+        ['install', '-g', 'create-clis@1.2.0'],
+        'win32',
+        { PATH: `${userNpmDir};${nodeDir}` },
+        (p) => existingWithUserNpm.has(p),
+      ),
+    ).toEqual({
+      command: nodeExe,
+      args: [userNpmCli, 'install', '-g', 'create-clis@1.2.0'],
+    });
+  });
+});
+
+describe('resolvePmInvocation 跨平台批处理转义与 JS 入口探测', () => {
   test('Windows 下 .cmd 批处理走 ComSpec /d /s /c 单串转义并启用 windowsVerbatimArguments', () => {
     const existing = new Set(['C:\\pnpm\\pnpm.cmd']);
     const inv = resolvePmInvocation(
