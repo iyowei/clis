@@ -1,3 +1,10 @@
+# @iyowei/sweep-node-modules [1.1.0](https://github.com/iyowei/clis/compare/@iyowei/sweep-node-modules@1.0.0...@iyowei/sweep-node-modules@1.1.0) (2026-11-20)
+
+
+### Features
+
+* 重构全仓 CLI 帮助页为 Apple HIG 分层排版并补齐 codd -V 短旗标 ([7776a59](https://github.com/iyowei/clis/commit/7776a5962ff4ff0690b2d5afe7a1024b19846067))
+
 # @iyowei/sweep-node-modules [1.0.0](https://github.com/iyowei/clis/compare/@iyowei/sweep-node-modules@0.5.1...@iyowei/sweep-node-modules@1.0.0) (2026-11-20)
 
 
