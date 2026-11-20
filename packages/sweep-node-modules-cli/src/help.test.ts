@@ -1,6 +1,6 @@
 /**
- * sweep-nm 帮助页单测: 覆盖 Apple HIG 分层结构 (命令与选项独立分组)、OF-10 降级恒等式、
- * 80 列行宽护栏与深/浅终端色彩切换。
+ * sweep-nm 帮助页单测: 覆盖分层结构 (命令与选项独立分组)、与主视图同源的标准 SGR 配色、
+ * OF-10 降级恒等式与 80 列行宽护栏。
  */
 import { describe, expect, test } from 'bun:test';
 
@@ -23,10 +23,11 @@ function displayWidth(line: string): number {
   return width;
 }
 
-describe('helpText Apple HIG 分层与降级契约', () => {
+describe('helpText 分层布局与主视图同源配色契约', () => {
   test('无色态零 ANSI、子命令与选项清晰分组、全要素完备', () => {
     const plain = helpText(false);
     expect(plain).not.toContain('\u001b');
+    expect(plain).toContain('▍ SWEEP-NM');
 
     const sections = ['用法', '子命令', '选项', '示例', '配置与安全', '退出码'];
     let cursor = -1;
@@ -62,23 +63,14 @@ describe('helpText Apple HIG 分层与降级契约', () => {
     }
   });
 
-  test('OF-10 降级恒等式: 彩色态去色后与无色态逐字节一致 (深浅终端皆然)', () => {
-    const prevFgBg = process.env.COLORFGBG;
-    try {
-      delete process.env.COLORFGBG;
-      const darkColored = helpText(true);
-      const plain = helpText(false);
-      expect(darkColored).toContain('\u001b[');
-      expect(stripAnsi(darkColored)).toBe(plain);
+  test('OF-10 降级恒等式与主视图色盘同源: 仅用标准 SGR (零硬编码 24-bit RGB), 去色逐字节等价', () => {
+    const colored = helpText(true);
+    const plain = helpText(false);
 
-      process.env.COLORFGBG = '0;15';
-      const lightColored = helpText(true);
-      expect(lightColored).toContain('\u001b[');
-      expect(stripAnsi(lightColored)).toBe(plain);
-    } finally {
-      if (prevFgBg === undefined) delete process.env.COLORFGBG;
-      else process.env.COLORFGBG = prevFgBg;
-    }
+    expect(colored).toContain('\u001b[1;7m▍ SWEEP-NM \u001b[0m');
+    expect(colored).not.toContain('38;2;');
+    expect(colored).not.toContain('48;2;');
+    expect(stripAnsi(colored)).toBe(plain);
   });
 
   test('固定文案每行宽度均在 80 列内 (防经典 80 列终端截断)', () => {
