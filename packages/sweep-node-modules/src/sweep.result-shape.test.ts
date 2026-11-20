@@ -43,17 +43,17 @@ afterEach(async () => {
 });
 
 describe('构造期', () => {
-  test('参数错误同步抛 INVALID_ARGUMENT (details.field 指首个不符字段)', () => {
-    const capture = (input: unknown): SweepError => {
-      try {
-        createSweeper(input as never);
-      } catch (error) {
-        if (isSweepError(error)) return error;
-        throw error;
-      }
-      throw new Error('应当同步抛错, 未抛出');
-    };
+  const capture = (input: unknown): SweepError => {
+    try {
+      createSweeper(input as never);
+    } catch (error) {
+      if (isSweepError(error)) return error;
+      throw error;
+    }
+    throw new Error('应当同步抛错, 未抛出');
+  };
 
+  test('参数错误同步抛 INVALID_ARGUMENT (details.field 指首个不符字段)', () => {
     expect(capture({ roots: [] }).code).toBe('INVALID_ARGUMENT');
     expect(capture({ roots: [] }).details).toEqual({ field: 'roots' });
     expect(capture({ roots: [''] }).details).toEqual({ field: 'roots' });
@@ -77,28 +77,25 @@ describe('构造期', () => {
     });
   });
 
-  test('WIN32_STYLE 下拒绝盘根相对路径, 放行盘符与 UNC 绝对路径', () => {
-    for (const badRoot of ['/Users/me/work', '/app', '\\app']) {
-      let caught: unknown;
-      try {
-        createSweeper({ roots: [badRoot], style: WIN32_STYLE });
-      } catch (error) {
-        caught = error;
-      }
-      expect(isSweepError(caught)).toBe(true);
-      if (isSweepError(caught)) {
-        expect(caught.code).toBe('INVALID_ARGUMENT');
-        expect(caught.details).toEqual({ field: 'roots' });
-      }
+  test('WIN32_STYLE 下拒绝盘根相对路径与残缺 UNC, 放行盘符与正/混合斜杠 UNC 绝对路径', () => {
+    const badRoots =
+      '/Users/me/work /app \\app C:work \\\\srv\\ \\\\srv\\/ ///a/b //'.split(
+        ' ',
+      );
+    for (const badRoot of badRoots) {
+      const err = capture({ roots: [badRoot], style: WIN32_STYLE });
+      expect(err.code, `应拒绝 ${badRoot}`).toBe('INVALID_ARGUMENT');
+      expect(err.details).toEqual({ field: 'roots' });
     }
-
-    const drive = createSweeper({ roots: ['C:\\work'], style: WIN32_STYLE });
-    expect(drive.options.roots).toEqual(['C:\\work']);
-    const unc = createSweeper({
-      roots: ['\\\\srv\\share\\work'],
-      style: WIN32_STYLE,
-    });
-    expect(unc.options.roots).toEqual(['\\\\srv\\share\\work']);
+    const goodRoots =
+      'C:\\work C:/work \\\\srv\\share\\work //srv/share/work \\\\srv/share/work //srv\\share\\work'.split(
+        ' ',
+      );
+    for (const goodRoot of goodRoots) {
+      expect(
+        createSweeper({ roots: [goodRoot], style: WIN32_STYLE }).options.roots,
+      ).toEqual([goodRoot]);
+    }
   });
 
   test('生效选项快照: 名单过收口 / 缺省合并 / 顶层冻结', async () => {

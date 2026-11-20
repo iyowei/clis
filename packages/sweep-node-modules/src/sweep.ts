@@ -87,8 +87,8 @@ function assertNameArray(
     throw invalidArgument(field, '不能为空数组');
 }
 
-/** win32 严格绝对路径判定: 仅接受盘符绝对路径与 UNC 路径, 拒绝盘根相对路径 (/app / \app) */
-const WIN32_ABS_ROOT_RE = /^(?:[A-Za-z]:[/\\]|\\\\[^\\]+\\[^\\]+)/;
+/** win32 严格绝对路径判定: 仅接受盘符绝对路径与完整 UNC (含正/混合斜杠), 拒绝盘根相对与无 share 畸形 UNC */
+const WIN32_ABS_ROOT_RE = /^(?:[A-Za-z]:[/\\]|[/\\]{2}[^/\\]+[/\\][^/\\]+)/;
 
 /** 按注入路径风格严格判定扫描根是否为绝对路径 */
 function isAbsoluteRoot(root: string, style: PathStyle): boolean {
