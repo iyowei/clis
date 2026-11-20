@@ -1,3 +1,33 @@
+# create-clis [1.1.0](https://github.com/iyowei/clis/compare/create-clis@1.0.0...create-clis@1.1.0) (2026-11-20)
+
+
+### Bug Fixes
+
+* 修正 full 档协议路径提示指向包内目录 ([b96f7e7](https://github.com/iyowei/clis/commit/b96f7e77264d038a98a23c4251c896857e4af8c5))
+* 修正 scope 残留检测的短词失明与拼缝误报 ([1cc52c7](https://github.com/iyowei/clis/commit/1cc52c7c42283943bcaab82d9af0abf9a6a65be5))
+* 修正残留检测对目标词汇超集的误报 ([b293226](https://github.com/iyowei/clis/commit/b29322616824f850ee46be60072b3be1b044d56d))
+* 加固 create-clis 的 Windows 启动与模板裁剪 ([7abdc2a](https://github.com/iyowei/clis/commit/7abdc2a60d2d75b51e345b1cb4ac07de1b78df4b))
+* 加固生成收尾 hook 的跨平台子进程与错误指引 ([e039f2f](https://github.com/iyowei/clis/commit/e039f2fd0e445fa68d03e58003df11dfb36a84b4))
+* 双包派生与模板清单识别仓内共享私有库 ([3dc6199](https://github.com/iyowei/clis/commit/3dc6199d9a04e3a66ed99b6dfd7b194ab3ef0c70))
+* 启动器强制隔离 Bun 配置与环境文件 ([04a06ec](https://github.com/iyowei/clis/commit/04a06ecc06872ebcabda0407b26510cb29cd6143))
+* 把模板 API 包换成不含 sweep 内部实现的中性骨架 ([3eb0ec2](https://github.com/iyowei/clis/commit/3eb0ec23aeda1881c491fbea488e8bcf6caa57b6))
+* 收紧 tier workflow job 裁剪并改用词法走查定位代码块 ([cb78130](https://github.com/iyowei/clis/commit/cb7813034de1cc7de27f3367028728cab3a2e295))
+* 未隔离 Bun 改用 process.execPath 重派进入隔离态 ([b381790](https://github.com/iyowei/clis/commit/b381790bb6477700cb2ebb9a7ae6144615a7a780))
+* 模板发布自证递归扫描产物目录 ([235af77](https://github.com/iyowei/clis/commit/235af77ff147b84011de3236894b8455cb0eae4e))
+* 模板快照消除私有包路径与镜像源泄漏 ([63cc887](https://github.com/iyowei/clis/commit/63cc8871cc74da92b2a085b525cca97a824ae3db))
+* 模板构建改为全检通过后再写盘, 失败不留半成品 ([1f473e4](https://github.com/iyowei/clis/commit/1f473e4282a3eb3e1f031ed2f7b0580a2074b51f))
+* 模板资产与生成物保留可执行权限位 ([11d9612](https://github.com/iyowei/clis/commit/11d9612af72d67b0ae86a317fc0d3b49ef4edacb))
+* 重做 CLI 旗标解析与交互命名, 前移目标目录校验 ([8f88f15](https://github.com/iyowei/clis/commit/8f88f15a91febf5cabf9eaa48c89ee5581dfe7fc))
+* 重做三平台启动器运行时解析与进程派生模型 ([d61719b](https://github.com/iyowei/clis/commit/d61719b92ce94f7311ab9a352d93a5ecdb8a5aba))
+
+
+### Features
+
+* collectFacts 支持注入 pack 事实 ([08f77b6](https://github.com/iyowei/clis/commit/08f77b699839e326f6ff20eb40baa4a71628c9a7))
+* create-clis 新增 update 自更新子命令 ([43208e5](https://github.com/iyowei/clis/commit/43208e57247cefa6cf32d1a22494d17769918e67))
+* 档位裁剪摘除增强档 workflow job ([786fb6b](https://github.com/iyowei/clis/commit/786fb6b88be202ac04175e8179c9a33f96eaf2d3))
+* 模板根包补齐 format-check 脚本 ([83047f1](https://github.com/iyowei/clis/commit/83047f10aa0de9f2efc24578a4eb8fc651597dc1))
+
 # create-clis 1.0.0 (2026-10-01)
 
 
