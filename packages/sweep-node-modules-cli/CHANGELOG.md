@@ -1,3 +1,15 @@
+# @iyowei/sweep-node-modules-cli [0.7.0](https://github.com/iyowei/clis/compare/@iyowei/sweep-node-modules-cli@0.6.0...@iyowei/sweep-node-modules-cli@0.7.0) (2026-11-20)
+
+
+### Features
+
+* 为 cli-updater 自更新增加统一 UI 与异步静默捕获 ([9738e3a](https://github.com/iyowei/clis/commit/9738e3a0b294e204d0ac644b55759b769557fb92))
+
+
+### Dependencies
+
+* **@iyowei/sweep-node-modules:** upgraded to 1.2.0
+
 # @iyowei/sweep-node-modules-cli [0.6.0](https://github.com/iyowei/clis/compare/@iyowei/sweep-node-modules-cli@0.5.1...@iyowei/sweep-node-modules-cli@0.6.0) (2026-11-20)
 
 
