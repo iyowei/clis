@@ -1,3 +1,15 @@
+## @iyowei/sweep-node-modules-cli [0.5.1](https://github.com/iyowei/clis/compare/@iyowei/sweep-node-modules-cli@0.5.0...@iyowei/sweep-node-modules-cli@0.5.1) (2026-11-20)
+
+
+### Bug Fixes
+
+* 统一 sweep-nm 帮助页配色为主视图同源标准 SGR 单色系 ([237f670](https://github.com/iyowei/clis/commit/237f670d59a0ad0e5a03a2e148482d1738a11c50))
+
+
+### Dependencies
+
+* **@iyowei/sweep-node-modules:** upgraded to 1.1.1
+
 # @iyowei/sweep-node-modules-cli [0.5.0](https://github.com/iyowei/clis/compare/@iyowei/sweep-node-modules-cli@0.4.0...@iyowei/sweep-node-modules-cli@0.5.0) (2026-11-20)
 
 
