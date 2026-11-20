@@ -10,10 +10,6 @@ permissions:
 env:
   TURBO_TELEMETRY_DISABLED: '1'
 
-concurrency:
-  group: release
-  cancel-in-progress: false
-
 jobs:
   # 发布前置门禁 (单一事实来源): 直接复用 ci.yml 的全套三路检查 (verify / verify-windows /
   # conformance), 既确保 main 推送零双跑、不白烧双倍 macOS runner, 又把 Windows 兼容正式纳入发版硬门禁。
@@ -21,12 +17,17 @@ jobs:
     uses: ./.github/workflows/ci.yml
 
   # 人工批准闸门 (environment: release, 配 required reviewers): 批准后才进入发布。
+  # concurrency 放在 release job 级 (而非顶层): 既保证实际发布严格串行不并发冲突,
+  # 又避免前一次待审批的 waiting run 把后续 main 推送的 checks 三平台 CI 卡死在 pending。
   # OIDC 发布: 不设任何 npm token; id-token: write 供 Trusted Publishing 换取短寿命凭据。
   release:
     needs: checks
     runs-on: ubuntu-latest
     timeout-minutes: 30
     environment: release
+    concurrency:
+      group: release
+      cancel-in-progress: false
     permissions:
       contents: write # 打 tag / push 版本提交 / 建 GitHub Release
       issues: write # release 评论
