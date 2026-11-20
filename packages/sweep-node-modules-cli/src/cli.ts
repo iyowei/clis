@@ -36,6 +36,7 @@ import {
   toExecuteEntry,
   toRenderEntry,
 } from './outcome.ts';
+import { createSweepProgress } from './progress.ts';
 import {
   bannerLine,
   neutralLine,
@@ -321,9 +322,23 @@ async function sweep(
 
   // 运行时自述与名单回执同判据: 都只在真终端展示, 非 TTY (脚本 / 管道) 下不增噪音
   const runtime = process.stdout.isTTY === true ? runtimeLabel : undefined;
-  // 告警 (根不存在等环境问题与体积统计告警) 实时透传 stderr; --yes 流程下这是删除前唯一的可见信息
+  // TTY 实时进度指示器 (走 stderr, 非 TTY / TERM=dumb 下完全静默 0 字节输出)
+  const progress = createSweepProgress({
+    enabled:
+      process.stderr.isTTY === true &&
+      process.env.TERM?.toLowerCase() !== 'dumb',
+    color: colors.stderr,
+    rootCount: config.roots.length,
+  });
+  // 告警 (根不存在等环境问题与体积统计告警) 实时透传 stderr; 插队前先擦除进度行防串行
   const onProgress = (event: SweepProgressEvent): void => {
-    if (event.kind === 'warning') warn(event.warning.message, colors.stderr);
+    if (event.kind === 'warning') {
+      progress.suspend();
+      warn(event.warning.message, colors.stderr);
+      progress.resume();
+      return;
+    }
+    progress.update(event);
   };
   // 未命中的名单名就地告警、命中的回执随清单输出 (写错不得静默, 见 collectNameNotes)
   const nameNotesOf = (plan: SweepPlan): string[] =>
@@ -334,7 +349,13 @@ async function sweep(
     );
 
   if (!options.yes) {
-    const plan = await sweeper.plan({ onProgress });
+    progress.start();
+    let plan: SweepPlan;
+    try {
+      plan = await sweeper.plan({ onProgress });
+    } finally {
+      progress.stop();
+    }
     print(
       render({
         mode: 'preview',
@@ -350,7 +371,13 @@ async function sweep(
     return 0;
   }
 
-  const report = await sweeper.run({ onProgress });
+  progress.start();
+  let report: Awaited<ReturnType<typeof sweeper.run>>;
+  try {
+    report = await sweeper.run({ onProgress });
+  } finally {
+    progress.stop();
+  }
 
   // 安全闸整批拒绝: 零删除, 逐条报告拒绝理由 (不渲染清单, 与改造前一致)
   if (report.status === 'rejected') {
