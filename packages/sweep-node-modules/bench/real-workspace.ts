@@ -1,5 +1,5 @@
 /**
- * 体验基线: 真实工作区 (经 SWEEP_BENCH_ROOT 或首个位置参数指定, 缺省回退 cwd) 的只读扫描 + 体积统计端到端耗时。
+ * 体验基线: 真实工作区 (经 SWEEP_BENCH_ROOT 或首个非旗标位置参数指定, 缺省回退 cwd) 的只读扫描 + 体积统计端到端耗时。
  * **只读**: 绝不执行任何删除; 目标目录不存在时返回空样本并说明。
  * 验收目标: 预览耗时「感觉不到等待」(真实工作区预览 < 1s 的体验基线)。
  */
@@ -13,8 +13,8 @@ import type { BenchSample } from './scan.bench.ts';
 function resolveBenchRoot(): string {
   const fromEnv = process.env.SWEEP_BENCH_ROOT;
   if (fromEnv !== undefined && fromEnv.trim() !== '') return fromEnv.trim();
-  const arg = process.argv[2];
-  if (arg !== undefined && !arg.startsWith('-')) return arg;
+  const arg = process.argv.slice(2).find((item) => !item.startsWith('-'));
+  if (arg !== undefined) return arg;
   return process.cwd();
 }
 
@@ -37,8 +37,10 @@ export async function runRealWorkspaceBench(): Promise<BenchSample[]> {
       name: scanner.name,
       case: 'real-scan',
       iterations: 1,
+      samplesMs: [scanMs],
       minMs: scanMs,
       medianMs: scanMs,
+      p95Ms: scanMs,
       size: hits.length,
     },
   ];
@@ -52,8 +54,10 @@ export async function runRealWorkspaceBench(): Promise<BenchSample[]> {
       name: sizer.name,
       case: 'real-size',
       iterations: 1,
+      samplesMs: [elapsed],
       minMs: elapsed,
       medianMs: elapsed,
+      p95Ms: elapsed,
       size: result.entries.length,
     });
   }
