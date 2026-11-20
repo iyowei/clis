@@ -1,3 +1,18 @@
+# @iyowei/sweep-node-modules [1.2.0](https://github.com/iyowei/clis/compare/@iyowei/sweep-node-modules@1.1.1...@iyowei/sweep-node-modules@1.2.0) (2026-11-20)
+
+
+### Features
+
+* 基准工具链增加 JSON 输出与用例筛选 ([60ba4b6](https://github.com/iyowei/clis/commit/60ba4b6c8112a61f4cb4174f47b8512e3e6928df))
+
+
+### Performance Improvements
+
+* du 快路径中大批量改为有界并发分片 ([6da80dd](https://github.com/iyowei/clis/commit/6da80dd9a63dd8b3b2ad3e77483f97d93ed0c0d2))
+* 安全闸与删除复核链只读元数据并发化 ([202df36](https://github.com/iyowei/clis/commit/202df3654cc74f7017dd6c47f5421c1c45ad9e85))
+* 扫描升级多根共享原生回调池 ([f2c6b14](https://github.com/iyowei/clis/commit/f2c6b14b8c53c1cea796527a9e1cc3f5e6204141))
+* 纯 JS 体积统计升级跨目标共享回调池 ([95bc459](https://github.com/iyowei/clis/commit/95bc459809db501c64cebfddf470811fea832ae4))
+
 ## @iyowei/sweep-node-modules [1.1.1](https://github.com/iyowei/clis/compare/@iyowei/sweep-node-modules@1.1.0...@iyowei/sweep-node-modules@1.1.1) (2026-11-20)
 
 
