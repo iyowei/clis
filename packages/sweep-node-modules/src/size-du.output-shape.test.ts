@@ -383,4 +383,38 @@ describe('GNU du shell-escape stderr 解码与子进程异常降级 (SWEEP-P0-5)
       expect(result.warnings[0]?.message).toContain('SIGKILL');
     },
   );
+
+  test.skipIf(!canRunShell)(
+    '中大批量 (>= 5 目标) 并发分片: 合并结果保序且单批异常仅降级该批、不污染其余健康批次',
+    async () => {
+      const targets = Array.from({ length: 8 }, (_, idx) => `${ROOT}/p${idx}`);
+      // 模拟含 p0 的那批混入伪造行, 其余批次正常输出
+      const bin = await makeFakeDu(
+        'shift 2\n' +
+          'for p in "$@"; do\n' +
+          '  printf \'4\\t%s\\n\' "$p"\n' +
+          `  if [ "$p" = "${ROOT}/p0" ]; then printf '4\\t/forged/extra\\n'; fi\n` +
+          'done\n',
+      );
+
+      const events: MeasureProgressEvent[] = [];
+      const result = await createDuSizer(bin).measure(targets, {
+        onProgress: (event) => events.push(event),
+      });
+
+      const measuredTargets = result.entries.map((e) => e.target);
+      const unmeasuredTargets = result.unmeasured.map((u) => u.target);
+      expect(unmeasuredTargets).toContain(`${ROOT}/p0`);
+      expect(measuredTargets.length).toBeGreaterThan(0);
+      expect([...measuredTargets, ...unmeasuredTargets].sort()).toEqual(
+        targets,
+      );
+      expect(measuredTargets).toEqual([...measuredTargets].sort());
+      expect(unmeasuredTargets).toEqual([...unmeasuredTargets].sort());
+      expect(
+        result.warnings.some((w) => w.code === 'SIZE_DU_OUTPUT_MISMATCH'),
+      ).toBe(true);
+      expect(events).toHaveLength(targets.length);
+    },
+  );
 });

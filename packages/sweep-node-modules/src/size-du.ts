@@ -1,30 +1,28 @@
 /**
- * 候选 A (双轨快路径): 系统 du 批量单次统计磁盘占用。
- * 探针: 绝对路径 /usr/bin/du 与 /bin/du, 均缺失时本候选标记不可用, measure 返回空结果 + 告警;
- * win32 一律不可用 (平台守卫见 findDu: 该绝对路径在 Windows 上会被解析为当前盘根, 属执行链劫持面)。
- * 口径: 磁盘占用 (按块取整, 恒 ≥ 逻辑字节), 与 js 候选的差异由基准环节记录裁定。
- * du 的英文 stderr: 可识别短语转成自家中文告警, 未知短语与未归因行保留原文; 输入 target 存在但不可测时结构化记入 unmeasured。
- * 防注入: `--` 终止选项解析; 含控制字符 (换行 / 回车) 的 target 前置拒绝; stdout 路径集合与输入不符即整体降级。
- * 输出形态 (已核实, 2026-09-27): du 仅在 stdout 为终端时按 shell-escape 引用文件名 (GNU 手册 du 节点
- * 「When standard output is a terminal, file names are quoted using the shell-escape style」; 源码侧
- * isatty 门控, 9.12 之前的版本无引用逻辑), 本候选以管道捕获 stdout, 恒非终端, 故路径恒按输入原样成行
- * (TAB / ESC / 引号等原样保留, 实测 GNU du 9.12); 含换行 / 回车者会劈裂行结构, 由前置拒绝接住。
- * 不走 runtime 适配层 spawnCapture: 需捕获 stderr 转中文告警, 其 stderr inherit (直通) 语义接不住本需求。
+ * 候选 A (双轨快路径): 系统 du 批量统计磁盘占用 (小批量单进程保序, 中大批量有界多批并发)。
+ * 探针: 绝对路径 /usr/bin/du 与 /bin/du, 均缺失时本候选标记不可用; win32 一律不可用 (EC-03)。
+ * 口径: 磁盘占用 (按块取整, 恒 ≥ 逻辑字节); 防注入: `--` 终止选项 + 控制字符前置拒 + 集合一致性 fail-safe。
+ * 输出形态 (2026-09-27 核实): 管道非终端下 GNU/BSD du 路径恒原样成行; 含 `\n`/`\r` 前置拒绝。
  */
 import { spawn } from 'node:child_process';
 import { accessSync, constants } from 'node:fs';
+import { availableParallelism } from 'node:os';
 
 import type { UnmeasuredCode } from './codes.ts';
 import { SweepError } from './errors.ts';
 import {
   type DuFailure,
+  type DuOutputAssessment,
   PROG_PREFIX_RE,
+  assessDuOutput,
+  describeDuAnomaly,
   describeDuFailure,
   parseDuErrorLine,
   unescapeGnuShellQuoted,
 } from './size-du-parse.ts';
 import type {
   MeasureOptions,
+  MeasureProgressEvent,
   SizeEntry,
   SizeResult,
   Sizer,
@@ -32,43 +30,53 @@ import type {
   UnmeasuredEntry,
 } from './types.ts';
 
-export { parseDuErrorLine, unescapeGnuShellQuoted };
+export {
+  type DuOutputAssessment,
+  assessDuOutput,
+  parseDuErrorLine,
+  unescapeGnuShellQuoted,
+};
 
-/** du 探针路径: 绝对路径, 依序探测 */
 const DU_PROBES = ['/usr/bin/du', '/bin/du'];
-
-/** target 是否含控制字符 (换行 / 回车): 会劈裂 du 的输出行结构, 属注入面 */
 const hasControlChar = (target: string): boolean =>
   target.includes('\n') || target.includes('\r');
 
-/**
- * 探测可用的 du 可执行文件; 均缺失返回 null。
- * win32 一律返回 null (du 快路径仅 unix, 行为契约 EC-03; 设计侧同款表述见
- * scan-and-size.md「体积统计」): 探针是 POSIX 绝对路径, 在 win32 上会被解析为「当前盘根」
- * 下的 usr\bin\du, 该盘存在同名外来程序时即被 spawn —— 与被扫目录同盘时构成执行链劫持面;
- * 无 du 平台走纯 JS 候选本就是设计语义, 此处的平台守卫把该语义落到实现。
- * platform 显式传入供测试注入 (win32 宿主不可得)。
- */
-export function findDu(
-  platform: NodeJS.Platform = process.platform,
-): string | null {
-  if (platform === 'win32') return null;
-  for (const probe of DU_PROBES) {
-    try {
-      accessSync(probe, constants.X_OK);
-      return probe;
-    } catch {
-      // 该探针缺失或不可执行, 继续探测下一个
-    }
-  }
-  return null;
-}
+/** 默认平台 findDu 探针缓存 (避免高频调用重复 accessSync; 显式传 platform 时始终实时判定) */
+let cachedDefaultDu: string | null | undefined;
 
 /**
- * 单次 du spawn 的参数字节上限 (128 KiB): 远低于跨平台常见 ARG_MAX (macOS 256 KiB / Linux 2 MiB 扣环境),
- * 防止大工作区触发 E2BIG; 单条路径超上限时单独成批 (至少 1 条/批)。
+ * 探测可用的 du 可执行文件; 均缺失返回 null。
+ * win32 一律返回 null (防当前盘根 usr\bin\du 劫持面, 行为契约 EC-03)。
  */
+export function findDu(platform?: NodeJS.Platform): string | null {
+  const targetPlatform = platform ?? process.platform;
+  if (platform === undefined && cachedDefaultDu !== undefined) {
+    return cachedDefaultDu;
+  }
+  let found: string | null = null;
+  if (targetPlatform !== 'win32') {
+    for (const probe of DU_PROBES) {
+      try {
+        accessSync(probe, constants.X_OK);
+        found = probe;
+        break;
+      } catch {
+        // 该探针缺失或不可执行, 继续探测下一个
+      }
+    }
+  }
+  if (platform === undefined) cachedDefaultDu = found;
+  return found;
+}
+
+/** 单次 du spawn 的参数字节上限 (128 KiB, 防 E2BIG) */
 export const DU_BATCH_MAX_BYTES = 128 * 1024;
+
+/** 触发多进程并发分片的最小目标数 (小工作区保持单进程零额外 fork 开销) */
+const DU_PARALLEL_MIN_TARGETS = 5;
+
+/** 有界并发 du 进程上限 (2~6 路自适应 CPU 核心数, 实测 4~6 路进入平台期) */
+const DU_CONCURRENCY = Math.min(6, Math.max(2, availableParallelism()));
 
 /** 按 UTF-8 字节长度 (+1 NUL 终止符) 将目标列表拆分为多批, 每批至少 1 条 */
 export function chunkTargetsByBytes(
@@ -92,7 +100,38 @@ export function chunkTargetsByBytes(
   return batches;
 }
 
-/** runDu 的原始执行结果 (保留退出码 / 信号 / spawn 级异常, 便于整批降级而不混入 stderr 解析) */
+/** 为有界并发 du 切分批次: 目标数 >= 5 且未因字节上限拆满时, 轮询交错打散为最多 DU_CONCURRENCY 批 */
+function partitionTargetsForDu(
+  safeTargets: readonly string[],
+  maxBatchBytes: number,
+): { batches: string[][]; concurrency: number } {
+  if (safeTargets.length < DU_PARALLEL_MIN_TARGETS) {
+    return {
+      batches: chunkTargetsByBytes(safeTargets, maxBatchBytes),
+      concurrency: 1,
+    };
+  }
+  const byteChunks = chunkTargetsByBytes(safeTargets, maxBatchBytes);
+  if (byteChunks.length >= DU_CONCURRENCY) {
+    return { batches: byteChunks, concurrency: DU_CONCURRENCY };
+  }
+  const bucketCount = Math.min(
+    DU_CONCURRENCY,
+    Math.ceil(safeTargets.length / 2),
+  );
+  const buckets: string[][] = Array.from({ length: bucketCount }, () => []);
+  for (let i = 0; i < safeTargets.length; i += 1) {
+    buckets[i % bucketCount]!.push(safeTargets[i]!);
+  }
+  const batches: string[][] = [];
+  for (const bucket of buckets) {
+    if (bucket.length > 0) {
+      batches.push(...chunkTargetsByBytes(bucket, maxBatchBytes));
+    }
+  }
+  return { batches, concurrency: Math.min(DU_CONCURRENCY, batches.length) };
+}
+
 interface DuRunResult {
   stdout: string;
   stderr: string;
@@ -101,212 +140,218 @@ interface DuRunResult {
   spawnError: Error | null;
 }
 
+/** 构造固定 C locale 的 du 环境变量 (单次调用复用一份干净拷贝) */
+function createDuEnv(): NodeJS.ProcessEnv {
+  const env: NodeJS.ProcessEnv = { ...process.env, LC_ALL: 'C', LANG: 'C' };
+  delete env.QUOTING_STYLE;
+  delete env.LANGUAGE;
+  return env;
+}
+
 /** spawn 一次 `du -sk --` 汇总本批 target, 固定 C locale 并按 UTF-8 收回 stdout / stderr */
-function runDu(bin: string, targets: string[]): Promise<DuRunResult> {
+function runDu(
+  bin: string,
+  targets: string[],
+  env: NodeJS.ProcessEnv,
+): Promise<DuRunResult> {
   return new Promise((resolve) => {
-    // `--` 终止选项解析: 目标以 `-` 开头时不得被 du 当选项吞掉 (如 -P 会静默输出 cwd 统计);
-    // 固定 LC_ALL / LANG 为 C, 并剥离 QUOTING_STYLE / LANGUAGE, 防止宿主环境改写 stderr 引用形态或语言
-    const env: NodeJS.ProcessEnv = { ...process.env, LC_ALL: 'C', LANG: 'C' };
-    delete env.QUOTING_STYLE;
-    delete env.LANGUAGE;
     const child = spawn(bin, ['-sk', '--', ...targets], {
       stdio: ['ignore', 'pipe', 'pipe'],
       env,
     });
-    // 显式 UTF-8 解码: 防多字节中文路径跨 chunk 边界被按 Buffer 切裂成 U+FFFD
     child.stdout.setEncoding('utf8');
     child.stderr.setEncoding('utf8');
-    let stdout = '';
-    let stderr = '';
+    const outChunks: string[] = [];
+    const errChunks: string[] = [];
     let settled = false;
     const finish = (result: DuRunResult): void => {
       if (settled) return;
       settled = true;
       resolve(result);
     };
-    child.stdout.on('data', (chunk: string) => {
-      stdout += chunk;
-    });
-    child.stderr.on('data', (chunk: string) => {
-      stderr += chunk;
-    });
+    child.stdout.on('data', (chunk: string) => outChunks.push(chunk));
+    child.stderr.on('data', (chunk: string) => errChunks.push(chunk));
     child.on('error', (error) => {
       finish({
-        stdout,
-        stderr,
+        stdout: outChunks.join(''),
+        stderr: errChunks.join(''),
         exitCode: null,
         signal: null,
         spawnError: error,
       });
     });
     child.on('close', (exitCode, signal) => {
-      finish({ stdout, stderr, exitCode, signal, spawnError: null });
+      finish({
+        stdout: outChunks.join(''),
+        stderr: errChunks.join(''),
+        exitCode,
+        signal,
+        spawnError: null,
+      });
     });
   });
 }
 
-/** 解析 `du -sk` 输出: 每行 `<KiB>\t<绝对路径>`; duplicated 标记同一路径被输出多行 (行结构可疑) */
-function parseDuSizes(stdout: string): {
+interface BatchCollectState {
   sizes: Map<string, number>;
-  duplicated: boolean;
-} {
-  const sizes = new Map<string, number>();
-  let duplicated = false;
-  for (const line of stdout.split('\n')) {
-    // 以 TAB 为硬分隔; 不用 \s+ (贪婪空白会吞掉路径的前导空格, 怪名 target 会落进「原因未知」)
-    const match = /^(\d+)\t(.+)$/.exec(line);
-    if (match === null) continue;
-    const sizeKiB = match[1];
-    const path = match[2];
-    // 捕获组由上面的正则结构保证存在; 此判仅为 noUncheckedIndexedAccess 的类型收窄
-    if (sizeKiB === undefined || path === undefined) continue;
-    if (sizes.has(path)) duplicated = true;
-    sizes.set(path, Number(sizeKiB) * 1024);
+  failures: Map<string, DuFailure>;
+  degraded: Set<string>;
+  warnings: SweepWarning[];
+  emitted: Set<string>;
+  emit?: (event: MeasureProgressEvent) => void;
+}
+
+/** 解析单个已完成 du 批次的输出、合并归因并实时发射进度事件 */
+function applyDuBatchResult(
+  batch: string[],
+  run: DuRunResult,
+  state: BatchCollectState,
+  signal: AbortSignal | undefined,
+): void {
+  const { sizes, failures, degraded, warnings, emitted, emit } = state;
+  if (run.spawnError !== null || run.signal !== null) {
+    for (const target of batch) degraded.add(target);
+    const errno = (run.spawnError as { code?: string } | null)?.code;
+    const reason =
+      run.spawnError !== null
+        ? `du 执行失败 (${run.spawnError.message})`
+        : `du 被信号 ${run.signal} 中止`;
+    warnings.push({
+      code: 'SIZE_DU_UNAVAILABLE',
+      message: `${reason}: 本批 ${batch.length} 个目标的体积均未采信`,
+      ...(typeof errno === 'string' ? { errno } : {}),
+    });
+    return;
   }
-  return { sizes, duplicated };
-}
 
-/** stdout 与输入集合的一致性判定结果 (解析与判定合一, 供单测注入样本验证) */
-export interface DuOutputAssessment {
-  /** 解析出的 路径 → 字节; 仅当 intact 为真时可信 */
-  sizes: Map<string, number>;
-  /** stdout 与本次输入相符 (无重复、无输入之外的路径): 每条可按下标归因 */
-  intact: boolean;
-  /** 同一路径出现多行 (行结构可疑) */
-  duplicated: boolean;
-  /** 出现输入集合之外的路径 (形态被改写或注入) */
-  unexpected: boolean;
-}
-
-/**
- * 解析 du 的 stdout 并判定与输入集合的一致性。
- * 判据是「解析出的路径须全部来自本次输入且无重复」: 任一不符即整批不可信 (fail-safe, 不逐条采信),
- * 因为不符只可能来自输出行结构被破坏 (注入 / 形态改写), 逐条采信会给伪行留下覆盖真实体积的入口。
- */
-export function assessDuOutput(
-  stdout: string,
-  safeTargets: readonly string[],
-): DuOutputAssessment {
-  const safeSet = new Set(safeTargets);
-  const parsed = parseDuSizes(stdout);
-  let unexpected = false;
-  for (const path of parsed.sizes.keys()) {
-    if (!safeSet.has(path)) unexpected = true;
+  const batchSet = new Set(batch);
+  const assessment = assessDuOutput(run.stdout, batch, batchSet);
+  const batchSizes = new Map<string, number>();
+  if (!assessment.intact) {
+    for (const target of batch) degraded.add(target);
+    warnings.push({
+      code: 'SIZE_DU_OUTPUT_MISMATCH',
+      message: `du 输出与输入集合不符 (${describeDuAnomaly(assessment)}): 本批 ${batch.length} 个目标的体积均未采信`,
+    });
+  } else {
+    for (const [path, bytes] of assessment.sizes) batchSizes.set(path, bytes);
   }
-  const intact =
-    !parsed.duplicated &&
-    parsed.sizes.size <= safeTargets.length &&
-    !unexpected;
-  return {
-    sizes: parsed.sizes,
-    intact,
-    duplicated: parsed.duplicated,
-    unexpected,
-  };
+
+  const batchFailures = new Map<string, DuFailure>();
+  for (const line of run.stderr.split('\n')) {
+    if (line.trim() === '') continue;
+    const errorLine = parseDuErrorLine(line);
+    if (errorLine === null) {
+      warnings.push({
+        code: 'SIZE_DU_LINE_UNATTRIBUTED',
+        message: `体积统计失败 (未归因): ${line.replace(PROG_PREFIX_RE, '').trim()}`,
+      });
+      continue;
+    }
+    const failure = describeDuFailure(errorLine.detail);
+    if (!batchSet.has(errorLine.path)) {
+      warnings.push({
+        code: 'SIZE_SUBPATH_FAILED',
+        message: `体积统计失败 (${failure.reason}): ${errorLine.path}`,
+        path: errorLine.path,
+      });
+      continue;
+    }
+    batchFailures.set(errorLine.path, failure);
+    failures.set(errorLine.path, failure);
+  }
+
+  // GNU du 对不可读目录仍输出目录自身块大小: 剔除已归因失败项后再采信并流式上报
+  for (const path of batchFailures.keys()) batchSizes.delete(path);
+  for (const [path, bytes] of batchSizes) sizes.set(path, bytes);
+
+  if (emit === undefined || signal?.aborted === true) return;
+  for (const target of batch) {
+    if (signal?.aborted) break;
+    emitted.add(target);
+    const unmeasured = (
+      code: UnmeasuredCode,
+      reason: string,
+    ): MeasureProgressEvent => ({ kind: 'unmeasured', target, code, reason });
+    if (degraded.has(target)) {
+      emit(unmeasured('SIZE_UNMEASURED_UNPARSEABLE', '输出不可解析'));
+      continue;
+    }
+    const bytes = batchSizes.get(target);
+    if (bytes !== undefined) {
+      emit({ kind: 'measured', target, bytes, basis: 'disk-usage' });
+      continue;
+    }
+    const failure = batchFailures.get(target);
+    if (failure === undefined) {
+      emit(unmeasured('SIZE_UNMEASURED_UNPARSEABLE', '输出不可解析'));
+    } else if (failure.missing) {
+      emit({ kind: 'gone', target });
+    } else {
+      emit(unmeasured(failure.code, failure.reason));
+    }
+  }
 }
 
-/** 一致性判定失败的形态归类 (人话短语; 只述形态, 不含路径, 低信任内容不外溢) */
-function describeAnomaly(assessment: DuOutputAssessment): string {
-  const shapes: string[] = [];
-  if (assessment.duplicated) shapes.push('同一路径多行');
-  if (assessment.unexpected) shapes.push('含输入之外的路径');
-  if (shapes.length === 0) shapes.push('行数与输入不符');
-  return shapes.join(' / ');
-}
-
-/** 分批跑 du 并汇总各批的解析字节、失败归因、降级集合与告警 (按批隔离异常, 防止 E2BIG) */
+/** 分批并发跑 du 并汇总各批结果 (取消时停派新批、等在飞批自然收尾后抛 CANCELLED) */
 async function measureDuBatches(
   bin: string,
   safeTargets: readonly string[],
   maxBatchBytes: number,
   signal: AbortSignal | undefined,
-): Promise<{
-  sizes: Map<string, number>;
-  failures: Map<string, DuFailure>;
-  degraded: Set<string>;
-  warnings: SweepWarning[];
-}> {
-  const sizes = new Map<string, number>();
-  const failures = new Map<string, DuFailure>();
-  const degraded = new Set<string>();
-  const warnings: SweepWarning[] = [];
+  emit: ((event: MeasureProgressEvent) => void) | undefined,
+): Promise<BatchCollectState> {
+  const state: BatchCollectState = {
+    sizes: new Map<string, number>(),
+    failures: new Map<string, DuFailure>(),
+    degraded: new Set<string>(),
+    warnings: [],
+    emitted: new Set<string>(),
+    emit,
+  };
+  const { batches, concurrency } = partitionTargetsForDu(
+    safeTargets,
+    maxBatchBytes,
+  );
+  const env = createDuEnv();
+  let nextIdx = 0;
+  let cancelledBeforeSpawn = false;
+  let firstError: unknown;
+  let hasError = false;
 
-  for (const batch of chunkTargetsByBytes(safeTargets, maxBatchBytes)) {
-    // 取消检查点 (每批 du 调用前): 契约要求批量路径在调用前后各一次 (批量后见后处理循环)
-    if (signal?.aborted) {
-      throw new SweepError('CANCELLED', '体积统计在批量统计前被取消', {
-        phase: 'measure',
-      });
-    }
-    const run = await runDu(bin, batch);
-    if (run.spawnError !== null || run.signal !== null) {
-      for (const target of batch) degraded.add(target);
-      const errno = (run.spawnError as { code?: string } | null)?.code;
-      const reason =
-        run.spawnError !== null
-          ? `du 执行失败 (${run.spawnError.message})`
-          : `du 被信号 ${run.signal} 中止`;
-      warnings.push({
-        code: 'SIZE_DU_UNAVAILABLE',
-        message: `${reason}: 本批 ${batch.length} 个目标的体积均未采信`,
-        ...(typeof errno === 'string' ? { errno } : {}),
-      });
-      continue;
-    }
-
-    const { stdout, stderr } = run;
-    const batchSet = new Set(batch);
-
-    // 集合一致性校验: 本批解析出的路径必须全部来自本批输入且无重复; 不符即本批 fail-safe 整体降级
-    const assessment = assessDuOutput(stdout, batch);
-    if (!assessment.intact) {
-      for (const target of batch) degraded.add(target);
-      warnings.push({
-        code: 'SIZE_DU_OUTPUT_MISMATCH',
-        message: `du 输出与输入集合不符 (${describeAnomaly(assessment)}): 本批 ${batch.length} 个目标的体积均未采信`,
-      });
-    } else {
-      for (const [path, bytes] of assessment.sizes) sizes.set(path, bytes);
-    }
-
-    // stderr 逐行转中文告警, 英文原文不外泄; 键为路径, 供后续按 target 归因
-    for (const line of stderr.split('\n')) {
-      if (line.trim() === '') continue;
-      const errorLine = parseDuErrorLine(line);
-      if (errorLine === null) {
-        // 未归因也剥程序名前缀: 「不得透传 du: 前缀原文」为契约面 (stderr 中文化)
-        warnings.push({
-          code: 'SIZE_DU_LINE_UNATTRIBUTED',
-          message: `体积统计失败 (未归因): ${line.replace(PROG_PREFIX_RE, '').trim()}`,
-        });
-        continue;
+  async function worker(): Promise<void> {
+    while (!hasError) {
+      if (signal?.aborted) {
+        cancelledBeforeSpawn = true;
+        return;
       }
-      const failure = describeDuFailure(errorLine.detail);
-      if (!batchSet.has(errorLine.path)) {
-        // 输入 target 之外的路径 (如 target 内的子目录): 部分降级, 告警但该 target 结果仍有效
-        warnings.push({
-          code: 'SIZE_SUBPATH_FAILED',
-          message: `体积统计失败 (${failure.reason}): ${errorLine.path}`,
-          path: errorLine.path,
-        });
-        continue;
+      const batch = batches[nextIdx];
+      if (batch === undefined) return;
+      nextIdx += 1;
+      const run = await runDu(bin, batch, env);
+      try {
+        applyDuBatchResult(batch, run, state, signal);
+      } catch (error) {
+        if (!hasError) {
+          hasError = true;
+          firstError = error;
+        }
+        return;
       }
-      failures.set(errorLine.path, failure);
     }
   }
 
-  // stderr 已归因的 path: 其 stdout 值不可信 (GNU du 对不可读目录仍输出目录自身块大小),
-  // 从采信面剔除, 让「存在但测不到」如实落 unmeasured 而不是进 entries
-  for (const path of failures.keys()) sizes.delete(path);
-
-  return { sizes, failures, degraded, warnings };
+  await Promise.all(Array.from({ length: concurrency }, () => worker()));
+  if (hasError) throw firstError;
+  if (cancelledBeforeSpawn) {
+    throw new SweepError('CANCELLED', '体积统计在批量统计前被取消', {
+      phase: 'measure',
+    });
+  }
+  return state;
 }
 
-/**
- * 构造 du 候选。
- * bin 缺省走 findDu() 探针; bin / maxBatchBytes 显式传入供测试注入 (如注入 GNU du 或小批次预算),
- * 生产调用不传。
- */
+/** 构造 du 候选 (bin / maxBatchBytes 显式传入供测试注入, 生产调用不传) */
 export function createDuSizer(
   bin: string | null = findDu(),
   maxBatchBytes: number = DU_BATCH_MAX_BYTES,
@@ -318,7 +363,6 @@ export function createDuSizer(
       targets: string[],
       options?: MeasureOptions,
     ): Promise<SizeResult> {
-      // 入口取消预检: 即便 targets 为空数组或 bin 不可用, 已中止的 signal 仍须立即抛 CANCELLED
       if (options?.signal?.aborted) {
         throw new SweepError('CANCELLED', '体积统计在批量统计前被取消', {
           phase: 'measure',
@@ -329,24 +373,19 @@ export function createDuSizer(
 
       if (bin === null) {
         const unmeasured: UnmeasuredEntry[] = [];
-        const reason = 'du 候选不可用';
         for (const target of sorted) {
           if (options?.signal?.aborted) {
             throw new SweepError('CANCELLED', '体积统计在逐目标检查点被取消', {
               phase: 'measure',
             });
           }
-          unmeasured.push({
+          const entry: UnmeasuredEntry = {
             target,
             code: 'SIZE_UNMEASURED_OTHER',
-            reason,
-          });
-          emit?.({
-            kind: 'unmeasured',
-            target,
-            code: 'SIZE_UNMEASURED_OTHER',
-            reason,
-          });
+            reason: 'du 候选不可用',
+          };
+          unmeasured.push(entry);
+          emit?.({ kind: 'unmeasured', ...entry });
         }
         return {
           entries: [],
@@ -376,35 +415,36 @@ export function createDuSizer(
       const unmeasured: UnmeasuredEntry[] = [];
       const gone: string[] = [];
 
-      // 含控制字符的 target 会劈裂 du 的 `size\t路径` 行结构 (伪造行可覆盖真实体积): 前置拒绝, 不进 du
       const safeTargets = sorted.filter((target) => !hasControlChar(target));
-      const { sizes, failures, degraded, warnings } =
+      const { sizes, failures, degraded, warnings, emitted } =
         safeTargets.length > 0
           ? await measureDuBatches(
               bin,
               safeTargets,
               maxBatchBytes,
               options?.signal,
+              emit,
             )
           : {
               sizes: new Map<string, number>(),
               failures: new Map<string, DuFailure>(),
               degraded: new Set<string>(),
               warnings: [] as SweepWarning[],
+              emitted: new Set<string>(),
             };
 
-      /** 未测到项的落桶 + 事件成对发射 (码与原因一次给全) */
       const pushUnmeasured = (
         target: string,
         code: UnmeasuredCode,
         reason: string,
       ): void => {
         unmeasured.push({ target, code, reason });
-        emit?.({ kind: 'unmeasured', target, code, reason });
+        if (!emitted.has(target)) {
+          emit?.({ kind: 'unmeasured', target, code, reason });
+        }
       };
 
       for (const target of sorted) {
-        // 取消检查点 (逐目标之间): 被 abort 即抛 CANCELLED, 语义是「本次未完成」而非「结果为空」
         if (options?.signal?.aborted) {
           throw new SweepError('CANCELLED', '体积统计在逐目标检查点被取消', {
             phase: 'measure',
@@ -418,7 +458,6 @@ export function createDuSizer(
           );
           continue;
         }
-        // 一致性校验不过: 本批 du 输出不可信, 整体降级 unmeasured, 不逐条赋值
         if (degraded.has(target)) {
           pushUnmeasured(target, 'SIZE_UNMEASURED_UNPARSEABLE', '输出不可解析');
           continue;
@@ -426,26 +465,24 @@ export function createDuSizer(
         const bytes = sizes.get(target);
         if (bytes !== undefined) {
           entries.push({ target, bytes });
-          emit?.({ kind: 'measured', target, bytes, basis: 'disk-usage' });
+          if (!emitted.has(target)) {
+            emit?.({ kind: 'measured', target, bytes, basis: 'disk-usage' });
+          }
           continue;
         }
         const failure = failures.get(target);
         if (failure === undefined) {
-          // 解析不出且无 stderr 归因: 结构化为 unmeasured, 不得静默丢弃 (types.ts: 存在但无法测量的
-          // 目标必须上报)。现实触发面是含换行 / 回车的目标 (劈裂 `size\t路径` 行结构), 该形态已被上方
-          // 前置拒绝接住, 故本分支接住的是探针或 du 侧未知形态; 引用形态不在此列 (见文件头「输出形态」)。
           pushUnmeasured(target, 'SIZE_UNMEASURED_UNPARSEABLE', '输出不可解析');
           continue;
         }
         if (failure.missing) {
-          // 「不存在」单列 gone 桶 (BC-13): 与 warnings 的 SIZE_TARGET_VANISHED 事件同源同判定
           gone.push(target);
           warnings.push({
             code: 'SIZE_TARGET_VANISHED',
             message: `体积统计失败 (不存在): ${target}`,
             path: target,
           });
-          emit?.({ kind: 'gone', target });
+          if (!emitted.has(target)) emit?.({ kind: 'gone', target });
           continue;
         }
         pushUnmeasured(target, failure.code, failure.reason);

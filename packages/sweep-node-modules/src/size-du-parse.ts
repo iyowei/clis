@@ -211,3 +211,79 @@ export function parseDuErrorLine(
   if (path === undefined || detail === undefined) return null;
   return { path, detail };
 }
+
+/** 校验整段是否为非空纯十进制数字 (零正则开销) */
+function isAsciiDigits(text: string): boolean {
+  if (text.length === 0) return false;
+  for (let i = 0; i < text.length; i += 1) {
+    const code = text.charCodeAt(i);
+    if (code < 48 || code > 57) return false;
+  }
+  return true;
+}
+
+/** 解析 `du -sk` 输出: 每行 `<KiB>\t<绝对路径>`; duplicated 标记同一路径多行 */
+export function parseDuSizes(stdout: string): {
+  sizes: Map<string, number>;
+  duplicated: boolean;
+} {
+  const sizes = new Map<string, number>();
+  let duplicated = false;
+  let start = 0;
+  const len = stdout.length;
+  while (start < len) {
+    let end = stdout.indexOf('\n', start);
+    if (end === -1) end = len;
+    const tab = stdout.indexOf('\t', start);
+    if (tab > start && tab < end - 1) {
+      const numPart = stdout.slice(start, tab);
+      if (isAsciiDigits(numPart)) {
+        const path = stdout.slice(tab + 1, end);
+        if (sizes.has(path)) duplicated = true;
+        sizes.set(path, Number(numPart) * 1024);
+      }
+    }
+    start = end + 1;
+  }
+  return { sizes, duplicated };
+}
+
+/** stdout 与输入集合的一致性判定结果 (解析与判定合一, 供单测注入样本验证) */
+export interface DuOutputAssessment {
+  sizes: Map<string, number>;
+  intact: boolean;
+  duplicated: boolean;
+  unexpected: boolean;
+}
+
+/** 解析 du 的 stdout 并判定与输入集合的一致性 (任一不符即整批 fail-safe 不可信) */
+export function assessDuOutput(
+  stdout: string,
+  safeTargets: readonly string[],
+  safeSet: ReadonlySet<string> = new Set(safeTargets),
+): DuOutputAssessment {
+  const parsed = parseDuSizes(stdout);
+  let unexpected = false;
+  for (const path of parsed.sizes.keys()) {
+    if (!safeSet.has(path)) unexpected = true;
+  }
+  const intact =
+    !parsed.duplicated &&
+    parsed.sizes.size <= safeTargets.length &&
+    !unexpected;
+  return {
+    sizes: parsed.sizes,
+    intact,
+    duplicated: parsed.duplicated,
+    unexpected,
+  };
+}
+
+/** 一致性判定失败的形态归类 (人话短语; 只述形态, 不含路径) */
+export function describeDuAnomaly(assessment: DuOutputAssessment): string {
+  const shapes: string[] = [];
+  if (assessment.duplicated) shapes.push('同一路径多行');
+  if (assessment.unexpected) shapes.push('含输入之外的路径');
+  if (shapes.length === 0) shapes.push('行数与输入不符');
+  return shapes.join(' / ');
+}
