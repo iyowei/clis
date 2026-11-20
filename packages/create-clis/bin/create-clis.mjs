@@ -207,29 +207,38 @@ const main = async () => {
     process.exit(1);
   }
 
-  // 经壳启动器 (bin/create-clis 或 bin/create-clis.cmd) 隔离拉起的 Bun: 直接同进程加载产物, 零二次派生
-  if (
-    typeof process.versions.bun === 'string' &&
-    process.env.CLIS_BUN_ISOLATED === '1'
-  ) {
-    if (!existsSync(isolatedBunfig)) {
-      process.stderr.write(
-        'create-clis: 缺少启动器隔离配置 (bin/bunfig.toml), 为防工作目录 bunfig.toml 劫持已拒绝执行。\n',
-      );
-      process.exit(1);
+  const ensureIsolatedBunfig = () => {
+    if (existsSync(isolatedBunfig)) return;
+    process.stderr.write(
+      'create-clis: 缺少启动器隔离配置 (bin/bunfig.toml), 为防工作目录 bunfig.toml 劫持已拒绝执行。\n',
+    );
+    process.exit(1);
+  };
+
+  // 当前已是 Bun: 隔离态直接同进程 import, 非隔离态直接用 process.execPath 重派隔离态 Bun (不扫 PATH)
+  if (typeof process.versions.bun === 'string') {
+    ensureIsolatedBunfig();
+    if (process.env.CLIS_BUN_ISOLATED === '1') {
+      await import(pathToFileURL(entry).href);
+      return;
     }
-    await import(pathToFileURL(entry).href);
+    const result = await runChild(
+      process.execPath,
+      [
+        `--config=${isolatedBunfig}`,
+        '--no-env-file',
+        entry,
+        ...process.argv.slice(2),
+      ],
+      { CLIS_BUN_ISOLATED: '1' },
+    );
+    finishChild(result);
     return;
   }
 
   const bunRuntime = pickRuntime({ names: ['bun'] });
   if (bunRuntime !== null) {
-    if (!existsSync(isolatedBunfig)) {
-      process.stderr.write(
-        'create-clis: 缺少启动器隔离配置 (bin/bunfig.toml), 为防工作目录 bunfig.toml 劫持已拒绝执行。\n',
-      );
-      process.exit(1);
-    }
+    ensureIsolatedBunfig();
     const result = await runChild(
       bunRuntime,
       [
@@ -245,10 +254,7 @@ const main = async () => {
   }
 
   // 无 Bun 时: 若当前 Node 满足 >= 22.18.0 则同进程加载产物 (消除 3 进程套娃并保留原始 argv)
-  if (
-    typeof process.versions.bun !== 'string' &&
-    isSupportedNodeVersion(process.versions.node)
-  ) {
+  if (isSupportedNodeVersion(process.versions.node)) {
     await import(pathToFileURL(entry).href);
     return;
   }

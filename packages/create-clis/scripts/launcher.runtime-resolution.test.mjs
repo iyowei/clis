@@ -274,11 +274,28 @@ describe('三入口解析形态 (静态钉住)', () => {
     expect(source).toContain('isSupportedNodeVersion');
     expect(source).toContain('CLIS_BUN_ISOLATED');
     expect(source).toContain("{ CLIS_BUN_ISOLATED: '1' }");
+    expect(source).toContain('process.execPath');
     expect(source).toContain('realpathSync.native ?? realpathSync');
     expect(source).toContain('pathToFileURL(entry).href');
     expect(source).toContain('process.kill(process.pid, result.signal)');
     expect(source).toContain('bunfig.toml');
     expect(source).toContain('--no-env-file');
+
+    if (existsSync(join(ROOT, 'dist', 'create-clis.js'))) {
+      const env = { ...process.env };
+      for (const key of Object.keys(env)) {
+        if (key.toUpperCase() === 'PATH') delete env[key];
+      }
+      delete env.CLIS_BUN_ISOLATED;
+      env.PATH = '';
+      const res = spawnSync(
+        process.execPath,
+        [join(ROOT, 'bin', 'create-clis.mjs'), '--version'],
+        { encoding: 'utf8', env },
+      );
+      expect(res.status, res.stderr).toBe(0);
+      expect(res.stdout.trim()).toMatch(/^\d+\.\d+\.\d+/);
+    }
   });
 });
 

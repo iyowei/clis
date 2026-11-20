@@ -318,6 +318,31 @@ describe('npm 启动器 · 产物自证', () => {
       pkg.cleanup();
     }
   });
+
+  test('未隔离 Bun 在空 PATH 下直接重派 process.execPath 进入隔离态 (不扫 PATH 也不误降级)', () => {
+    const pkg = makePackage();
+    try {
+      writeArtifact(
+        pkg,
+        'process.stdout.write(`ISOLATED=${process.env.CLIS_BUN_ISOLATED}\\n`);\n',
+      );
+      const env: NodeJS.ProcessEnv = { ...process.env };
+      for (const key of Object.keys(env)) {
+        if (key.toUpperCase() === 'PATH') delete env[key];
+      }
+      delete env.CLIS_BUN_ISOLATED;
+      env.PATH = '';
+      const res = spawnSync(process.execPath, [pkg.launcher, '--help'], {
+        encoding: 'utf8',
+        env,
+      });
+
+      expect(res.status, res.stderr).toBe(0);
+      expect(res.stdout).toContain('ISOLATED=1');
+    } finally {
+      pkg.cleanup();
+    }
+  });
 });
 
 describe('npm 启动器 · 工作目录配置与环境变量隔离', () => {

@@ -232,19 +232,27 @@ const main = async () => {
     process.exit(1);
   };
 
-  // 由本地壳以 --config/--no-env-file 拉起并透传 CLIS_BUN_ISOLATED=1 的 Bun 进程: 同进程直接 import
-  if (
-    typeof process.versions.bun === 'string' &&
-    process.env.CLIS_BUN_ISOLATED === '1'
-  ) {
+  // 当前已是 Bun: 隔离态直接同进程 import, 非隔离态直接用 process.execPath 重派隔离态 Bun (不扫 PATH)
+  if (typeof process.versions.bun === 'string') {
     ensureIsolatedBunfig();
-    await import(pathToFileURL(entry).href);
+    if (process.env.CLIS_BUN_ISOLATED === '1') {
+      await import(pathToFileURL(entry).href);
+      return;
+    }
+    await runChild(
+      process.execPath,
+      [
+        `--config=${isolatedBunfig}`,
+        '--no-env-file',
+        entry,
+        ...process.argv.slice(2),
+      ],
+      { CLIS_BUN_ISOLATED: '1' },
+    );
     return;
   }
 
-  const isCurrentNodeSupported =
-    typeof process.versions.bun !== 'string' &&
-    isSupportedNodeVersion(process.versions.node);
+  const isCurrentNodeSupported = isSupportedNodeVersion(process.versions.node);
 
   // 当前进程已是合格 Node 时仅探 Bun: 命中切 Bun, 未命中直接同进程 import (零额外派生)
   const runtime = pickRuntime(
