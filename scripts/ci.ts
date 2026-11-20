@@ -90,7 +90,7 @@ const STEPS: Readonly<Record<string, Step>> = {
   },
   'format-check': {
     command: 'bun',
-    args: ['x', '--no-install', 'prettier', '--check', '.'],
+    args: ['fmt', '--check'],
     parallel: true,
   },
   'lint:refs': {

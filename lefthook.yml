@@ -1,9 +1,9 @@
 # Git 钩子门禁 (lefthook)
 #
 # 分层策略:
-#   pre-commit 增量门禁: prettier / oxlint 只扫暂存文件; type-check 例外,
+#   pre-commit 增量门禁: bun fmt / oxlint 只扫暂存文件; type-check 例外,
 #               不传 {staged_files}, 跑全项目 typecheck (覆盖各包与根 scripts/);
-#               prettier 格式化后自动重暂存
+#               bun fmt 格式化后自动重暂存
 #   pre-push   全量门禁: rebase / merge / cherry-pick 重放提交不触发 pre-commit,
 #               push 是代码外流的唯一必经闸门, 在此全量只读兜底
 
@@ -18,10 +18,10 @@ pre-commit:
       glob: '*.{ts,tsx,mts,mjs,js,cjs}'
       run: bun run typecheck
 
-    # JS/TS (含 .mts / .mjs / .js / .cjs): prettier 格式化后自动重暂存, 再 oxlint
-    prettier-js:
+    # JS/TS (含 .mts / .mjs / .js / .cjs): bun fmt 格式化后自动重暂存, 再 oxlint
+    fmt-js:
       glob: '*.{ts,tsx,mts,mjs,js,cjs}'
-      run: bun x --no-install prettier --write --log-level error {staged_files}
+      run: bun fmt --log-level=error --no-error-on-unmatched-pattern {staged_files}
       stage_fixed: true
 
     # --no-error-on-unmatched-pattern: 暂存文件若全落在 .oxlintrc.json 的
@@ -31,10 +31,10 @@ pre-commit:
       glob: '*.{ts,tsx,mts,mjs,js,cjs}'
       run: bun x --no-install oxlint --no-error-on-unmatched-pattern {staged_files}
 
-    # 非 JS/TS: 仅 prettier 格式化
-    prettier-other:
+    # 非 JS/TS: 仅 bun fmt 格式化
+    fmt-other:
       glob: '*.{md,mdx,json,jsonc,yaml,yml}'
-      run: bun x --no-install prettier --write --log-level error {staged_files}
+      run: bun fmt --log-level=error --no-error-on-unmatched-pattern {staged_files}
       stage_fixed: true
 
 pre-push:

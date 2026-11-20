@@ -1,5 +1,5 @@
 # bun 配置
-# linker = "hoisted" 确保 oxlint / prettier 等 Node CJS 工具链能解析 peer dependency。
+# linker = "hoisted" 确保 oxlint / typescript 等 Node CJS 工具链能解析 peer dependency。
 # 默认使用官方 npm registry; 如需本机镜像加速, 请在个人 ~/.bunfig.toml 配置。
 
 [install]

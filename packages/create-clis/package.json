@@ -48,7 +48,7 @@
     "prepublishOnly": "npm run build && npm run verify:release && npm run heavy-smoke",
     "verify:release": "bun scripts/verify-release.ts",
     "heavy-smoke": "bun scripts/heavy-smoke.ts",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "bun check",
     "test": "bun test src scripts"
   },
   "dependencies": {

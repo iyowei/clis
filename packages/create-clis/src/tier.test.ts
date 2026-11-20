@@ -42,7 +42,7 @@ const CLI_SRC = \`\${cli.dir}/src/cli.ts\`;
 
 const STEPS: Readonly<Record<string, Step>> = {
   build: { command: 'bun', args: ['run', 'build'] },
-  'format-check': { command: 'bunx', args: ['prettier', '--check', '.'] },
+  'format-check': { command: 'bun', args: ['fmt', '--check'] },
   'lint:backups': { command: 'bun', args: ['scripts/lint-stray-backups.ts'] },
   // 台账对账闸门: 契约 / 语料 / 豁免三方对账 (增强档; 注释随条目一并摘除)
   'lint:coverage': {
@@ -108,7 +108,7 @@ process.chdir(join(import.meta.dir, '..'));
 
 const STEPS: Readonly<Record<string, Step>> = {
   build: { command: 'bun', args: ['run', 'build'] },
-  'format-check': { command: 'bunx', args: ['prettier', '--check', '.'] },
+  'format-check': { command: 'bun', args: ['fmt', '--check'] },
   'lint:backups': { command: 'bun', args: ['scripts/lint-stray-backups.ts'] },
 };
 

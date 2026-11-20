@@ -35,7 +35,7 @@ Prerequisites: bun and node.
 bun install
 ```
 
-The hooks check code on the way in (pre-commit: a project-wide type check, plus prettier and oxlint over the staged files) and re-run the full checks before a push (pre-push runs `bun scripts/ci.ts`, the single source of the gate list). Where lefthook is not installed, the hook chain falls back to a pinned version fetched through bunx. Configuration: [lefthook.yml](lefthook.yml).
+The hooks check code on the way in (pre-commit: a project-wide `bun check`, plus `bun fmt` and oxlint over the staged files) and re-run the full checks before a push (pre-push runs `bun scripts/ci.ts`, the single source of the gate list). Where lefthook is not installed, the hook chain falls back to a pinned version fetched through bunx. Configuration: [lefthook.yml](lefthook.yml).
 
 Manage custom ignore entries in `.gitignorerc.json` and regenerate `.gitignore` via `fgi` rather than editing `.gitignore` directly.
 
@@ -44,13 +44,13 @@ Manage custom ignore entries in `.gitignorerc.json` and regenerate `.gitignore` 
 Run from the repository root:
 
 ```shell
-# Type check (tsc --noEmit, through turbo)
+# Type check (bun check, through turbo)
 bun run typecheck
 
 # Lint (oxlint); `bun run lint:fix` applies the automatic fixes
 bun run lint
 
-# Format (prettier --write .)
+# Format (bun fmt)
 bun run format
 
 # Tests (through turbo; `bun test` runs the test runner directly)

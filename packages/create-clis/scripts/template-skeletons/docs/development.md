@@ -16,13 +16,13 @@ bun install
 以下命令除注明外均在仓库根执行:
 
 ```shell
-# 类型检查 (tsc --noEmit; 经 turbo 编排各包)
+# 类型检查 (bun check; 经 turbo 编排各包)
 bun run typecheck
 
 # 代码检查 (oxlint)
 bun run lint
 
-# 格式化 (prettier --write)
+# 格式化 (bun fmt)
 bun run format
 
 # 测试 (经 turbo 编排各包, 带缓存)
@@ -44,7 +44,7 @@ bun run safe-install
 
 由 lefthook 把关 (操作级细节以仓库根 `lefthook.yml` 为准):
 
-- **pre-commit** (增量): prettier 重暂存 + oxlint 扫暂存文件; 类型检查例外, 跑全项目 `bun run typecheck`;
+- **pre-commit** (增量): `bun fmt` 重暂存 + oxlint 扫暂存文件; 类型检查例外, 跑全项目 `bun run typecheck`;
 - **pre-push** (全量): 单条调用 `bun scripts/ci.ts`; 步骤集合的单一事实来源在 `scripts/ci.ts`, CI 与 Release 的前置门禁共用同一套步骤定义。
 
 提交信息按 Conventional Commits 前缀 (`feat` / `fix` / `chore` / `test` 等), 并守单一主题原则: 一个提交只含一个完整逻辑变更, 跨主题须拆分。

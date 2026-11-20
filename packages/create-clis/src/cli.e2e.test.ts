@@ -16,10 +16,9 @@ import {
   mkdirSync,
   readFileSync,
   rmSync,
-  symlinkSync,
   writeFileSync,
 } from 'node:fs';
-import { dirname, join } from 'node:path';
+import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { makeTmpRoot } from '../../../scripts/lib/tmp-root.ts';
@@ -441,7 +440,7 @@ describe('模块与产物面', () => {
   });
 
   test(
-    'core 档产物过 prettier --check (产物内真实 CLI)',
+    'core 档产物过 bun fmt --check (零依赖直跑, 钉住 Prettier 收口与 Bun fmt 同口径)',
     () => {
       const { home, target } = makeCase('format');
       const generated = runCli(
@@ -451,25 +450,9 @@ describe('模块与产物面', () => {
       );
       expect(generated.status, `应退 0: ${generated.stderr}`).toBe(0);
 
-      // 产物尚未装依赖: 把仓内同版本 prettier 与插件链进 node_modules, 让产物自身的
-      // prettier --check 口径可用 (链接随用例清理, 不落工作区)
-      for (const name of [
-        'prettier',
-        '@trivago/prettier-plugin-sort-imports',
-      ]) {
-        const link = join(target, 'node_modules', name);
-        mkdirSync(dirname(link), { recursive: true });
-        symlinkSync(join(REPO_ROOT, 'node_modules', name), link, 'dir');
-      }
-
-      const prettierCli = join(
-        REPO_ROOT,
-        'node_modules',
-        'prettier',
-        'bin',
-        'prettier.cjs',
-      );
-      const check = spawnSync('node', [prettierCli, '--check', '.'], {
+      // 生成物 format-check 改用 Bun 原生 fmt, 无需安装 node_modules 即可直接按产物
+      // 自带的 .prettierrc / .prettierignore 验收 Prettier 收口产出是否 0 差异对齐
+      const check = spawnSync('bun', ['fmt', '--check'], {
         cwd: target,
         encoding: 'utf8',
         timeout: TIMEOUT_MS,

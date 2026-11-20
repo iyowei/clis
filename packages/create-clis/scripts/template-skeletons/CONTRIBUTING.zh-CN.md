@@ -35,7 +35,7 @@
 bun install
 ```
 
-钩子在入口把关 (pre-commit: 全项目类型检查 + prettier / oxlint 扫暂存文件), 推送前再跑一遍全量检查 (pre-push 跑 `bun scripts/ci.ts`, 步骤清单的单一来源)。机器上没有 lefthook 时, 钩子链经 bunx 取 pin 版兜底。配置见 [lefthook.yml](lefthook.yml)。
+钩子在入口把关 (pre-commit: 全项目 `bun check` 类型检查 + `bun fmt` / oxlint 扫暂存文件), 推送前再跑一遍全量检查 (pre-push 跑 `bun scripts/ci.ts`, 步骤清单的单一来源)。机器上没有 lefthook 时, 钩子链经 bunx 取 pin 版兜底。配置见 [lefthook.yml](lefthook.yml)。
 
 仓库的 `.gitignore` 由 `.gitignorerc.json` 维护, 新增规则请写入 `.gitignorerc.json` 的 `custom` 数组并重跑 `fgi`, 不要直接手改 `.gitignore`。
 
@@ -44,13 +44,13 @@ bun install
 以下命令均在仓库根执行:
 
 ```shell
-# 类型检查 (tsc --noEmit, 经 turbo)
+# 类型检查 (bun check, 经 turbo)
 bun run typecheck
 
 # 代码检查 (oxlint); `bun run lint:fix` 自动修复
 bun run lint
 
-# 格式化 (prettier --write .)
+# 格式化 (bun fmt)
 bun run format
 
 # 测试 (经 turbo; `bun test` 直跑测试器)

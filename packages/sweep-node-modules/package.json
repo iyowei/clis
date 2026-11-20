@@ -34,7 +34,7 @@
   },
   "scripts": {
     "build": "bun scripts/build.ts",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "bun check",
     "test": "bun test",
     "bench": "bun bench/run.ts",
     "verify:release": "bun scripts/verify-release.ts",

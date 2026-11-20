@@ -479,12 +479,16 @@ describe('真实清单集成: 全量产出', () => {
     expect(skeletonPkg.packageManager).toBe(rootPkg.packageManager);
     expect(skeletonPkg.engines).toEqual(rootPkg.engines);
     expect(skeletonPkg.devDependencies).toEqual(rootPkg.devDependencies);
-    expect(createClisPkg.dependencies.prettier).toBe(
-      rootPkg.devDependencies.prettier,
-    );
+    // 根仓与模板骨架改用 Bun 原生 fmt, 不再携带 prettier devDependencies;
+    // create-clis 保留运行期精确锁定的 prettier 与排序插件供纯 Node 场景生成收口
+    expect(rootPkg.devDependencies.prettier).toBeUndefined();
+    expect(
+      rootPkg.devDependencies['@trivago/prettier-plugin-sort-imports'],
+    ).toBeUndefined();
+    expect(createClisPkg.dependencies.prettier).toMatch(/^\d+\.\d+\.\d+$/);
     expect(
       createClisPkg.dependencies['@trivago/prettier-plugin-sort-imports'],
-    ).toBe(rootPkg.devDependencies['@trivago/prettier-plugin-sort-imports']);
+    ).toMatch(/^\d+\.\d+\.\d+$/);
   });
 
   test('清单完整性: 非 exclude 条目逐条落位 (真实清单全量对账)', () => {
