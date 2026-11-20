@@ -1,17 +1,19 @@
 /**
  * 候选 B (统一): 纯 JS 递归统计逻辑字节 (跨平台单一代码路径)。
- * 口径: 目录内普通文件大小求和 (磁盘占用口径由 du 候选承担, 差异交基准裁定);
- * 符号链接一律不跟随 (与扫描同策);
- * 根目录存在但不可读 → 结构化记入 unmeasured; 子目录失败 → 告警并继续累计已读部分。
+ *
+ * 并发模型: 跨目标共享的有界回调 I/O 池 (`IO_CONCURRENCY = 48`, 最多 `ACTIVE_TARGET_LIMIT = 6` 个
+ * 目标重叠在途), 使用原生 `node:fs` 回调 `lstat`/`readdir` 省去每文件 Promise 与微任务分配;
+ * 仅目标顶层用一次 `path.join` 归一化前缀, 深层子目录直接 `${dir}${sep}` 拼接;
+ * 顶层与内部一律 `lstat` 不跟随符号链接, 进度事件与结果三桶均严格按 `target` 升序保确定性。
  */
-import type { Dirent } from 'node:fs';
-import { lstat, readdir } from 'node:fs/promises';
-import { join } from 'node:path';
+import { type Dirent, lstat, readdir } from 'node:fs';
+import { join, sep } from 'node:path';
 
 import type { UnmeasuredCode } from './codes.ts';
 import { SweepError } from './errors.ts';
 import type {
   MeasureOptions,
+  MeasureProgressEvent,
   SizeEntry,
   SizeResult,
   Sizer,
@@ -19,7 +21,6 @@ import type {
   UnmeasuredEntry,
 } from './types.ts';
 
-/** 失败归因 (判别联合: ENOENT 进 gone 桶, 其余带未测到码); 未知错误码保留码值便于诊断 */
 function describeFailure(
   code: string | undefined,
 ):
@@ -56,19 +57,40 @@ function describeFailure(
   }
 }
 
-/** 取错误码; 非对象或缺失时返回 undefined */
 function errorCode(error: unknown): string | undefined {
   return (error as { code?: string } | null)?.code;
 }
 
-/** 同时在飞的 readdir / lstat 上限 (参照 scan-parallel.ts 32 路有界并发池, 防 FD 爆炸) */
-const SIZE_CONCURRENCY = 32;
+/** 全局同时在飞的 readdir / lstat 硬上限 (跨目标共享, 严控 FD 防 EMFILE) */
+const IO_CONCURRENCY = 48;
 
-/** 待统计工作项 (显式栈, 零深递归) */
-type SizeWorkItem =
-  { kind: 'dir'; path: string } | { kind: 'file'; path: string };
+/** 同时允许展开遍历的目标上限 (消除目标间尾部排空空转, 同时限制内存队列水位) */
+const ACTIVE_TARGET_LIMIT = 6;
 
-/** 追加子路径读取失败告警 (附原始 errno 供调用方定位) */
+interface TargetJob {
+  readonly index: number;
+  readonly target: string;
+  total: number;
+  pending: number;
+}
+
+interface DirTask {
+  readonly job: TargetJob;
+  readonly dir: string;
+}
+
+interface FileBatch {
+  readonly job: TargetJob;
+  readonly prefix: string;
+  readonly names: string[];
+  cursor: number;
+}
+
+type TargetOutcome =
+  | { kind: 'entry'; entry: SizeEntry }
+  | { kind: 'unmeasured'; entry: UnmeasuredEntry }
+  | { kind: 'gone'; target: string };
+
 function pushSubpathWarning(
   warnings: SweepWarning[],
   path: string,
@@ -83,103 +105,292 @@ function pushSubpathWarning(
   });
 }
 
-/** 将一批 Dirent 分类入栈 (符号链接不跟随: 防环、防越出 target) */
-function enqueueDirents(
-  stack: SizeWorkItem[],
-  dir: string,
-  dirents: readonly Dirent[],
+function emitOutcome(
+  emit: (event: MeasureProgressEvent) => void,
+  outcome: TargetOutcome,
 ): void {
-  for (const dirent of dirents) {
-    if (dirent.isSymbolicLink()) continue;
-    const path = join(dir, dirent.name);
-    if (dirent.isDirectory()) stack.push({ kind: 'dir', path });
-    else if (dirent.isFile()) stack.push({ kind: 'file', path });
+  if (outcome.kind === 'entry') {
+    emit({
+      kind: 'measured',
+      target: outcome.entry.target,
+      bytes: outcome.entry.bytes,
+      basis: 'logical-bytes',
+    });
+  } else if (outcome.kind === 'unmeasured') {
+    emit({ kind: 'unmeasured', ...outcome.entry });
+  } else {
+    emit({ kind: 'gone', target: outcome.target });
   }
 }
 
-/**
- * 显式栈 + 32 路有界并发池累计目录内普通文件字节数。
- * 出栈前检查取消信号立即抛 CANCELLED; 文件大小改用 lstat 不跟随符号链接;
- * 子目录 / 文件读取失败记中文告警 (含 errno) 并跳过, 同级其余条目照常累计。
- */
-async function sumEntries(
-  dirents: Dirent[],
-  dir: string,
-  warnings: SweepWarning[],
-  signal: AbortSignal | undefined,
-): Promise<number> {
-  const stack: SizeWorkItem[] = [];
-  enqueueDirents(stack, dir, dirents);
-  let total = 0;
-  let active = 0;
-  const failures: unknown[] = [];
-  let resolveDrained: (() => void) | null = null;
-  const drained = new Promise<void>((resolve) => {
-    resolveDrained = resolve;
-  });
-
-  function pump(): void {
-    while (
-      active < SIZE_CONCURRENCY &&
-      stack.length > 0 &&
-      failures.length === 0 &&
-      !signal?.aborted
-    ) {
-      const item = stack.pop()!;
-      active += 1;
-      void processItem(item);
-    }
-    const stopped = failures.length > 0 || signal?.aborted === true;
-    if (
-      active === 0 &&
-      (stack.length === 0 || stopped) &&
-      resolveDrained !== null
-    ) {
-      const resolve = resolveDrained;
-      resolveDrained = null;
-      resolve();
+/** 将目录条目分类推入目录栈与文件批次 (不跟随符号链接) */
+function enqueueTargetDirents(
+  dirStack: DirTask[],
+  fileBatches: FileBatch[],
+  job: TargetJob,
+  prefix: string,
+  dirents: readonly Dirent[],
+): void {
+  if (dirents.length === 0) return;
+  let fileNames: string[] | null = null;
+  for (let i = 0; i < dirents.length; i += 1) {
+    const dirent = dirents[i]!;
+    if (dirent.isSymbolicLink()) continue;
+    if (dirent.isDirectory()) {
+      dirStack.push({ job, dir: `${prefix}${dirent.name}` });
+      job.pending += 1;
+    } else if (dirent.isFile()) {
+      if (fileNames === null) fileNames = [];
+      fileNames.push(dirent.name);
     }
   }
+  if (fileNames !== null) {
+    job.pending += fileNames.length;
+    fileBatches.push({ job, prefix, names: fileNames, cursor: 0 });
+  }
+}
 
-  async function processItem(item: SizeWorkItem): Promise<void> {
-    try {
-      if (signal?.aborted) {
-        throw new SweepError('CANCELLED', '体积统计在目录遍历检查点被取消', {
-          phase: 'measure',
-        });
-      }
-      if (item.kind === 'dir') {
+/** 从文件批次尾领一个待 lstat 文件 (零额外对象包装) */
+function popFileFromBatches(
+  fileBatches: FileBatch[],
+): { job: TargetJob; path: string } | null {
+  while (fileBatches.length > 0) {
+    const top = fileBatches[fileBatches.length - 1]!;
+    const name = top.names[top.cursor];
+    if (name === undefined) {
+      fileBatches.pop();
+      continue;
+    }
+    top.cursor += 1;
+    if (top.cursor >= top.names.length) fileBatches.pop();
+    return { job: top.job, path: `${top.prefix}${name}` };
+  }
+  return null;
+}
+
+/** 将顶层 target 读取/lstat 失败转为目标结果并记录必要的消失告警 */
+function toTopErrorOutcome(
+  target: string,
+  error: unknown,
+  warnings: SweepWarning[],
+): TargetOutcome {
+  const failure = describeFailure(errorCode(error));
+  if (failure.missing) {
+    warnings.push({
+      code: 'SIZE_TARGET_VANISHED',
+      message: `体积统计失败 (${failure.reason}): ${target}`,
+      path: target,
+    });
+    return { kind: 'gone', target };
+  }
+  return {
+    kind: 'unmeasured',
+    entry: { target, code: failure.code, reason: failure.reason },
+  };
+}
+
+/** 使用跨目标共享有界回调池并发统计全部已去重排序的目标 */
+function measureTargetsCallbackPool(
+  sorted: readonly string[],
+  signal: AbortSignal | undefined,
+  emit: ((event: MeasureProgressEvent) => void) | undefined,
+): Promise<{
+  outcomes: (TargetOutcome | undefined)[];
+  warnings: SweepWarning[];
+}> {
+  return new Promise((resolve, reject) => {
+    const outcomes: (TargetOutcome | undefined)[] = Array.from({
+      length: sorted.length,
+    });
+    const warnings: SweepWarning[] = [];
+    const dirStack: DirTask[] = [];
+    const fileBatches: FileBatch[] = [];
+
+    let nextTargetIdx = 0;
+    let activeTargets = 0;
+    let activeIo = 0;
+    let nextEmitIdx = 0;
+    let cancelled = false;
+    let hasError = false;
+    let firstError: unknown;
+    let settled = false;
+
+    const stopped = (): boolean => cancelled || hasError;
+
+    const flushProgress = (): void => {
+      if (emit === undefined) return;
+      while (nextEmitIdx < sorted.length && !stopped()) {
+        const outcome = outcomes[nextEmitIdx];
+        if (outcome === undefined) break;
+        nextEmitIdx += 1;
         try {
-          const children = await readdir(item.path, { withFileTypes: true });
-          enqueueDirents(stack, item.path, children);
+          emitOutcome(emit, outcome);
         } catch (error) {
-          pushSubpathWarning(warnings, item.path, error);
+          if (!hasError) {
+            hasError = true;
+            firstError = error;
+          }
+          return;
         }
+      }
+    };
+
+    const finishTarget = (index: number, outcome: TargetOutcome): void => {
+      activeTargets -= 1;
+      outcomes[index] = outcome;
+      flushProgress();
+    };
+
+    const finishJob = (job: TargetJob): void => {
+      finishTarget(job.index, {
+        kind: 'entry',
+        entry: { target: job.target, bytes: job.total },
+      });
+    };
+
+    const onTopError = (
+      index: number,
+      target: string,
+      error: unknown,
+    ): void => {
+      finishTarget(index, toTopErrorOutcome(target, error, warnings));
+    };
+
+    const maybeSettle = (): void => {
+      if (settled || activeIo > 0) return;
+      if (
+        !stopped() &&
+        (fileBatches.length > 0 ||
+          dirStack.length > 0 ||
+          nextTargetIdx < sorted.length)
+      ) {
         return;
       }
-      try {
-        const stats = await lstat(item.path);
-        if (stats.isFile()) total += stats.size;
-      } catch (error) {
-        pushSubpathWarning(warnings, item.path, error);
+      settled = true;
+      if (hasError) {
+        reject(firstError);
+      } else if (cancelled || signal?.aborted) {
+        reject(
+          new SweepError('CANCELLED', '体积统计在目录遍历检查点被取消', {
+            phase: 'measure',
+          }),
+        );
+      } else {
+        resolve({ outcomes, warnings });
       }
-    } catch (error) {
-      if (failures.length === 0) failures.push(error);
-    } finally {
-      active -= 1;
-      pump();
-    }
-  }
+    };
 
-  pump();
-  await drained;
-  if (failures.length > 0) throw failures[0];
-  if (signal?.aborted) {
-    throw new SweepError('CANCELLED', '体积统计在目录遍历检查点被取消', {
-      phase: 'measure',
-    });
-  }
-  return total;
+    const startTarget = (index: number): void => {
+      const target = sorted[index]!;
+      activeTargets += 1;
+      activeIo += 1;
+      // 仅 lstat 末段拦截顶层符号链接 (不误伤 macOS /var 等祖先软链)
+      lstat(target, (lstatErr, st) => {
+        if (lstatErr !== null) {
+          onTopError(index, target, lstatErr);
+          activeIo -= 1;
+          pump();
+          return;
+        }
+        if (st.isSymbolicLink()) {
+          finishTarget(index, {
+            kind: 'unmeasured',
+            entry: {
+              target,
+              code: 'SIZE_UNMEASURED_NOT_DIR',
+              reason: '不是目录',
+            },
+          });
+          activeIo -= 1;
+          pump();
+          return;
+        }
+        if (stopped() || signal?.aborted) {
+          if (signal?.aborted) cancelled = true;
+          activeTargets -= 1;
+          activeIo -= 1;
+          pump();
+          return;
+        }
+        readdir(target, { withFileTypes: true }, (readErr, dirents) => {
+          if (readErr !== null) {
+            onTopError(index, target, readErr);
+          } else {
+            const job: TargetJob = { index, target, total: 0, pending: 0 };
+            // 仅顶层目标调一次 join 归一化尾斜杠/双斜杠, 内部子目录直接 `${dir}${sep}`
+            const topPrefix = join(target, 'a').slice(0, -1);
+            enqueueTargetDirents(
+              dirStack,
+              fileBatches,
+              job,
+              topPrefix,
+              dirents,
+            );
+            if (job.pending === 0) finishJob(job);
+          }
+          activeIo -= 1;
+          pump();
+        });
+      });
+    };
+
+    const pump = (): void => {
+      while (activeIo < IO_CONCURRENCY && !stopped()) {
+        if (signal?.aborted) {
+          cancelled = true;
+          break;
+        }
+        const fileTask = popFileFromBatches(fileBatches);
+        if (fileTask !== null) {
+          activeIo += 1;
+          lstat(fileTask.path, (err, stats) => {
+            if (err !== null) pushSubpathWarning(warnings, fileTask.path, err);
+            else if (stats.isFile()) fileTask.job.total += stats.size;
+            fileTask.job.pending -= 1;
+            if (fileTask.job.pending === 0) finishJob(fileTask.job);
+            activeIo -= 1;
+            pump();
+          });
+          continue;
+        }
+        const dirTask = dirStack.pop();
+        if (dirTask !== undefined) {
+          activeIo += 1;
+          readdir(dirTask.dir, { withFileTypes: true }, (err, children) => {
+            if (err !== null) {
+              pushSubpathWarning(warnings, dirTask.dir, err);
+            } else {
+              enqueueTargetDirents(
+                dirStack,
+                fileBatches,
+                dirTask.job,
+                `${dirTask.dir}${sep}`,
+                children,
+              );
+            }
+            dirTask.job.pending -= 1;
+            if (dirTask.job.pending === 0) finishJob(dirTask.job);
+            activeIo -= 1;
+            pump();
+          });
+          continue;
+        }
+        if (
+          nextTargetIdx < sorted.length &&
+          activeTargets < ACTIVE_TARGET_LIMIT
+        ) {
+          const idx = nextTargetIdx;
+          nextTargetIdx += 1;
+          startTarget(idx);
+          continue;
+        }
+        break;
+      }
+      maybeSettle();
+    };
+
+    pump();
+  });
 }
 
 export function createJsSizer(): Sizer {
@@ -190,71 +401,36 @@ export function createJsSizer(): Sizer {
       targets: string[],
       options?: MeasureOptions,
     ): Promise<SizeResult> {
-      // 入口取消预检: 即便 targets 为空数组, 已中止的 signal 仍须立即抛 CANCELLED
       if (options?.signal?.aborted) {
         throw new SweepError('CANCELLED', '体积统计在逐目标检查点被取消', {
           phase: 'measure',
         });
       }
-      const warnings: SweepWarning[] = [];
+      const sorted = [...new Set(targets)].sort();
+      if (sorted.length === 0) {
+        return {
+          entries: [],
+          basis: 'logical-bytes',
+          warnings: [],
+          unmeasured: [],
+          gone: [],
+        };
+      }
+
+      const { outcomes, warnings } = await measureTargetsCallbackPool(
+        sorted,
+        options?.signal,
+        options?.onProgress,
+      );
+
       const entries: SizeEntry[] = [];
       const unmeasured: UnmeasuredEntry[] = [];
       const gone: string[] = [];
-      /** 进度事件发射器 (options 省略时零开销) */
-      const emit = options?.onProgress;
-
-      /** 未测到项的落桶 + 事件成对发射 (码与原因一次给全) */
-      const pushUnmeasured = (
-        target: string,
-        code: UnmeasuredCode,
-        reason: string,
-      ): void => {
-        unmeasured.push({ target, code, reason });
-        emit?.({ kind: 'unmeasured', target, code, reason });
-      };
-
-      // 去重排序副本: 不改动调用方数组, 与 du 候选同口径 (重复输入不重复计数与发告警)
-      for (const target of [...new Set(targets)].sort()) {
-        // 取消检查点 (逐目标之间): 被 abort 即抛 CANCELLED, 语义是「本次未完成」而非「结果为空」
-        if (options?.signal?.aborted) {
-          throw new SweepError('CANCELLED', '体积统计在逐目标检查点被取消', {
-            phase: 'measure',
-          });
-        }
-        let dirents: Dirent[];
-        try {
-          // 仅 lstat 末段拦截顶层符号链接 (不误伤 macOS /var 等祖先软链), 防止 readdir 跟随遍历外部目录
-          const st = await lstat(target);
-          if (st.isSymbolicLink()) {
-            pushUnmeasured(target, 'SIZE_UNMEASURED_NOT_DIR', '不是目录');
-            continue;
-          }
-          dirents = await readdir(target, { withFileTypes: true });
-        } catch (error) {
-          const failure = describeFailure(errorCode(error));
-          if (failure.missing) {
-            // 「不存在」单列 gone 桶 (BC-13): 与 warnings 的 SIZE_TARGET_VANISHED 事件同源同判定
-            gone.push(target);
-            warnings.push({
-              code: 'SIZE_TARGET_VANISHED',
-              message: `体积统计失败 (${failure.reason}): ${target}`,
-              path: target,
-            });
-            emit?.({ kind: 'gone', target });
-          } else {
-            // 存在但测不到: 结构化上报, 下游不得静默移出清单
-            pushUnmeasured(target, failure.code, failure.reason);
-          }
-          continue;
-        }
-        const bytes = await sumEntries(
-          dirents,
-          target,
-          warnings,
-          options?.signal,
-        );
-        entries.push({ target, bytes });
-        emit?.({ kind: 'measured', target, bytes, basis: 'logical-bytes' });
+      for (const outcome of outcomes) {
+        if (outcome === undefined) continue;
+        if (outcome.kind === 'entry') entries.push(outcome.entry);
+        else if (outcome.kind === 'unmeasured') unmeasured.push(outcome.entry);
+        else gone.push(outcome.target);
       }
 
       return { entries, basis: 'logical-bytes', warnings, unmeasured, gone };
