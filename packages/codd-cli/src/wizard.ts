@@ -11,6 +11,8 @@ import {
   type DeployManifest,
   type DeployMode,
   computeSizing,
+  digitalRoot,
+  recommendSafePort,
 } from '@iyowei/codd';
 
 import {
@@ -192,16 +194,18 @@ export const runWizard = async (
           : '须为合规 DNS 标签: 小写字母、数字和中间短横线 -, 长度 <= 32 (正确示例: app 或 my-shop)',
     });
 
+    const recommendedPort = recommendSafePort();
+    const recommendedPortRoot = digitalRoot(recommendedPort);
     const port = Number(
       await askText({
         label: '数据库监听哪个端口?',
         summaryLabel: '服务端口',
-        hint: '默认 27117 避开扫描器常扫的 27017, 一般直接回车即可',
-        defaultVal: '27117',
+        hint: `已随机推荐数根 ${recommendedPortRoot} 的 5 位安全端口 ${recommendedPort} (直接回车采纳; 常规默认端口 27117, 避开扫描器常扫的 27017)`,
+        defaultVal: String(recommendedPort),
         validate: (v) =>
           Number.isInteger(Number(v)) && Number(v) >= 1024 && Number(v) <= 65535
             ? null
-            : '请输入 1024 到 65535 之间的整数端口号 (推荐使用默认的 27117)',
+            : '请输入 1024 到 65535 之间的整数端口号 (可直接回车采纳推荐端口, 或填常规默认 27117)',
       }),
     );
 

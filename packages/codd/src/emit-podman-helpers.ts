@@ -11,6 +11,7 @@ import type {
   GenerateState,
   NetworkMode,
   NodeInput,
+  NodeOs,
   ParsedSshTarget,
 } from './types.ts';
 
@@ -151,6 +152,24 @@ export const buildNetworkFragments = (opts: {
   };
 };
 
+const DEFAULT_MACOS_PLIST_PATHS = new Set([
+  '/opt/homebrew/bin',
+  '/usr/local/bin',
+  '/usr/bin',
+  '/bin',
+  '/usr/sbin',
+  '/sbin',
+]);
+
+const formatSshCommand = (parsedSsh: ParsedSshTarget): string =>
+  parsedSsh.normalized.startsWith('ssh ')
+    ? parsedSsh.normalized
+    : `ssh ${parsedSsh.target}`;
+
+/** 对 POSIX 路径参数加引号; 若以 ~/ 开头则保持裸写以便远程 shell 正常展开家目录 */
+const formatPosixDirArg = (dirPath: string): string =>
+  dirPath.startsWith('~/') ? dirPath : `"${dirPath}"`;
+
 export const formatUploadNextStep = (opts: {
   nodeName: string;
   rsRole: string;
@@ -176,17 +195,50 @@ export const formatUploadNextStep = (opts: {
       scpFlags.push(`-i "${parsedSsh.identityFile}"`);
     }
     const optStr = scpFlags.length > 0 ? `${scpFlags.join(' ')} ` : '';
-    const dst = parsedSsh
-      ? `${parsedSsh.target}:${remoteStackDir}`
-      : `<user@host>:${remoteStackDir}`;
-    return `[${nodeName}/${rsRole}] scp -r ${optStr}"${bundleDir}" "${dst}" (Windows 提示: 如在 Git Bash/WSL 中执行可改用 rsync)`;
+    if (parsedSsh) {
+      const sshCmd = formatSshCommand(parsedSsh);
+      return `[${nodeName}/${rsRole}] ${sshCmd} mkdir -p ${remoteStackDir} && scp -r ${optStr}"${bundleDir}" "${parsedSsh.target}:${remoteStackDir}" (Windows 提示: 如在 Git Bash/WSL 中执行可改用 rsync)`;
+    }
+    return `[${nodeName}/${rsRole}] scp -r ${optStr}"${bundleDir}" "<user@host>:${remoteStackDir}" (Windows 提示: 请先在目标机创建父目录, 如在 Git Bash/WSL 中执行可改用 rsync)`;
   }
 
-  const targetDesc = parsedSsh
-    ? `${parsedSsh.target}:${remoteStackDir}/`
-    : `${remoteStackDir}/`;
-  const rshFlag = parsedSsh ? parsedSsh.rsyncRshFlag : '';
-  return `[${nodeName}/${rsRole}] rsync -av ${rshFlag}"${bundleDir}/" "${targetDesc}"`;
+  const dirArg = formatPosixDirArg(remoteStackDir);
+  if (parsedSsh) {
+    const sshCmd = formatSshCommand(parsedSsh);
+    return `[${nodeName}/${rsRole}] ${sshCmd} 'mkdir -p ${dirArg}' && rsync -av ${parsedSsh.rsyncRshFlag}"${bundleDir}/" "${parsedSsh.target}:${remoteStackDir}/"`;
+  }
+  const localDstArg = remoteStackDir.startsWith('~/')
+    ? `${remoteStackDir}/`
+    : `"${remoteStackDir}/"`;
+  return `[${nodeName}/${rsRole}] mkdir -p ${dirArg} && rsync -av "${bundleDir}/" ${localDstArg}`;
+};
+
+export const formatSinglePostUploadSteps = (opts: {
+  remoteStackDir: string;
+  parsedSsh: ParsedSshTarget | null;
+  os: NodeOs;
+  fingerprint: string;
+}): string[] => {
+  const { remoteStackDir, parsedSsh, os, fingerprint } = opts;
+  const dirArg = formatPosixDirArg(remoteStackDir);
+  const steps: string[] = [];
+  if (parsedSsh) {
+    const sshCmd = formatSshCommand(parsedSsh);
+    steps.push(
+      `[启动与验证] ${sshCmd} 'cd ${dirArg} && make up && make status' (可选: 首次部署前执行 make tune-host 完成内核调优)`,
+    );
+  } else {
+    steps.push(
+      `[启动与验证] 登录目标服务器执行: cd ${dirArg} && make up && make status (可选: 首次部署前执行 make tune-host 完成内核调优)`,
+    );
+  }
+  if (os === 'macos') {
+    const plistFile = `com.codd.mongo-backup-${fingerprint}.plist`;
+    steps.push(
+      `[macOS 定时备份 (可选)] 在目标 Mac 执行: cp ${dirArg}/${plistFile} ~/Library/LaunchAgents/ && launchctl load -w ~/Library/LaunchAgents/${plistFile}`,
+    );
+  }
+  return steps;
 };
 
 export const emitMacosPlist = (opts: {
@@ -232,7 +284,10 @@ export const emitMacosPlist = (opts: {
   const podmanBin = node.podmanBin ?? '/opt/homebrew/bin/podman';
   const rawPodmanDir = podmanBin.includes('/') ? posix.dirname(podmanBin) : '';
   const podmanPathPrefix =
-    rawPodmanDir && rawPodmanDir !== '.' && rawPodmanDir !== '/'
+    rawPodmanDir &&
+    rawPodmanDir !== '.' &&
+    rawPodmanDir !== '/' &&
+    !DEFAULT_MACOS_PLIST_PATHS.has(rawPodmanDir)
       ? `${escapeXml(rawPodmanDir)}:`
       : '';
   const plistRendered = renderTemplate('mongo-backup.plist.tmpl', plistTmpl, {

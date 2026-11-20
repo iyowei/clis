@@ -93,12 +93,24 @@ apply_linux_core() {
     echo 0 > /sys/kernel/mm/transparent_hugepage/khugepaged/max_ptes_none
   fi
 
+  cur_maps="$(cat /proc/sys/vm/max_map_count 2>/dev/null || echo 0)"
+  case "$cur_maps" in
+    ''|*[!0-9]*) cur_maps=0 ;;
+  esac
+
   mkdir -p /etc/sysctl.d
-  cat <<'EOF' > /etc/sysctl.d/99-codd-mongodb.conf
-# MongoDB 9.0 Production Kernel Tuning (Managed by Codd)
-vm.swappiness = 1
-vm.max_map_count = 262144
-EOF
+  {
+    echo "# MongoDB 9.0 Production Kernel Tuning (Managed by Codd)"
+    echo "vm.swappiness = 1"
+    if [ "$cur_maps" -gt 262144 ]; then
+      echo "# 当前系统 vm.max_map_count ($cur_maps) 已高于 262144, 保留原值不降配"
+    else
+      echo "vm.max_map_count = 262144"
+    fi
+  } > /etc/sysctl.d/99-codd-mongodb.conf
+  if [ "$cur_maps" -gt 262144 ]; then
+    echo ">>> 当前 vm.max_map_count=$cur_maps 已高于 262144, 保留系统原值不降配。"
+  fi
   sysctl --system >/dev/null
 
   if [ -d /etc/systemd/system ] && command -v systemctl >/dev/null 2>&1; then

@@ -17,7 +17,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { ConfigError } from '@iyowei/codd';
+import { ConfigError, digitalRoot } from '@iyowei/codd';
 
 import { parseCliArgs } from './args.ts';
 
@@ -256,6 +256,37 @@ describe('CLI 端到端行为 (源码直跑)', () => {
       expect(rsPipeRes.status).toBe(0);
       expect(rsPipeRes.stdout).toContain('已被前一台节点使用');
       expect(rsPipeRes.stdout).toContain('replica-set-rsha');
+
+      // 端口题直接回车采纳向导推荐的数根 3/6/9 安全 5 位端口, hint 说明常规默认 27117
+      const recPortAnswers = [
+        '1', // mode: single
+        'recport', // name
+        '', // port: 直接回车采纳动态推荐安全端口
+        '1', // hardware preset 2c2g
+        '1', // workload balanced
+        'app:appu', // apps
+        '1', // os: linux
+        '127.0.0.1', // bindIp
+        '/home/ops/srv/backups', // backupDir
+        '', // sshTarget skip
+        'y', // 保存配置清单
+        'deploy-recport.json', // 清单文件名
+      ].join('\n');
+      const recRes = spawnSync('bun', [cliEntry, 'wizard'], {
+        cwd: workDir,
+        input: `${recPortAnswers}\n`,
+        encoding: 'utf8',
+      });
+      expect(recRes.status).toBe(0);
+      const savedManifest = JSON.parse(
+        readFileSync(join(workDir, 'deploy-recport.json'), 'utf8'),
+      ) as { port: number };
+      expect(recRes.stdout).toContain(
+        `数据库监听哪个端口? [默认: ${savedManifest.port}]:`,
+      );
+      expect(savedManifest.port).toBeGreaterThanOrEqual(10002);
+      expect(savedManifest.port).toBeLessThanOrEqual(29997);
+      expect([3, 6, 9]).toContain(digitalRoot(savedManifest.port));
     } finally {
       rmSync(workDir, {
         recursive: true,

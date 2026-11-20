@@ -14,8 +14,10 @@ export {
   type ComputedSizing,
   HARDWARE_BOUNDS,
   computeSizing,
+  digitalRoot,
   type FormulaStep,
   type HardwareSpec,
+  recommendSafePort,
   SizingError,
   type WorkloadType,
 } from './formulas.ts';

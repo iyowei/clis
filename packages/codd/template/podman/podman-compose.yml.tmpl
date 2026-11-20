@@ -59,13 +59,11 @@ services:
       timeout: 3s
       retries: 12
       start_period: 10s
+    # 仅显式提升 nofile 满足 MongoDB >=64000 句柄要求; nproc 继承宿主机/Podman VM 合法上限, 避免 rootless 容器在无 CAP_SYS_RESOURCE 时触发 RLIMIT_NPROC 拒启
     ulimits:
       nofile:
         soft: {{NOFILE_ULIMIT}}
         hard: {{NOFILE_ULIMIT}}
-      nproc:
-        soft: {{NPROC_ULIMIT}}
-        hard: {{NPROC_ULIMIT}}
     logging:
       driver: k8s-file
       options:

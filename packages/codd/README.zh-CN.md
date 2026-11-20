@@ -84,6 +84,7 @@ console.log('本机凭证文件 (0600):', result.credentialsFile);
 | `generateBundle(options)`                                                           | 主编排入口: 校验清单、推导公式、锁存指纹与凭证、渲染 Podman 或 Kubernetes (Helm) 自包含部署包 |
 | `validateManifest(manifest)`                                                        | 严格白名单与 DNS-1123 校验器 (拦截未知字段、路径穿越及 Shell/YAML/XML 注入)                   |
 | `computeSizing(hardware)`                                                           | 硬件与负载公式推导引擎 (计算 `WT_CACHE_GB`、最大连接数、`oplogSizeMB`、压缩算法与 `ulimit`)   |
+| `recommendSafePort(rng?)` / `digitalRoot(n)`                                        | 随机推荐数根为 `3 / 6 / 9` 的 5 位安全监听端口 (`10002-29997`), 自动排除扫描段与系统保留段    |
 | `renderTemplate(name, raw, vars)`                                                   | 严格 `{{TOKEN}}` 模板渲染器, 缺参或残留花括号立即抛 `TemplateRenderError`                     |
 | `parseSshInput(raw)` / `resolveServerBackupDir(...)` / `resolveServerStackDir(...)` | SSH 连接串净化提取器与幂等指纹路径归一化工具                                                  |
 | `loadOrUpdateState(...)` / `prepareStateDir(...)`                                   | `.codd-state/` 幂等状态机与凭证权限落盘工具                                                   |

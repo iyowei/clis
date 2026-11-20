@@ -12,6 +12,7 @@ import {
   buildNetworkFragments,
   computeRsMemberHost,
   emitMacosPlist,
+  formatSinglePostUploadSteps,
   formatUploadNextStep,
   writeLfFile,
 } from './emit-podman-helpers.ts';
@@ -85,7 +86,10 @@ const emitSinglePodmanNode = (opts: {
   rsMembers: string;
   primaryApp: AppInput;
   extraAppsStr: string;
-}): void => {
+}): {
+  remoteStackDir: string;
+  parsedSsh: ReturnType<typeof parseSshInput> | null;
+} => {
   const { ctx, tpls, resolvedNodes, idx, rsMembers, primaryApp, extraAppsStr } =
     opts;
   const { podmanTplDir, outDir, deployId, manifest, hw, sizing, state } = ctx;
@@ -161,7 +165,6 @@ const emitSinglePodmanNode = (opts: {
       ...sharedVars,
       STOP_GRACE_PERIOD: sizing.stopGracePeriodSec,
       NOFILE_ULIMIT: sizing.nofileUlimit,
-      NPROC_ULIMIT: sizing.nprocUlimit,
       LOG_MAX_SIZE: sizing.logMaxSize,
       RS_SELF_HOST_EXTRA: rsSelfHostExtra,
       MONGO_NETWORK_SECTION: net.mongoNetworkSection,
@@ -252,6 +255,7 @@ const emitSinglePodmanNode = (opts: {
       parsedSsh,
     }),
   );
+  return { remoteStackDir, parsedSsh };
 };
 
 export const emitPodmanBundles = (ctx: PodmanEmitContext): void => {
@@ -339,19 +343,27 @@ export const emitPodmanBundles = (ctx: PodmanEmitContext): void => {
       ? resolvedNodes.map((n) => `${n.host}:${port}`).join(',')
       : '';
 
+  const emittedMeta: Array<{
+    remoteStackDir: string;
+    parsedSsh: ReturnType<typeof parseSshInput> | null;
+  }> = [];
   for (let idx = 0; idx < resolvedNodes.length; idx += 1) {
-    emitSinglePodmanNode({
-      ctx,
-      tpls,
-      resolvedNodes,
-      idx,
-      rsMembers,
-      primaryApp,
-      extraAppsStr,
-    });
+    emittedMeta.push(
+      emitSinglePodmanNode({
+        ctx,
+        tpls,
+        resolvedNodes,
+        idx,
+        rsMembers,
+        primaryApp,
+        extraAppsStr,
+      }),
+    );
   }
 
   if (manifest.mode === 'single') {
+    const primaryNode = resolvedNodes[0]!;
+    const primaryMeta = emittedMeta[0]!;
     appendSingleCreds({
       manifest,
       state,
@@ -359,9 +371,17 @@ export const emitPodmanBundles = (ctx: PodmanEmitContext): void => {
       stackPrefix,
       port,
       hostPort,
-      rawBindIp: resolvedNodes[0]!.bindIp,
+      rawBindIp: primaryNode.bindIp,
       credLines: ctx.credLines,
     });
+    ctx.nextSteps.push(
+      ...formatSinglePostUploadSteps({
+        remoteStackDir: primaryMeta.remoteStackDir,
+        parsedSsh: primaryMeta.parsedSsh,
+        os: primaryNode.os,
+        fingerprint: state.fingerprint,
+      }),
+    );
   } else {
     const hostsJoined = resolvedNodes.map((n) => `${n.host}:${port}`).join(',');
     ctx.credLines.push('# 3 物理节点高可用自动切主连接串:');

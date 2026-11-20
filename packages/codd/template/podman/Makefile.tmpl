@@ -44,6 +44,13 @@ check-env:
 	@case "$(BACKUP_DIR)" in /path/to/*|'') echo "错误: 请设置 BACKUP_DIR 为真实绝对路径"; exit 1 ;; /*) ;; *) echo "错误: BACKUP_DIR 必须是绝对路径, 当前为 '$(BACKUP_DIR)'"; exit 1 ;; esac
 	@if [ "$$(uname -s)" = "Darwin" ]; then \
 		case "$(BACKUP_DIR)" in /Users/*|/private/*|/var/folders/*) ;; *) echo "错误: macOS 下 BACKUP_DIR 必须位于 /Users/ 或 /private/ 下以便 Podman VM 挂载, 当前为 '$(BACKUP_DIR)'"; exit 1 ;; esac; \
+		for pl in com.codd.mongo-backup-*.plist; do \
+			[ -f "$$pl" ] || continue; \
+			log_file="$$(awk '/<key>StandardOutPath<\/key>/{getline; sub(/^.*<string>/, ""); sub(/<\/string>.*$$/, ""); print; exit}' "$$pl")"; \
+			case "$$log_file" in /*) \
+				case "$$log_file" in *'<'*) ;; *) log_dir="$$(dirname "$$log_file")"; [ -d "$$log_dir" ] || mkdir -p "$$log_dir" || { echo "错误: 无法创建 LaunchAgent 日志目录 $$log_dir"; exit 1; } ;; esac ;; \
+			esac; \
+		done; \
 	fi
 	@if [ ! -d "$(BACKUP_DIR)" ]; then \
 		mkdir -p "$(BACKUP_DIR)" && chmod 700 "$(BACKUP_DIR)" || { echo "错误: 无法创建备份目录 $(BACKUP_DIR), 请检查父目录权限"; exit 1; }; \

@@ -2,6 +2,7 @@
  * 资源与数据库参数计算引擎:
  * 根据硬件资源 (CPU / 内存 / 磁盘) 与业务负载特征推算最佳 MongoDB 9.0 + 容器/Pod 参数。
  */
+import { randomInt } from 'node:crypto';
 
 export type WorkloadType = 'balanced' | 'write-heavy' | 'read-heavy';
 
@@ -208,7 +209,7 @@ export const computeSizing = (hw: HardwareSpec): ComputedSizing => {
   const ratio = OPLOG_DISK_RATIO[workload];
   const oplogSizeMb = clamp(round10(hw.diskGb * 1024 * ratio), 990, 51200);
 
-  // 5) 压缩、进程句柄/线程数 ulimit (官方要求 >=64000, 对齐 2^16=65536)、优雅停机窗口与备份并发度
+  // 5) 压缩、进程句柄 ulimit (官方要求 >=64000, 对齐 2^16=65536; nproc 保留参考值不硬写以兼容 rootless Podman)、优雅停机窗口与备份并发度
   const blockCompressor: 'zstd' | 'snappy' = cpuLimit >= 2 ? 'zstd' : 'snappy';
   const slowOpThresholdMs = workload === 'write-heavy' ? 80 : 100;
   const nofileUlimit = clamp(maxIncomingConnections * 4, 65536, 262144);
@@ -269,8 +270,8 @@ export const computeSizing = (hw: HardwareSpec): ComputedSizing => {
       key: 'ulimit / grace / slowOp',
       label: '句柄上限与停机保护',
       value: `${nofileUlimit} / ${stopGracePeriodSec}s`,
-      formula: `ulimit=max(连接x4, 65536 官方>=64000 对齐 2^16), 停机窗口 ${stopGracePeriodSec}s`,
-      plainReason: `满足 MongoDB 官方 >=64000 句柄/线程数要求零告警; 重启最多等 ${stopGracePeriodSec} 秒安全刷盘, 慢查询线 ${slowOpThresholdMs}ms`,
+      formula: `nofile=max(连接x4, 65536 官方>=64000 对齐 2^16), 停机窗口 ${stopGracePeriodSec}s`,
+      plainReason: `容器显式提升文件句柄至 ${nofileUlimit} (>=64000), 进程数继承宿主机合法上限以兼容 rootless Podman; 重启最多等 ${stopGracePeriodSec} 秒安全刷盘, 慢查询线 ${slowOpThresholdMs}ms`,
     },
   ];
 
@@ -298,4 +299,51 @@ export const computeSizing = (hw: HardwareSpec): ComputedSizing => {
     steps,
     warnings,
   };
+};
+
+const MIN_RECOMMENDED_PORT = 10002;
+const MAX_RECOMMENDED_PORT = 29997;
+
+/** 推荐安全 5 位端口黑名单: 避开 MongoDB 默认/扫描段与常见基础设施、代理、缓存服务端口 */
+const EXCLUDED_RECOMMENDED_PORTS = new Set<number>([
+  10050, 10051, 10080, 10250, 10255, 10256, 10257, 10259, 10809, 11211, 11214,
+  12345, 15672, 15692, 16379, 18080, 18888, 20000, 21810, 22222, 23333, 25565,
+  25672, 26257, 26379, 27000, 27017, 27018, 27019, 27020, 28017, 28080, 28888,
+]);
+
+const SAFE_PORT_CANDIDATES: readonly number[] = (() => {
+  const list: number[] = [];
+  for (let p = MIN_RECOMMENDED_PORT; p <= MAX_RECOMMENDED_PORT; p += 3) {
+    if (!EXCLUDED_RECOMMENDED_PORTS.has(p)) {
+      list.push(p);
+    }
+  }
+  return list;
+})();
+
+/** 计算正整数的十进制数根 (1-9), 如 digitalRoot(27117) === 9 */
+export const digitalRoot = (n: number): number => {
+  if (!Number.isInteger(n) || n <= 0) {
+    throw new RangeError(`digitalRoot 仅支持正整数 (当前收到 ${String(n)})`);
+  }
+  return 1 + ((n - 1) % 9);
+};
+
+/**
+ * 随机推荐一个数根为 3 / 6 / 9 的 5 位安全监听端口 (区间 10002-29997):
+ * - 数学上正整数数根属于 {3, 6, 9} 等价于能被 3 整除;
+ * - 严格低于 30000 以避开 K8s NodePort (30000-32767) 与系统临时端口 (>=32768);
+ * - 排除 27017-27019 等 MongoDB 默认扫描段及常见基础设施端口。
+ */
+export const recommendSafePort = (rng?: () => number): number => {
+  if (!rng) {
+    return SAFE_PORT_CANDIDATES[randomInt(0, SAFE_PORT_CANDIDATES.length)]!;
+  }
+  const raw = rng();
+  const clamped = Number.isFinite(raw)
+    ? Math.min(Math.max(raw, 0), 1 - Number.EPSILON)
+    : 0;
+  return SAFE_PORT_CANDIDATES[
+    Math.floor(clamped * SAFE_PORT_CANDIDATES.length)
+  ]!;
 };
