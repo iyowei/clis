@@ -29,6 +29,7 @@ import type { AbortCode, RemoveFailureCode } from './codes.ts';
 import {
   type FsError,
   describeCode,
+  prepareReviewRoots,
   resolveTargetRootSync,
   reviewPathOnDisk,
 } from './delete-review.ts';
@@ -269,8 +270,8 @@ export async function removeTargets(
     });
   }
   // 防 JS 调用方漏传选项: 无信任根即无可信复核, 一律中止 (保守)
-  const roots = options?.roots ?? [];
   const style = options?.style ?? nativeStyle();
+  const roots = prepareReviewRoots(options?.roots ?? [], style);
   const signal = options?.signal;
   /** 进度事件发射器 (options 省略时零开销) */
   const emit = options?.onProgress;

@@ -56,6 +56,8 @@ function describeVanishedReview(target: string, path: string): string {
 interface ReviewRoot {
   configured: string;
   real: string;
+  /** 可选预计算的完整祖先路径字符串列表 (仅缓存路径文本, 严禁缓存 lstat 结果) */
+  ancestorChain?: readonly string[];
 }
 
 /** 复核产出的整批中止信息 (与 AbortedBatch 同形) */
@@ -86,8 +88,8 @@ type ReviewFinding =
   | { kind: 'vanished'; path: string }
   | { kind: 'unverified'; path: string; error: unknown };
 
-/** 复核链: 自 root 至 target 父目录 (root 含, target 本体不含) */
-function componentChain(
+/** 复核尾链: 自 root 下一级至 target 父目录 (root 本身已含于根祖先链末项, 消除重复 lstat) */
+function tailComponentChain(
   root: string,
   target: string,
   style: PathStyle,
@@ -95,7 +97,7 @@ function componentChain(
   const fold = (p: string): string =>
     style.caseInsensitive ? p.toLowerCase() : p;
   const rel = style.ops.relative(fold(root), fold(target));
-  const chain = [root];
+  const chain: string[] = [];
   let cursor = root;
   for (const part of rel.split(style.ops.sep).slice(0, -1)) {
     cursor = style.ops.join(cursor, part);
@@ -144,21 +146,34 @@ function rootAncestorChain(root: ReviewRoot, style: PathStyle): string[] {
   return chain;
 }
 
-/** 逐级复核链上组件: 全通过返回 null; 符号链接与非目录统一由 isDirectory 判定拦下 */
-async function reviewComponents(
-  chain: string[],
-): Promise<ReviewFinding | null> {
-  for (const path of chain) {
-    try {
-      const stats = await lstat(path);
-      if (!stats.isDirectory()) return { kind: 'unsafe', path };
-    } catch (error) {
-      const code = (error as FsError | null)?.code;
-      if (code === 'ENOENT') return { kind: 'vanished', path };
-      return { kind: 'unverified', path, error };
-    }
-  }
-  return null;
+/** 为批次内信任根预计算静态祖先链路径字符串 (仅字符串数组, 绝不缓存任何 lstat 状态) */
+export function prepareReviewRoots(
+  roots: readonly ReviewRoot[],
+  style: PathStyle,
+): ReviewRoot[] {
+  return roots.map((root) => ({
+    configured: root.configured,
+    real: root.real,
+    ancestorChain: rootAncestorChain(root, style),
+  }));
+}
+
+/** 并发实时 lstat 整条复核链并严格按链序返回首个异常 (既提速又收窄单条 TOCTOU 窗口) */
+async function probeChainConcurrently(
+  chain: readonly string[],
+): Promise<(ReviewFinding | null)[]> {
+  return Promise.all(
+    chain.map(async (path): Promise<ReviewFinding | null> => {
+      try {
+        const stats = await lstat(path);
+        return stats.isDirectory() ? null : { kind: 'unsafe', path };
+      } catch (error) {
+        const code = (error as FsError | null)?.code;
+        if (code === 'ENOENT') return { kind: 'vanished', path };
+        return { kind: 'unverified', path, error };
+      }
+    }),
+  );
 }
 
 /** 将复核阶段的 vanished / unverified 转为单条失败对象 (未执行删除, partialRisk 恒 false) */
@@ -228,39 +243,41 @@ export function resolveTargetRootSync(
 }
 
 /**
- * 异步文件系统复核: 信任根完整祖先链 lstat → 根至目标父目录逐级 lstat。
- * 任一级检出替换即返回 aborted; 消失或不可核验仅阻断本条 (failed), 绝不进入 rm。
+ * 异步文件系统复核: 单轮并发实时 lstat [根完整祖先链 + 根至目标父目录],
+ * 严格按链序自浅向深裁决 (任一级检出替换即返回 aborted; 消失或不可核验仅阻断本条 failed)。
  */
 export async function reviewPathOnDisk(
   target: string,
   root: ReviewRoot,
   style: PathStyle,
 ): Promise<PreRmReview> {
-  // 信任根完整祖先链复核先于目标组件复核: 根自身或任一祖先被换位时, 只有全祖先链逐级 lstat 能识破
-  const headFinding = await reviewComponents(rootAncestorChain(root, style));
-  if (headFinding !== null) {
-    if (headFinding.kind === 'unsafe') {
-      const location =
-        headFinding.path === root.configured
-          ? root.configured
-          : `${headFinding.path} (根: ${root.configured})`;
-      return {
-        kind: 'aborted',
-        aborted: {
-          target,
-          code: 'REVIEW_HEAD_SYMLINK',
-          message: `安全复核失败 (根被替换为符号链接): ${location}`,
-          path: headFinding.path,
-        },
-      };
-    }
-    return { kind: 'failed', failure: toReviewFailure(target, headFinding) };
-  }
+  const headChain = root.ancestorChain ?? rootAncestorChain(root, style);
+  const tailChain = tailComponentChain(root.real, target, style);
+  const fullChain =
+    tailChain.length === 0 ? headChain : [...headChain, ...tailChain];
+  const findings = await probeChainConcurrently(fullChain);
 
-  const finding = await reviewComponents(
-    componentChain(root.real, target, style),
-  );
-  if (finding !== null) {
+  for (let i = 0; i < findings.length; i += 1) {
+    const finding = findings[i];
+    if (finding === null || finding === undefined) continue;
+    if (i < headChain.length) {
+      if (finding.kind === 'unsafe') {
+        const location =
+          finding.path === root.configured
+            ? root.configured
+            : `${finding.path} (根: ${root.configured})`;
+        return {
+          kind: 'aborted',
+          aborted: {
+            target,
+            code: 'REVIEW_HEAD_SYMLINK',
+            message: `安全复核失败 (根被替换为符号链接): ${location}`,
+            path: finding.path,
+          },
+        };
+      }
+      return { kind: 'failed', failure: toReviewFailure(target, finding) };
+    }
     if (finding.kind === 'unsafe') {
       return {
         kind: 'aborted',

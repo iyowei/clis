@@ -238,24 +238,65 @@ async function tryRealpath(p: string): Promise<string | null> {
 }
 
 /**
- * 采集锚点链 (扫描根与写入目标同一采集): 逐级 lstat 判形态 (不变量 ⑤ 的 IO 层)。
- * lstat 失败的级直接跳过: 未检出即不据此拒绝 (删除侧的理由是根不可达时其下也不可能有已通过
- * realpath 的目标; 写入侧同理: 祖先不可核验即不据此拒写, 与删除侧同一取舍);
- * 悬空链接在本层照常判得 (lstat 不跟进末段, 链接自身即结果)。
+ * 采集锚点链 (扫描根与写入目标同一采集): 并发 lstat 各级并按链序归并 (不变量 ⑤ 的 IO 层)。
+ * lstat 失败的级直接跳过; 悬空链接在本层照常判得 (lstat 不跟进末段, 链接自身即结果)。
  */
 async function collectAnchorLinks(
   root: string,
   style: PathStyle,
 ): Promise<AnchorLink[]> {
+  const paths = anchorChainPaths(root, style);
+  const probed = await Promise.all(
+    paths.map(async (path): Promise<AnchorLink | null> => {
+      try {
+        return { path, symlink: (await lstat(path)).isSymbolicLink() };
+      } catch {
+        return null;
+      }
+    }),
+  );
   const links: AnchorLink[] = [];
-  for (const path of anchorChainPaths(root, style)) {
-    try {
-      links.push({ path, symlink: (await lstat(path)).isSymbolicLink() });
-    } catch {
-      // 不可核验的级: 跳过 (见上方说明)
-    }
+  for (const item of probed) {
+    if (item !== null) links.push(item);
   }
   return links;
+}
+
+/** 安全闸与设备探针只读元数据并发上限 */
+const GUARD_CONCURRENCY = 32;
+
+/** 有界并发按索引映射, 派发前检查取消信号, 保持输出与输入下标严格对齐 */
+async function mapConcurrent<T, R>(
+  items: readonly T[],
+  limit: number,
+  fn: (item: T, index: number) => Promise<R>,
+  signal?: AbortSignal,
+): Promise<R[]> {
+  const out: R[] = Array.from({ length: items.length });
+  if (items.length === 0) return out;
+  let next = 0;
+  let cancelled = false;
+  const workerCount = Math.min(limit, items.length);
+  await Promise.all(
+    Array.from({ length: workerCount }, async () => {
+      while (!cancelled) {
+        if (signal?.aborted) {
+          cancelled = true;
+          return;
+        }
+        const idx = next;
+        if (idx >= items.length) return;
+        next += 1;
+        out[idx] = await fn(items[idx]!, idx);
+      }
+    }),
+  );
+  if (cancelled || signal?.aborted) {
+    throw new SweepError('CANCELLED', '安全闸校验在逐目标检查点被取消', {
+      phase: 'validate',
+    });
+  }
+  return out;
 }
 
 /**
@@ -329,45 +370,68 @@ export async function validateTargets(
   const style = options.style ?? nativeStyle();
   const homeOption = options.home === undefined ? homedir() : options.home;
 
-  // 不变量 ⑤ 的采集对象是配置拼写 (选项注释已说明为何不能用 realpath 形态);
-  // 同时把 realpath 归一结果并入, 供不变量 ② 与 ⑤ 的归属比较共用一次解析
-  const anchors: RootAnchor[] = [];
-  for (const root of options.roots) {
-    anchors.push({
-      configured: root,
-      real: await tryRealpath(root),
-      link: firstSymlinkOnAnchor(await collectAnchorLinks(root, style)),
-    });
-  }
+  // 并发采集各根锚点链与 realpath, 同时解析 home
+  const [anchors, resolvedHome] = await Promise.all([
+    Promise.all(
+      options.roots.map(async (root): Promise<RootAnchor> => {
+        const [real, links] = await Promise.all([
+          tryRealpath(root),
+          collectAnchorLinks(root, style),
+        ]);
+        return {
+          configured: root,
+          real,
+          link: firstSymlinkOnAnchor(links),
+        };
+      }),
+    ),
+    homeOption === null ? Promise.resolve(null) : tryRealpath(homeOption),
+  ]);
+
   const brokenAnchors = anchors.filter(
     (anchor): anchor is RootAnchor & { real: string; link: string } =>
       anchor.real !== null && anchor.link !== null,
   );
-
-  // roots 与 home 先 realpath 归一: macOS 的 /tmp、/var 等符号链接下,
-  // 未归一的 root 会把根内目标误判为逃逸; realpath 失败的 root 不可能包含存在的目标, 跳过
   const roots: string[] = [];
   for (const anchor of anchors) {
     if (anchor.real !== null) roots.push(anchor.real);
   }
-  const home =
-    homeOption === null
-      ? null
-      : ((await tryRealpath(homeOption)) ?? homeOption);
+  const home = homeOption === null ? null : (resolvedHome ?? homeOption);
 
+  // 阶段 A: 对通过同步末段校验的目标有界并发执行 realpath (严控并发上限并响应取消)
+  type RealProbe =
+    | { leafInvalid: true }
+    | { leafInvalid: false; real: string; errno?: undefined }
+    | { leafInvalid: false; real: null; errno: string | undefined };
+
+  const probedTargets = await mapConcurrent(
+    targets,
+    GUARD_CONCURRENCY,
+    async (target): Promise<RealProbe> => {
+      if (!hasNodeModulesLeaf(target, style)) return { leafInvalid: true };
+      try {
+        return { leafInvalid: false, real: await realpath(target) };
+      } catch (error) {
+        return {
+          leafInvalid: false,
+          real: null,
+          errno: (error as { code?: string }).code,
+        };
+      }
+    },
+    options.signal,
+  );
+
+  // 阶段 B: 按输入顺序同步执行全部不变量与去重裁决, 产出的 accepted / rejected / mappings 逐项保序
   const accepted: string[] = [];
   const rejected: RejectedTarget[] = [];
   const mappings: PathMapping[] = [];
   const seen = new Set<string>();
 
-  for (const target of targets) {
-    // 取消检查点 (逐目标之间): 被 abort 即 reject, 语义是「本次未完成」而非「结果为空」
-    if (options.signal?.aborted) {
-      throw new SweepError('CANCELLED', '安全闸校验在逐目标检查点被取消', {
-        phase: 'validate',
-      });
-    }
-    if (!hasNodeModulesLeaf(target, style)) {
+  for (let i = 0; i < targets.length; i += 1) {
+    const target = targets[i]!;
+    const probed = probedTargets[i]!;
+    if (probed.leafInvalid) {
       rejected.push({
         target,
         code: 'GUARD_LEAF_NOT_NODE_MODULES',
@@ -376,26 +440,18 @@ export async function validateTargets(
       continue;
     }
 
-    let real: string | null = null;
-    let realpathErrno: string | undefined;
-    try {
-      real = await realpath(target);
-    } catch (error) {
-      realpathErrno = (error as { code?: string }).code;
-    }
+    const real = probed.real;
     if (real === null) {
-      // realpath 失败按 errno 三分: MISSING 是唯一可被 staleTargets: 'missing' 容忍的一类
-      // (目标已达成), 另两类必须维持整批拒绝; 三码共用同一句 message (黑盒语料因此零变化)
       let code: GuardCode = 'GUARD_REALPATH_FAILED';
-      if (realpathErrno === 'ENOENT') code = 'GUARD_TARGET_MISSING';
-      else if (realpathErrno === 'EACCES' || realpathErrno === 'EPERM') {
+      if (probed.errno === 'ENOENT') code = 'GUARD_TARGET_MISSING';
+      else if (probed.errno === 'EACCES' || probed.errno === 'EPERM') {
         code = 'GUARD_TARGET_UNREADABLE';
       }
       rejected.push({
         target,
         code,
         message: 'realpath 失败 (目标不存在或不可读)',
-        details: { errno: realpathErrno },
+        details: { errno: probed.errno },
       });
       continue;
     }
@@ -571,38 +627,53 @@ export async function findCrossDeviceTargets(
 ): Promise<CrossDeviceEntry[]> {
   const style = options.style ?? nativeStyle();
   const probe = options.probe ?? fsDeviceProbe;
-  const devices = new Map<string, number | null>();
-  const found = new Map<string, CrossDeviceKind>();
+  if (targets.length === 0 || options.roots.length === 0) return [];
 
-  for (const target of targets) {
-    const root = owningRoot(target, options.roots, style);
-    if (root === null) continue;
-
-    let rootDev = devices.get(root);
-    if (rootDev === undefined) {
-      rootDev = await probe(root, true);
-      devices.set(root, rootDev);
+  // 预计算每条目标的最具体归属根, 并收集去重根列表一次并发探测设备号
+  const owners: (string | null)[] = Array.from({ length: targets.length });
+  const uniqueRoots: string[] = [];
+  const rootSeen = new Set<string>();
+  for (let i = 0; i < targets.length; i += 1) {
+    const owner = owningRoot(targets[i]!, options.roots, style);
+    owners[i] = owner;
+    if (owner !== null && !rootSeen.has(owner)) {
+      rootSeen.add(owner);
+      uniqueRoots.push(owner);
     }
-    // 根不可核验 (不存在 / 权限不足): 没有参照面, 本条不判 (交安全闸的 realpath 兜底)
-    if (rootDev === null) continue;
-
-    const targetDev = await probe(target, false);
-    if (targetDev === null || targetDev === rootDev) continue;
-
-    // 形态分辨: 目标与父目录不同设备即「目标本体是挂载点」, 否则跨设备入口在更上层;
-    // 父目录按注入风格解析 (不得落宿主平台的 dirname: 异平台风格注入时它会按错语义切分);
-    // 父目录不可核验时归 on-path (解除路径取覆盖面更广的那条)
-    const parentDev = await probe(style.ops.dirname(target), true);
-    found.set(
-      target,
-      parentDev !== null && parentDev !== targetDev
-        ? 'target-itself'
-        : 'on-path',
-    );
   }
 
-  // 返回数组而非 Map: 可序列化承诺无条件 (Map 经 JSON.stringify 变成空对象,
-  // 会吃掉审计里的整列); 保输入顺序由 Map 的插入序保证
+  const devices = new Map<string, number | null>();
+  await Promise.all(
+    uniqueRoots.map(async (root) => {
+      devices.set(root, await probe(root, true));
+    }),
+  );
+
+  // 按输入下标有界并发探测目标设备号 (跨设备时补探父目录分辨形态), 最后按输入序去重收集
+  const probedKinds = await mapConcurrent(
+    targets,
+    GUARD_CONCURRENCY,
+    async (target, index): Promise<CrossDeviceKind | null> => {
+      const root = owners[index];
+      if (root === null || root === undefined) return null;
+      const rootDev = devices.get(root);
+      if (rootDev === null || rootDev === undefined) return null;
+
+      const targetDev = await probe(target, false);
+      if (targetDev === null || targetDev === rootDev) return null;
+
+      const parentDev = await probe(style.ops.dirname(target), true);
+      return parentDev !== null && parentDev !== targetDev
+        ? 'target-itself'
+        : 'on-path';
+    },
+  );
+
+  const found = new Map<string, CrossDeviceKind>();
+  for (let i = 0; i < targets.length; i += 1) {
+    const kind = probedKinds[i];
+    if (kind !== null && kind !== undefined) found.set(targets[i]!, kind);
+  }
   return [...found.entries()].map(([target, kind]) => ({ target, kind }));
 }
 
