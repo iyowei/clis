@@ -1,3 +1,30 @@
+# @iyowei/sweep-node-modules-cli [0.4.0](https://github.com/iyowei/clis/compare/@iyowei/sweep-node-modules-cli@0.3.0...@iyowei/sweep-node-modules-cli@0.4.0) (2026-11-20)
+
+
+### Bug Fixes
+
+* update 子命令要求位于参数首位并给出用法提示 ([9ea4368](https://github.com/iyowei/clis/commit/9ea4368ee022d5b4d4ee6dafd04ff6c051619671))
+* 保住 update 多行输出并补齐命令面错误上下文 ([b91c891](https://github.com/iyowei/clis/commit/b91c891dbe882bef3717343a6cda77898324ec98))
+* 修正 Windows 路径校验、软链拦截与入口判定 ([106036c](https://github.com/iyowei/clis/commit/106036cb5822d3d0d88a0edcfbd0dc14c1480787))
+* 修正清单渲染宽字符列宽与根项目名兜底 ([f2e4bc2](https://github.com/iyowei/clis/commit/f2e4bc25d3699f6748c6de13ba33409453ec87f2))
+* 修正渲染层家目录缩写与列宽边界 ([bf2b4fe](https://github.com/iyowei/clis/commit/bf2b4fe14fb8f5a8ebb1031ca33384d52c6b7fdf))
+* 向导路径绝对化去重并前置拦截配置落盘冲突 ([6efa88a](https://github.com/iyowei/clis/commit/6efa88a4170e36edf9f64323a82401f5e8722c81))
+* 启动器隔离工作目录 bunfig 与环境变量 ([df889db](https://github.com/iyowei/clis/commit/df889dbdaaa10aa37494acb380215c4a4a7db9da))
+* 未隔离 Bun 改用 process.execPath 重派进入隔离态 ([b381790](https://github.com/iyowei/clis/commit/b381790bb6477700cb2ebb9a7ae6144615a7a780))
+* 重做三平台启动器运行时解析与进程派生模型 ([d61719b](https://github.com/iyowei/clis/commit/d61719b92ce94f7311ab9a352d93a5ecdb8a5aba))
+
+
+### Features
+
+* sweep-nm 新增 update 自更新子命令 ([4178814](https://github.com/iyowei/clis/commit/4178814ffaecdf8b33a38c0043570905532bc45b))
+* 命令面新增版本输出并补齐向导根形态校验 ([9b88fae](https://github.com/iyowei/clis/commit/9b88fae325d37874eb4cb7a0a4b706671b038bad))
+* 路径风味可显式注入, 测试断言脱离宿主 OS ([00831a9](https://github.com/iyowei/clis/commit/00831a9f010698bac624cc79352334f4339576c9))
+
+
+### Dependencies
+
+* **@iyowei/sweep-node-modules:** upgraded to 1.0.0
+
 # @iyowei/sweep-node-modules-cli [0.3.0](https://github.com/iyowei/sweep-node-modules/compare/@iyowei/sweep-node-modules-cli@0.2.1...@iyowei/sweep-node-modules-cli@0.3.0) (2026-09-30)
 
 
