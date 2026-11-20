@@ -1,3 +1,10 @@
+# create-clis [1.3.0](https://github.com/iyowei/clis/compare/create-clis@1.2.0...create-clis@1.3.0) (2026-11-20)
+
+
+### Features
+
+* 新增 extract-shared-package 跨包复用抽离 skill ([18d50aa](https://github.com/iyowei/clis/commit/18d50aab58e9c775cc2fd28517f5dd6c8e60e89d))
+
 # create-clis [1.2.0](https://github.com/iyowei/clis/compare/create-clis@1.1.0...create-clis@1.2.0) (2026-11-20)
 
 
