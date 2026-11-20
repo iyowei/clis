@@ -145,7 +145,7 @@ const artifactProblem = (distDir) => {
   return null;
 };
 
-/** 本文件是否作为入口被直接执行 (双端 realpath + win32 大小写归一) */
+/** 本文件是否作为入口被直接执行 (双端 realpath.native 展开 win32 8.3 短路径 + 大小写归一) */
 const isEntry = () => {
   const entry = process.argv[1];
   if (typeof entry !== 'string' || entry === '') return false;
@@ -154,8 +154,9 @@ const isEntry = () => {
     process.platform === 'win32' ? value.toLowerCase() : value;
   if (norm(entry) === norm(self)) return true;
   try {
-    const realSelf = realpathSync(self);
-    return norm(realpathSync(entry)) === norm(realSelf);
+    const realpath = realpathSync.native ?? realpathSync;
+    const realSelf = realpath(self);
+    return norm(realpath(entry)) === norm(realSelf);
   } catch {
     return false;
   }

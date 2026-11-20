@@ -5,7 +5,7 @@
  */
 import { afterEach, describe, expect, test } from 'bun:test';
 
-import { chmod, mkdir, stat, writeFile } from 'node:fs/promises';
+import { chmod, mkdir, stat, symlink, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
 import {
@@ -15,6 +15,7 @@ import {
 } from './fixtures.ts';
 import { createDuSizer, findDu } from './size-du.ts';
 import { createJsSizer } from './size-js.ts';
+import { createSizer } from './size.ts';
 import type { MeasureProgressEvent, Sizer } from './types.ts';
 
 const duAvailable = findDu() !== null;
@@ -191,4 +192,67 @@ describe('size-js 并发池、内部取消与 errno 告警 (SWEEP-P1-1)', () => 
       }
     },
   );
+
+  test('顶层符号链接 target: 归入 unmeasured (SIZE_UNMEASURED_NOT_DIR) 且不跟随遍历外部目录', async () => {
+    const { root } = await make({
+      projects: [{ dir: 'alpha', files: 2, bytesPerFile: 128 }],
+    });
+    const externalDir = join(root, 'external-bulk');
+    await mkdir(externalDir, { recursive: true });
+    await writeFile(join(externalDir, 'payload.bin'), 'x'.repeat(102_400));
+
+    const symlinkTarget = join(root, 'linked-node_modules');
+    await symlink(externalDir, symlinkTarget, 'dir');
+
+    const events: MeasureProgressEvent[] = [];
+    const jsResult = await createJsSizer().measure([symlinkTarget], {
+      onProgress: (event) => events.push(event),
+    });
+
+    expect(jsResult.entries).toEqual([]);
+    expect(jsResult.gone).toEqual([]);
+    expect(jsResult.warnings).toEqual([]);
+    expect(jsResult.unmeasured).toEqual([
+      {
+        target: symlinkTarget,
+        code: 'SIZE_UNMEASURED_NOT_DIR',
+        reason: '不是目录',
+      },
+    ]);
+    expect(events).toEqual([
+      {
+        kind: 'unmeasured',
+        target: symlinkTarget,
+        code: 'SIZE_UNMEASURED_NOT_DIR',
+        reason: '不是目录',
+      },
+    ]);
+
+    // 仅 lstat 末段: 经祖先符号链接到达的真目录照常测量, 不误伤 /var 类系统祖先软链
+    const ancestorLink = join(root, 'ancestor-link');
+    await symlink(join(root, 'alpha'), ancestorLink, 'dir');
+    const throughAncestor = join(ancestorLink, 'node_modules');
+    const ancestorResult = await createJsSizer().measure([throughAncestor]);
+    expect(ancestorResult.entries).toEqual([
+      { target: throughAncestor, bytes: 256 },
+    ]);
+    expect(ancestorResult.unmeasured).toEqual([]);
+
+    // 门面 createSizer() 同样不得跟随顶层符号链接遍历外部目录
+    const sizer = createSizer();
+    const facadeResult = await sizer.measure([symlinkTarget]);
+    if (sizer.name === 'js') {
+      expect(facadeResult.entries).toEqual([]);
+      expect(facadeResult.unmeasured).toEqual([
+        {
+          target: symlinkTarget,
+          code: 'SIZE_UNMEASURED_NOT_DIR',
+          reason: '不是目录',
+        },
+      ]);
+    } else {
+      const measuredBytes = facadeResult.entries[0]?.bytes ?? 0;
+      expect(measuredBytes).toBeLessThan(102_400);
+    }
+  });
 });

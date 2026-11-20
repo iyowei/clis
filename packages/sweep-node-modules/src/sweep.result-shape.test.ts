@@ -23,6 +23,7 @@ import {
 import {
   DEFAULT_EXCLUDE,
   type SweepError,
+  WIN32_STYLE,
   createSweeper,
   isSuccessOutcome,
   isSweepError,
@@ -59,18 +60,45 @@ describe('构造期', () => {
     expect(capture({ roots: ['.'] }).details).toEqual({ field: 'roots' });
     expect(capture({ roots: ['./app'] }).details).toEqual({ field: 'roots' });
     expect(capture({ roots: [42] }).details).toEqual({ field: 'roots' });
-    expect(capture({ roots: ['/w'], exclude: ['ok', 7] }).details).toEqual({
-      field: 'exclude',
-    });
-    expect(capture({ roots: ['/w'], home: 3 }).details).toEqual({
+    const validRoot = process.platform === 'win32' ? 'C:\\w' : '/w';
+    expect(capture({ roots: [validRoot], exclude: ['ok', 7] }).details).toEqual(
+      {
+        field: 'exclude',
+      },
+    );
+    expect(capture({ roots: [validRoot], home: 3 }).details).toEqual({
       field: 'home',
     });
-    expect(capture({ roots: ['/w'], home: '' }).details).toEqual({
+    expect(capture({ roots: [validRoot], home: '' }).details).toEqual({
       field: 'home',
     });
-    expect(capture({ roots: ['/w'], policy: {} }).details).toEqual({
+    expect(capture({ roots: [validRoot], policy: {} }).details).toEqual({
       field: 'policy',
     });
+  });
+
+  test('WIN32_STYLE 下拒绝盘根相对路径, 放行盘符与 UNC 绝对路径', () => {
+    for (const badRoot of ['/Users/me/work', '/app', '\\app']) {
+      let caught: unknown;
+      try {
+        createSweeper({ roots: [badRoot], style: WIN32_STYLE });
+      } catch (error) {
+        caught = error;
+      }
+      expect(isSweepError(caught)).toBe(true);
+      if (isSweepError(caught)) {
+        expect(caught.code).toBe('INVALID_ARGUMENT');
+        expect(caught.details).toEqual({ field: 'roots' });
+      }
+    }
+
+    const drive = createSweeper({ roots: ['C:\\work'], style: WIN32_STYLE });
+    expect(drive.options.roots).toEqual(['C:\\work']);
+    const unc = createSweeper({
+      roots: ['\\\\srv\\share\\work'],
+      style: WIN32_STYLE,
+    });
+    expect(unc.options.roots).toEqual(['\\\\srv\\share\\work']);
   });
 
   test('生效选项快照: 名单过收口 / 缺省合并 / 顶层冻结', async () => {

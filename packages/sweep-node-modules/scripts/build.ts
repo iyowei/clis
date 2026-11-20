@@ -60,8 +60,8 @@ if (bundle.status !== 0) process.exit(bundle.status ?? 1);
 
 // 3. 类型声明: 独立 tsconfig (emitDeclarationOnly; 测试 / smoke / fixtures 已在 exclude)
 const types = spawnSync(
-  'bunx',
-  ['--no-install', 'tsc', '-p', join(ROOT, 'tsconfig.build.json')],
+  'bun',
+  ['x', '--no-install', 'tsc', '-p', join(ROOT, 'tsconfig.build.json')],
   {
     stdio: 'inherit',
   },

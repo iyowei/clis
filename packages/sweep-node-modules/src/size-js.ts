@@ -223,6 +223,12 @@ export function createJsSizer(): Sizer {
         }
         let dirents: Dirent[];
         try {
+          // 仅 lstat 末段拦截顶层符号链接 (不误伤 macOS /var 等祖先软链), 防止 readdir 跟随遍历外部目录
+          const st = await lstat(target);
+          if (st.isSymbolicLink()) {
+            pushUnmeasured(target, 'SIZE_UNMEASURED_NOT_DIR', '不是目录');
+            continue;
+          }
           dirents = await readdir(target, { withFileTypes: true });
         } catch (error) {
           const failure = describeFailure(errorCode(error));

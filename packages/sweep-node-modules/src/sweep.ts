@@ -24,7 +24,12 @@ import type { SweepPhase } from './codes.ts';
 import { DEFAULT_EXCLUDE, mergeNames } from './config.ts';
 import { type RemovalResult, removeTargets, toTrustRoots } from './delete.ts';
 import { SweepError } from './errors.ts';
-import type { PathMapping, RejectedTarget, ValidationResult } from './guard.ts';
+import type {
+  PathMapping,
+  PathStyle,
+  RejectedTarget,
+  ValidationResult,
+} from './guard.ts';
 import {
   crossDeviceIndex,
   findCrossDeviceTargets,
@@ -82,6 +87,16 @@ function assertNameArray(
     throw invalidArgument(field, '不能为空数组');
 }
 
+/** win32 严格绝对路径判定: 仅接受盘符绝对路径与 UNC 路径, 拒绝盘根相对路径 (/app / \app) */
+const WIN32_ABS_ROOT_RE = /^(?:[A-Za-z]:[/\\]|\\\\[^\\]+\\[^\\]+)/;
+
+/** 按注入路径风格严格判定扫描根是否为绝对路径 */
+function isAbsoluteRoot(root: string, style: PathStyle): boolean {
+  return style.name === 'win32'
+    ? WIN32_ABS_ROOT_RE.test(root)
+    : style.ops.isAbsolute(root);
+}
+
 /**
  * 构造期同步校验 (回答体验报告 1-6 / 5-5 / U14): 同步 API 同步抛, 让调用方尽早失败,
  * 也为 CLI 侧省掉一层 try 缩进; 其余异步入口 (plan / run) 的错误一律走 rejected promise。
@@ -91,7 +106,7 @@ function assertShape(options: SweepOptions): void {
     throw invalidArgument('options', '构造选项必须是对象');
   assertNameArray(options.roots, 'roots', true);
   const style = options.style ?? nativeStyle();
-  if (options.roots.some((root) => !style.ops.isAbsolute(root)))
+  if (options.roots.some((root) => !isAbsoluteRoot(root, style)))
     throw invalidArgument('roots', '必须是绝对路径');
   assertNameArray(options.exclude, 'exclude', false);
   assertNameArray(options.include, 'include', false);
