@@ -23,6 +23,7 @@
 | 2026-09-30 | §3.4 三条「新增条款 (待登记)」正式登记为 BC-42 / BC-43 / BC-44 (登记义务由「转写双面覆盖」的设计承接), 标注随之更新                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
 | 2026-10-01 | §9 Q17 追加修正注记: 原「预演实测」首发归因经发布日志与 semrel v25 源码复核为误 (0.5.0 实际走 tag 0.4.0 正常递增); 原记录保留                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
 | 2026-11-19 | 代码与文档漂移校准: 补 `SweepReport.drift` / `SweepPlan.trailer` / `RemovalOptions.style` / `NotAttemptedCode` (`AbortCode \| 'BATCH_REJECTED'`), 修正 `SizeResult.gone` 排序为按 target 升序, 对齐 `ResolvedSweepOptions` 只读冻结与 4 路并发删除中止语义, 精简 §12 历史逐条评审流水账                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| 2026-11-20 | 契约二次校准: 补齐 `PathOps.normalize` 第 9 个必填成员, §3.6 同步泛型 4 参 `SweepError<Code>` / `SweepErrorDetailsByCode` / `NarrowedSweepError` / `isSweepError` (`message` 校验与判别收窄) / `isSweepErrorCode`, §2.7 补齐 `createSweeper` 构造期同步校验细项 (含 win32 盘根相对路径严判), §2.8 导出计量改为单源指代 `src/index.ts`                                                                                                                                                                                                                                                                                                                                                                                       |
 
 ---
 
@@ -322,9 +323,18 @@ export const fsDeviceProbe: DeviceProbe;
 
 ```ts
 // 路径风格的判定件与纯判定函数: 全部直接升 (src/guard.ts 的既有 export)
-export interface PathOps {
-  /* Pick<typeof posix, 'sep' | 'basename' | 'relative' | 'isAbsolute' | 'parse' | 'join' | 'resolve' | 'dirname'> */
-}
+export type PathOps = Pick<
+  typeof posix,
+  | 'sep'
+  | 'basename'
+  | 'relative'
+  | 'isAbsolute'
+  | 'parse'
+  | 'join'
+  | 'resolve'
+  | 'dirname'
+  | 'normalize'
+>;
 export interface PathStyle {
   name: 'posix' | 'win32';
   ops: PathOps;
@@ -705,9 +715,10 @@ export interface Sweeper {
 }
 
 /**
- * 构造编排器。`roots` 为空 / 非字符串数组等参数错误**在构造期同步抛出**
- * (新增说明, 回答体验报告 1-6 / 5-5 / U14): 同步 API 同步抛, 让调用方尽早失败,
- * 也为 CLI 侧省掉一层 try 缩进。其余异步入口 (scan / measure / validate / remove /
+ * 构造编排器。`roots` 为空 / 含相对路径 (win32 下同时拒绝 `/app` / `\app` 盘根相对路径) /
+ * `roots`、`exclude`、`include` 含空串或非字符串元素 / `home === ''` / `policy.releaseSuspects` 非布尔值等
+ * 参数错误**在构造期同步抛出** (`SweepError('INVALID_ARGUMENT', ..., { field })`, 回答体验报告 1-6 / 5-5 / U14):
+ * 同步 API 同步抛, 让调用方尽早失败, 也为 CLI 侧省掉一层 try 缩进。其余异步入口 (scan / measure / validate / remove /
  * plan / run) 的参数与环境错误一律以 rejected promise 形式抛出 (同一规则的另一半)。
  */
 export function createSweeper(options: SweepOptions): Sweeper;
@@ -905,22 +916,24 @@ const readOnly = true;
 
 **code 类型别名全表 (补齐, 回答体验报告 1-7 / U8)**: 这些名字在本文档里被当类型用, 逐条定义如下:
 
-| 别名                | 定义                                                 | 取值表                   |
-| ------------------- | ---------------------------------------------------- | ------------------------ |
-| `ScanWarningCode`   | 扫描段告警码                                         | §3.2 扫描告警表 (5 个)   |
-| `SizeWarningCode`   | 体积段告警码                                         | §3.2 体积告警表 (5 个)   |
-| `SweepWarningCode`  | `ScanWarningCode \| SizeWarningCode` (并集, 回答 G6) | 同上两表之和 (10 个)     |
-| `UnmeasuredCode`    | 未测到原因码                                         | §3.2 未测到表 (6 个)     |
-| `GuardCode`         | 安全闸拒绝码                                         | §3.2 拒绝表 (10 个)      |
-| `RemoveFailureCode` | 删除失败码                                           | §3.2 失败表 (4 个)       |
-| `AbortCode`         | 整批中止码                                           | §3.2 中止表 (3 个)       |
-| `NotAttemptedCode`  | `AbortCode \| 'BATCH_REJECTED'` (未尝试条目码)       | §3.2 中止表 + 整批拒绝   |
-| `SweepErrorCode`    | 抛错码                                               | §3.2 配置与调用表 (6 个) |
-| `SweepErrorDetails` | 抛错附带的上下文                                     | §3.6 判别联合            |
+| 别名                      | 定义                                                 | 取值表                   |
+| ------------------------- | ---------------------------------------------------- | ------------------------ |
+| `ScanWarningCode`         | 扫描段告警码                                         | §3.2 扫描告警表 (5 个)   |
+| `SizeWarningCode`         | 体积段告警码                                         | §3.2 体积告警表 (5 个)   |
+| `SweepWarningCode`        | `ScanWarningCode \| SizeWarningCode` (并集, 回答 G6) | 同上两表之和 (10 个)     |
+| `UnmeasuredCode`          | 未测到原因码                                         | §3.2 未测到表 (6 个)     |
+| `GuardCode`               | 安全闸拒绝码                                         | §3.2 拒绝表 (10 个)      |
+| `RemoveFailureCode`       | 删除失败码                                           | §3.2 失败表 (4 个)       |
+| `AbortCode`               | 整批中止码                                           | §3.2 中止表 (3 个)       |
+| `NotAttemptedCode`        | `AbortCode \| 'BATCH_REJECTED'` (未尝试条目码)       | §3.2 中止表 + 整批拒绝   |
+| `SweepErrorCode`          | 抛错码                                               | §3.2 配置与调用表 (6 个) |
+| `SweepErrorDetailsByCode` | 按 `SweepErrorCode` 索引的错误上下文映射             | §3.6 映射接口            |
+| `SweepErrorDetails`       | 抛错附带的上下文                                     | §3.6 判别联合            |
+| `NarrowedSweepError`      | 按 `code` 展开的 `SweepError<K>` 判别联合            | §3.6 类型守卫收窄目标    |
 
 穷举 `switch` 的写法建议 (回答 G6): 按 `SCAN_*` / `SIZE_*` 前缀分组, 且 `default` 分支必须**记录 code 原文**而不是静默归入「其他」。新增 code 属 minor 版本, 老调用方应至少看得见它。
 
-> 计量口径: 本文档的导出面共 **41 个值导出** (函数 / 常量 / 错误类) + **73 个类型导出** (含 §3.2 声明的 8 个 code 取值集与 `SweepErrorDetails`)。数量本身不进契约 (会随版本变), 此处只作核对用。
+> 计量口径: 公开值导出与类型导出的实时权威清单见 `packages/sweep-node-modules/src/index.ts` (当前共 42 个值导出 + 76 个类型导出, 含 §3.2 的全部 code 取值集与 §3.6 的 `SweepError` / 守卫 / 映射类型; 随演进只增不改, 以 `src/index.ts` 为单一事实来源)。
 
 ---
 
@@ -1160,33 +1173,52 @@ export interface SweepWarning {
 ### 3.6 错误类型
 
 ```ts
+/** 按 code 索引的错误上下文映射 (支持按 code 精确收窄 details) */
+export interface SweepErrorDetailsByCode {
+  CONFIG_READ_FAILED: { path: string; errno?: string };
+  CONFIG_CORRUPT_JSON: { path: string };
+  CONFIG_CORRUPT_SHAPE: { path: string; field: string };
+  CONFIG_ABSENT: { path: string; source: ConfigSource };
+  INVALID_ARGUMENT: { field: string };
+  CANCELLED: { phase: SweepPhase; partial?: RemovalResult };
+}
+
 /** 抛错附带的上下文 (补齐定义, 回答体验报告 U1 / G1); 判别联合, 按 code 取对应一支 */
 export type SweepErrorDetails =
-  | { path: string; errno?: string } // CONFIG_READ_FAILED
-  | { path: string } // CONFIG_CORRUPT_JSON
-  | { path: string; field: string } // CONFIG_CORRUPT_SHAPE
-  | { path: string; source: ConfigSource } // CONFIG_ABSENT
-  | { field: string } // INVALID_ARGUMENT
-  | { phase: SweepPhase; partial?: RemovalResult }; // CANCELLED
+  SweepErrorDetailsByCode[keyof SweepErrorDetailsByCode];
 
-/** 库抛出的唯一错误类型 (config / 参数 / 取消三档共用) */
-export class SweepError extends Error {
-  readonly name: 'SweepError';
-  readonly code: SweepErrorCode;
-  readonly details?: SweepErrorDetails;
+/** 库抛出的唯一错误类型 (config / 参数 / 取消三档共用; 支持泛型按 code 绑定 details 与标准 ErrorOptions) */
+export class SweepError<
+  Code extends SweepErrorCode = SweepErrorCode,
+> extends Error {
+  override readonly name = 'SweepError' as const;
+  readonly code: Code;
+  readonly details?: SweepErrorDetailsByCode[Code];
   constructor(
-    code: SweepErrorCode,
+    code: Code,
     message: string,
-    details?: SweepErrorDetails,
+    details?: SweepErrorDetailsByCode[Code],
+    options?: ErrorOptions,
   );
 }
 
+/** 按 code 展开的判别联合: `if (isSweepError(e) && e.code === 'CANCELLED') e.details?.partial` 直接收窄 */
+export type NarrowedSweepError = {
+  [K in SweepErrorCode]: SweepError<K>;
+}[SweepErrorCode];
+
 /**
- * 类型守卫 (新增, 回答体验报告 3-4 / U7): 不依赖类身份, 走「Error 形状 + name + code 取值」
- * 判别。扩展 / 打包环境里同一进程可能存在两份库实例, 此时 `instanceof SweepError`
- * 会假阴; 需要跨实例判别的调用方一律用它。
+ * 类型守卫 (新增, 回答体验报告 3-4 / U7): 不依赖类身份, 走「Error 形状 + name + message + code 取值」
+ * 判别, 返回收窄后的 `NarrowedSweepError`。扩展 / 打包环境里同一进程可能存在两份库实例,
+ * 此时 `instanceof SweepError` 会假阴; 需要跨实例判别的调用方一律用它。
  */
-export function isSweepError(value: unknown): value is SweepError;
+export function isSweepError(value: unknown): value is NarrowedSweepError;
+
+/** 单步按 code 收窄守卫: 校验为 SweepError 且 code 匹配时直接窄化到对应 details 分支 */
+export function isSweepErrorCode<Code extends SweepErrorCode>(
+  value: unknown,
+  code: Code,
+): value is SweepError<Code>;
 ```
 
 **code → details 逐条对应 (补齐, 回答体验报告 U1 / G1)**:

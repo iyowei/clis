@@ -24,6 +24,7 @@ The repository is a monorepo whose packages live under `packages/`:
 - `packages/sweep-node-modules`: the programmable API behind `sweep-nm`, published as `@iyowei/sweep-node-modules`.
 - `packages/codd-cli`: the `codd` MongoDB 9.0 provisioning CLI (`@iyowei/codd-cli`, pre-release `private: true`).
 - `packages/codd`: the programmable API and template asset package behind `codd` (`@iyowei/codd`, pre-release `private: true`).
+- `packages/cli-updater`: zero-dependency cross-package-manager self-update engine bundled into every CLI's `update` subcommand (`@iyowei/cli-updater`, internal shared library, `private: true`).
 
 turbo orchestrates the build, typecheck, and test tasks across all workspace packages. The code treats bun and node as first-class runtimes (bun when available, node otherwise, identical behavior), runs on Windows, macOS, and Linux, and keeps runtime dependencies minimal (zero third-party runtime dependencies for `sweep` and `codd`; `prettier` only for `create-clis` scaffold formatting).
 
@@ -106,7 +107,7 @@ node packages/sweep-node-modules-cli/src/cli.ts
 
 - Fill in the pull request template and keep the pull request focused on one topic.
 - Link the issue it addresses; for larger changes, that issue is where the approach was discussed.
-- CI runs the full check suite on every pull request: build, typecheck, tests, lint, and the formatting check on Ubuntu, plus the conformance suite on macOS against both bun and node.
+- CI runs the full check suite on every pull request: build, typecheck, tests, lint, and the formatting check on Ubuntu (`verify`), Windows OS compatibility tests on Windows (`verify-windows`), plus the conformance suite on macOS against both bun and node (`conformance`).
 - Do not bump versions or edit changelogs; releases are automated from `main` (semantic-release, behind a maintainer approval gate).
 
 ## Documentation

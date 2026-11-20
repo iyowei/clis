@@ -95,7 +95,7 @@ npm create clis -- my-tool --tier core
 
 - **工程骨架**: workspaces / turbo / 根 tsconfig / 配置族 (oxlint / prettier / editorconfig / gitattributes / gitignorerc / nvmrc / bunfig) / 版本 pin;
 - **提交与钩子链**: lefthook + `install-git-hooks` (机器上没有 lefthook 时降级) + `safe-install`;
-- **闸门链单源**: `scripts/ci.ts` 是唯一一份步骤清单 (手动全链、pre-push、CI 与 Release 都从它走), `bun run ci` 一条命令跑完全套;
+- **闸门链单源**: `scripts/ci.ts` 是唯一一份步骤清单 (手动全链、pre-push、CI 与 Release 前置 `checks` 都从它走), `bun run ci` 一条命令跑完全套;
 - **发布闭环**: semantic-release 自动发布, 凭据走 OIDC 可信发布 + environment 人工批准, 另有发布凭据预检与逐包发布自证;
 - **文档体系**: docs 索引 / designs 最小单元组织 / ADR 模板 / CONTRIBUTING / SECURITY / 行为准则;
 - **AI 协作文件**: AGENTS.md 与 `.vscode` 推荐配置;
@@ -110,8 +110,8 @@ npm create clis -- my-tool --tier core
 包脚本:
 
 - `bun run build`: 一次产出两份东西: 模板资产 (`assets/template/`, 由骨架清单从本仓构建) 与可执行产物 (`dist/`, 含启动器对账用的清单);
-- `bun run verify:release`: 发布前置校验: 干净检出、产物出自本提交、清单自洽、发行面包内文件与白名单相符;
-- `bun run heavy-smoke`: 重量级冒烟: 基于已校验的不可变资产生成默认 `standard` 档完整项目, 跑它的整套闸门链, 全绿才算过。
+- `bun run verify:release`: 发布前置校验: 干净检出、产物出自本提交、清单自洽、`dist/create-clis.js` 单文件 `256 KiB` 体积上限门禁、以及发行面包内文件与白名单相符;
+- `bun run heavy-smoke`: 重量级冒烟: 对已校验的不可变包执行 `npm pack` 并在独立隔离目录以 `npm install --omit=dev` 装包, 通过装好的入口验收双场景 — 场景 A 生成默认 `standard` 档完整项目并跑通其全套 `bun run ci`, 场景 B 生成带 `--scope` 的 `core` 档项目并校验裁剪结构与中性构建脚本。
 
 `prepublishOnly` 按序串起三者, 发布出去的版本因此自带一份证明: 它生成的项目是绿的。设计与契约文档 (生成器包设计 / 契约 / 档位 / 快照机制) 都在 [docs/designs/](https://github.com/iyowei/clis/tree/main/docs/designs) 下。
 

@@ -11,6 +11,7 @@
 | ---------- | ----------------------------------------------------------------------------------------- |
 | 2026-11-18 | 初稿: 单副本 `rs0` + `27117` 跨平台装配流程、macOS Podman VM 内核持久化调优与远程直连方案 |
 | 2026-11-19 | 补记: 迁入 `clis` 集合仓, 统一命令为 `codd`                                               |
+| 2026-11-20 | 对齐空库备份校验 (`0` 字节拦截 + `verifyGzip`) 与 `make drill` 实体集合校验说明           |
 
 > **双端操作分工**: **[本地开发机]** 只负责运行 `codd wizard` / `codd [deploy.json]` 生成带唯一指纹的 `dist/` 部署包并通过 `rsync` 推上服务器; **[目标服务器]** 免装 `codd`、免装 Bun 与 MongoDB, 只需接收该目录并运行 `make` 命令完成内核调优、容器启动与备份 (`make check-env` 会自动以 `0700` 权限创建带指纹的备份目录)。同机多业务请在清单 `apps` 列多个库 (见 [ADR 0017](../adrs/0017-single-replica-set-multi-db-isolation.md)); 跨 3 台物理机高可用见 [Podman 三物理节点高可用手册](podman-replica-set.md)。
 
@@ -89,7 +90,7 @@ podman exec "$C" mongosh \
   "mongodb://${ROOT_AUTH}@${HOST_QS}/admin?authSource=admin&directConnection=true" \
   --quiet --eval 'printjson({primary: db.hello().isWritablePrimary, state: rs.status().members[0].stateStr, version: db.version()})'
 
-# 2) 用业务账号写入 1 条临时探测文档 (避免空库归档低于 100B 安全阈值告警)
+# 2) 用业务账号写入 1 条临时探测文档 (make backup 仅拒 0 字节并做 verifyGzip 完整解压校验, 但空库在 make drill 会报无实体集合)
 APP_URI="mongodb://${APP_AUTH}@${HOST_QS}/${MONGO_APP_DATABASE}?authSource=${MONGO_APP_DATABASE}&directConnection=true"
 podman exec "$C" mongosh "$APP_URI" --quiet --eval '
   db.__deploy_smoke.insertOne({ok: true, at: new Date()});

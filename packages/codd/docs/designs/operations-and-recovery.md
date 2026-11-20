@@ -7,10 +7,11 @@
 
 ## 修订记录
 
-| 日期       | 修订                                                                           |
-| ---------- | ------------------------------------------------------------------------------ |
-| 2026-11-18 | 初稿: 日常运维巡检、渐进增库、口令轮换、升配重算、容器内沙箱演练与安全恢复流程 |
-| 2026-11-19 | 补记: 迁入 `clis` 集合仓, 统一命令为 `codd`                                    |
+| 日期       | 修订                                                                                          |
+| ---------- | --------------------------------------------------------------------------------------------- |
+| 2026-11-18 | 初稿: 日常运维巡检、渐进增库、口令轮换、升配重算、容器内沙箱演练与安全恢复流程                |
+| 2026-11-19 | 补记: 迁入 `clis` 集合仓, 统一命令为 `codd`                                                   |
+| 2026-11-20 | 对齐 `make drill` Unix Domain Socket 沙箱、`make tools` / `make tools-rebuild` 与空库演练说明 |
 
 > 适用于通过 `codd` ([`@iyowei/codd-cli`](../../../codd-cli/README.zh-CN.md) / [`@iyowei/codd`](../../README.zh-CN.md)) 基于 [`packages/codd/template/`](../../template) 渲染部署的所有单副本、跨机副本集与 Kubernetes 实例。文中 `<STACK_PREFIX>` 默认为 `mongo`。
 
@@ -19,16 +20,18 @@
 所有 `make` 命令均需 SSH 登录到**目标服务器**, 在带唯一指纹的部署目录 (`~/srv/stacks/mongo-<name>-<fp>/`) 内执行:
 
 ```shell
-make help         # 查看全部命令列表
-make tune-host    # 一键开启并持久化内核 THP / swappiness 调优 (Linux 宿主机或 macOS Podman VM)
-make status       # 查看主容器健康状态与当前资源占用
-make check-perf   # 巡检内核 THP / swappiness / ulimit 与 MongoDB startupWarnings
-make logs         # 实时查看容器日志 (Ctrl+C 退出)
-make stats        # 持续查看实时 CPU / 内存占用
-make shell        # 以 root 身份进入 mongosh 交互终端
-make init         # 幂等重跑副本集与全业务库账号初始化 (切主后亦可自动发现当前 PRIMARY)
-make down         # 停止并移除容器 (数据卷和密钥卷完全保留)
-make up           # 启动或配置变更后重建容器 (自动核验并确保 0700 备份目录就绪)
+make help          # 查看全部命令列表
+make tune-host     # 一键开启并持久化内核 THP / swappiness 调优 (Linux 宿主机或 macOS Podman VM)
+make status        # 查看主容器健康状态与当前资源占用
+make check-perf    # 巡检内核 THP / swappiness / ulimit 与 MongoDB startupWarnings
+make logs          # 实时查看容器日志 (Ctrl+C 退出)
+make stats         # 持续查看实时 CPU / 内存占用
+make shell         # 以 root 身份进入 mongosh 交互终端
+make init          # 幂等重跑副本集与全业务库账号初始化 (切主后亦可自动发现当前 PRIMARY)
+make tools         # 按需构建 mongo-tools 工具镜像 (备份、恢复、演练依赖它, 已存在则跳过)
+make tools-rebuild # 强制无缓存重建 mongo-tools 工具镜像 (升级 MongoDB 或 Bun 依赖后执行)
+make down          # 停止并移除容器 (数据卷和密钥卷完全保留)
+make up            # 启动或配置变更后重建容器 (自动核验并确保 0700 备份目录就绪)
 ```
 
 `Makefile` 刻意不提供一键删卷目标, 避免误删数据。确需销毁整套数据与密钥卷时, 先 `make down`, 再手动执行 `podman volume rm <STACK_PREFIX>-<FINGERPRINT>-data <STACK_PREFIX>-<FINGERPRINT>-key`。
@@ -48,7 +51,7 @@ make up           # 启动或配置变更后重建容器 (自动核验并确保 
 1. **[本地开发机] 新增业务库**: 在本地 `deploy.json` 的 `apps` 数组追加 `{ "db": "<新库>", "user": "<新账号>" }`, 执行 `codd deploy.json` (`.codd-state/` 会自动锁定原有 `FINGERPRINT`、交付目录名、原库密码、`root` 与 `keyFile`, 仅给新库生成随机密码)。
 2. **[本地开发机] 轮换业务与备份密码**: 执行 `codd deploy.json --rotate` (`root` 与 `keyFile` 不变)。
 3. **[本地开发机推送 -> 目标服务器生效]**: 在本地开发机将 `dist/` 更新后的节点目录 `rsync -av` 推送到服务器; 随后 SSH 登录**目标服务器**进入部署目录执行 `make check-env && make init` 即幂等生效。
-4. **[目标服务器] 新库备份验收**: 新库写入首批集合前若需验收 `make backup`, 先向新库插入至少 1 条文档再跑 `make backup && make drill`。
+4. **[目标服务器] 新库演练验收**: 空库虽可通过 `make backup` (仅拒 `0` 字节并做 `verifyGzip` 完整解压校验), 但 `make drill` 要求恢复后至少存在 1 个实体集合; 新库写入首批集合前若需全链路验收, 先向新库插入至少 1 条文档再跑 `make backup && make drill`。
 
 ### 2. 同机多实例零冲突并存与共网接入
 
@@ -68,7 +71,7 @@ Compose 里的 `MEMORY_LIMIT`、`CPU_LIMIT` 都是上限而不是预分配。出
 
 ### 升级版本与存储扩容
 
-- **升级 MongoDB 版本**: 调整 `imageTag` 并 `rsync` 到目标机后执行 `make up && podman-compose -f podman-compose.yml --profile tools build mongo-tools`。
+- **升级 MongoDB 版本**: 调整 `imageTag` 并 `rsync` 到目标机后执行 `make up && make tools-rebuild` (强制 `--no-cache` 无缓存重建工具镜像, 避免命中旧层缓存)。
 - **macOS Podman 虚拟机扩盘** (只可调大不可缩小):
 
   ```shell
@@ -79,7 +82,7 @@ Compose 里的 `MEMORY_LIMIT`、`CPU_LIMIT` 都是上限而不是预分配。出
 ## 四、备份策略、零污染沙箱演练与真实恢复
 
 - **从节点优先热备 (`make backup`)**: 使用仅有 `admin.backup` 只读权限的专用账号, 多节点副本集下自动路由至 `SECONDARY` 从节点读取 (`secondaryPreferred`), 并按核数动态设置 `--numParallelCollections`。
-- **零污染隔离演练 (`make drill`)**: 在 `mongo-tools` 临时容器内拉起独立的本地沙箱 `mongod` (`127.0.0.1:27999`, `0.25GB` 缓存上限) 导入备份归档, 再通过只读 `backup` 账号对比线上各集合索引数量, 对线上生产库写入量为 0。
+- **零污染隔离演练 (`make drill`)**: 在 `mongo-tools` 临时容器内创建 `0700` 私有目录, 通过 Unix Domain Socket (`--bind_ip <sockPath>`, 零 TCP 端口占用与暴露, `0.25GB` 缓存上限) 拉起独立沙箱 `mongod` 导入备份归档, 再通过只读 `backup` 账号对比线上各实体集合索引数量, 对线上生产库写入量为 0。
 - **按库独立留存**: 每库每日保留 `KEEP_DAILY=7` 份; 周日额外抄写进 `BACKUP_DIR/weekly/` 每库保留 `KEEP_WEEKLY=4` 份。
 
 ```shell

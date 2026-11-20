@@ -24,6 +24,7 @@
 - `packages/sweep-node-modules`: `sweep-nm` 的可编程 API 包, 发布为 `@iyowei/sweep-node-modules`。
 - `packages/codd-cli`: `codd` 模板化 MongoDB 9.0 部署装配 CLI (`@iyowei/codd-cli`, 待首发 `private: true`)。
 - `packages/codd`: `codd` 的可编程 API 与模板资产包 (`@iyowei/codd`, 待首发 `private: true`)。
+- `packages/cli-updater`: 零外部依赖的跨包管理器自更新引擎, 内联打包进各 CLI 的 `update` 子命令 (`@iyowei/cli-updater`, 仓内私有共享库, `private: true`)。
 
 turbo 跨工作区各包编排构建、类型检查与测试任务。代码对 bun 与 node 一视同仁 (有 bun 走 bun, 否则走 node, 行为一致), 支持 Windows / macOS / Linux; 运行时依赖极简 (`sweep` 与 `codd` 全线零第三方运行时依赖, `create-clis` 仅携带 `prettier` 用于生成物格式化)。
 
@@ -40,7 +41,7 @@ turbo 跨工作区各包编排构建、类型检查与测试任务。代码对 b
 bun install
 ```
 
-钩子在代码进门时把关 (pre-commit: 全项目类型检查, 外加对暂存文件跑 prettier 与 oxlint), 推送前重跑一遍全量检查 (pre-push 只调用 `bun scripts/ci.ts` 这一条命令: 它是整套检查的唯一出处, 覆盖文档与仓库卫生的四道闸门, 以及双载体的转写契约套件)。机器上没有 lefthook 时, 钩子链会回退到经 bunx 取来的 pin 版。配置见 [lefthook.yml](lefthook.yml)。
+钩子在代码进门时把关 (pre-commit: 全项目类型检查, 外加对暂存文件跑 prettier 与 oxlint), 推送前重跑一遍全量检查 (pre-push 只调用 `bun scripts/ci.ts` 这一条命令: 它是整套检查的唯一出处, 覆盖文档与仓库卫生的五道闸门, 以及双载体的转写契约套件)。机器上没有 lefthook 时, 钩子链会回退到经 bunx 取来的 pin 版。配置见 [lefthook.yml](lefthook.yml)。
 
 仓库的 `.gitignore` 由 fast-gitignore (`fgi`) 从 `.gitignorerc.json` 生成, 不要手改: 新增忽略规则写进这个配置的 `custom` 数组, 再在仓库根重跑 `fgi` (它会读取预设, 把 `.gitignore` 整个重新生成)。
 
@@ -106,7 +107,7 @@ node packages/sweep-node-modules-cli/src/cli.ts
 
 - 填好 pull request 模板, 并保持单一主题。
 - 关联对应的 issue; 改动较大时, 方案就是在那个 issue 里讨论的。
-- CI 在每个 pull request 上跑全套检查: 在 Ubuntu 上执行 build / typecheck / test / lint / 格式检查, 外加在 macOS 上对 bun 与 node 两个载体跑转写契约套件。
+- CI 在每个 pull request 上跑三路全套检查: 在 Ubuntu 上执行全量 build / typecheck / test / lint / 格式与治理检查 (`verify`), 在 Windows 上执行 OS 兼容专项测试 (`verify-windows`), 外加在 macOS 上对 bun 与 node 两个载体跑转写契约套件 (`conformance`)。
 - 不要升版本号, 也不要改 changelog; 发布从 `main` 自动进行 (semantic-release, 带维护者审批闸门)。
 
 ## 文档

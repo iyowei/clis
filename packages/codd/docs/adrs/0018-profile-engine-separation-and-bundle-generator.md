@@ -47,6 +47,8 @@
 
 `packages/codd/scripts/verify-release.test.ts` 验证无点载体转换、`assets/manifest.json` 对账、Bun / Node 双运行时 CLI 执行以及损坏 `bunfig.toml` 工作目录隔离。
 
+> **修订注记 (2026-11-20)**: 拆分为 `@iyowei/codd` 与 `@iyowei/codd-cli` 双包后, `packages/codd/scripts/verify-release.test.ts` 保留无点载体转换与 `assets/manifest.json` 对账校验; 双运行时 CLI 启动器、资产同步与损坏 `bunfig.toml` 工作目录隔离验证已迁移至 [`packages/codd-cli/scripts/`](../../../codd-cli/scripts) (含 `launcher.runtime-resolution.test.mjs`、`sync-assets.test.ts`、`verify-release.test.ts`) 及 [`packages/codd-cli/src/cli.test.ts`](../../../codd-cli/src/cli.test.ts)。
+
 **关联引用**
 
 - 关联决策见 [ADR 0014](0014-fingerprint-resource-isolation.md) 与 [ADR 0015](0015-compact-2c2g-resource-budget.md)。

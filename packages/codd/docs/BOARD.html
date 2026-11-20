@@ -3801,6 +3801,12 @@ make shell
 # 幂等重跑副本集与账号初始化 (切主后亦可自动发现新 PRIMARY)
 make init
 
+# 按需构建 mongo-tools 工具镜像 (已存在则跳过)
+make tools
+
+# 强制无缓存重建工具镜像 (升级 MongoDB 或 Bun 依赖后执行)
+make tools-rebuild
+
 # 停删容器 (数据与密钥卷保留)
 make down
 
@@ -4016,12 +4022,9 @@ make restore \
                   role="region"
                   aria-label="升级扩盘和迁移命令"
                   tabindex="0"
-                ><code># [执行设备: 目标服务器 部署目录内] 1) 改 .env MONGO_IMAGE_TAG 后升级
+                ><code># [执行设备: 目标服务器 部署目录内] 1) 改 .env MONGO_IMAGE_TAG 后升级 (强制无缓存重建工具镜像)
 make up
-podman-compose \
-  -f podman-compose.yml \
-  --profile tools \
-  build mongo-tools
+make tools-rebuild
 
 # 2) 磁盘容量排查与扩容
 # [Linux] 无 VM, 直接核查宿主机卷盘余量
@@ -4098,11 +4101,15 @@ podman volume export &lt;旧key&gt; \
             <div class="c">
               <div class="t">
                 <i class="failed" aria-hidden="true"></i>
-                <em class="fail">空库备份失败</em>
-                <span>· 异常小 / 无集合</span>
+                <em class="fail">空库演练失败</em>
+                <span>· 无实体集合</span>
               </div>
               <p class="p">
-                库里没有任何集合时归档只有几十字节 (&lt;100B 校验阈值)。
+                <code>make backup</code> 已移除 <code>&lt;100B</code> 阈值
+                (改为拒绝 <code>0</code> 字节 +
+                <code>verifyGzip</code> 完整解压校验), 但空库在
+                <code>make drill</code>
+                恢复后没有任何实体集合仍会报错。
               </p>
               <div class="err">
                 按 Step 4 先写入 1 条临时探测文档即可验通;

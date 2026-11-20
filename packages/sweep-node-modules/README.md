@@ -114,7 +114,7 @@ Creates the orchestrator: the whole chain behind one object. A second instance c
   - `plan(options?)`: the read-only pass, see below.
   - `run(options?)`: the executing pass, see below.
 
-Parameter errors (`roots` empty, or not a string array) **throw synchronously** at construction: fail fast, before any IO. Every asynchronous entry point below rejects its promise instead.
+Parameter errors — empty `roots`, relative paths in `roots` (on win32, drive-relative paths like `/app` or `\app` are also rejected), empty-string or non-string items in `roots` / `exclude` / `include`, `home === ''`, or non-boolean `policy.releaseSuspects` — **throw synchronously** (`SweepError('INVALID_ARGUMENT', ..., { field })`) at construction: fail fast, before any IO. Every asynchronous entry point below rejects its promise instead.
 
 - The name lists take the same merge the CLI applies (`mergeNames`): duplicates dropped, and `node_modules` / `.git` silently removed since a name can never take effect there.
 - `policy.releaseSuspects` is the library-side `--force`: it lets suspected install trees into the delete batch, releases only that category, and relaxes no guard invariant. Cross-device targets are unaffected either way.
@@ -143,6 +143,7 @@ The read-only pass: scan + measure + classify + device check + batch constructio
   - `entries` `SweepEntry[]`: one entry per hit that still exists at measure time (a hit gone by then produces no entry; see `gone` in `SizeResult`): `target` / `project` / `root` / `bytes?` / `basis?` / `kind` / `kindReason?` / `crossDevice?` / `unmeasuredCode?` / `unmeasuredReason?` / `inBatch`, plus `skipReason` and `skipNote` when out of the batch (the code and the human note travel on the entry, so a review table needs no join).
   - `batch` `string[]`: the targets that would be deleted, in list order.
   - `skipped` `SkippedTarget[]`: every out-of-batch target with its `reason` and `note`.
+  - `trailer?` `string[]`: closing summary lines for skipped categories (same source as `SkipBook.trailer`, one line per category or cross-device form that occurred; empty array when nothing was skipped).
   - `warnings` `SweepWarning[]`: non-fatal scan / size warnings (`{ code, message, path?, errno? }`); `code` is a `SweepWarningCode`, the union of `ScanWarningCode` and `SizeWarningCode`.
   - `nameMatches`: `{ exclude: NameMatch[]; include: NameMatch[] }`, per-name hit counts for both lists, so a name that never matched (a typo) is visible before it matters.
 
@@ -320,7 +321,7 @@ The invariants are judged per target with early exit: the leaf must be exactly `
 
 - `targets` `string[]`
 - `options` `CrossDeviceOptions`:
-  - `roots` `string[]` (required): the owning root of a target is the innermost root containing it under strict path-containment order (falling back to the longer normalized path only when two roots are incomparable).
+  - `roots` `string[]` (required): the owning root of a target is the innermost root containing it under strict path-containment order (`insideAnyRoot`, unaffected by literal string length from redundant separators).
   - `style?` `PathStyle`: path flavor; native by default.
   - `probe?` `DeviceProbe`: the device-number probe; defaults to `fsDeviceProbe` (inject to test cross-device flows on one filesystem).
 - Returns: `Promise<CrossDeviceEntry[]>`: `{ target, kind }` entries in input order; an empty array when nothing is cross-device.
@@ -352,7 +353,7 @@ The guard's path layer, exposed for tests and custom flows. Every predicate take
 #### `POSIX_STYLE` / `WIN32_STYLE`
 
 - `PathStyle` constants, ready for injection: `WIN32_STYLE` folds case before every comparison; `POSIX_STYLE` does not.
-- `PathStyle`: `{ name: 'posix' | 'win32', ops: PathOps, caseInsensitive: boolean }`, where `PathOps` is the minimal path capability set (`sep` / `basename` / `relative` / `isAbsolute` / `parse` / `join` / `resolve` / `dirname`), satisfied by both `node:path` flavors.
+- `PathStyle`: `{ name: 'posix' | 'win32', ops: PathOps, caseInsensitive: boolean }`, where `PathOps` is the minimal path capability set (`sep` / `basename` / `relative` / `isAbsolute` / `parse` / `join` / `resolve` / `dirname` / `normalize`), satisfied by both `node:path` flavors.
 
 #### `nativeStyle(): PathStyle`
 
@@ -419,15 +420,16 @@ Collection (a per-level `lstat` walk) and detection in one call. The write side 
 - `targets` `string[]`: guard-validated targets (realpath form).
 - `options` `RemovalOptions`:
   - `roots` `TrustRoot[]` (required): the trust roots that own the targets; a target under none of them aborts the batch.
+  - `style?` `PathStyle`: path flavor (win32 case folding and separator semantics); native by default.
   - `signal?` `AbortSignal`: checked between entries (the mid-`rm` rule is in [Progress and cancellation](#progress-and-cancellation)).
   - `onProgress?` `(event: RemovalProgressEvent) => void`: one event per entry leaving its bucket (`removed` / `missing` / `failed` / `aborted`).
 - Returns: `Promise<RemovalResult>`:
   - `removed` `string[]`: deleted, input order kept.
   - `missing` `string[]`: `rm` reported ENOENT and a re-check confirmed the target itself is gone (counted as success, input order kept).
   - `failed` `TargetFailure[]`: `{ target, code, errno?, message, partialRisk }`, with `code` a `RemoveFailureCode`; `partialRisk: true` means content may be partially deleted, so flag it for human review (a `partialRisk: false` failure never attempted a deletion).
-  - `aborted?` `AbortedBatch`: the guard's re-check failed mid-batch (`{ target, code, message, path? }`, with `code` an `AbortCode`); nothing from the abort point on was attempted.
+  - `aborted?` `AbortedBatch`: the pre-removal check failed mid-batch (`{ target, code, message, path? }`, with `code` an `AbortCode`); dispatching stops immediately (already in-flight entries in the 4-way concurrency window finish and are reported truthfully, while undispatched entries are never touched).
 
-Right before removing each target, the chain from the root down to the target's parent is re-verified component by component; a swap found mid-way stops the whole batch.
+Before touching disk, `removeTargets` synchronously hard-rejects malformed targets — trailing separators (`/` or `\`), relative `.` / `..` segments, a non-`node_modules` leaf, or a target outside every `roots[].real` — aborting the batch with `REVIEW_NOT_UNDER_ANY_ROOT`. Right before removing each target, it `lstat`-verifies the owning root's full ancestor chain (both `configured` and `real`, deduplicated) and then every component from `root.real` down to the target's parent: any non-directory (symlink included) aborts the batch (`REVIEW_HEAD_SYMLINK` / `REVIEW_COMPONENT_REPLACED`), and any vanished or unverifiable level fails closed on that entry (`REVIEW_COMPONENT_VANISHED` / `REVIEW_UNVERIFIED`, `partialRisk: false`, zero deletion).
 
 ```ts
 const removal = await removeTargets(accepted, {
@@ -576,7 +578,7 @@ One rule decides the channel: **failures that can be listed are returned; failur
 
 ### `SweepError`
 
-- `class SweepError extends Error`: `{ name: 'SweepError', code, message, details? }`.
+- `class SweepError<Code extends SweepErrorCode = SweepErrorCode> extends Error`: `{ name: 'SweepError', code, message, details? }`.
   - `code` `SweepErrorCode`: `CONFIG_READ_FAILED` / `CONFIG_CORRUPT_JSON` / `CONFIG_CORRUPT_SHAPE` / `CONFIG_ABSENT` / `INVALID_ARGUMENT` / `CANCELLED`.
   - `message` `string`: the readable text (see the code rules below).
   - `details?` `SweepErrorDetails`: a discriminated union keyed by `code`: `{ path, errno? }`, `{ path }`, `{ path, field }`, `{ path, source }`, `{ field }`, `{ phase, partial? }`.

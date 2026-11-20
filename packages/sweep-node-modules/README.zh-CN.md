@@ -114,7 +114,7 @@ CLI 包是编排层的薄壳: 解析 → 调用 → 渲染 → 确认。整套�
   - `plan(options?)`: 只读, 见下。
   - `run(options?)`: 执行删除, 见下。
 
-参数错误 (`roots` 为空或不是字符串数组) 在**构造期就同步抛出**: 还没做任何 IO 就先失败, 尽早报错; 下文所有异步入口则一律以 rejected promise 抛出, 这是同一条规则的另一半。
+参数错误 — `roots` 为空、含相对路径 (win32 下同时拒绝 `/app` / `\app` 这类盘根相对路径)、`roots` / `exclude` / `include` 含空串或非字符串元素、`home === ''` 或 `policy.releaseSuspects` 非布尔值 — 均在**构造期同步抛出** (`SweepError('INVALID_ARGUMENT', ..., { field })`): 还没做任何 IO 就先失败, 尽早报错; 下文所有异步入口则一律以 rejected promise 抛出, 这是同一条规则的另一半。
 
 - 两份名单都会走一遍和 CLI 一样的合并 (`mergeNames`): 去重, 并且 `node_modules` / `.git` 会被静默剔除 (这两个名字写进任何名单都永不生效)。
 - `policy.releaseSuspects` 相当于库里的 `--force`: 放行「疑似安装树」进批, 只放行这一类, 不放宽任何一条安全规则; 跨设备目标不受它影响。
@@ -143,6 +143,7 @@ const sweeper = createSweeper({
   - `entries` `SweepEntry[]`: 测量时仍在的每个命中产生一条 (已经消失的命中不产生条目, 见 `SizeResult` 的 `gone`): `target` / `project` / `root` / `bytes?` / `basis?` / `kind` / `kindReason?` / `crossDevice?` / `unmeasuredCode?` / `unmeasuredReason?` / `inBatch`, 未进批的另带 `skipReason` 和 `skipNote` (原因码和说明都带在条目上, 复核时不用再按 target 去 join)。
   - `batch` `string[]`: 即将进入删除的目标清单, 保持清单顺序。
   - `skipped` `SkippedTarget[]`: 所有没进批的目标, 各带 `reason` 和 `note`。
+  - `trailer?` `string[]`: 清单末行说明 (与 `SkipBook.trailer` 同源, 按跳过类别与跨设备形态各出一行, 只在出现时包含; 无跳过说明时为空数组)。
   - `warnings` `SweepWarning[]`: 扫描与体积的非致命告警 (`{ code, message, path?, errno? }`); `code` 为 `SweepWarningCode`, 即 `ScanWarningCode` 与 `SizeWarningCode` 的并集。
   - `nameMatches`: `{ exclude: NameMatch[]; include: NameMatch[] }`, 两份名单逐个名字的命中统计 (零命中的名字也在列, 拼错了当场可见)。
 
@@ -320,7 +321,7 @@ const { kind, reason } = classifyTarget(target, options?);
 
 - `targets` `string[]`
 - `options` `CrossDeviceOptions`:
-  - `roots` `string[]` (必填): 目标的所属根, 按严格路径包含偏序取最内层的那个根 (仅在两根互不包含时回退较长路径)。
+  - `roots` `string[]` (必填): 目标的所属根, 按严格路径包含偏序 (`insideAnyRoot`) 取最内层的那个根 (不受冗余分隔符导致的字面长度影响)。
   - `style?` `PathStyle`: 路径风味; 默认平台原生。
   - `probe?` `DeviceProbe`: 设备号探针; 默认 `fsDeviceProbe` (注入它就能在单一文件系统上测跨设备流程)。
 - Returns: `Promise<CrossDeviceEntry[]>`: `{ target, kind }` 条目, 保持输入顺序; 没有跨设备目标时为空数组。
@@ -352,7 +353,7 @@ const index = crossDeviceIndex(crossDevice); // 需要 has / get 时用这个视
 #### `POSIX_STYLE` / `WIN32_STYLE`
 
 - `PathStyle` 常量, 可直接注入: `WIN32_STYLE` 比较时忽略大小写; `POSIX_STYLE` 不忽略。
-- `PathStyle`: `{ name: 'posix' | 'win32', ops: PathOps, caseInsensitive: boolean }`, 其中 `PathOps` 是最小路径能力集 (`sep` / `basename` / `relative` / `isAbsolute` / `parse` / `join` / `resolve` / `dirname`), `node:path` 的两种风味都满足。
+- `PathStyle`: `{ name: 'posix' | 'win32', ops: PathOps, caseInsensitive: boolean }`, 其中 `PathOps` 是最小路径能力集 (`sep` / `basename` / `relative` / `isAbsolute` / `parse` / `join` / `resolve` / `dirname` / `normalize`), `node:path` 的两种风味都满足。
 
 #### `nativeStyle(): PathStyle`
 
@@ -419,15 +420,16 @@ anchorChainPaths('/Users/x/ws/app', POSIX_STYLE);
 - `targets` `string[]`: 过了安全闸的目标 (真实路径形式)。
 - `options` `RemovalOptions`:
   - `roots` `TrustRoot[]` (必填): 这些目标所属的信任根; 目标不在任何根之下时, 整批中止。
+  - `style?` `PathStyle`: 路径风味 (win32 大小写折叠与分隔符语义); 默认平台原生。
   - `signal?` `AbortSignal`: 在条目之间检查 (单条 `rm` 跑到一半不打断的硬规矩, 见 [进度与取消](#进度与取消))。
   - `onProgress?` `(event: RemovalProgressEvent) => void`: 每条目标一有结果就发一条 (`removed` / `missing` / `failed` / `aborted`)。
 - Returns: `Promise<RemovalResult>`:
   - `removed` `string[]`: 已删除, 保持输入顺序。
   - `missing` `string[]`: `rm` 报了 ENOENT, 并且复核确认目标本身已不存在 (计成功侧, 保持输入顺序)。
   - `failed` `TargetFailure[]`: `{ target, code, errno?, message, partialRisk }`, `code` 为 `RemoveFailureCode`; `partialRisk: true` 表示内容可能被删了一部分, 需要人工复查 (`partialRisk: false` 的失败根本没尝试删除)。
-  - `aborted?` `AbortedBatch`: 复核没通过, 整批中止 (`{ target, code, message, path? }`, `code` 为 `AbortCode`); 中止点及其之后一条未动。
+  - `aborted?` `AbortedBatch`: 删前复核没通过, 整批中止 (`{ target, code, message, path? }`, `code` 为 `AbortCode`); 立即停止派发新条目 (4 路并发窗口内已派发条目会完成并如实报告, 未派发条目一条不动)。
 
-删每个目标之前, 从根往下到它的父目录逐级复核一遍; 半路发现被替换, 就整批停手。
+触碰磁盘之前, `removeTargets` 先同步执行入口形态硬拒绝: 含尾分隔符 (`/` 或 `\`)、含 `.` / `..` 相对段、末段非 `node_modules` 或不在任何 `roots[].real` 之下的目标一律直接触发整批中止 (`REVIEW_NOT_UNDER_ANY_ROOT`)。删每个目标之前, 先对归属信任根的 `configured` 与 `real` 完整祖先链 (去重) 逐级 `lstat` 复核, 再从 `root.real` 往下到目标父目录逐级 `lstat` 复核: 任一级非真目录 (含符号链接) 即整批中止 (`REVIEW_HEAD_SYMLINK` / `REVIEW_COMPONENT_REPLACED`); 任一级消失或不可核验则按 fail-closed 阻断本条 (`REVIEW_COMPONENT_VANISHED` / `REVIEW_UNVERIFIED`, `partialRisk: false`, 未执行删除)。
 
 ```ts
 const removal = await removeTargets(accepted, {
@@ -576,7 +578,7 @@ const outcome = await removeBatch(targets, { roots, staleTargets });
 
 ### `SweepError`
 
-- `class SweepError extends Error`: `{ name: 'SweepError', code, message, details? }`。
+- `class SweepError<Code extends SweepErrorCode = SweepErrorCode> extends Error`: `{ name: 'SweepError', code, message, details? }`。
   - `code` `SweepErrorCode`: `CONFIG_READ_FAILED` / `CONFIG_CORRUPT_JSON` / `CONFIG_CORRUPT_SHAPE` / `CONFIG_ABSENT` / `INVALID_ARGUMENT` / `CANCELLED`。
   - `message` `string`: 给人读的文本 (规矩见下)。
   - `details?` `SweepErrorDetails`: 按 `code` 取值的判别联合: `{ path, errno? }`、`{ path }`、`{ path, field }`、`{ path, source }`、`{ field }`、`{ phase, partial? }`。

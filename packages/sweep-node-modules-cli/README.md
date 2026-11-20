@@ -17,7 +17,7 @@ A workspace-level cleaner for `node_modules`: scan several root directories in o
 - **Dual runtime** for the actual work: bun when available, node otherwise (identical behavior; bun starts faster).
 - Modern runtime APIs only: any recent bun; for node, a version that runs TypeScript natively (the same version floor applies to the source install and the package install; version snapshot and test records in [ADR 0006](https://github.com/iyowei/clis/blob/main/docs/adrs/0006-dual-runtime-bun-first.md)).
 - Zero third-party runtime dependencies (built-in runtime capabilities only).
-- Runs on macOS and Linux today; Windows launchers are shipped but not yet verified on a real Windows machine (see the evidence gap in [ADR 0007](https://github.com/iyowei/clis/blob/main/packages/sweep-node-modules/docs/adrs/0007-platform-portability.md)).
+- Runs on macOS, Linux, and Windows (covered by real Windows CI `verify-windows`). npm installs ship `bin/sweep-nm.mjs` (via npm's shim); the `.cmd` launcher (`bin/sweep-nm.cmd`) is for source checkouts only and is not independently run in CI (see [ADR 0007](https://github.com/iyowei/clis/blob/main/packages/sweep-node-modules/docs/adrs/0007-platform-portability.md)).
 
 ## Installation
 
@@ -57,7 +57,7 @@ bun install -g @iyowei/sweep-node-modules-cli
 
 ```shell
 # clone, then cd into the repo root (adjust the path to your clone location)
-cd "<your clone>/sweep-node-modules"
+cd "<your clone>/clis"
 
 chmod +x packages/sweep-node-modules-cli/bin/sweep-nm
 
@@ -70,7 +70,7 @@ ln -sf "$PWD/packages/sweep-node-modules-cli/bin/sweep-nm" ~/.local/bin/sweep-nm
 ```powershell
 # add the repo's bin directory to your user PATH; one-time, effective after reopening the terminal
 # adjust the path to your actual clone location (the launcher locates src relative to itself, so the script cannot be copied out on its own)
-$bin = "$env:USERPROFILE\tools\sweep-node-modules\packages\sweep-node-modules-cli\bin"
+$bin = "$env:USERPROFILE\tools\clis\packages\sweep-node-modules-cli\bin"
 [Environment]::SetEnvironmentVariable(
   'Path',
   [Environment]::GetEnvironmentVariable('Path', 'User') + ";$bin",

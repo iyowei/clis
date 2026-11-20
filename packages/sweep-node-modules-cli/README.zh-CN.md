@@ -17,7 +17,7 @@
 - 业务逻辑**双运行时**: 有 bun 走 bun, 没有就用 node (功能一致, bun 启动更快)。
 - 运行时 API 取最新一代: bun 任意近期版本; node 要能原生直跑 TypeScript 的版本 (源码方式与包方式取同一版本下限; 版本快照与实测记录见 [ADR 0006](https://github.com/iyowei/clis/blob/main/docs/adrs/0006-dual-runtime-bun-first.md))。
 - 零第三方运行时依赖 (只用运行时内置能力)。
-- 平台: 目前实际验证过的只有 macOS 与 Linux; Windows 启动器已随包分发, 但还没在真机上验证过 (详见 [ADR 0007](https://github.com/iyowei/clis/blob/main/packages/sweep-node-modules/docs/adrs/0007-platform-portability.md))。
+- 平台: 支持 macOS、Linux 与 Windows (CI 已常驻真机 Windows 任务 `verify-windows` 覆盖核心测试与启动器)。npm 安装分发的是 `bin/sweep-nm.mjs` (由 npm 生成可执行 shim); `.cmd` 脚本 (`bin/sweep-nm.cmd`) 仅用于源码检出, 未在 CI 独立实跑 (详见 [ADR 0007](https://github.com/iyowei/clis/blob/main/packages/sweep-node-modules/docs/adrs/0007-platform-portability.md))。
 
 ## 安装
 
@@ -57,7 +57,7 @@ bun install -g @iyowei/sweep-node-modules-cli
 
 ```shell
 # 克隆后进入仓库根 (路径按你的实际位置调整)
-cd "<克隆位置>/sweep-node-modules"
+cd "<克隆位置>/clis"
 
 chmod +x packages/sweep-node-modules-cli/bin/sweep-nm
 
@@ -70,7 +70,7 @@ ln -sf "$PWD/packages/sweep-node-modules-cli/bin/sweep-nm" ~/.local/bin/sweep-nm
 ```powershell
 # 把仓库的 bin 目录加入用户 PATH, 只需一次, 重开终端后生效
 # 路径按你的实际克隆位置调整 (启动器靠自身位置定位 src, 故不能把脚本单独复制走)
-$bin = "$env:USERPROFILE\tools\sweep-node-modules\packages\sweep-node-modules-cli\bin"
+$bin = "$env:USERPROFILE\tools\clis\packages\sweep-node-modules-cli\bin"
 [Environment]::SetEnvironmentVariable(
   'Path',
   [Environment]::GetEnvironmentVariable('Path', 'User') + ";$bin",

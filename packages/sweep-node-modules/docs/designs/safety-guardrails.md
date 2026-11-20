@@ -3,7 +3,7 @@
 > 定位: 面向想深挖的用户与未来维护者的参考文档, 完整记录这套工具的安全防护保障点与内部账目。
 > 与 CLI 包 README 的关系: CLI 包 README 的安全防护节从本文裁剪而来 (挑出分量重的条目, 写成面向用户的功能细节); 本文是全量版。
 > 权威: 行为语义以包级设计文档 (`packages/sweep-node-modules/docs/designs/` 与 `packages/sweep-node-modules-cli/docs/designs/`) 与 `packages/sweep-node-modules/docs/protocol/behavior-contract.md` 的编号条款为准; 本文是面向读者的一份整理稿, 依据都在写作时对照实现核验过。
-> 路径约定: 下文「依据」中的 `src/xxx.ts` 为简写。归属 CLI 包 (`packages/sweep-node-modules-cli/src/`) 的是 `cli.ts` / `render.ts` / `help.ts` / `init.ts`; 其余 (`guard.ts` / `scan-parallel.ts` / `delete.ts` / `config.ts` / `size-du.ts` / `size.ts` / `size-js.ts` / `skip.ts` / `classify.ts` / `types.ts` / `scan.ts` / `runtime.ts` / `display.ts` / `sweep.ts`) 归 API 包 (`packages/sweep-node-modules/src/`)。
+> 路径约定: 下文「依据」中的 `src/xxx.ts` 为简写。归属 CLI 包 (`packages/sweep-node-modules-cli/src/`) 的是 `cli.ts` / `render.ts` / `help.ts` / `init.ts`; 其余 (`guard.ts` / `scan-parallel.ts` / `delete.ts` / `delete-review.ts` / `config.ts` / `size-du.ts` / `size.ts` / `size-js.ts` / `skip.ts` / `classify.ts` / `types.ts` / `scan.ts` / `runtime.ts` / `display.ts` / `sweep.ts`) 归 API 包 (`packages/sweep-node-modules/src/`)。
 
 ## 目录
 
@@ -68,17 +68,17 @@
 
 **A6. 动手删除前逐级复核路径, 半路被掉包就整批停手**
 
-- 依据: `src/delete.ts` 的 `reviewComponents` (自根至目标父目录逐级 `lstat`) 与 `removeTargets` (复核紧跟删除, 压缩替换窗口); 测试 `src/delete.contract.test.ts`。
+- 依据: `src/delete-review.ts` 的 `reviewComponents` / `reviewPathOnDisk` (自根至目标父目录逐级 `lstat`) 与 `src/delete.ts` 的 `removeTargets` (复核紧跟删除, 压缩替换窗口); 测试 `src/delete.contract.test.ts`。
 - 边界: 复核只缩短窗口, 不构成零窗口保证, 复核与 `rm` 之间的微秒级窗口如实登记为残余风险 (见 G 节)。
 
-**A7. 配置里的根自身被掉包成符号链接, 删除整批中止**
+**A7. 配置里的根或其任一祖先被掉包成符号链接, 删除整批中止 (不可核验亦 fail-closed 拒删)**
 
-- 依据: `src/delete.ts` 的 `isSymlinkHead` (链头判定, 判配置拼写); 测试 `src/delete.contract.test.ts`。
+- 依据: `src/delete-review.ts` 的 `rootAncestorChain` 与 `reviewPathOnDisk` (删前对信任根的 `configured` 与 `real` 完整祖先链逐级 `lstat`, 非真目录触发 `REVIEW_HEAD_SYMLINK` 整批中止, 消失或不可核验按 fail-closed 记单条 `failed` 拒删); 测试 `src/delete.contract.test.ts` 与 `src/delete.result-shape.test.ts`。
 - 边界: 仅删除侧; 扫描侧照常 (见 B1)。
 
 **A8. 删除目标是符号链接时只删链接, 不跟进到它指向的目录**
 
-- 依据: `src/delete.ts` 的 `componentChain` (复核链不含末段) 与 `fs.rm` 的 lstat 语义; 契约 EC-04; 测试 `src/delete.contract.test.ts`。
+- 依据: `src/delete-review.ts` 的 `componentChain` (复核链不含末段) 与 `fs.rm` 的 lstat 语义; 契约 EC-04; 测试 `src/delete.contract.test.ts`。
 
 **A9. 疑似安装树默认不进删除批 (删了装不回来的那类, 先拦下)**
 
@@ -160,10 +160,10 @@
 - 依据: `src/guard.ts` 的锚点判定; `src/help.ts` 与 `src/init.ts` 的改写指引文案; README 的配置节。
 - 边界: 改写真身形态即放行; 让诚实路径多改一次拼写是明示的代价, 白名单按名字挑, 会被同一命名方式绕过。
 
-**B6. 写入侧: 配置路径 (含祖先链) 有符号链接, `init` 拒写、一个字节不落**
+**B6. 写入侧: 配置路径为既有目录或锚点链 (含祖先链) 有符号链接, `init` 双阶段拒写、一个字节不落**
 
-- 依据: 契约 BC-40; `src/guard.ts` 的 `firstSymlinkOnTarget` 与 `src/init.ts` 的落盘前锚点检查; 测试 `src/init.test.ts`; 冒烟 `src/init.smoke.ts`。
-- 边界: 仅 TTY 向导; 悬空链接同样命中 (覆盖检查先问「是否覆盖」, 随后在写入面被拒)。
+- 依据: 契约 BC-40; `src/guard.ts` 的 `firstSymlinkOnTarget` 与 `src/init.ts` 的 `checkConfigTarget` 双阶段校验 (进入覆盖确认与三问前先前置拒绝并直接取消退出; 确认写入后、落盘前做 TOCTOU 二次复检, 命中则拒写并重问 `确认写入? (y/N)`); 测试 `src/init.test.ts`; 冒烟 `src/init.smoke.ts`。
+- 边界: 仅 TTY 向导; 既有目录与悬空链接均在前置阶段直接报错取消退出, 不进入覆盖确认与三问。
 
 **B7. 悬空符号链接照样认得出 (lstat 不跟进末段)**
 
@@ -179,9 +179,9 @@
 - 依据: `src/guard.ts` 的根锚点判定 (根不可解析时该根无归属目标); 测试 `src/guard.contract.test.ts`。
 - 边界: 最终仍是「任一被拒即整批拒绝」的保守口径。
 
-**B10. 删除复核与目标同源拼写 (归属不明的目标一律不删)**
+**B10. 删除复核与目标同源拼写 (入口形态违约或归属不明的目标一律不删)**
 
-- 依据: `src/delete.ts` 的 `TrustRoot` (配置拼写与 realpath 归一在类型上强制配对)、`isUnder` 与 `toTrustRoots` (原 `cli.ts` 私有 `trustRoots` 的提升形态); 测试 `src/delete.contract.test.ts`。
+- 依据: `src/delete.ts` 的 `TrustRoot` (配置拼写与 realpath 归一在类型上强制配对) 与 `toTrustRoots`, `src/delete-review.ts` 的 `resolveTargetRootSync` (入口形态硬拒绝尾分隔符 / `.` / `..` / 非 `node_modules` 末段 + `insideAnyRoot` 归属判定); 测试 `src/delete.contract.test.ts` 与 `src/delete.result-shape.test.ts`。
 
 ## C. 防注入与伪造
 
@@ -238,8 +238,8 @@
 
 **C11. 启动器挑运行时不搜当前工作目录 (防被扫目录里的同名程序顶替运行时)**
 
-- 依据: 契约 EC-08; `bin/sweep-nm.mjs` 的 `resolveWin32Executable` (按 PATH 解析绝对路径, 空条目与相对条目跳过) 与 `pickRuntime`; `bin/sweep-nm.cmd` 的 PATH 展开修饰符; `bin/sweep-nm` (POSIX 裸名查找本就只按 PATH); 测试 `src/launcher.runtime-resolution.test.ts`; ADR 0007 决策第 4 条补记。
-- 边界: win32 侧的解析防御与 `.cmd` 启动器整体未经真机验证 (见 G 节); `size-du.ts` 的 `findDu` 同批加了 win32 守卫, 属同一审计带出的同型修复。
+- 依据: 契约 EC-08; `bin/sweep-nm.mjs` 的 `resolveWin32Executables` (按 PATH 解析绝对路径, 空条目、相对条目与盘根相对条目跳过) 与 `pickRuntime`; `bin/sweep-nm.cmd` 的 PATH 展开修饰符; `bin/sweep-nm` (POSIX 裸名查找本就只按 PATH); 测试 `src/launcher.runtime-resolution.test.ts`; ADR 0007 决策第 4 条补记。
+- 边界: npm 分发的 `bin/sweep-nm.mjs` 已由真机 Windows CI (`verify-windows`) 覆盖, 仅源码检出用的 `.cmd` 启动器未在 CI 独立实跑 (见 G 节); `size-du.ts` 的 `findDu` 同批加了 win32 守卫, 属同一审计带出的同型修复。
 
 ## D. 保守默认
 
@@ -404,7 +404,7 @@
 **F6. 三个入口 (sh / cmd / npm mjs 启动器) 职责同逻辑: 挑运行时 (Bun 优先、Node 回退), 参数与退出码原样透传**
 
 - 依据: `bin/sweep-nm` / `bin/sweep-nm.cmd` / `bin/sweep-nm.mjs`; 测试 `src/npm-launcher.smoke.test.ts`; ADR 0007。
-- 边界: `bin/sweep-nm.cmd` 未经 Windows 真机验证, 本文如实标注 (见 G 节)。
+- 边界: 面向源码检出的 `bin/sweep-nm.cmd` 未在 Windows CI 独立实跑, 本文如实标注 (见 G 节)。
 
 **F7. 找不到运行时给出可操作提示并非零退出 (不是静默失败)**
 
@@ -413,7 +413,7 @@
 **F8. 平台可移植: win32 路径大小写折叠、`%APPDATA%` 默认配置路径、核心功能零 POSIX 假设**
 
 - 依据: ADR 0007; `src/guard.ts` 的路径风味注入 (`PathStyle`); `src/config.ts` 的平台默认路径; 测试 `src/config.contract.test.ts`。
-- 边界: 真机行为未验 (契约 EC-03 登记), 本文不作强承诺。
+- 边界: 核心逻辑与测试套件已由真机 Windows CI (`verify-windows`) 常驻覆盖, 仅源码检出用的 `.cmd` 启动器未在 CI 独立实跑 (见 G 节)。
 
 **F9. 零运行时依赖 + 无网络调用 (运行路径只用运行时内置模块)**
 
@@ -458,9 +458,9 @@
 - 依据: `src/init.ts` 的 `createReadlineIO` (单 interface 长存 + 自管行缓冲); 冒烟驱动器 `src/init.smoke.ts` (挂死即超时判失败)。
 - 边界: 仅向导交互路径。
 
-**F18. 「不存在」与「测不到」严格分桶: 不存在的目标告警跳过、不进任何桶 (不伪造 0 字节); 存在的结构化记 `unmeasured`、以占位行留在清单里 (不静默移出)**
+**F18. 「不存在」与「测不到」严格分桶: 不存在的目标告警并单列 `gone` 桶 (不进 `entries` / `unmeasured`, 不伪造 0 字节, 三桶构成入参全划分); 存在但测不到的结构化记 `unmeasured`、以占位行留在清单里 (不静默移出)**
 
-- 依据: 契约 BC-13 / BC-14; `src/types.ts` 的 `UnmeasuredEntry`; `src/size-du.ts` 与 `src/size-js.ts` 的分桶; 测试 `src/size.contract.test.ts`; 语料 `size-unmeasured-preview`。
+- 依据: 契约 BC-13 / BC-14 / BC-43; `src/types.ts` 的 `SizeResult` (`entries` / `unmeasured` / `gone`) 与 `UnmeasuredEntry`; `src/size-du.ts` 与 `src/size-js.ts` 的分桶; 测试 `src/size.contract.test.ts` 与 `src/size.result-shape.test.ts`; 语料 `size-unmeasured-preview` / `api-size-gone-bucket` / `api-size-three-buckets-and-warning`。
 
 **F19. 体积未测到显示 `?` + 中性色块 + 行尾原因 (与 0 B 区分开)**
 
@@ -487,10 +487,10 @@
 
 一份只讲承诺、不讲账的清单, 不值得信任。这 14 类账目同样是这套保障的一部分。
 
-1. **金样本语料与覆盖表**: 82 条金样本语料 (57 条 cli 面 + 25 条 api 面) 在双载体 (bun / node) 上全量全绿, 覆盖表登记「条款 × 语料」的覆盖关系与逐条豁免理由 (不可黑盒项写明理由)。
+1. **金样本语料与覆盖表**: 全量金样本语料 (现行实况 87 条 = 57 条 CLI 面 + 30 条 API 面, 实时权威口径与逐条映射以 `coverage.md` 为准, 由确定性闸门 `validate-coverage.ts` 执行三角对账) 在双载体 (bun / node) 上全量全绿, 覆盖表登记「条款 × 语料」的覆盖关系与逐条豁免理由 (不可黑盒项写明理由)。
    - 依据: `packages/sweep-node-modules/docs/protocol/conformance/coverage.md` 全篇。
    - 不进 README 的理由: 开发侧验收资产, 用户无从操作或验证。
-2. **变异自证**: 故意往实现里注入缺陷 (剪枝谓词取反、退出码吞掉、排序缺失等六个 mutant), 看语料抓不抓得住, 抓不住的语料不算数; 现行抓取数为 44 / 15 / 6 / 6 / 7 / 31 (2026-09-30 重测; 排序缺失这一项, 抓取数随调度波动, 判据取不少于 2)。
+2. **变异自证**: 故意往实现里注入缺陷 (覆盖 CLI / API 三态矩阵的 8 个 mutant: 剪枝谓词取反、退出码吞掉、排序缺失、排除静默失效、提示语删改、体积计数单位错、体积 `gone` 桶丢弃、终结事件丢失), 看语料抓不抓得住, 抓不住的语料不算数; 实时抓取数矩阵与代表用例以 `coverage.md`「变异自证」为准 (不在此处重复抄录明细, 防计数漂移)。
    - 依据: `coverage.md` 的「变异自证」一节。
    - 不进 README 的理由: 属「测试体系有多狠」这一类账目, 面向维护者。
 3. **转写契约套件**: 为未来以 Rust / C 等语言重写准备的机械验收路径 (编号契约 + 金样本语料 + 确定性验收器), 被测命令只是参数, 语言中立。
@@ -508,9 +508,9 @@
 7. **残余风险登记**: 安全复核与删除之间仍有微秒级窗口、同型真目录换位不可识别、持续振荡可低成本触发整批中止 (fail-safe 方向) 等负面事实。属诚实账而非保障点, 精确措辞另立小节 (见下「已知残余风险」)。
    - 依据: `deletion-guard.md` 的「残余风险」。
    - 不进 README 的理由: 负面事实且用户无法据以行动, 写进用户面须另设段落精确措辞。
-8. **Windows 面未经真机验证**: `bin/sweep-nm.cmd` 启动器与 npm 的 cmd-shim 路径均未经 Windows 真机实跑, 属既有证据缺口。
-   - 依据: CLI 包 `bin/sweep-nm.cmd` 的文件头标注; ADR 0007 决策第 4 条。
-   - 不进 README 的理由: 写进用户面就是对未验形态作承诺; 本文档内亦按「未经真机验证」如实标注。
+8. **Windows 真机验证边界**: CI 已常驻真机 Windows 任务 (`verify-windows`, `windows-latest`), 覆盖构建、双包核心测试与 npm 启动器 (`bin/sweep-nm.mjs`); 仅面向源码检出的 `bin/sweep-nm.cmd` 批处理脚本未纳入独立实跑, 登记为已知剩余缺口。
+   - 依据: `.github/workflows/ci.yml` 的 `verify-windows` job; CLI 包 `bin/sweep-nm.cmd` 的文件头标注; ADR 0007 决策第 4 条。
+   - 不进 README 的理由: 细粒度 CI 覆盖边界属工程内部账目; 用户面只作结论性披露。
 9. **提交闸门的质量账**: 提交闸门只覆盖本机已装的运行时 (缺 node 时 node 侧用例静默跳过而整体仍全绿); 转写验收现由 pre-push 与 CI 自动双跑 (conformance 双 target), 不再依赖手动。
    - 依据: ADR 0005 的「代价」; `docs/development.md` 的「运行时双跑」。
    - 不进 README 的理由: 维护者视角的质量账目。

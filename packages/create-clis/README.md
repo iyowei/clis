@@ -95,7 +95,7 @@ What lands on disk is a standalone new collection repo, on its own from the mome
 
 - **The engineering skeleton**: workspaces / turbo / the root tsconfig / the config family (oxlint / prettier / editorconfig / gitattributes / gitignorerc / nvmrc / bunfig) / the version pin;
 - **Commit hooks**: lefthook + `install-git-hooks` (degrading gracefully when lefthook is absent) + `safe-install`;
-- **The gate chain, single-source**: `scripts/ci.ts` holds the one step list (manual full runs, pre-push, CI, and the release verify job all call into it), and `bun run ci` runs the whole thing;
+- **The gate chain, single-source**: `scripts/ci.ts` holds the one step list (manual full runs, pre-push, CI, and the release `checks` workflow call all go through it), and `bun run ci` runs the whole thing;
 - **The release pipeline**: semantic-release, OIDC trusted publishing behind a manual environment approval, a release-credential pre-flight, and per-package release self-checks;
 - **The docs skeleton**: a docs index / designs as minimal units / an ADR template / CONTRIBUTING / SECURITY / a code of conduct;
 - **AI-assistant files**: AGENTS.md and recommended `.vscode` settings;
@@ -110,8 +110,8 @@ A published version is proof, not a promise: it generated a complete project, in
 Package scripts:
 
 - `bun run build`: emits both artifacts: the template assets (`assets/template/`, built from this repo by the skeleton manifest) and the executable bundle (`dist/`, with the manifest the launcher reconciles it against);
-- `bun run verify:release`: the pre-release check: clean checkout, artifacts built from this commit, manifest consistency, and the packed tarball matching the file whitelist;
-- `bun run heavy-smoke`: the heavyweight smoke: generate a complete default `standard`-tier project using the already-verified immutable assets and run its whole gate chain, green or nothing.
+- `bun run verify:release`: the pre-release check: clean checkout, artifacts built from this commit, manifest consistency, the `256 KiB` bundle size cap on `dist/create-clis.js`, and the packed tarball matching the file whitelist;
+- `bun run heavy-smoke`: the heavyweight smoke: packs the already-verified immutable package via `npm pack`, installs it in an isolated temporary directory (`npm install --omit=dev`), and exercises two scenarios through the installed binary — generating a default `standard`-tier project and running its entire `bun run ci` green, plus generating a scoped `core`-tier project and verifying its pruned structure and neutral build scripts.
 
 `prepublishOnly` strings the three together, so every published version carries its own proof: the project it generates is green. The design docs (package design / contract / tiers / snapshot mechanism) are all in [docs/designs/](https://github.com/iyowei/clis/tree/main/docs/designs).
 
