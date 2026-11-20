@@ -110,7 +110,7 @@ podman exec "$C" mongosh "$URI" --quiet --eval '
 - **业务高可用连接串** (写全 3 节点且**禁止**附带 `directConnection=true`):
 
   ```text
-  mongodb://<USER>:<PWD>@node1:27117,node2:27117,node3:27117/<DB>?replicaSet=rs0&authSource=<DB>&compressors=zstd
+  mongodb://<USER>:<PWD>@node1:27117,node2:27117,node3:27117/<DB>?replicaSet=rs0&authSource=<DB>
   ```
 
 - **从节点热备与礼貌切主**: `make backup` 自动优先从 `SECONDARY` 节点读取数据; 不停服重启时先逐台重启从机, 轮到主机前执行 `podman exec "$C" mongosh "$URI" --quiet --eval 'rs.stepDown(60)'` 让主后再维护。

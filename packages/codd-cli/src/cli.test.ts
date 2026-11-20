@@ -341,6 +341,16 @@ describe('构建产物双运行时与工作目录隔离验证 (Bun & Node)', () 
           const generatedBundles = readdirSync(join(workDir, 'dist'));
           expect(generatedBundles.length).toBe(1);
           expect(generatedBundles[0]?.startsWith('mongo-staging-')).toBe(true);
+          const bundleRoot = join(workDir, 'dist', generatedBundles[0]!);
+          const bundleEnv = readFileSync(join(bundleRoot, '.env'), 'utf8');
+          expect(bundleEnv).toContain('BACKUP_MIN_FREE_MB=2560');
+          expect(bundleEnv).toContain('BACKUP_MAX_TOTAL_MB=76800');
+          expect(readFileSync(join(bundleRoot, 'backup.ts'), 'utf8')).toContain(
+            'pruneByTotalBudget',
+          );
+          expect(readFileSync(join(bundleRoot, 'Makefile'), 'utf8')).toContain(
+            'rotate-backup-log:',
+          );
           expect(existsSync(join(workDir, '.codd-state/.gitignore'))).toBe(
             true,
           );

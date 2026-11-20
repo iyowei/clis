@@ -132,10 +132,12 @@ describe('Podman 单节点、密码轮换与 P0/P1 修复验证', () => {
       const creds1 = readFileSync(r1.credentialsFile, 'utf8');
       expect(creds1).toContain('全网卡监听连接串');
       expect(creds1).toContain(
-        '@127.0.0.1:27117/orders?authSource=orders&directConnection=true&compressors=zstd',
+        '@127.0.0.1:27117/orders?authSource=orders&directConnection=true\n',
       );
-      expect(creds1).toContain(
-        '@mongo:27117/orders?authSource=orders&compressors=zstd',
+      expect(creds1).toContain('@mongo:27117/orders?authSource=orders\n');
+      expect(creds1).toContain('snappy,zstd,zlib');
+      expect(readFileSync(join(b1, 'mongod.conf'), 'utf8')).toContain(
+        'compressors: "snappy,zstd,zlib"',
       );
 
       const bundlePkg = JSON.parse(
@@ -211,9 +213,7 @@ describe('Podman 单节点、密码轮换与 P0/P1 修复验证', () => {
       expect(composeAlias).not.toContain('- mongo\n');
       expect(composeAlias).toContain(`MONGO_HOST: ${aliasHost}`);
       const credsAlias = readFileSync(rAlias.credentialsFile, 'utf8');
-      expect(credsAlias).toContain(
-        `@${aliasHost}:27117/app?authSource=app&compressors=zstd`,
-      );
+      expect(credsAlias).toContain(`@${aliasHost}:27117/app?authSource=app\n`);
 
       const rHost = generateBundle({
         workDir: ws.tmpDir,
@@ -319,9 +319,9 @@ describe('多节点副本集、Kubernetes 与红线拦截验证', () => {
       expect(env0).toContain('RS_ROLE=primary');
       expect(env0).toContain('RS_PEER_1=node2:10.8.0.12');
       expect(compose0).toContain('network_mode: host');
-      expect(readFileSync(res.credentialsFile, 'utf8')).toContain(
-        '&compressors=zstd',
-      );
+      const credsRs = readFileSync(res.credentialsFile, 'utf8');
+      expect(credsRs).toContain('?replicaSet=rs0&authSource=app\n');
+      expect(credsRs).toContain('snappy,zstd,zlib');
 
       expect(() =>
         generateBundle({
@@ -390,9 +390,9 @@ describe('多节点副本集、Kubernetes 与红线拦截验证', () => {
       expect(readFileSync(join(kDir, 'deploy.sh'), 'utf8')).toContain(
         '"$SCRIPT_DIR/chart"',
       );
-      expect(readFileSync(res.credentialsFile, 'utf8')).toContain(
-        '&compressors=zstd',
-      );
+      const credsK8s = readFileSync(res.credentialsFile, 'utf8');
+      expect(credsK8s).toContain('?replicaSet=rs0&authSource=main\n');
+      expect(credsK8s).toContain('snappy,zstd,zlib');
 
       const mBadFp = writeManifest(
         ws.tmpDir,

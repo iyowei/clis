@@ -129,6 +129,16 @@
       "default": 4,
       "description": "[选填] 按每个业务库独立保留的周日长期归档份数 (weekly 子目录)。不填默认保留 4 份。"
     },
+    "backupMinFreeMb": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "[选填] 备份前目标挂载盘须保留的最低可用空间下限 (MB, 设 0 关闭前置检查)。不填按数据盘容量自动推导 (1024-10240 MB), 并额外叠加同库上次归档体积 1.5 倍安全余量, 防备份打满磁盘。"
+    },
+    "backupMaxTotalMb": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "[选填] 实例备份目录 (含 weekly/) 的总物理容量硬上限 (MB, 设 0 仅按份数裁剪)。不填按数据盘容量自动推导 (4096-524288 MB), 超限时按最旧优先淘汰旧归档但每库至少死守最新 1 份。"
+    },
     "apps": {
       "type": "array",
       "minItems": 1,

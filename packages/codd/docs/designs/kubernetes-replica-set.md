@@ -97,7 +97,7 @@ kubectl -n data exec "${REL}-0" -c mongo -- mongosh \
 - **集群内高可用连接串** (**禁止**附带 `directConnection=true`, 写全 3 节点 Headless FQDN):
 
   ```text
-  mongodb://<USER>:<PWD>@<REL>-0.<REL>-headless.data.svc.cluster.local:27117,<REL>-1.<REL>-headless.data.svc.cluster.local:27117,<REL>-2.<REL>-headless.data.svc.cluster.local:27117/<DB>?replicaSet=rs0&authSource=<DB>&compressors=zstd
+  mongodb://<USER>:<PWD>@<REL>-0.<REL>-headless.data.svc.cluster.local:27117,<REL>-1.<REL>-headless.data.svc.cluster.local:27117,<REL>-2.<REL>-headless.data.svc.cluster.local:27117/<DB>?replicaSet=rs0&authSource=<DB>
   ```
 
 - **礼貌切主与三 PVC 等大扩盘**:

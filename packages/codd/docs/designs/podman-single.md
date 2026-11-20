@@ -108,8 +108,8 @@ podman exec "$C" mongosh "$APP_URI" --quiet --eval 'db.__deploy_smoke.drop()'
 
 ### 1. 连接串 (完整凭据已存放在开发机 `.codd-state/single-<name>.credentials.txt`)
 
-- **同桥接网络业务容器** (挂 external 网络 `${STACK_PREFIX}-${FINGERPRINT}-net`): `mongodb://<USER>:<PWD>@mongo:<PORT>/<DB>?authSource=<DB>&compressors=zstd`
-- **宿主机本机进程** (`bindIp` 默认 `127.0.0.1`): `mongodb://<USER>:<PWD>@127.0.0.1:<HOST_PORT>/<DB>?authSource=<DB>&directConnection=true&compressors=zstd`
+- **同桥接网络业务容器** (挂 external 网络 `${STACK_PREFIX}-${FINGERPRINT}-net`): `mongodb://<USER>:<PWD>@mongo:<PORT>/<DB>?authSource=<DB>`
+- **宿主机本机进程** (`bindIp` 默认 `127.0.0.1`): `mongodb://<USER>:<PWD>@127.0.0.1:<HOST_PORT>/<DB>?authSource=<DB>&directConnection=true`
 - **异地通过 WireGuard / 组网远程连接 (免手敲终端隧道的两种方式)**:
   1. **只用 MongoDB Compass 看库** (保持 `bindIp="127.0.0.1"`): 在 Compass 展开 `Advanced Connection Options -> Proxy/SSH -> SSH with Identity File`, 填服务器内网/WireGuard IP、登录用户名与本机私钥并存书签, 主连接仍填 `127.0.0.1:<HOST_PORT>`, 无需在终端挂 `ssh -L` 进程。
   2. **本地写代码跑服务 + Compass 都要免隧道直连** (仅限家庭路由器 NAT 后内网主机或已配云安全组白名单的主机): 将清单中 `nodes[0].bindIp` 设为 `"0.0.0.0"` 重新生成并 `make up`, 即可在家用局域网 IP、在外用 WireGuard IP、在服务器本机用 `127.0.0.1` 三路直连。

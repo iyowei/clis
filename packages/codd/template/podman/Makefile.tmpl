@@ -12,8 +12,9 @@ MONGO_PORT := $(or $(MONGO_PORT),{{MONGO_PORT}})
 MONGO_HOST_PORT := $(or $(MONGO_HOST_PORT),{{MONGO_HOST_PORT}})
 TOOLS_IMAGE := $(TOOLS_IMAGE_NAME):$(MONGO_IMAGE_TAG)
 CONTAINER := $(STACK_PREFIX)-$(FINGERPRINT)
+BACKUP_LOG_MAX_BYTES ?= 5242880
 
-.PHONY: help up down logs status init tools tools-rebuild backup drill restore stats shell check-env check-perf tune-host
+.PHONY: help up down logs status init tools tools-rebuild backup rotate-backup-log drill restore stats shell check-env check-perf tune-host
 
 help:
 	@echo "可用命令 (可通过 ENV=.env.other 指定环境文件, 默认 .env):"
@@ -120,7 +121,31 @@ tools: check-env
 tools-rebuild: check-env
 	$(COMPOSE) --profile tools build --no-cache mongo-tools
 
-backup: check-env tools
+rotate-backup-log:
+	@for pl in com.codd.mongo-backup-*.plist; do \
+		[ -f "$$pl" ] || continue; \
+		log_file="$$(awk '/<key>StandardOutPath<\/key>/{getline; sub(/^.*<string>/, ""); sub(/<\/string>.*$$/, ""); print; exit}' "$$pl")"; \
+		case "$$log_file" in /*) \
+			case "$$log_file" in *'<'*) ;; *) \
+				if [ -f "$$log_file" ]; then \
+					log_size="$$(wc -c < "$$log_file" | tr -d ' ')"; \
+					if [ "$$log_size" -ge "$(BACKUP_LOG_MAX_BYTES)" ]; then \
+						cp -f "$$log_file" "$$log_file.1" 2>/dev/null || true; \
+						: > "$$log_file"; \
+					fi; \
+				fi ;; \
+			esac ;; \
+		esac; \
+	done
+	@if [ -n "$(BACKUP_LOG_FILE)" ] && [ -f "$(BACKUP_LOG_FILE)" ]; then \
+		log_size="$$(wc -c < "$(BACKUP_LOG_FILE)" | tr -d ' ')"; \
+		if [ "$$log_size" -ge "$(BACKUP_LOG_MAX_BYTES)" ]; then \
+			cp -f "$(BACKUP_LOG_FILE)" "$(BACKUP_LOG_FILE).1" 2>/dev/null || true; \
+			: > "$(BACKUP_LOG_FILE)"; \
+		fi; \
+	fi
+
+backup: check-env rotate-backup-log tools
 	$(TOOLS) bun run backup.ts
 
 drill: check-env tools

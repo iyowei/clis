@@ -24,7 +24,7 @@ data:
       ipv6: false
       maxIncomingConnections: {{ default 100 .Values.config.net.maxIncomingConnections }}
       compression:
-        compressors: {{ default "snappy,zstd" (dig "compression" "compressors" "snappy,zstd" .Values.config.net) | quote }}
+        compressors: {{ default "snappy,zstd,zlib" (dig "compression" "compressors" "snappy,zstd,zlib" .Values.config.net) | quote }}
     security:
       authorization: {{ .Values.config.security.authorization | quote }}
       keyFile: {{ .Values.config.security.keyFile | quote }}

@@ -63,7 +63,7 @@ config:
     bindIpAll: true
     maxIncomingConnections: 100
     compression:
-      compressors: snappy,zstd
+      compressors: snappy,zstd,zlib
   storage:
     wiredTiger:
       collectionConfig:

@@ -1,6 +1,6 @@
 import { spawn } from 'node:child_process';
 import { createReadStream } from 'node:fs';
-import { readdir, stat } from 'node:fs/promises';
+import { copyFile, link, readdir, rm, stat, statfs } from 'node:fs/promises';
 import { join } from 'node:path';
 import { Writable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
@@ -249,3 +249,214 @@ export const isSunday = (d = new Date()): boolean =>
     timeZone: process.env.TZ || 'Asia/Shanghai',
     weekday: 'short',
   }) === 'Sun';
+
+const STALE_PARTIAL_RE =
+  /^mongo-[A-Za-z0-9_-]+-\d{8}_\d{6}\.archive\.gz\.partial$/;
+
+/** 格式化字节数为人类可读单位 (B / KiB / MiB / GiB) */
+export const formatBytes = (bytes: number): string => {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KiB`;
+  if (bytes < 1024 * 1024 * 1024) {
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MiB`;
+  }
+  return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GiB`;
+};
+
+/** 清理超过 maxAgeMs 未修改的异常中断残留 .partial 半成品归档 (默认 6 小时) */
+export const cleanStalePartials = async (
+  dir: string,
+  maxAgeMs = 6 * 3600 * 1000,
+  nowMs = Date.now(),
+): Promise<string[]> => {
+  let names: string[];
+  try {
+    names = await readdir(dir);
+  } catch {
+    return [];
+  }
+  const removed: string[] = [];
+  for (const name of names) {
+    if (!STALE_PARTIAL_RE.test(name)) continue;
+    const full = join(dir, name);
+    try {
+      const st = await stat(full);
+      if (nowMs - st.mtimeMs >= maxAgeMs) {
+        await rm(full, { force: true });
+        removed.push(name);
+      }
+    } catch {
+      // 文件已被并发清理时跳过
+    }
+  }
+  return removed;
+};
+
+export interface FsStatLike {
+  bavail: number | bigint;
+  bsize: number | bigint;
+  frsize?: number | bigint;
+}
+
+/** 校验备份目标挂载点可用空间是否满足安全底线 + 预估新增归档体积; minFreeMb<=0 时跳过 */
+export const assertEnoughDiskSpace = async (opts: {
+  dir: string;
+  minFreeMb: number;
+  estimatedNewBytes?: number;
+  readFs?: (path: string) => Promise<FsStatLike>;
+}): Promise<number> => {
+  const { dir, minFreeMb, estimatedNewBytes = 0, readFs = statfs } = opts;
+  if (minFreeMb <= 0) return -1;
+  const info = await readFs(dir);
+  const frsize = Number(info.frsize ?? 0);
+  const unit = frsize > 0 ? frsize : Number(info.bsize);
+  const availBytes = Number(info.bavail) * unit;
+  const minFreeBytes = minFreeMb * 1024 * 1024;
+  const estBytes = Math.max(0, Math.ceil(estimatedNewBytes));
+  const requiredBytes = minFreeBytes + estBytes;
+  if (availBytes < requiredBytes) {
+    throw new FatalError(
+      `备份目录 ${dir} 可用磁盘空间不足: 当前剩余 ${formatBytes(availBytes)}, 低于安全下限 ${formatBytes(requiredBytes)} (底线 ${minFreeMb} MiB + 预估新增 ${formatBytes(estBytes)}), 已中止本次备份以防写满磁盘并保留既有历史备份`,
+    );
+  }
+  return availBytes;
+};
+
+/** 周日归档优先创建硬链接零复制复用物理块; 不支持硬链接的文件系统自动降级拷贝 */
+export const linkOrCopyFile = async (
+  src: string,
+  dst: string,
+  linkFn: (existingPath: string, newPath: string) => Promise<void> = link,
+  copyFn: (source: string, dest: string) => Promise<void> = copyFile,
+): Promise<'link' | 'copy'> => {
+  try {
+    await linkFn(src, dst);
+    return 'link';
+  } catch {
+    await copyFn(src, dst);
+    return 'copy';
+  }
+};
+
+interface BackupEntry {
+  fullPath: string;
+  relPath: string;
+  db: string;
+  isWeekly: boolean;
+  size: number;
+  mtimeMs: number;
+  inodeKey: string;
+}
+
+const collectBackupEntries = async (
+  dir: string,
+  isWeekly: boolean,
+): Promise<BackupEntry[]> => {
+  let names: string[];
+  try {
+    names = await readdir(dir);
+  } catch {
+    return [];
+  }
+  const out: BackupEntry[] = [];
+  for (const name of names) {
+    const db = parseBackupDb(name);
+    if (!db) continue;
+    const fullPath = join(dir, name);
+    try {
+      const st = await stat(fullPath);
+      const inodeKey = st.ino > 0 ? `${st.dev}:${st.ino}` : fullPath;
+      out.push({
+        fullPath,
+        relPath: isWeekly ? `weekly/${name}` : name,
+        db,
+        isWeekly,
+        size: st.size,
+        mtimeMs: st.mtimeMs,
+        inodeKey,
+      });
+    } catch {
+      // 忽略已移除条目
+    }
+  }
+  return out;
+};
+
+const pickProtectedEntries = (entries: BackupEntry[]): Set<string> => {
+  const latestDaily = new Map<string, BackupEntry>();
+  const latestAny = new Map<string, BackupEntry>();
+  for (const e of entries) {
+    const prevAny = latestAny.get(e.db);
+    if (!prevAny || e.mtimeMs > prevAny.mtimeMs) latestAny.set(e.db, e);
+    if (!e.isWeekly) {
+      const prevDaily = latestDaily.get(e.db);
+      if (!prevDaily || e.mtimeMs > prevDaily.mtimeMs) latestDaily.set(e.db, e);
+    }
+  }
+  const protectedPaths = new Set<string>();
+  for (const [db, anyEntry] of latestAny) {
+    protectedPaths.add((latestDaily.get(db) ?? anyEntry).fullPath);
+  }
+  return protectedPaths;
+};
+
+/**
+ * 总物理容量硬上限裁剪 (inode 去重计算, 防硬链接重复计费):
+ * 超过 maxTotalMb 时按修改时间从最旧起淘汰旧归档, 死守每个业务库至少保留最新 1 份备份。
+ */
+export const pruneByTotalBudget = async (opts: {
+  rootDir: string;
+  weeklyDir: string;
+  maxTotalMb: number;
+  onDelete?: (relPath: string, size: number) => void;
+}): Promise<{ deleted: string[]; totalBytes: number; overBudget: boolean }> => {
+  const { rootDir, weeklyDir, maxTotalMb, onDelete } = opts;
+  const entries = [
+    ...(await collectBackupEntries(rootDir, false)),
+    ...(await collectBackupEntries(weeklyDir, true)),
+  ];
+  const inodeRefCount = new Map<string, number>();
+  const inodeSize = new Map<string, number>();
+  for (const e of entries) {
+    inodeRefCount.set(e.inodeKey, (inodeRefCount.get(e.inodeKey) ?? 0) + 1);
+    if (!inodeSize.has(e.inodeKey)) inodeSize.set(e.inodeKey, e.size);
+  }
+  let totalBytes = 0;
+  for (const sz of inodeSize.values()) totalBytes += sz;
+  if (maxTotalMb <= 0) {
+    return { deleted: [], totalBytes, overBudget: false };
+  }
+  const maxBytes = maxTotalMb * 1024 * 1024;
+  if (totalBytes <= maxBytes) {
+    return { deleted: [], totalBytes, overBudget: false };
+  }
+
+  const protectedPaths = pickProtectedEntries(entries);
+  const protectedInodes = new Set<string>();
+  for (const e of entries) {
+    if (protectedPaths.has(e.fullPath)) protectedInodes.add(e.inodeKey);
+  }
+
+  const candidates = entries
+    .filter(
+      (e) =>
+        !protectedPaths.has(e.fullPath) && !protectedInodes.has(e.inodeKey),
+    )
+    .sort((a, b) => {
+      if (a.mtimeMs !== b.mtimeMs) return a.mtimeMs - b.mtimeMs;
+      return a.isWeekly === b.isWeekly ? 0 : a.isWeekly ? -1 : 1;
+    });
+
+  const deleted: string[] = [];
+  for (const e of candidates) {
+    if (totalBytes <= maxBytes) break;
+    await rm(e.fullPath, { force: true });
+    deleted.push(e.relPath);
+    onDelete?.(e.relPath, e.size);
+    const nextRef = (inodeRefCount.get(e.inodeKey) ?? 1) - 1;
+    inodeRefCount.set(e.inodeKey, nextRef);
+    if (nextRef <= 0) totalBytes -= e.size;
+  }
+
+  return { deleted, totalBytes, overBudget: totalBytes > maxBytes };
+};

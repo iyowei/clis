@@ -154,6 +154,8 @@ const emitSinglePodmanNode = (opts: {
     MEMORY_LIMIT: sizing.memoryLimitPodman,
     MEMORY_RESERVATION: sizing.memoryReservationPodman,
     BACKUP_CONCURRENCY: sizing.backupConcurrency,
+    BACKUP_MIN_FREE_MB: manifest.backupMinFreeMb ?? sizing.backupMinFreeMb,
+    BACKUP_MAX_TOTAL_MB: manifest.backupMaxTotalMb ?? sizing.backupMaxTotalMb,
     KEEP_DAILY: manifest.keepDaily ?? 7,
     KEEP_WEEKLY: manifest.keepWeekly ?? 4,
   };
@@ -387,7 +389,7 @@ export const emitPodmanBundles = (ctx: PodmanEmitContext): void => {
     ctx.credLines.push('# 3 物理节点高可用自动切主连接串:');
     for (const app of manifest.apps) {
       ctx.credLines.push(
-        `mongodb://${app.user}:${state.appPasswords[app.db]}@${hostsJoined}/${app.db}?replicaSet=${rsName}&authSource=${app.db}&compressors=zstd`,
+        `mongodb://${app.user}:${state.appPasswords[app.db]}@${hostsJoined}/${app.db}?replicaSet=${rsName}&authSource=${app.db}`,
       );
     }
     ctx.nextSteps.push(

@@ -62,7 +62,7 @@ codd -h, --help                输出帮助说明
 
 - 默认落盘于 `<workDir>/.codd-state/` (目录权限 `0700`, 内置 `.gitignore` 内容为 `*`, 防明文凭证误提交业务 Git 仓)。
 - `<mode>-<name>.state.json` (`0600`): 幂等锁存 `fingerprint`、三类账号密码与 `keyFile`; 损坏 JSON 或非对象结构时包装为 `ConfigError` 明确报错, 不覆盖或静默重建。
-- `<mode>-<name>.credentials.txt` (`0600`): 输出各业务库最小权限连接串 (统一携带 `&compressors=zstd`, 仅留存本机, 严禁同步到目标服务器)。
+- `<mode>-<name>.credentials.txt` (`0600`): 输出各业务库最小权限开箱即连连接串 (省略可选 `compressors` 以兼容 Compass 与零三方依赖驱动, 注释注明按需追加 `zlib`/`zstd`; 仅留存本机, 严禁同步到目标服务器)。
 - `codd init` / `--init-schema` 在 `<workDir>` 写入 `deploy.schema.json`、`deploy-2c2g.json` (已存在不覆盖) 与 `.gitignore` (已存在跳过并明确提醒核对 `dist/` 与 `.codd-state/` 忽略规则)。
 
 ## 双运行时与产物自证规则

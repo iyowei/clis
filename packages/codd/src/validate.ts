@@ -39,6 +39,8 @@ const ALLOWED_KEYS = new Set([
   'multiNetAlias',
   'keepDaily',
   'keepWeekly',
+  'backupMinFreeMb',
+  'backupMaxTotalMb',
   'apps',
   'auth',
   'nodes',
@@ -295,10 +297,15 @@ const validateScalarFields = (m: DeployManifest): void => {
     checkPattern(m.bunImage, IMAGE_REF_RE, 'bunImage', true);
   if (m.tz !== undefined) checkPattern(m.tz, TZ_RE, 'tz');
   if (m.rsName !== undefined) checkPattern(m.rsName, RS_NAME_RE, 'rsName');
-  if (m.keepDaily !== undefined)
-    checkIntRange(m.keepDaily, 1, Number.MAX_SAFE_INTEGER, 'keepDaily');
-  if (m.keepWeekly !== undefined)
-    checkIntRange(m.keepWeekly, 0, Number.MAX_SAFE_INTEGER, 'keepWeekly');
+  for (const [k, min] of [
+    ['keepDaily', 1],
+    ['keepWeekly', 0],
+    ['backupMinFreeMb', 0],
+    ['backupMaxTotalMb', 0],
+  ] as const) {
+    if (m[k] !== undefined)
+      checkIntRange(m[k], min, Number.MAX_SAFE_INTEGER, k);
+  }
   if (m.multiNetAlias !== undefined && typeof m.multiNetAlias !== 'boolean') {
     throw new ConfigError('multiNetAlias 必须为布尔值 (true 或 false)');
   }

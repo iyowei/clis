@@ -48,7 +48,7 @@ config:
     port: {{PORT}}
     maxIncomingConnections: {{MAX_INCOMING_CONNECTIONS}}
     compression:
-      compressors: "snappy,zstd"
+      compressors: "snappy,zstd,zlib"
   storage:
     wiredTiger:
       collectionConfig:

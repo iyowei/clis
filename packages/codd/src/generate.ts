@@ -226,6 +226,11 @@ export const generateBundle = (
       });
     }
 
+    credLines.push(
+      '',
+      '# 传输压缩 (可选): 服务端已启用 snappy,zstd,zlib; 默认连接串省略 compressors 以兼容 Compass 与零依赖驱动',
+      '# 如需开启压缩, 可在连接串末尾追加 &compressors=zlib (Compass/各语言原生内置) 或安装 @mongodb-js/zstd 后追加 &compressors=zstd',
+    );
     writeSecretFile(stateFile, `${JSON.stringify(state, null, 2)}\n`, 0o600);
     writeSecretFile(credentialsFile, `${credLines.join('\n')}\n`, 0o600);
 

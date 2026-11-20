@@ -322,7 +322,7 @@ export const appendSingleCreds = (input: SingleCredsInput): void => {
     );
     for (const app of manifest.apps) {
       credLines.push(
-        `mongodb://${app.user}:${state.appPasswords[app.db]}@${bridgeHost}:${port}/${app.db}?authSource=${app.db}&compressors=zstd`,
+        `mongodb://${app.user}:${state.appPasswords[app.db]}@${bridgeHost}:${port}/${app.db}?authSource=${app.db}`,
       );
     }
     credLines.push('');
@@ -341,7 +341,7 @@ export const appendSingleCreds = (input: SingleCredsInput): void => {
   }
   for (const app of manifest.apps) {
     credLines.push(
-      `mongodb://${app.user}:${state.appPasswords[app.db]}@${singleHostIp}:${hostPort}/${app.db}?authSource=${app.db}&directConnection=true&compressors=zstd`,
+      `mongodb://${app.user}:${state.appPasswords[app.db]}@${singleHostIp}:${hostPort}/${app.db}?authSource=${app.db}&directConnection=true`,
     );
   }
 };

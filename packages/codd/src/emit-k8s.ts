@@ -207,7 +207,7 @@ export const emitK8sBundle = (ctx: K8sEmitContext): void => {
     ctx.credLines.push('# K8s 单副本集群内连接串:');
     for (const app of manifest.apps) {
       ctx.credLines.push(
-        `mongodb://${app.user}:${state.appPasswords[app.db]}@${releaseName}.${ns}.svc.cluster.local:${port}/${app.db}?authSource=${app.db}&directConnection=true&compressors=zstd`,
+        `mongodb://${app.user}:${state.appPasswords[app.db]}@${releaseName}.${ns}.svc.cluster.local:${port}/${app.db}?authSource=${app.db}&directConnection=true`,
       );
     }
   } else {
@@ -219,7 +219,7 @@ export const emitK8sBundle = (ctx: K8sEmitContext): void => {
     ctx.credLines.push('# K8s 3 副本高可用自动切主连接串:');
     for (const app of manifest.apps) {
       ctx.credLines.push(
-        `mongodb://${app.user}:${state.appPasswords[app.db]}@${fqdns}/${app.db}?replicaSet=${rsName}&authSource=${app.db}&compressors=zstd`,
+        `mongodb://${app.user}:${state.appPasswords[app.db]}@${fqdns}/${app.db}?replicaSet=${rsName}&authSource=${app.db}`,
       );
     }
   }

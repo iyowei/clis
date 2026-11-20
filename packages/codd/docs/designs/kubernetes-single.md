@@ -89,7 +89,7 @@ kubectl -n data exec "${REL}-0" -c mongo -- mongosh \
   --quiet --eval 'print("primary:", db.hello().isWritablePrimary); db.__k8s_smoke.insertOne({ok: true}); db.__k8s_smoke.drop();'
 ```
 
-- **同集群业务连接串**: `mongodb://<USER>:<PWD>@<REL>.data.svc.cluster.local:27117/<DB>?authSource=<DB>&directConnection=true&compressors=zstd`
+- **同集群业务连接串**: `mongodb://<USER>:<PWD>@<REL>.data.svc.cluster.local:27117/<DB>?authSource=<DB>&directConnection=true`
 - **在线扩盘** (`StorageClass` 须支持 `allowVolumeExpansion: true`):
 
   ```shell

@@ -42,6 +42,8 @@ export interface DeployManifest {
   multiNetAlias?: boolean;
   keepDaily?: number;
   keepWeekly?: number;
+  backupMinFreeMb?: number;
+  backupMaxTotalMb?: number;
   apps: AppInput[];
   auth?: {
     rootUsername?: string;

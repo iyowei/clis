@@ -38,6 +38,8 @@ export interface ComputedSizing {
   nprocUlimit: number;
   stopGracePeriodSec: number;
   backupConcurrency: number;
+  backupMinFreeMb: number;
+  backupMaxTotalMb: number;
   logMaxSize: string;
   persistenceSize: string;
   workload: WorkloadType;
@@ -216,6 +218,16 @@ export const computeSizing = (hw: HardwareSpec): ComputedSizing => {
   const nprocUlimit = nofileUlimit;
   const stopGracePeriodSec = clamp(Math.round(memGb * 8), 30, 300);
   const backupConcurrency = clamp(Math.floor(cpuLimit / 2), 1, 8);
+  const backupMinFreeMb = clamp(
+    Math.round((hw.diskGb * 1024 * 0.05) / 256) * 256,
+    1024,
+    10240,
+  );
+  const backupMaxTotalMb = clamp(
+    Math.round((hw.diskGb * 1024 * 1.5) / 1024) * 1024,
+    4096,
+    524288,
+  );
   const logMaxSize = hw.diskGb >= 100 ? '100m' : '50m';
 
   const hardwareSummary = `${cpuLimit} 核 · ${memGb} GB 内存 · ${hw.diskGb} GB 硬盘 · ${WORKLOAD_ZH[workload]}`;
@@ -291,6 +303,8 @@ export const computeSizing = (hw: HardwareSpec): ComputedSizing => {
     nprocUlimit,
     stopGracePeriodSec,
     backupConcurrency,
+    backupMinFreeMb,
+    backupMaxTotalMb,
     logMaxSize,
     persistenceSize,
     workload,
