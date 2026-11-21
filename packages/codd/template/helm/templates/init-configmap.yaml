@@ -85,9 +85,12 @@ data:
           break;
         }
         if (h.primary) {
-          primaryUri = `mongodb://${rootCreds}@${h.primary}/admin?authSource=admin&directConnection=true`;
-          ready = true;
-          break;
+          const candUri = `mongodb://${rootCreds}@${h.primary}/admin?authSource=admin&directConnection=true`;
+          if (new Mongo(candUri).getDB('admin').hello().isWritablePrimary) {
+            primaryUri = candUri;
+            ready = true;
+            break;
+          }
         }
       } catch (e) {}
       sleep(1000);

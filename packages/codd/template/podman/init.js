@@ -155,6 +155,47 @@ try {
 }
 
 if (needInit) {
+  if (rsMembers.length > 1) {
+    print('等待多节点副本集其余成员就绪 (最多 60 秒)...');
+    const selfHostPort = `${host}:${port}`;
+    const peers = rsMembers
+      .map((m) => m.host)
+      .filter((h) => h !== selfHostPort);
+    for (let waitSec = 0; waitSec < 60; waitSec += 2) {
+      let allReachable = true;
+      for (const peer of peers) {
+        try {
+          new Mongo(
+            `mongodb://${peer}/admin?directConnection=true&serverSelectionTimeoutMS=1500&connectTimeoutMS=1500`,
+          )
+            .getDB('admin')
+            .adminCommand({ ping: 1 });
+        } catch (e) {
+          const errName = e && e.name ? String(e.name) : '';
+          const msg = e && e.message ? String(e.message) : String(e);
+          if (
+            errName === 'MongoNetworkError' ||
+            errName === 'MongoNetworkTimeoutError' ||
+            errName === 'MongoServerSelectionError' ||
+            msg.includes('ECONNREFUSED') ||
+            msg.includes('ETIMEDOUT') ||
+            msg.includes('ENOTFOUND') ||
+            msg.includes('EAI_AGAIN') ||
+            msg.includes('Server selection timed out') ||
+            msg.includes('socket')
+          ) {
+            allReachable = false;
+            break;
+          }
+        }
+      }
+      if (allReachable) {
+        print('全部副本集成员网络与端口已就绪');
+        break;
+      }
+      sleep(2000);
+    }
+  }
   // 显式声明成员地址。多节点场景将首个成员设 priority=2 为默认主节点
   print(
     `初始化副本集 ${rsName}, 成员: ${rsMembers.map((m) => m.host).join(', ')}`,
@@ -178,8 +219,8 @@ for (let i = 0; i < 90; i += 1) {
       ready = true;
       break;
     }
-    if (!needInit && h.primary) {
-      print(`检测到当前节点已切为从节点, 自动路由至活跃主节点 ${h.primary}`);
+    if (h.primary) {
+      print(`检测到活跃主节点为 ${h.primary}, 自动路由并校验可写权限`);
       conn = new Mongo(directUri(h.primary));
       admin = conn.getDB('admin');
       if (admin.hello().isWritablePrimary) {
