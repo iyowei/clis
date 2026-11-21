@@ -44,7 +44,14 @@ export interface FixtureSpec {
 }
 
 export interface SetupStep {
-  write: { path: string; text: string };
+  write: {
+    path: string;
+    text: string;
+    /** 可选绝对修改时间 (毫秒戳, 写入后调用 utimes 设置 mtime) */
+    mtimeMs?: number;
+    /** 可选相对当前时间前移的天数 (写入后按 now - ageDays * 86400000 设置 mtime) */
+    ageDays?: number;
+  };
 }
 
 export interface RunSpec {
@@ -54,10 +61,17 @@ export interface RunSpec {
 }
 
 export type FsState = 'gone' | 'exists' | 'empty';
+export type FsEntryKind = 'file' | 'dir' | 'symlink';
 
 export interface FsExpectation {
   path: string;
   state: FsState;
+  /** 可选实体形态校验 (仅 exists/empty 有效) */
+  kind?: FsEntryKind;
+  /** 可选文件内容子串断言 (仅 state=exists 常规文件有效, 支持 $FIXTURE) */
+  contains?: string[];
+  /** 可选同级目录通配匹配 (在 path 目录下须存在至少一个匹配该简单通配符 * / ? 的条目) */
+  globExists?: string;
 }
 
 export interface ExpectSpec {
@@ -66,6 +80,8 @@ export interface ExpectSpec {
   stdoutContains?: string[];
   /** 「不该出现」面: 剪枝 / 排除 / 诱饵类用例的禁含断言 */
   stdoutMustNotContain?: string[];
+  /** stderr 逐字节期望 (如强制要求正常路径 stderr 为空串 "") */
+  stderrExact?: string;
   stderrContains?: string[];
   /** 「不该出现」面: 「正确行为是静默」类用例的 stderr 禁含断言 */
   stderrMustNotContain?: string[];
@@ -76,6 +92,8 @@ export interface ExpectSpec {
 export interface CliCorpusCase {
   id: string;
   kind?: 'cli';
+  /** 可选运行标签 (如 apfs-block-size, 供 --exclude-tag 跨文件系统筛选) */
+  tags?: string[];
   specRefs: string[];
   fixture: FixtureSpec;
   setup?: SetupStep[];
@@ -98,8 +116,12 @@ export interface ApiCallStep {
 /** api 用例的断言族: 末步返回值 / 抛错码 / 事件流 / fs (fs 与 cli 面共用) */
 export interface ApiExpectSpec {
   result?: { exact?: unknown; subset?: unknown };
-  error?: { code: string; name?: string };
-  events?: { lastIs?: string; mustInclude?: string[] };
+  error?: { code: string; name?: string; detailsSubset?: unknown };
+  events?: {
+    lastIs?: string;
+    mustInclude?: string[];
+    mustNotInclude?: string[];
+  };
   fs?: FsExpectation[];
 }
 
@@ -107,6 +129,8 @@ export interface ApiExpectSpec {
 export interface ApiCorpusCase {
   id: string;
   kind: 'api';
+  /** 可选运行标签 */
+  tags?: string[];
   specRefs: string[];
   fixture: FixtureSpec;
   setup?: SetupStep[];

@@ -5,7 +5,7 @@
  * stdout 与 stderr 的子串含与禁含 / 文件系统终态; api case: 返回值深比较与子集包含 / 错误名与码 /
  * 事件集与末事件), 产出失败清单。本层只判不修: 不触碰现场, 不改被测行为。
  */
-import { lstat, readdir } from 'node:fs/promises';
+import { lstat, readFile, readdir } from 'node:fs/promises';
 import { join } from 'node:path';
 
 import {
@@ -36,8 +36,24 @@ export function firstLineDiff(expected: string, actual: string): string {
   return '全文逐行相等但不逐字节相等 (差异在行尾字节)';
 }
 
+/** 简单文件名通配 (* / ?) 编译为正则 */
+function globToRegExp(pattern: string): RegExp {
+  const escaped = pattern
+    .replace(/[.+^${}()|[\]\\]/g, '\\$&')
+    .replace(/\*/g, '.*')
+    .replace(/\?/g, '.');
+  return new RegExp(`^${escaped}$`);
+}
+
+function detectFsKind(info: Awaited<ReturnType<typeof lstat>>): string {
+  if (info.isSymbolicLink()) return 'symlink';
+  if (info.isDirectory()) return 'dir';
+  if (info.isFile()) return 'file';
+  return 'other';
+}
+
 /**
- * 文件系统终态断言: gone (不存在) / exists (存在, lstat 语义) / empty (存在且空目录)。
+ * 文件系统终态断言: gone / exists / empty + 可选 kind / contains / globExists。
  * 返回 null 即通过, 否则返回失败说明。
  */
 export async function checkFs(
@@ -56,13 +72,47 @@ export async function checkFs(
     return info === null ? null : `期望不存在, 实际存在 (${item.path})`;
   }
   if (info === null) return `期望存在, 实际不存在 (${item.path})`;
-  if (item.state === 'exists') return null;
 
-  if (!info.isDirectory()) return `期望为空目录, 实际不是目录 (${item.path})`;
-  const entries = await readdir(full);
-  return entries.length === 0
-    ? null
-    : `期望为空目录, 实际有 ${entries.length} 项 (${item.path})`;
+  if (item.kind !== undefined) {
+    const actualKind = detectFsKind(info);
+    if (actualKind !== item.kind) {
+      return `期望实体形态为 ${item.kind}, 实际为 ${actualKind} (${item.path})`;
+    }
+  }
+
+  if (item.state === 'empty') {
+    if (!info.isDirectory()) return `期望为空目录, 实际不是目录 (${item.path})`;
+    const entries = await readdir(full);
+    return entries.length === 0
+      ? null
+      : `期望为空目录, 实际有 ${entries.length} 项 (${item.path})`;
+  }
+
+  if (item.contains !== undefined && item.contains.length > 0) {
+    if (!info.isFile()) {
+      return `期望文件含指定文本, 但目标不是常规文件 (${item.path})`;
+    }
+    const text = await readFile(full, 'utf8');
+    for (const needle of item.contains) {
+      const wanted = applyVars(needle, root);
+      if (!text.includes(wanted)) {
+        return `文件内容缺少子串 "${clip(wanted)}" (${item.path})`;
+      }
+    }
+  }
+
+  if (item.globExists !== undefined) {
+    if (!info.isDirectory()) {
+      return `期望目录下存在匹配 ${item.globExists} 的条目, 但目标不是目录 (${item.path})`;
+    }
+    const entries = await readdir(full);
+    const re = globToRegExp(item.globExists);
+    if (!entries.some((name) => re.test(name))) {
+      return `目录下未找到匹配 "${item.globExists}" 的条目 (${item.path}; 现有: ${entries.join(', ') || '空'})`;
+    }
+  }
+
+  return null;
 }
 
 /**
@@ -140,6 +190,18 @@ export async function compareCase(
       failures.push({
         kind: 'stdoutMustNotContain',
         message: `stdout 出现了禁含子串: "${clip(forbidden)}"`,
+      });
+    }
+  }
+
+  if (expect.stderrExact !== undefined) {
+    const wanted = applyVars(expect.stderrExact, root);
+    if (exec.stderr !== wanted) {
+      failures.push({
+        kind: 'stderrExact',
+        message: `stderr 与期望不逐字节相等 (${firstLineDiff(wanted, exec.stderr)})`,
+        expected: wanted,
+        actual: exec.stderr,
       });
     }
   }
@@ -270,6 +332,14 @@ function checkEvents(
   for (const wanted of expect.mustInclude ?? []) {
     if (!kinds.includes(wanted)) {
       failures.push({ kind: 'events', message: `事件流缺少 kind: ${wanted}` });
+    }
+  }
+  for (const forbidden of expect.mustNotInclude ?? []) {
+    if (kinds.includes(forbidden)) {
+      failures.push({
+        kind: 'events',
+        message: `事件流出现了禁含 kind: ${forbidden}`,
+      });
     }
   }
   return failures;
@@ -405,6 +475,16 @@ export async function compareApiCase(
           kind: 'error',
           message: `错误类名不符: 期望 ${expect.error.name}, 实际 ${String(error?.name)}`,
         });
+      }
+      if (expect.error.detailsSubset !== undefined) {
+        const wanted = replaceVarsDeep(expect.error.detailsSubset, root);
+        const problem = subsetDiff(wanted, error?.details, '$.error.details');
+        if (problem !== null) {
+          failures.push({
+            kind: 'error',
+            message: `错误 details 子集不符: ${problem}`,
+          });
+        }
       }
     }
   }

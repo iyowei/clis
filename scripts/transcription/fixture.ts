@@ -6,7 +6,7 @@
  * 建树与体积口径语义与 `<api 包目录>/src/fixtures.ts` 同构 (被测的既有测试口径即验收口径)。
  */
 import { spawnSync } from 'node:child_process';
-import { chmod, mkdir, rm, symlink, writeFile } from 'node:fs/promises';
+import { chmod, mkdir, rm, symlink, utimes, writeFile } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 
 import {
@@ -100,7 +100,13 @@ export async function buildFixture(
     }
   }
   for (const link of fixture.symlinks ?? []) {
-    await symlink(join(root, link.to), join(root, link.at));
+    const atPath = join(root, link.at);
+    await mkdir(dirname(atPath), { recursive: true });
+    await symlink(
+      join(root, link.to),
+      atPath,
+      process.platform === 'win32' ? 'junction' : undefined,
+    );
   }
   for (const dir of fixture.unreadable ?? []) {
     await mkdir(join(root, dir), { recursive: true });
@@ -123,10 +129,21 @@ export async function applySetup(
   root: string,
   steps: SetupStep[],
 ): Promise<void> {
+  const MS_PER_DAY = 86_400_000;
   for (const step of steps) {
     const full = join(root, step.write.path);
     await mkdir(dirname(full), { recursive: true });
     await writeFile(full, applyVars(step.write.text, root));
+    let targetMs: number | undefined;
+    if (step.write.mtimeMs !== undefined) {
+      targetMs = step.write.mtimeMs;
+    } else if (step.write.ageDays !== undefined) {
+      targetMs = Date.now() - step.write.ageDays * MS_PER_DAY;
+    }
+    if (targetMs !== undefined) {
+      const targetDate = new Date(targetMs);
+      await utimes(full, targetDate, targetDate);
+    }
   }
 }
 
@@ -226,6 +243,7 @@ export function executeCase(
     // 超时后硬杀: 被测若死在 readline 等 stdin 上, SIGTERM 可能被吞
     killSignal: 'SIGKILL',
     encoding: 'utf8',
+    maxBuffer: 32 * 1024 * 1024,
   });
 
   const error = result.error as (Error & { code?: string }) | undefined;
@@ -274,6 +292,7 @@ export function executeApiCase(
     timeout: ctx.timeoutMs,
     killSignal: 'SIGKILL',
     encoding: 'utf8',
+    maxBuffer: 32 * 1024 * 1024,
   });
 
   const error = result.error as (Error & { code?: string }) | undefined;

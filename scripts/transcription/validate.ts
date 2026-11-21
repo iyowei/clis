@@ -115,6 +115,21 @@ function validateSetup(setup: unknown, problems: string[]): void {
       problems.push(
         `setup[${index}] 须为 { write: { path: 相对路径, text: 字符串 } }`,
       );
+      continue;
+    }
+    if (
+      write.mtimeMs !== undefined &&
+      (typeof write.mtimeMs !== 'number' || !Number.isFinite(write.mtimeMs))
+    ) {
+      problems.push(`setup[${index}].write.mtimeMs 须为有限数字`);
+    }
+    if (
+      write.ageDays !== undefined &&
+      (typeof write.ageDays !== 'number' ||
+        !Number.isFinite(write.ageDays) ||
+        write.ageDays < 0)
+    ) {
+      problems.push(`setup[${index}].write.ageDays 须为非负有限数字`);
     }
   }
 }
@@ -165,6 +180,26 @@ function validateFs(fs: unknown, problems: string[]): void {
       problems.push(
         `expect.fs[${index}] 须为 { path: 相对路径, state: gone|exists|empty }`,
       );
+      continue;
+    }
+    if (
+      entry.kind !== undefined &&
+      !['file', 'dir', 'symlink'].includes(String(entry.kind))
+    ) {
+      problems.push(`expect.fs[${index}].kind 须为 file|dir|symlink`);
+    }
+    if (
+      entry.contains !== undefined &&
+      (!Array.isArray(entry.contains) ||
+        !entry.contains.every((s) => typeof s === 'string'))
+    ) {
+      problems.push(`expect.fs[${index}].contains 须为字符串数组`);
+    }
+    if (
+      entry.globExists !== undefined &&
+      (typeof entry.globExists !== 'string' || entry.globExists === '')
+    ) {
+      problems.push(`expect.fs[${index}].globExists 须为非空字符串`);
     }
   }
 }
@@ -188,6 +223,12 @@ function validateExpect(expect: unknown, problems: string[]): void {
     typeof record.stdoutExact !== 'string'
   ) {
     problems.push('expect.stdoutExact 须为字符串');
+  }
+  if (
+    record.stderrExact !== undefined &&
+    typeof record.stderrExact !== 'string'
+  ) {
+    problems.push('expect.stderrExact 须为字符串');
   }
   for (const key of [
     'stdoutContains',
@@ -273,6 +314,7 @@ function validateApiExpect(expect: unknown, problems: string[]): void {
     'stdoutExact',
     'stdoutContains',
     'stdoutMustNotContain',
+    'stderrExact',
     'stderrContains',
     'stderrMustNotContain',
   ] as const) {
@@ -327,6 +369,13 @@ function validateApiExpect(expect: unknown, problems: string[]): void {
       ) {
         problems.push('expect.events.mustInclude 须为字符串数组');
       }
+      if (
+        shape.mustNotInclude !== undefined &&
+        (!Array.isArray(shape.mustNotInclude) ||
+          !shape.mustNotInclude.every((item) => typeof item === 'string'))
+      ) {
+        problems.push('expect.events.mustNotInclude 须为字符串数组');
+      }
     }
   }
   validateFs(record.fs, problems);
@@ -357,6 +406,13 @@ export function validateCase(data: unknown): string[] {
   if (kind !== 'cli' && kind !== 'api') {
     problems.push('kind 须为 "cli" 或 "api"');
     return problems;
+  }
+  if (
+    record.tags !== undefined &&
+    (!Array.isArray(record.tags) ||
+      !record.tags.every((t) => typeof t === 'string' && t !== ''))
+  ) {
+    problems.push('tags 须为非空字符串数组');
   }
   validateFixture(record.fixture, problems);
   validateSetup(record.setup, problems);

@@ -14,7 +14,12 @@ describe('compareApiCase: 未预期抛错拦截', () => {
     status: 0,
     stdout: JSON.stringify({
       ok: false,
-      error: { name: 'SweepError', code: 'INVALID_ARGUMENT', message: 'boom' },
+      error: {
+        name: 'SampleError',
+        code: 'INVALID_ARGUMENT',
+        message: 'boom',
+        details: { field: 'rules[0].match' },
+      },
     }),
     stderr: '',
     timedOut: false,
@@ -35,13 +40,31 @@ describe('compareApiCase: 未预期抛错拦截', () => {
     expect(failures.some((f) => f.kind === 'error')).toBe(true);
   });
 
-  test('声明匹配的 expect.error 时通过', async () => {
-    const failures = await compareApiCase(
-      { error: { code: 'INVALID_ARGUMENT', name: 'SweepError' } },
+  test('声明匹配的 expect.error (含 detailsSubset) 时通过, details 失配判失败', async () => {
+    const ok = await compareApiCase(
+      {
+        error: {
+          code: 'INVALID_ARGUMENT',
+          name: 'SampleError',
+          detailsSubset: { field: 'rules[0].match' },
+        },
+      },
       errOutcome,
       '/unused',
     );
-    expect(failures).toEqual([]);
+    expect(ok).toEqual([]);
+
+    const bad = await compareApiCase(
+      {
+        error: {
+          code: 'INVALID_ARGUMENT',
+          detailsSubset: { field: 'other' },
+        },
+      },
+      errOutcome,
+      '/unused',
+    );
+    expect(bad.some((f) => f.kind === 'error')).toBe(true);
   });
 });
 
