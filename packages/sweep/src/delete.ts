@@ -163,7 +163,7 @@ type RemovalSlot =
   | { kind: 'failed'; failure: TargetFailure }
   | { kind: 'aborted' };
 
-/** 执行单条移入回收站: 任何失败绝不静默降级为永久删除 (核心红线) */
+/** 执行单条移入回收站: 任何失败绝不静默降级为永久删除 (核心红线); 若目标已并发消失则同 rm 归 missing */
 async function executeTrash(
   target: string,
   trashDeps?: TrashDeps,
@@ -171,6 +171,10 @@ async function executeTrash(
   const outcome = await moveToTrash(target, trashDeps);
   if (outcome.ok) {
     return { kind: 'trashed', target };
+  }
+  if (outcome.errno === 'ENOENT') {
+    const state = await checkGone(target);
+    if (state === 'gone') return { kind: 'missing', target };
   }
   return {
     kind: 'failed',

@@ -80,7 +80,8 @@ export function skipsBatch(
 
 /**
  * 候选构造器 (面向直接组合原语层的调用方): 将扫描命中 + 体积结果 + `classifyTarget` 组装为 `SkipCandidate[]`。
- * 注意: 本助手对全部 `hits` 统一调用 `classifyTarget`; 多预设编排层 `sweep.ts` 会按预设分流, 仅对 `node` 预设启用安装树判定。
+ * 与编排层 `sweep.ts` 对齐: 仅对 `node` 预设 (或未标注来源的传统命中) 启用疑似安装树语义闸,
+ * 其余预设与自定义规则不误判为疑似安装树。
  * `size.gone` 里的目标若仍在 `hits` 中同样产出候选 (`bytes === undefined`), 天然被 `unmeasured` 挡下。
  */
 export function toSkipCandidates(
@@ -95,7 +96,12 @@ export function toSkipCandidates(
     size.unmeasured.map((item): [string, string] => [item.target, item.reason]),
   );
   return hits.map((hit) => {
-    const classification = classifyTarget(hit.target, options);
+    const isNodePreset =
+      hit.source === undefined ||
+      (hit.source.kind === 'preset' && hit.source.name === 'node');
+    const suspect = isNodePreset
+      ? classifyTarget(hit.target, options).kind === 'suspect-install-tree'
+      : false;
     return {
       target: hit.target,
       bytes: bytesOf.get(hit.target),
@@ -103,7 +109,7 @@ export function toSkipCandidates(
         bytesOf.get(hit.target) === undefined
           ? reasonOf.get(hit.target)
           : undefined,
-      suspect: classification.kind === 'suspect-install-tree',
+      suspect,
     };
   });
 }

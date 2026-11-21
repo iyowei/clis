@@ -102,7 +102,7 @@ function validateAction(
   };
 }
 
-function validatePresets(
+export function validatePresets(
   raw: unknown,
 ): { ok: true; presets: PresetsMap } | { ok: false; failure: ShapeFailure } {
   if (raw === undefined) return { ok: true, presets: {} };
@@ -295,7 +295,7 @@ function validateSingleRule(
   };
 }
 
-function validateRules(
+export function validateRules(
   raw: unknown,
 ): { ok: true; rules: CustomRule[] } | { ok: false; failure: ShapeFailure } {
   if (raw === undefined) return { ok: true, rules: [] };
@@ -378,7 +378,7 @@ export function parseV2ConfigObject(
   if (!excludeExplicit) {
     exclude = [...defaultExclude];
   } else {
-    const parsedExclude = validateStringArray(raw.exclude, 'exclude', true);
+    const parsedExclude = validateStringArray(raw.exclude, 'exclude', false);
     if (!parsedExclude.ok) return parsedExclude;
     exclude = parsedExclude.items;
   }
@@ -387,7 +387,7 @@ export function parseV2ConfigObject(
   if (raw.include === undefined) {
     include = [];
   } else {
-    const parsedInclude = validateStringArray(raw.include, 'include', true);
+    const parsedInclude = validateStringArray(raw.include, 'include', false);
     if (!parsedInclude.ok) return parsedInclude;
     include = parsedInclude.items;
   }

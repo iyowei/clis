@@ -282,10 +282,12 @@ export async function evaluateTargetMatch(
     if (firstSource === null) {
       firstSource = { kind: 'rule', name: compiled.rule.name };
     }
+    // 防御性兜底: 即使调用方绕过构造校验传出缺失 action 的规则, 仍死守默认回收站红线
+    const ruleAction: CleanupAction = compiled.rule.action ?? 'trash';
     mergedAction =
       mergedAction === null
-        ? compiled.rule.action
-        : mergeCleanupActions(mergedAction, compiled.rule.action);
+        ? ruleAction
+        : mergeCleanupActions(mergedAction, ruleAction);
   }
 
   if (firstSource === null || mergedAction === null) return null;

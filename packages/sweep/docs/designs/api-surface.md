@@ -1369,7 +1369,7 @@ export type SkipReason =
 | BC-15                           | `unmeasured` 条目不进 `plan.batch`                                                                                                                                         |
 | BC-20 / BC-34                   | `SweepOptions.exclude` 缺省取 `DEFAULT_EXCLUDE`; `mergeNames` 收口                                                                                                         |
 | BC-21 / BC-22 / EC-02           | `BatchOutcome` 判别联合: 任一被拒即零删除; **例外见下**                                                                                                                    |
-| BC-24 / BC-25 / EC-05 / EC-07   | `RemovalResult` 三桶 + `TargetFailure.message` + `partialRisk`                                                                                                             |
+| BC-24 / BC-25 / EC-05 / EC-07   | `RemovalResult` 四桶 (`removed` / `trashed` / `missing` / `failed`) + `TargetFailure.message` + `partialRisk`                                                              |
 | BC-26                           | 退出码口径属 CLI 包; 库侧只给 `SweepSummary` 与三种配方 (§2.7)                                                                                                             |
 | BC-37 / BC-38                   | `classifyTarget` + `SweepPolicy.releaseSuspects` + `SkipCandidate.suspect` 必填                                                                                            |
 | BC-39                           | `RejectedTarget.code = GUARD_ROOT_ANCHOR_SYMLINK` + `details`                                                                                                              |

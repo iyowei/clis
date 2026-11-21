@@ -7,6 +7,7 @@
  */
 import { homedir } from 'node:os';
 
+import { validatePresets, validateRules } from './config-validate.ts';
 import { DEFAULT_EXCLUDE, mergeNames } from './config.ts';
 import { SweepError } from './errors.ts';
 import { type PathStyle, nativeStyle } from './guard.ts';
@@ -73,6 +74,20 @@ export function assertSweepOptions(options: SweepOptions): void {
   ) {
     throw invalidArgument('policy', 'releaseSuspects 必须是布尔值');
   }
+  const checkedPresets = validatePresets(options.presets);
+  if (!checkedPresets.ok) {
+    throw invalidArgument(
+      checkedPresets.failure.field,
+      checkedPresets.failure.message,
+    );
+  }
+  const checkedRules = validateRules(options.rules);
+  if (!checkedRules.ok) {
+    throw invalidArgument(
+      checkedRules.failure.field,
+      checkedRules.failure.message,
+    );
+  }
 }
 
 /** 合并缺省并产出深冻结只读快照 */
@@ -80,11 +95,17 @@ export function resolveSweepOptions(
   options: SweepOptions,
 ): Readonly<ResolvedSweepOptions> {
   assertSweepOptions(options);
-  const presets: PresetsMap =
-    options.presets === undefined && options.rules === undefined
-      ? { node: {} }
-      : { ...options.presets };
-  const rules: CustomRule[] = (options.rules ?? []).map((r) => ({ ...r }));
+  const checkedPresets = validatePresets(options.presets);
+  const checkedRules = validateRules(options.rules);
+  let presets: PresetsMap;
+  if (options.presets === undefined && options.rules === undefined) {
+    presets = { node: {} };
+  } else {
+    presets = checkedPresets.ok ? checkedPresets.presets : {};
+  }
+  const rules: CustomRule[] = checkedRules.ok
+    ? checkedRules.rules.map((r) => Object.freeze({ ...r }))
+    : [];
   return Object.freeze({
     roots: Object.freeze([...options.roots]),
     exclude: Object.freeze(

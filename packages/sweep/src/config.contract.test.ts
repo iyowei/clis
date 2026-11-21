@@ -391,6 +391,19 @@ describe('config v2 契约: 迁移拦截与硬拒绝 (loadConfig)', () => {
     const readErr = await catchSweepError(loadConfig(dir));
     expect(readErr.code).toBe('CONFIG_READ_FAILED');
     expect((readErr.details as { path?: string }).path).toBe(dir);
+
+    for (const field of ['exclude', 'include'] as const) {
+      const emptyItemCfg = await writeConfig(
+        `empty-${field}.json`,
+        JSON.stringify({ version: 2, roots: ['/a'], [field]: [''] }),
+      );
+      const emptyErr = await catchSweepError(loadConfig(emptyItemCfg));
+      expect(emptyErr.code).toBe('CONFIG_CORRUPT_SHAPE');
+      expect(emptyErr.details).toEqual({
+        path: emptyItemCfg,
+        field: `${field}[0]`,
+      });
+    }
   });
 });
 
