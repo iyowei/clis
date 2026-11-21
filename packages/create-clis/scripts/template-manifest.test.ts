@@ -32,6 +32,8 @@ const VOCABULARY = [
   'sweep-cli',
   'bin/sweep',
   'sweep: ',
+  '`sweep`',
+  '`sweep ',
   '@iyowei',
   'iyowei/clis',
   'iyowei',
@@ -174,6 +176,8 @@ describe('TEMPLATE_MANIFEST 词汇口径', () => {
       '@iyowei/sweep',
       'packages/sweep-cli',
       'bin/sweep.mjs',
+      '`sweep`',
+      '`sweep --help`',
       'iyowei/clis',
       'iTonyYo',
     ]) {

@@ -76,9 +76,10 @@ function parseRepoSlug(repoUrl: string): string | undefined {
  * 注册序与防误伤规则:
  * 1. `repoUrl` 整段与裸 slug (源 URL 可解析取路径段, 不可解析如 `{{REPO_URL}}` 时用 `owner/name`);
  * 2. 包坐标 (`<scope>/<name>-cli`, `<name>-cli`, `<scope>/<name>`);
- * 3. `name` / `binName`: `source.compoundOnly === true` 时仅注册 13 种路径/引号/命令复合形态
+ * 3. `name` / `binName`: `source.compoundOnly === true` 时仅注册 15 种路径/引号/反引号/命令复合形态
  *    (`packages/<name>/`, `packages/<name>`, `vendor/<name>`, `bin/<bin>`, `<bin>: `, `<bin> 启动器`,
- *    `'<bin>'`, `"<bin>"`, `'<bin> `, `"<bin> `, `bunx <bin>`, `<bin>-rs`, `{ <bin>: ` -> `{ '<target>': `),
+ *    `'<bin>'`, `"<bin>"`, `'<bin> `, `"<bin> `, `` `<bin>` ``, `` `<bin>  ``, `bunx <bin>`,
+ *    `<bin>-rs`, `{ <bin>: ` -> `{ '<target>': `),
  *    不注册裸 `name` 与裸 `binName`; 否则注册裸 `name` 与裸 `binName`;
  * 4. `scope`: 始终注册 `<scope>/` (目标无 scope 时连同 `/` 剥离防出现 `/pkg`),
  *    仅当 `source.scope !== @${source.owner}` 才注册裸 `scope` (防误伤 GitHub `@owner` mention);
@@ -126,6 +127,8 @@ function buildForms(target: Vocabulary, source: Vocabulary): Form[] {
     add(`"${source.binName}"`, `"${target.binName}"`);
     add(`'${source.binName} `, `'${target.binName} `);
     add(`"${source.binName} `, `"${target.binName} `);
+    add(`\`${source.binName}\``, `\`${target.binName}\``);
+    add(`\`${source.binName} `, `\`${target.binName} `);
     add(`bunx ${source.binName}`, `bunx ${target.binName}`);
     add(`${source.binName}-rs`, `${target.binName}-rs`);
     add(`{ ${source.binName}: `, `{ '${target.binName}': `);
