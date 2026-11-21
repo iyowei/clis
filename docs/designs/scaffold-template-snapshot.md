@@ -17,7 +17,7 @@
 | 直接快照 | 纯通用配置文件 (editorconfig / gitattributes / nvmrc / npmrc / prettierrc / releaserc) / workflows / 通用脚本 (ci / install-git-hooks / safe-install / 闸门族) / 行为准则 | 原样进模板                                                                                                |
 | 泛化替换 | 含项目名的骨架文件 (逐条登记在构建清单的 generalize 条目里, 见 `packages/create-clis/scripts/template-manifest.ts`; 数量随清单走, 不在此写死)                             | 按词汇表替换后进模板                                                                                      |
 | 重置     | 含本仓多产品排除项的根配置 (oxlint / prettierignore / gitignorerc / gitignore / bunfig / turbo / tsconfig / lint-doc-shared) / 根与包 README / docs 骨架 / 示例包源码     | 换成干净的模板化骨架 (无私有产品路径与区域镜像污染, docs 按[文档分层协议](docs-layering.md)生成) 再进模板 |
-| 排除     | 领域与私有内容: 各非骨架工具包 (`codd` / `codd-cli` / `create-clis`)、现有产品源码测试、conformance 语料与领域文档、历史 ADR                                              | 不进模板 (增强档的**机制**文件保留, **内容**由新项目自填)                                                 |
+| 排除     | 领域与私有内容: 各非骨架包 (`codd` / `codd-cli` / `create-clis` / `cli-updater`)、现有产品源码测试、conformance 语料与领域文档、历史 ADR                                  | 不进模板 (增强档的**机制**文件保留, **内容**由新项目自填)                                                 |
 
 这份清单 (`packages/create-clis/scripts/template-manifest.ts`) 是这套机制唯一需要登记的地方: 本仓新增骨架文件时, 判断它的分类, 往清单加一行就行。
 
