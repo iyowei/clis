@@ -92,6 +92,8 @@ console.log('Credentials (0600):', result.credentialsFile);
 | `assertBunEngineCompatible(range, current)`                                         | Pure helper to explicitly check Bun version compatibility against a target semver floor                                         |
 | `ConfigError` / `SizingError` / `TemplateRenderError`                               | Structured domain errors                                                                                                        |
 
+> Fine-grained helpers and validation constants (`HARDWARE_BOUNDS`, `withStateLock`, `randomAlnumSecret`, `validateAppInput`, etc.) are exported from the same root entry; see the bundled `dist/index.d.ts` for the complete typed signature list.
+
 ## Development
 
 Environment setup, monorepo scripts, and CI gates: see the [development guide](https://github.com/iyowei/clis/blob/main/docs/development.md).

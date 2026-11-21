@@ -92,6 +92,8 @@ console.log('本机凭证文件 (0600):', result.credentialsFile);
 | `assertBunEngineCompatible(range, current)`                                         | 纯校验辅助函数, 用于显式核对目标 Bun 版本下限                                                 |
 | `ConfigError` / `SizingError` / `TemplateRenderError`                               | 结构化领域错误类型                                                                            |
 
+> 其余细粒度校验与辅助符号 (`HARDWARE_BOUNDS`、`withStateLock`、`randomAlnumSecret`、`validateAppInput` 等) 同样从根入口导出, 完整类型签名以随包 `dist/index.d.ts` 为准。
+
 ## 开发
 
 环境准备、常用命令、双运行时验证与提交钩子, 见 [开发指南](https://github.com/iyowei/clis/blob/main/docs/development.md)。
