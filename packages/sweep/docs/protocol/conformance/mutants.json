@@ -1,0 +1,185 @@
+{
+  "schemaVersion": 1,
+  "mutants": [
+    {
+      "id": "prune-negated",
+      "title": "剪枝谓词取反",
+      "expectCaughtBy": "both",
+      "expectNote": "任一命中 node_modules 的 CLI / API 用例 (stdoutExact / hits / fs 断言)",
+      "patches": [
+        {
+          "file": "scan-parallel.ts",
+          "find": "      if (nextIncluded && isPotentialTarget(name, 'dir', matcher)) {",
+          "replace": "      if (nextIncluded && !isPotentialTarget(name, 'dir', matcher)) {",
+          "effect": "命中判定反转: 普通目录被当作潜在目标剪枝, 真实目标反被下钻, 清单全面错乱"
+        }
+      ]
+    },
+    {
+      "id": "exit-swallowed",
+      "title": "退出码吞掉",
+      "expectCaughtBy": "cli",
+      "expectNote": "期望 exitCode 为 1 的 CLI 用例 (参数错误 / 配置损坏 / 删除失败 / 无配置 --yes)",
+      "patches": [
+        {
+          "file": "cli.ts",
+          "find": "process.exitCode = await main();",
+          "replace": "await main();",
+          "effect": "main 的返回值被丢弃, 全部错误路径退出码退化为 0 (恒成功)"
+        }
+      ]
+    },
+    {
+      "id": "sort-missing",
+      "title": "排序缺失",
+      "expectCaughtBy": "both",
+      "expectNote": "≥2 个命中的 CLI / API 用例 (stdoutExact / hits 升序断言), 或复现性三连跑",
+      "patches": [
+        {
+          "file": "scan-parallel.ts",
+          "find": "      const hits = [...hitsByRealTarget.values()].sort(compareTarget);",
+          "replace": "      const hits = [...hitsByRealTarget.values()];",
+          "effect": "命中序退化为并发完成序 (不确定), 与「按 target 升序」的输出契约相悖"
+        }
+      ]
+    },
+    {
+      "id": "exclude-silent",
+      "title": "排除静默失效",
+      "expectCaughtBy": "both",
+      "expectNote": "使用 exclude 的 CLI / API 用例 (被排除子树重新出现在清单或 hits 里)",
+      "patches": [
+        {
+          "file": "scan-parallel.ts",
+          "find": "        if (exclude.has(name)) {",
+          "replace": "        if (false) {",
+          "effect": "排除判定被短路: 名单静默失效, 被排除子树照常扫出, 且无任何提示"
+        }
+      ]
+    },
+    {
+      "id": "message-removed",
+      "title": "提示语删改",
+      "expectCaughtBy": "cli",
+      "expectNote": "空结果 CLI 用例 (stdoutExact / stdoutContains 对「未发现」文案的断言)",
+      "patches": [
+        {
+          "file": "render.ts",
+          "find": "`${NEUTRAL_BLOCK} 未发现可清理目标`",
+          "replace": "`${NEUTRAL_BLOCK} 无结果`",
+          "effect": "空结果中性提示文案被改, 用户面文案与契约不符"
+        }
+      ]
+    },
+    {
+      "id": "size-unit-wrong",
+      "title": "体积计数单位错",
+      "expectCaughtBy": "cli",
+      "expectNote": "带体积数字断言的 CLI 用例; 注意: 仅 du 可用平台 (unix) 生效, Windows 走 js 候选时抓不住",
+      "patches": [
+        {
+          "file": "size-du-parse.ts",
+          "find": "        sizes.set(path, Number(numPart) * 1024);",
+          "replace": "        sizes.set(path, Number(numPart) * 1000);",
+          "effect": "du 的 Ki 单位换算错误 (1024 → 1000), 展示体积全线偏移"
+        }
+      ]
+    },
+    {
+      "id": "size-gone-dropped",
+      "title": "体积 gone 桶丢弃 (破坏 BC-43 三桶完备性)",
+      "expectCaughtBy": "api",
+      "expectNote": "断言 SizeResult.gone 的 API 用例 (api-size-gone-bucket / api-size-three-buckets-and-warning)",
+      "patches": [
+        {
+          "file": "size-du.ts",
+          "find": "          gone.push(target);",
+          "replace": "          /* mutant: drop gone target */",
+          "effect": "du 候选丢弃已消失目标的 gone 记录, 破坏 SizeResult 三桶完备性恒等式"
+        },
+        {
+          "file": "size-js.ts",
+          "find": "        else gone.push(outcome.target);",
+          "replace": "        /* mutant: drop gone target */",
+          "effect": "js 候选丢弃已消失目标的 gone 记录, 破坏 SizeResult 三桶完备性恒等式"
+        }
+      ]
+    },
+    {
+      "id": "terminal-event-dropped",
+      "title": "编排终结事件丢失 (破坏 BC-44)",
+      "expectCaughtBy": "api",
+      "expectNote": "断言 plan-done / done 终结事件的 API 用例 (api-sweep-plan-terminal-event / api-plan-onprogress-override / api-sweep-run-terminal-event)",
+      "patches": [
+        {
+          "file": "sweep.ts",
+          "find": "      planOptions?.onProgress?.({\n        kind: 'plan-done',\n        plan,\n        elapsedMs: Date.now() - startedAt,\n      });",
+          "replace": "      /* mutant: drop plan-done terminal event */",
+          "effect": "sweeper.plan() 不再发射 plan-done 终结事件"
+        },
+        {
+          "file": "sweep.ts",
+          "find": "  emit?.({ kind: 'done', status, elapsedMs: Date.now() - startedAt });",
+          "replace": "  /* mutant: drop done terminal event */",
+          "effect": "sweeper.run() 不再发射 done 终结事件"
+        }
+      ]
+    },
+    {
+      "id": "trash-fallback-delete",
+      "title": "回收站失败静默降级直删 (破坏 BC-48 红线)",
+      "expectCaughtBy": "api",
+      "expectNote": "断言 TRASH_FAILED 且原文件完好不动的 API 用例 (api-trash-failed-no-fallback)",
+      "patches": [
+        {
+          "file": "delete.ts",
+          "find": "  const outcome = await moveToTrash(target, trashDeps);\n  if (outcome.ok) {\n    return { kind: 'trashed', target };\n  }",
+          "replace": "  const outcome = await moveToTrash(target, trashDeps);\n  if (outcome.ok) {\n    return { kind: 'trashed', target };\n  }\n  await rm(target, { recursive: true, force: true });\n  return { kind: 'removed', target };",
+          "effect": "回收站通道失败后静默降级调用 fs.rm 永久删除, 严重违反失败不强删铁律"
+        }
+      ]
+    },
+    {
+      "id": "preset-anchor-bypassed",
+      "title": "多技术栈预设跳过项目锚点校验 (破坏 BC-46)",
+      "expectCaughtBy": "both",
+      "expectNote": "校验裸 node_modules/target/build/venv 防误删的双面用例 (preset-anchors-multi-stack / api-preset-anchors-multi-stack)",
+      "patches": [
+        {
+          "file": "scan-match.ts",
+          "find": "    const anchored = await preset.spec.verifyAnchor(ctx);\n    if (!anchored) continue;",
+          "replace": "    const anchored = true;\n    if (!anchored) continue;",
+          "effect": "内置多技术栈预设跳过同级项目锚点核验, 裸目录被误判为可清理目标"
+        }
+      ]
+    },
+    {
+      "id": "rule-default-delete",
+      "title": "自定义规则缺省动作翻转为永久删除 (破坏 BC-47 红线)",
+      "expectCaughtBy": "both",
+      "expectNote": "省略 rules[].action 的 CLI 与 API 用例 (rules-custom-trash-default / api-config-v2-rules-and-validation)",
+      "patches": [
+        {
+          "file": "config-validate.ts",
+          "find": "  let action: CleanupAction = 'trash';",
+          "replace": "  let action: CleanupAction = 'delete';",
+          "effect": "自定义规则省略 action 时默认回落为 delete 而非 trash, 违反保守回收站默认红线"
+        }
+      ]
+    },
+    {
+      "id": "migrate-skip-backup",
+      "title": "配置迁移跳过写前备份 (破坏 BC-49)",
+      "expectCaughtBy": "cli",
+      "expectNote": "校验迁移后源目录生成 .modified 备份文件的 CLI 用例 (cli-migrate-explicit-ok)",
+      "patches": [
+        {
+          "file": "migrate.ts",
+          "find": "    await writeFile(backupPath, plan.rawSource, {\n      encoding: 'utf8',\n      flag: 'wx',\n    });",
+          "replace": "    /* mutant: skip pre-migration backup */",
+          "effect": "配置迁移跳过写前排他备份, 覆盖旧配置后无原件可回滚"
+        }
+      ]
+    }
+  ]
+}

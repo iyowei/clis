@@ -3,7 +3,7 @@
  *
  * 职责: 把一条 api 语料的调用指令 (stdin JSON) 物化为对 API 包真实导出的调用, 把末步返回值 /
  * 抛错 / 收集的进度事件写成 stdout JSON。它与 CLI 面「被测命令是参数」同构: 任何语言的实现
- * 按协议 (packages/sweep/docs/protocol/conformance/api-harness-protocol.md) 提供自己的 harness 可执行,
+ * 按协议 (<api 包目录>/docs/protocol/conformance/api-harness-protocol.md) 提供自己的 harness 可执行,
  * 套件零改动即可验收。
  *
  * 指令形状 (stdin):
@@ -29,16 +29,30 @@
  * (>= 22.18 类型剥离) 均可直跑。
  */
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
-import { dirname, join, resolve } from 'node:path';
+import { basename, dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
+/** 从 argv (`--product <hint>`) 或环境变量 `TRANSCRIPTION_PRODUCT` 读取可选产品提示 */
+function readProductHint(): string | undefined {
+  const argv = process.argv.slice(2);
+  for (let i = 0; i < argv.length; i += 1) {
+    if (argv[i] === '--product' && argv[i + 1] !== undefined) {
+      return argv[i + 1];
+    }
+    if (argv[i]!.startsWith('--product=')) {
+      return argv[i]!.slice('--product='.length);
+    }
+  }
+  const fromEnv = process.env.TRANSCRIPTION_PRODUCT?.trim();
+  return fromEnv !== undefined && fromEnv !== '' ? fromEnv : undefined;
+}
+
 /**
- * 基于仓根动态解析主 API 包的源码入口 (src/index.ts):
- * 与 scripts/lib/workspace.ts 同算法 (带 bin 的主 CLI 包依赖的仓内无 bin 包),
- * 但内联仅依赖 node:fs / node:path 以便 make-mutants.ts 单独复制本文件到副本根下时零外部依赖、
- * 自动指向副本内的 API 源码 (无论仓库或副本包目录名如何变化)。
+ * 基于仓根动态解析目标 API 包目录与源码入口 (src/index.ts):
+ * 内联仅依赖 node:fs / node:path 以便 make-mutants.ts 单独复制本文件到副本根下时零外部依赖、
+ * 自动指向副本内的 API 源码; 支持 --product / TRANSCRIPTION_PRODUCT, 自动排除 shared-lib。
  */
-function resolveApiEntry(): string {
+function resolveApiPackage(): { pkgDir: string; entryFile: string } {
   const root = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
   let patterns = ['packages/*'];
   const rootPkgPath = join(root, 'package.json');
@@ -54,6 +68,7 @@ function resolveApiEntry(): string {
   }
   const packages: {
     name: string;
+    relDir: string;
     dir: string;
     manifest: Record<string, unknown>;
   }[] = [];
@@ -75,12 +90,18 @@ function resolveApiEntry(): string {
         unknown
       >;
       if (typeof manifest.name !== 'string') continue;
-      packages.push({ name: manifest.name, dir, manifest });
+      packages.push({
+        name: manifest.name,
+        relDir: `${match[1]!}/${entry.name}`,
+        dir,
+        manifest,
+      });
     }
   }
   packages.sort((a, b) => a.dir.localeCompare(b.dir));
   const apiCandidates = packages.filter((pkg) => {
     if (pkg.manifest.bin !== undefined) return false;
+    if (pkg.manifest.clisRole === 'shared-lib') return false;
     return packages.some((other) => {
       if (other === pkg || other.manifest.bin === undefined) return false;
       const deps = (other.manifest.dependencies ?? {}) as Record<
@@ -94,8 +115,25 @@ function resolveApiEntry(): string {
       return pkg.name in deps || pkg.name in devDeps;
     });
   });
-  let apiPkg = apiCandidates.length === 1 ? apiCandidates[0]! : null;
-  if (apiPkg === null && apiCandidates.length > 1) {
+
+  const hint = readProductHint();
+  let apiPkg: (typeof apiCandidates)[number] | null = null;
+  if (hint !== undefined) {
+    apiPkg =
+      apiCandidates.find(
+        (pkg) =>
+          pkg.name === hint ||
+          pkg.relDir === hint ||
+          basename(pkg.dir) === hint,
+      ) ?? null;
+    if (apiPkg === null) {
+      throw new Error(
+        `未找到匹配 --product "${hint}" 的 API 包 (候选: ${apiCandidates.map((p) => p.relDir).join(', ')})`,
+      );
+    }
+  } else if (apiCandidates.length === 1) {
+    apiPkg = apiCandidates[0]!;
+  } else if (apiCandidates.length > 1) {
     const withProtocol = apiCandidates.filter((pkg) =>
       existsSync(join(pkg.dir, 'docs', 'protocol')),
     );
@@ -103,38 +141,54 @@ function resolveApiEntry(): string {
       apiPkg = withProtocol[0]!;
     } else {
       throw new Error(
-        `仓内存在多个 API 候选包 (${apiCandidates.map((p) => p.name).join(', ')}), 无法唯一确定带 docs/protocol 的被测包`,
+        `仓内存在多个 API 候选包 (${apiCandidates.map((p) => p.name).join(', ')}), 请传 --product 显式指定`,
       );
     }
   }
   if (apiPkg === null) {
     throw new Error(`无法基于仓根 (${root}) 定位 API 包源码入口`);
   }
-  return join(apiPkg.dir, 'src', 'index.ts');
+  return { pkgDir: apiPkg.dir, entryFile: join(apiPkg.dir, 'src', 'index.ts') };
 }
 
-const api = (await import(pathToFileURL(resolveApiEntry()).href)) as Record<
+const resolvedPkg = resolveApiPackage();
+const api = (await import(pathToFileURL(resolvedPkg.entryFile).href)) as Record<
   string,
   unknown
 >;
+
+/** 动态加载包级可选探针注册表 (`<pkgDir>/docs/protocol/conformance/probes.ts`), 零领域硬编码 */
+async function loadPackageProbes(
+  pkgDir: string,
+  apiExports: Record<string, unknown>,
+): Promise<Record<string, unknown>> {
+  const probesPath = join(
+    pkgDir,
+    'docs',
+    'protocol',
+    'conformance',
+    'probes.ts',
+  );
+  if (!existsSync(probesPath)) return {};
+  const mod = (await import(pathToFileURL(probesPath).href)) as {
+    createProbes?: (
+      exportsObj: Record<string, unknown>,
+    ) => Record<string, unknown>;
+  };
+  return typeof mod.createProbes === 'function'
+    ? mod.createProbes(apiExports)
+    : {};
+}
 
 /** harness 自身问题 (指令非法 / 探针未知 / 导出与方法不存在), 与被测 API 的抛错同形态输出 */
 class HarnessError extends Error {
   override readonly name = 'HarnessError';
 }
 
-/**
- * 探针注册表 (初版最小集; 协议规定的命名集合, 语言实现者须提供同名等价物)。
- * - pathops.posix / pathops.win32: 真实 PathStyle (纯 path 语义, 可直接充当被测的注入面);
- * - deviceProbe.uniform: 恒报同一设备号的 DeviceProbe stub (同设备基准面; 跨设备类场景的
- *   细分 stub 按条款需求增补, 增补不破坏既有语料)。
- * 增补探针时须同步 packages/sweep/docs/protocol/conformance/api-harness-protocol.md 的注册表清单。
- */
-const PROBES: Record<string, unknown> = {
-  'pathops.posix': api.POSIX_STYLE,
-  'pathops.win32': api.WIN32_STYLE,
-  'deviceProbe.uniform': async () => 1,
-};
+const PROBES: Record<string, unknown> = await loadPackageProbes(
+  resolvedPkg.pkgDir,
+  api,
+);
 
 /** 单步指令 (字段全可选, 合法性由执行期校验并给出可读报错) */
 interface CallStep {
@@ -164,6 +218,19 @@ function resolveProbes(value: unknown): unknown {
         throw new HarnessError(`未知探针: ${String(name)}`);
       }
       return PROBES[name];
+    }
+    if ('$map' in value) {
+      if (!Array.isArray(value.$map)) {
+        throw new HarnessError('$map 须为键值对数组');
+      }
+      return new Map(
+        value.$map.map((entry) => {
+          if (!Array.isArray(entry) || entry.length !== 2) {
+            throw new HarnessError('$map 每项须为 [key, value] 二元组');
+          }
+          return [resolveProbes(entry[0]), resolveProbes(entry[1])];
+        }),
+      );
     }
     return Object.fromEntries(
       Object.entries(value).map(([key, item]) => [key, resolveProbes(item)]),
