@@ -21,7 +21,7 @@
 
 **[方案 A: 一刀切卸载 `prettier`、`typescript` 与 `oxlint`]**
 
-放弃理由: 三个不可逾越的硬约束会导致功能直接断裂: ① `bun check` 只做类型检查、不发射 `.d.ts` (`--emitDeclarationOnly`), 3 个库包 (`@iyowei/sweep-node-modules`、`@iyowei/codd`、`@iyowei/cli-updater`) 发布到 npm 所需的 `.d.ts` 类型声明将无从产出; ② `create-clis` 支持在仅安装 Node.js (`>= 22.18`) 的用户机器上经 `npx create-clis` 执行, 卸载其运行期 `prettier` 依赖会让纯 Node 用户的生成物失去格式化收口; ③ `bun 1.4.5` 尚无内置 `bun lint` 命令。
+放弃理由: 三个不可逾越的硬约束会导致功能直接断裂: ① `bun check` 只做类型检查、不发射 `.d.ts` (`--emitDeclarationOnly`), 3 个库包 (`@iyowei/sweep`、`@iyowei/codd` 与仓内共享私有库 `@iyowei/cli-updater`) 所需的 `.d.ts` 类型声明将无从产出; ② `create-clis` 支持在仅安装 Node.js (`>= 22.18`) 的用户机器上经 `npx create-clis` 执行, 卸载其运行期 `prettier` 依赖会让纯 Node 用户的生成物失去格式化收口; ③ `bun 1.4.5` 尚无内置 `bun lint` 命令。
 
 **[方案 B: 维持现状, 继续在钩子与 CI 中跑 Prettier + `tsc --noEmit`]**
 
@@ -36,7 +36,7 @@
 1. **格式检查与写入切换至 `bun fmt`**:
    - 根仓 `format` / `format-check`、`scripts/ci.ts` 的 `format-check`、`lefthook.yml` 的 `pre-commit` (`fmt-js` / `fmt-other`) 以及 `create-clis` 模板骨架同步切换为 `bun fmt` 与 `bun fmt --check`;
    - 根 `package.json` 与 `create-clis` 模板骨架 `devDependencies` 移除 `prettier` 与 `@trivago/prettier-plugin-sort-imports`;
-   - 保留仓库根 `.prettierrc` 与 `.prettierignore` 作为**单一事实来源**: `bun fmt` 与 `create-clis` 运行期 Prettier 共用同一份配置, 避免配置分裂导致两套工具格式化结果漂移。
+   - 保留仓库根 `.prettierrc` 与 `.prettierignore` 作为**单一事实来源**: `bun fmt` 与 `create-clis` 运行期 Prettier 共用同一份配置, 避免配置分裂导致两套工具格式化结果漂移。注 (2026-11-21 实测校准): `bun 1.4.5` 需在 `.prettierrc` 中保留 `"plugins": ["@trivago/prettier-plugin-sort-imports"]` 才会激活内置 import 排序; 为避免未安装本地 `prettier` 依赖导致 IDE 扩展报错, `.vscode/settings.json` 与 `.vscode/extensions.json` 同步移除了对 `esbenp.prettier-vscode` 的默认绑定与推荐。
 2. **纯类型检查 (`typecheck`) 切换至 `bun check`**:
    - 根仓 (`turbo run typecheck && bun check`)、全部 6 个工作区包与 `create-clis` 模板骨架的 `typecheck` 脚本统一由 `tsc --noEmit` 切换为 `bun check`。
 3. **三处必要保留边界 (明确禁止误删)**:
