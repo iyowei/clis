@@ -61,6 +61,7 @@ export class TailByteBuffer {
     this.maxBytes = Math.max(64, maxBytes);
   }
 
+  /** 追加数据块, 超出 maxBytes 时丢弃最老头部字节并标记 truncated */
   push(chunk: Buffer | string): void {
     const buf = typeof chunk === 'string' ? Buffer.from(chunk, 'utf8') : chunk;
     if (buf.length === 0) return;
@@ -90,6 +91,7 @@ export class TailByteBuffer {
     }
   }
 
+  /** 合并剩余缓冲为 UTF-8 字符串 (若曾截断头部则跳过残留续字节, 防首字符乱码) */
   toResult(): { text: string; truncated: boolean } {
     if (this.chunks.length === 0) {
       return { text: '', truncated: this.truncatedFlag };

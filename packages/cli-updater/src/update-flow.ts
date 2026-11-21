@@ -1,5 +1,7 @@
 /**
  * `runSelfUpdate` 升级执行与远端结果分发流程 (从 update.ts 拆分以保持单文件与单函数紧凑度)。
+ * 调用方: `update.ts`; 包含 `performUpgrade` (计划构造与异步隔离升级)、`handleFetchFailure`
+ * (远端查询失败分类与 `--force` 兜底) 及 `dispatchRemoteVersion` (版本比较与升级分流)。
  */
 import { type UpdateOptions } from './args.ts';
 import { type InstallOrigin, type PackageManager } from './detect.ts';
@@ -90,7 +92,19 @@ function emitCapturedFailureTail(
   }
 }
 
-/** 在确认存在目标包管理器且需更新后, 构造并异步隔离执行升级计划 */
+/**
+ * 在确认存在目标包管理器且需更新后, 构造并异步隔离执行升级计划。
+ *
+ * ### 数据流转示例
+ * ```text
+ * Input:  { binName, meta, origin, targetPm, targetSpec, opts, io, ui, spinner, deps }
+ * 步骤 1: 若 targetPm === 'yarn', 先 probeYarnVersion; 调用 buildUpgradePlan 校验并构造 CommandSpec
+ * 步骤 2: verbose 模式打印命令并透传 stdio; 静默模式启 spinner 并异步隔离执行 (64 KiB 尾部捕获)
+ * 步骤 3: finally 停 spinner; 异常/信号/非零退出时展开净化尾部日志与手动命令并返 1
+ * 步骤 4: status === 0 时打印耗时汇总并跑 verifyPostUpgrade 轻复核 (检测版本未变或 PATH 阴影)
+ * Output: 进程退出码 (0 成功 / 1 失败)
+ * ```
+ */
 export async function performUpgrade(
   ctx: PerformUpgradeContext,
 ): Promise<number> {
@@ -310,7 +324,18 @@ export async function handleFetchFailure(ctx: {
   return 1;
 }
 
-/** 比较远端版本与本地版本并分流到已最新 / --check / 执行升级 */
+/**
+ * 比较远端版本与本地版本并分流到已最新 / --check / 执行升级。
+ *
+ * ### 数据流转示例
+ * ```text
+ * Input:  { meta.version, remote: { version, registry }, targetPm, opts: { check, force } }
+ * 步骤 1: compareSemver(local, remote) -> 不可比且无 --force 退 0; 已最新且无 --force 退 0
+ * 步骤 2: 打印新版本或 --force 重装提示; 若 --check 仅给升级命令建议后退 0
+ * 步骤 3: 缺 targetPm 拒绝盲装并退 1; 否则委派 performUpgrade 执行升级
+ * Output: 进程退出码 (0 已最新/仅检查/升级成功; 1 缺安装器或升级失败)
+ * ```
+ */
 export async function dispatchRemoteVersion(ctx: {
   binName: string;
   meta: PackageMetaRef;

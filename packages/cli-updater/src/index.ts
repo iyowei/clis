@@ -1,5 +1,8 @@
 /**
  * `@iyowei/cli-updater` 公开入口: 跨包管理器 CLI 自更新共享引擎。
+ * 消费方: 仓内全部 CLI 包 (`@iyowei/sweep-cli` / `@iyowei/codd-cli` / `create-clis`)。
+ * 分层: args (参数) / detect (来源探测) / registry (源与版本) / semver (校验比较) /
+ * executor + exec-async (计划与隔离执行) / ui + spinner (终端渲染) / update (主流程编排)。
  */
 export {
   type ParseUpdateOutcome,

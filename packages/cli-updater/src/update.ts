@@ -69,7 +69,7 @@ export interface UpdateIO {
 
 /** runSelfUpdate 入口选项 */
 export interface SelfUpdateRunOptions {
-  /** 命令展示名 (如 sweep-nm / codd / create-clis) */
+  /** 命令展示名 (如 sweep / codd / create-clis) */
   binName: string;
   /** CLI 入口模块的 import.meta.url (用于定位相邻 package.json 与包目录) */
   entryMetaUrl?: string;
@@ -137,6 +137,17 @@ export function readPackageMeta(entryMetaUrl: string): PackageMeta {
 
 /**
  * 统一 CLI 自更新入口 (返回进程退出码: 0 成功 / 已最新 / 仅检查; 1 失败 / 未发布 / 无法确定安装器)。
+ *
+ * ### 数据流转示例
+ * ```text
+ * Input:  { binName: 'sweep', entryMetaUrl, argv: ['--check'] }
+ * 步骤 1: parseUpdateArgs + readPackageMeta (--help 直接渲染并退 0)
+ * 步骤 2: resolveOrigin (路径快路径 + 可选全局根实查) -> 确定 targetPm (opts.pm 优先)
+ * 步骤 3: resolveRegistry (显式 > env > 按 pm 查家目录配置 > 官方源)
+ * 步骤 4: 非全局受管且未指定 --pm -> handleNonGlobalOrigin 安全指引后退 0
+ * 步骤 5: fetchLatestVersion (+可选同源 Bearer) -> 失败走 handleFetchFailure, 成功走 dispatchRemoteVersion
+ * Output: 进程退出码 (0 / 1)
+ * ```
  */
 export async function runSelfUpdate(
   options: SelfUpdateRunOptions,

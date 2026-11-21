@@ -272,7 +272,17 @@ function applyBunfigRegistryRhs(
   if (token !== null && token.trim() !== '') target.token = token;
 }
 
-/** 一次性解析 ~/.bunfig.toml 中的 install 配置 */
+/**
+ * 一次性解析 ~/.bunfig.toml 中的 install 配置 (行级状态机, 引号感知剥注释)。
+ *
+ * ### 数据流转示例
+ * ```text
+ * Input:  content = "[install]\nregistry = \"https://r.example\"\n[install.scopes.\"@iyowei\"]\nurl = \"https://p.example\"\ntoken = \"$MY_TOKEN\""
+ * 步骤 1: 逐行 stripTomlComment -> 识别 [section] (install / install.registry / install.scopes / install.scopes."@scope")
+ * 步骤 2: 解析字符串或内联表 { url = ..., token = ... }, 分别落入 globalEntry / scopes Map / globalDir
+ * Output: { globalEntry: { url }, scopes: Map { '@iyowei' => { url, token } }, globalDir: null }
+ * ```
+ */
 function parseBunfigInstall(content: string): ParsedBunfigInstall {
   const result: ParsedBunfigInstall = {
     globalEntry: {},
@@ -364,6 +374,15 @@ function matchesRegistryOriginAndPath(
 
 /**
  * 从 ~/.bunfig.toml 提取与目标 registry 精确同源同路径匹配的 token (支持 $ENV / ${ENV} 展开)。
+ *
+ * ### 数据流转示例
+ * ```text
+ * Input:  registryUrl = "https://p.example/npm/", packageName = "@iyowei/sweep-cli", env = { MY_TOKEN: "tok" }
+ * 步骤 1: parseBunfigInstall -> 构造优先级队列 [本包 scope 项, globalEntry, 其余 scope 项]
+ * 步骤 2: 逐项 matchesRegistryOriginAndPath (同协议 + 同 host 含端口 + 归一 pathname 相等)
+ * 步骤 3: 命中后 expandEnvToken (支持 ${VAR} 与 $VAR; 缺失或含控制字符返回 null 不透传字面量)
+ * Output: "tok" (或未匹配返回 null)
+ * ```
  */
 export function parseAuthTokenFromBunfig(
   content: string,

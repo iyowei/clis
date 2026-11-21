@@ -162,7 +162,18 @@ export function resolveWindowsBatchDirectJs(
   return null;
 }
 
-/** 构造 Windows .cmd/.bat 的最终安全调用 (先试直调 JS 入口, 否则走 ComSpec /d /s /c 单串) */
+/**
+ * 构造 Windows .cmd/.bat 的最终安全调用 (先试直调 JS 入口, 否则走 ComSpec /d /s /c 单串)。
+ *
+ * ### 数据流转示例
+ * ```text
+ * Input:  pm = 'npm', batchPath = 'C:\\Program Files\\nodejs\\npm.cmd', pmArgs = ['install', '-g', '@iyowei/codd-cli@1.3.0']
+ * 分支 A (存在相邻 npm-cli.js 与 node.exe):
+ *   Output -> { command: 'C:\\Program Files\\nodejs\\node.exe', args: ['...\\npm-cli.js', 'install', '-g', '@iyowei/codd-cli@1.3.0'] }
+ * 分支 B (无相邻 JS 入口, 兜底 ComSpec):
+ *   Output -> { command: 'cmd.exe', args: ['/d', '/s', '/c', '""C:\\Program Files\\nodejs\\npm.cmd" install -g @iyowei/codd-cli@1.3.0"'], windowsVerbatimArguments: true }
+ * ```
+ */
 export function resolveWindowsBatchInvocation(
   pm: PackageManager,
   batchPath: string,

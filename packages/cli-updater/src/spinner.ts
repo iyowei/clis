@@ -1,7 +1,7 @@
 /**
  * 自更新 TTY 实时进度指示器 (走 stderr, 非 TTY / TERM=dumb 下完全静默 0 字节输出)。
  *
- * 与 sweep-nm 主视图进度指示器共用同一套标准 ANSI SGR 视觉语言 (`36` 青点阵 + `1` 粗白动作 + `2` 压暗细节/耗时),
+ * 与 sweep 主视图进度指示器共用同一套标准 ANSI SGR 视觉语言 (`36` 青点阵 + `1` 粗白动作 + `2` 压暗细节/耗时),
  * 用于接管「检查远端版本」与「静默执行包管理器升级」两段等待期, 结束后彻底擦除不留残影。
  */
 import { displayWidth, formatElapsedMs, paint } from './ui.ts';

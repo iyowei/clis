@@ -443,13 +443,22 @@ function detectGlobalForCandidates(
  * 确定本 CLI 的安装来源。
  *
  * 判定优先级 (由确定性最高到最低):
- * 1. 本地源码开发态 (真实包根不在 node_modules 且含 src/cli.ts — 含 npm/bun link 软链开发态);
+ * 1. 本地源码开发态 (真实包根不在 node_modules 且含 src/cli.ts, 含 npm/bun link 软链开发态);
  * 2. 临时一次性运行目录 (npx / bunx / pnpm dlx / yarn dlx / deno);
- * 3. 高可信真实 packageRoot 完整匹配 (环境变量全局根 → 标准全局路径特征 → 动态实查全局目录);
+ * 3. 高可信真实 packageRoot 完整匹配 (环境变量全局根 -> 标准全局路径特征 -> 动态实查全局目录);
  * 4. 低可信 rawPaths / argv[1] 完整匹配 (仅高可信均未命中时回退);
  * 5. 标准 `<prefix>/lib/node_modules/` 启发式兜底 (置于动态实查之后, 避免抢跑自定义非 npm 目录);
  * 6. 业务项目本地 node_modules 依赖 (宿主持有 package.json);
  * 7. 无法唯一定位 (unknown, 安全拒绝盲装, 引导用 --pm 显式指定)。
+ *
+ * ### 数据流转示例
+ * ```text
+ * Input:  { packageRoot: "/Users/me/.bun/install/global/node_modules/@iyowei/codd-cli", rawPaths: ["/Users/me/.bun/bin/codd"] }
+ * 步骤 1: 路径归一为 POSIX + 小写折叠; 跳过源码态 (含 /node_modules/) 与临时运行器
+ * 步骤 2: 高可信 packageRoot 依次匹配 env 根 (BUN_INSTALL 等) -> GLOBAL_PATH_SIGNATURES -> globalRoots
+ *         命中 "/.bun/install/global/" -> 立即返回, 不降级到 rawPaths / 启发式
+ * Output: { kind: 'global', pm: 'bun', reason: '命中 Bun 全局安装目录 (~/.bun)', packageRoot }
+ * ```
  */
 export function detectInstallOriginFromPath(
   input: DetectOriginInput,

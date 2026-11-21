@@ -1,6 +1,7 @@
 /**
  * `update` 子命令统一参数解析与帮助渲染 (纯函数, 零 IO)。
- * 仓内全部 CLI (sweep-nm / codd / create-clis) 共用同一套参数语法与错误文案。
+ * 调用方: `update.ts` (`runSelfUpdate`), 仓内全部 CLI (`sweep` / `codd` / `create-clis`) 共用同一套语法与错误文案。
+ * 支持旗标: `--check` / `--force` / `--verbose` / `--pm <pm>` / `--registry <url>` / `-h, --help`。
  */
 import { type PackageManager, SUPPORTED_PACKAGE_MANAGERS } from './detect.ts';
 import { isValidRegistryUrl } from './semver.ts';

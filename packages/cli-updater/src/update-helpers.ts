@@ -1,5 +1,6 @@
 /**
  * `runSelfUpdate` 流程辅助函数: 来源文案、跨 PM 阴影警示、动态实查复核与升级后轻复核。
+ * 调用方: `update.ts` (来源探测与非全局安全指引) 与 `update-flow.ts` (升级后轻复核)。
  */
 import { existsSync, readFileSync } from 'node:fs';
 
@@ -177,8 +178,10 @@ export function warnCrossPmOverride(
 }
 
 /**
- * 探测安装来源 (先快路径纯路径识别; 遇 unknown / local-project 或仅命中低置信度
- * `<prefix>/lib/node_modules` 启发式且位于 node_modules 内时触发动态实查兜底)。
+ * 探测安装来源 (两段式快慢路径):
+ * 1. 快路径: 纯路径判定 detectInstallOriginFromPath (零子进程开销);
+ * 2. 慢路径兜底: 若首轮命中 unknown / local-project 或低置信度 `<prefix>/lib/node_modules` 启发式,
+ *    且真实包根位于 `/node_modules/` 内, 再调 probeGlobalRoots 实查自定义全局目录并复判。
  */
 export function resolveOrigin(
   meta: PackageMetaRef,

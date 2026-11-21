@@ -258,7 +258,18 @@ function buildPmUpgradeArgs(
   return reg === undefined ? base : [...base, `--registry=${reg}`];
 }
 
-/** 构造各包管理器升级子进程参数 (含 Yarn Berry 前置拦截与强输入校验) */
+/**
+ * 构造各包管理器升级子进程参数 (含 Yarn Berry 前置拦截与强输入校验)。
+ *
+ * ### 数据流转示例
+ * ```text
+ * Input:  { pm: 'bun', packageName: '@iyowei/codd-cli', targetSpec: '1.3.0', explicitRegistry: 'https://r.example/' }
+ * 步骤 1: 白名单校验 packageName / targetSpec / explicitRegistry, 归一 reg 并拼 displayCommand
+ * 步骤 2: 若 pm === 'yarn' 且 yarnVersion >= 2 (Berry), 前置拦截拒绝 (无 yarn global add)
+ * 步骤 3: buildPmUpgradeArgs + resolvePmInvocation (仅绝对 PATH 查找; Windows .cmd 走直调 JS 或 verbatim 单串)
+ * Output: { ok: true, plan: { command, args, displayCommand, envOverlay, windowsVerbatimArguments? } }
+ * ```
+ */
 export function buildUpgradePlan(
   input: BuildUpgradePlanInput,
 ): UpgradePlanOutcome {
@@ -438,6 +449,15 @@ function resolveBunGlobalDirFromConfig(
 /**
  * 动态实查兜底: 仅在纯路径特征未命中时, 轻探测本机包管理器自定义全局根目录。
  * 全探针复用单一临时空目录、注入 COREPACK_ENABLE_DOWNLOAD_PROMPT=0、带 3 秒超时, 失败静默跳过。
+ *
+ * ### 数据流转示例
+ * ```text
+ * Input:  (platform, env, spawnFn, options?)
+ * 步骤 1: 读 ~/.bunfig.toml 的 [install] globalDir (展开 ~ 并校验存在) -> roots.bun
+ * 步骤 2: 建单一临时空目录 cwd, 依次跑 `pnpm root -g` / `npm root -g` / (Yarn v1 才跑 `yarn global dir`)
+ * 步骤 3: 每项输出取首行、验证存在并 safeRealpath 归一后落盘, finally 清理临时空目录
+ * Output: GlobalRootMap ({ bun?, pnpm?, npm?, yarn? })
+ * ```
  */
 export function probeGlobalRoots(
   platform: NodeJS.Platform = process.platform,

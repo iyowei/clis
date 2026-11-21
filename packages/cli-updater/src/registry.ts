@@ -1,9 +1,10 @@
 /**
  * npm registry 解析、同源鉴权凭据提取与远端版本查询模块:
- * - Registry 优先级: 显式 --registry > 环境变量 > 用户家目录配置 > 官方源;
- *   仅 `pm === 'bun'` 或 `pm === undefined` 才读取 `~/.bunfig.toml`, 明确为 npm / pnpm /
- *   yarn / volta 时只读 `~/.npmrc`, 杜绝查源与装源分裂;
- * - 安全硬底线: 绝不读取当前工作目录 (cwd) 的 .npmrc 或 bunfig.toml, 防止被不可信目录劫持;
+ * - Registry / 凭据优先级: 显式 `--registry` > 环境变量 (`NPM_CONFIG_REGISTRY`) > 家目录配置 > 官方源;
+ *   家目录顺序按 `pm` 严格对齐: `pm === 'bun'` 时 `~/.bunfig.toml` 优先于 `~/.npmrc`,
+ *   `pm === undefined` 时 `~/.npmrc` 优先于 `~/.bunfig.toml`, 明确为 `npm / pnpm / yarn / volta`
+ *   时只读 `~/.npmrc` (绝不读 `~/.bunfig.toml`), 杜绝查源与装源分裂;
+ * - 安全硬底线: 绝不读取当前工作目录 (cwd) 的 `.npmrc` 或 `bunfig.toml`, 防止被不可信目录劫持;
  *   鉴权 token 仅在目标 registry 与配置 host/path 精确匹配时注入 Authorization 头, 且绝不回显。
  */
 import { readFileSync } from 'node:fs';
@@ -87,7 +88,18 @@ function defaultReadText(path: string): string | null {
   }
 }
 
-/** 推导本次查询应使用的 registry URL (仅查显式参数、环境变量与用户家目录配置) */
+/**
+ * 推导本次查询应使用的 registry URL (仅查显式参数、环境变量与用户家目录配置)。
+ *
+ * ### 数据流转示例
+ * ```text
+ * Input:  { packageName: "@iyowei/codd-cli", flagRegistry?, pm: "bun", env, homeDir }
+ * 步骤 1: flagRegistry 合法 -> 立即返回; 否则检查 NPM_CONFIG_REGISTRY / npm_config_registry
+ * 步骤 2: pm === 'bun' 先查 ~/.bunfig.toml; 再查 ~/.npmrc; 仅 pm === undefined 时再回退 ~/.bunfig.toml
+ * 步骤 3: 均未命中则回退 DEFAULT_REGISTRY ("https://registry.npmjs.org")
+ * Output: 去除末尾斜杠的规范 registry URL
+ * ```
+ */
 export function resolveRegistry(input: ResolveRegistryInput): string {
   if (
     input.flagRegistry !== undefined &&
@@ -190,7 +202,18 @@ function cleanMessage(raw: string, secret?: string): string {
     .trim();
 }
 
-/** 向 registry 查询指定包最新 dist-tag 的版本号 */
+/**
+ * 向 registry 查询指定包最新 dist-tag 的版本号。
+ *
+ * ### 数据流转示例
+ * ```text
+ * Input:  { packageName: "@iyowei/codd-cli", registry: "https://registry.npmjs.org", tag: "latest", authToken? }
+ * 步骤 1: 校验 packageName / tag / registry 白名单; 若 authToken 合法则附 Authorization: Bearer 头
+ * 步骤 2: GET <base>/<encodedPkg>/<encodedTag> (带 AbortSignal.timeout(10s)), 错误消息脱敏 authToken
+ * 步骤 3: 按状态码分类: 401/403 -> auth, 404 -> not-found, 非 2xx -> http; 2xx 解析 JSON 并校验 version
+ * Output: { ok: true, version, registry } 或 { ok: false, code, message, status? }
+ * ```
+ */
 export async function fetchLatestVersion(
   input: FetchVersionInput,
 ): Promise<FetchVersionResult> {

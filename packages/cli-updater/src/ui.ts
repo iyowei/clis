@@ -28,7 +28,7 @@ const BIDI_AND_ZERO_WIDTH_RE =
 /** 匹配全量 C0 / C1 控制字符 */
 const CONTROL_CHAR_RE = /\p{Cc}/gu;
 
-/** 顶栏色块前缀 (与 sweep-nm 主视图同源) */
+/** 顶栏色块前缀 (与 sweep 主视图同源) */
 export const BAR_BLOCK = '▍';
 
 /** 判定当前进程 stdout / stderr 是否允许着色 (尊重 NO_COLOR 与 TERM=dumb) */
@@ -173,7 +173,7 @@ export interface UpdateUi {
   ): string;
   /** 正文缩进行 */
   body(text: string): string;
-  /** 柔和提示缩进行 (4 格缩进 + 压暗) */
+  /** 柔和提示缩进行 (2 格缩进 + 压暗) */
   hint(text: string): string;
   /** 黄色警示行 */
   warn(text: string): string;

@@ -86,7 +86,8 @@ function comparePrereleaseId(a: string, b: string): number {
 
 /**
  * 比较两个 SemVer 版本号: 返回 -1 (a < b)、0 (a === b) 或 1 (a > b);
- * 任一输入不是合法 SemVer 时返回 null。
+ * 任一输入不是合法 SemVer 时返回 null (忽略 `+build` metadata)。
+ * 示例: `1.2.3-alpha.1` < `1.2.3-alpha.2` < `1.2.3-beta` < `1.2.3`。
  */
 export function compareSemver(a: string, b: string): -1 | 0 | 1 | null {
   const left = parseSemver(a);
