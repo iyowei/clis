@@ -22,6 +22,8 @@
     "format-check": "bun fmt --check",
     "test": "turbo run test && bun test scripts/",
     "conformance": "bun scripts/transcription/run-conformance.ts",
+    "fuzz": "bun scripts/transcription/run-diff-fuzz.ts",
+    "fuzz:diff": "bun scripts/transcription/run-diff-fuzz.ts --api-target \"node scripts/transcription/api-harness.ts\"",
     "ci": "bun scripts/ci.ts"
   },
   "devDependencies": {

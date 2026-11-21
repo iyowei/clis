@@ -191,14 +191,17 @@ describe('removeRulesFor 三档规则面', () => {
     expect(full.workflowJobs).toEqual([]);
 
     const standard = removeRulesFor('standard');
-    // 增强档机制件 (conformance 套件整目录) 与对应步骤 / workflow job
+    // 增强档机制件 (conformance 套件与仓级转写文档整目录) 与对应步骤 / workflow job
     expect(standard.deletePaths).toContain('scripts/transcription/');
+    expect(standard.deletePaths).toContain('docs/transcription/');
     expect(standard.ciSteps).toContain('lint:coverage');
     expect(standard.ciSteps).toContain('conformance:bun');
     expect(standard.ciSteps).toContain('conformance:node');
     expect(standard.workflowJobs).toContain('conformance');
     // 增强档在根包上的脚本挂载 (载体随机制件摘除, 脚本不摘即悬空)
     expect(standard.packageScripts).toContain('conformance');
+    expect(standard.packageScripts).toContain('fuzz');
+    expect(standard.packageScripts).toContain('fuzz:diff');
     // 标准档装备 (技术债册子 + 依赖方向闸门) 是 core 才摘, standard 保留
     expect(standard.deletePaths).not.toContain('docs/designs/tech-debt.md');
     expect(standard.ciSteps).not.toContain('lint:deps');
@@ -388,6 +391,9 @@ describe('真实模板端到端', () => {
     expect(
       existsSync(join(fullDir, 'scripts/transcription/api-harness.ts')),
     ).toBe(true);
+    expect(existsSync(join(fullDir, 'docs/transcription/README.md'))).toBe(
+      true,
+    );
     expect(existsSync(join(fullDir, 'docs/designs/tech-debt.md'))).toBe(true);
     // 满档保留根包的 conformance 脚本与 ci.ts --conformance 入口
     const fullScripts = (
@@ -396,6 +402,8 @@ describe('真实模板端到端', () => {
       }
     ).scripts;
     expect(typeof fullScripts.conformance).toBe('string');
+    expect(typeof fullScripts.fuzz).toBe('string');
+    expect(typeof fullScripts['fuzz:diff']).toBe('string');
     const fullHelp = spawnSync('bun', ['scripts/ci.ts', '--help'], {
       cwd: fullDir,
       encoding: 'utf8',
@@ -409,6 +417,7 @@ describe('真实模板端到端', () => {
     const standardDir = buildTemplateCopy(root, 'standard');
     pruneTemplate(standardDir, removeRulesFor('standard'));
     expect(existsSync(join(standardDir, 'scripts/transcription'))).toBe(false);
+    expect(existsSync(join(standardDir, 'docs/transcription'))).toBe(false);
     expect(existsSync(join(standardDir, 'docs/designs/tech-debt.md'))).toBe(
       true,
     );
@@ -428,6 +437,8 @@ describe('真实模板端到端', () => {
       }
     ).scripts;
     expect(standardScripts.conformance).toBeUndefined();
+    expect(standardScripts.fuzz).toBeUndefined();
+    expect(standardScripts['fuzz:diff']).toBeUndefined();
     const stdCiYml = readFileSync(
       join(standardDir, '.github/workflows/ci.yml'),
       'utf8',
@@ -459,6 +470,7 @@ describe('真实模板端到端', () => {
     const coreDir = buildTemplateCopy(root, 'core');
     pruneTemplate(coreDir, removeRulesFor('core'));
     expect(existsSync(join(coreDir, 'scripts/transcription'))).toBe(false);
+    expect(existsSync(join(coreDir, 'docs/transcription'))).toBe(false);
     expect(existsSync(join(coreDir, 'scripts/ci.ts'))).toBe(true);
     expect(existsSync(join(coreDir, 'docs/designs/tech-debt.md'))).toBe(false);
     expect(
@@ -470,6 +482,8 @@ describe('真实模板端到端', () => {
       }
     ).scripts;
     expect(coreScripts.conformance).toBeUndefined();
+    expect(coreScripts.fuzz).toBeUndefined();
+    expect(coreScripts['fuzz:diff']).toBeUndefined();
     expect(typeof coreScripts.ci).toBe('string');
 
     // 载体摘除在真实模板上生效: 只服务 conformance 步骤的坐标派生与导入不得残留,

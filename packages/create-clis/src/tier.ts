@@ -1,15 +1,10 @@
 /**
- * 档位裁剪: 三档 (core / standard / full) → 「删除路径集 + ci 步骤摘除集 + 根 package.json
- * 脚本摘除集」, 并对模板目录执行裁剪。
+ * 档位裁剪引擎: 三档 (`core` / `standard` / `full`) -> 「删除路径集 + `scripts/ci.ts` 步骤摘除集 +
+ * 根 `package.json` 脚本摘除集 + `.github/workflows/{ci,release}.yml` job 摘除集」, 并执行先验后写裁剪。
  *
- * 档位语义与裁剪点约定以 docs/designs/capability-tiers.md 为权威: 满档 = 全部装备; 标准档 =
- * 满档减去「增强档」; 核心档 = 标准档再减去「标准档」。每套装备的裁剪 = 删除它的文件 + 删除
- * 它在 `scripts/ci.ts` 里的步骤声明与根 `package.json` 里的脚本声明 (裁剪点约定, 2026-09-30
- * 单源化后成立; 脚本面 2026-10-01 终审补: 机制件删了而 `bun run <script>` 入口仍留在根
- * package.json, 实跑必死)。
- *
- * 消费方: 生成主流程 (Task 7) 在「按档裁剪」一步调 pruneTemplate (见
- * docs/designs/scaffold-contract.md 流程第 3 步)。
+ * 上游由 `generate.ts` 在按档裁剪阶段调用 `pruneTemplate(targetDir, removeRulesFor(tier))`;
+ * 下游委托 `tier-lexer.ts` / `tier-conformance.ts` / `tier-workflow.ts` 做语法安全摘除与零残留自检。
+ * 档位关系 (`docs/designs/capability-tiers.md`): `full` 不裁剪; `standard` 摘转写契约套件; `core` 再摘技术债册子与依赖方向闸门。
  */
 import { existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -37,8 +32,9 @@ export interface RemoveRule {
   readonly workflowJobs?: readonly string[];
 }
 
-/** 增强档机制件目录 (转写契约套件) */
+/** 增强档机制件目录 (转写契约套件 + 仓级通用转写文档) */
 const CONFORMANCE_KIT_DIR = 'scripts/transcription/';
+const CONFORMANCE_DOCS_DIR = 'docs/transcription/';
 
 /** 标准档装备: 技术债登记册 + 依赖方向闸门及其单测 */
 const TECH_DEBT_LEDGER = 'docs/designs/tech-debt.md';
@@ -68,7 +64,11 @@ const WORKFLOW_FILES: readonly string[] = [
 ];
 
 /** 增强档装备在根 `package.json` 里的脚本挂载 */
-const CONFORMANCE_PACKAGE_SCRIPTS: readonly string[] = ['conformance'];
+const CONFORMANCE_PACKAGE_SCRIPTS: readonly string[] = [
+  'conformance',
+  'fuzz',
+  'fuzz:diff',
+];
 
 /** 增强档在 GitHub Actions 里对应的 job 名 */
 const CONFORMANCE_WORKFLOW_JOBS: readonly string[] = ['conformance'];
@@ -81,7 +81,7 @@ const TIER_RULES: Readonly<Record<Tier, RemoveRule>> = {
     workflowJobs: [],
   },
   standard: {
-    deletePaths: [CONFORMANCE_KIT_DIR],
+    deletePaths: [CONFORMANCE_KIT_DIR, CONFORMANCE_DOCS_DIR],
     ciSteps: CONFORMANCE_CI_STEPS,
     packageScripts: CONFORMANCE_PACKAGE_SCRIPTS,
     workflowJobs: CONFORMANCE_WORKFLOW_JOBS,
@@ -89,6 +89,7 @@ const TIER_RULES: Readonly<Record<Tier, RemoveRule>> = {
   core: {
     deletePaths: [
       CONFORMANCE_KIT_DIR,
+      CONFORMANCE_DOCS_DIR,
       TECH_DEBT_LEDGER,
       DEP_DIRECTION_SCRIPT,
       DEP_DIRECTION_TEST,
@@ -105,43 +106,29 @@ export function removeRulesFor(tier: Tier): RemoveRule {
 }
 
 /**
- * 按档裁剪模板目录: 删除 deletePaths 指向的文件 / 目录, 对 `scripts/ci.ts` 做步骤声明手术
- * (删「单个 STEPS 条目块」(含紧贴其上的注释行)、「组数组中的引用行」, 与「只服务被摘步骤的
- * 载体声明及其来源导入」), 并对根 `package.json` 做脚本声明手术 (摘除 packageScripts 列出的
- * scripts 条目)。
+ * 按档裁剪模板目录: 四维同步摘除 `deletePaths`、`scripts/ci.ts` 步骤声明 (含组数组引用、
+ * 空 `CONFORMANCE_GROUP` 与专属载体声明/导入)、根 `package.json` 的 `scripts` 条目, 以及
+ * `.github/workflows/{ci,release}.yml` 中的指定 job 与 `needs` 引用。
  *
- * 先全量校验 (路径存在 + 手术干跑与自检) 再落盘, 任一项不过即抛错且不留半成品。
- * 边界: 手术只做行级摘除, 不重排格式 (组数组缩为单元素后的折叠、载体摘除留下的空行都属格式化
- * 面, 由生成流程的格式化收口处置: T7 替换后统一跑 prettier, 见 task-4 报告「生成期格式化漂移」);
- * 根 package.json 的脚本面按 JSON 结构摘除后序列化回 2 空格缩进 (与模板既有 prettier 稳定态
- * 同形)。
+ * 原子前检约束: 全部路径存在性校验、载体归属校验、内存干跑手术与术后零残留/括号配平自检通过后
+ * 才统一删文件与写回磁盘, 任一校验不过即抛错不留半成品; `scripts/ci.ts` 行级摘除后的格式收敛
+ * 交由 `generate.ts` 后续的 `formatTree` 统一处理。
  *
- * ### 数据追踪示例
+ * ### 数据流转示例
  * ```text
- * Input（真实 Payload）
- *   targetDir = '<生成物根>'  (模板快照副本)
- *   rules = removeRulesFor('standard')
- *         = { deletePaths: ['scripts/transcription/'],
- *             ciSteps: ['lint:coverage', 'conformance:bun', 'conformance:node'],
- *             packageScripts: ['conformance'] }
- *
- * 步骤 1：前置校验 (任一项不过即抛错)
- *   <targetDir>/scripts/transcription/ 存在 ✓  *(缺失即「裁剪路径不存在」)*
- *   STEPS 表条目摘三后 = ['build', 'typecheck', 'test', 'lint', 'format-check', 'lint:refs',
- *                        'lint:examples', 'lint:backups', 'npm-trust']  *(手术干跑)*
- *   'lint:coverage' 块引用的 scripts/transcription/validate-coverage.ts 在删除面内 ✓
- *   'conformance' 脚本存在, 且其命令引用的 scripts/transcription/run-conformance.ts 在删除面内 ✓
- *
- * 步骤 2：落盘
- *   删 <targetDir>/scripts/transcription/ (整目录)
- *   回写 <targetDir>/scripts/ci.ts: STEPS 少三条; VERIFY_GROUP 少 'lint:coverage';
- *   CONFORMANCE_GROUP 及 `--conformance` 入口随转写步骤一并摘除 (全链直接返回 VERIFY_GROUP);
- *   CLI 入口坐标块与它的 resolveProductPairs / resolveCliAndApi 导入同步摘净
- *   回写 <targetDir>/package.json: scripts 少 'conformance', 其余脚本原样
- *
- * Output（数据契约）
- *   <targetDir> 内增强档机制件、其步骤声明、根包上的套件脚本与专属载体声明一并消失,
- *   其余文件逐字节原样
+ * Input:  targetDir = '<模板副本根>'
+ *         rules = removeRulesFor('standard')
+ *               = { deletePaths: ['scripts/transcription/'],
+ *                   ciSteps: ['lint:coverage', 'conformance:bun', 'conformance:node'],
+ *                   packageScripts: ['conformance'],
+ *                   workflowJobs: ['conformance'] }
+ * Step 1: 全量前置校验 + 内存干跑
+ *         - 核验 `scripts/transcription/` 存在且覆盖被摘步骤/脚本引用的全部 `scripts/...` 载体
+ *         - pruneCiSource 摘除 3 个 STEPS 条目、组引用、空 CONFORMANCE_GROUP 及孤儿载体并验证括号配平
+ *         - prunePackageScripts 摘除根 package.json 的 `conformance` 脚本并核对保留脚本无损
+ *         - pruneWorkflowJobs 摘除 ci.yml / release.yml 的 `conformance` job 及 `needs` 引用并验证零残留
+ * Step 2: 统一落盘 (删除 deletePaths 并回写 ci.ts / package.json / workflow 文件)
+ * Output: targetDir 完成标准档裁剪 (保留 `lint:deps` 与 `tech-debt.md`; core 档会一并摘除二者)
  * ```
  */
 export function pruneTemplate(targetDir: string, rules: RemoveRule): void {
