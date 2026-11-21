@@ -152,9 +152,13 @@ describe('CLI 端到端行为 (源码直跑)', () => {
     expect(updHelp.status).toBe(0);
     expect(updHelp.stdout).toContain('codd update');
 
-    const updSrc = spawnSync('bun', [cliEntry, 'update', '--check'], {
-      encoding: 'utf8',
-    });
+    const updSrc = spawnSync(
+      'bun',
+      [cliEntry, 'update', '--check', '--registry', 'http://127.0.0.1:1'],
+      {
+        encoding: 'utf8',
+      },
+    );
     expect(updSrc.status).toBe(0);
     expect(updSrc.stdout).toContain('本地源码工作树');
   }, 30_000);
