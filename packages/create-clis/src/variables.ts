@@ -1,14 +1,10 @@
 /**
- * 五变量收集与旗标解析: 旗标 → CliOptions, 选项 + 环境 → 词汇表 (Vocabulary), 以及各字段的
- * 合法性校验。
+ * 五变量收集、校验与旗标解析: `argv` -> `CliOptions`, 选项 + 环境 -> 词汇表 (`Vocabulary`)。
  *
- * 契约衔接:
- * - 词汇表直接复用 render.ts 的 Vocabulary (字段一一对齐, 不另立形状); 占位符拼写
- *   (TEMPLATE_VOCABULARY) 是下游消费面, 本模块不碰;
- * - 变量默认值与校验以 docs/designs/scaffold-contract.md「变量」为权威: name 必填且 kebab-case;
- *   scope 默认裸包名; binName 默认由 name 派生短形态; owner 默认 git 全局 user.name; repoUrl
- *   默认 https://github.com/<owner>/<name>;
- * - 除 readGitUserName (环境适配出口) 外全为纯函数; 交互收集在 prompt.ts。
+ * 上游供 `cli.ts` 与 `prompt.ts` 消费, 下游产出 `render.ts` 同源的 `Vocabulary` (不碰占位符拼写)。
+ * 默认值与校验口径见 `docs/designs/scaffold-contract.md`: `name` 必填 kebab-case, `scope` 缺省空串,
+ * `binName` 由 `name` 派生短形态, `owner` 缺省取 git 全局 `user.name`, `repoUrl` 合成自 `owner`/`name`。
+ * 除 `readGitUserName` 外全为纯函数, 便于单元测试注入 `Environment`。
  */
 import { spawnSync } from 'node:child_process';
 import { basename, resolve } from 'node:path';
@@ -128,23 +124,16 @@ export function provided(value: string | undefined): string | undefined {
 }
 
 /**
- * 由项目名派生 bin 短形态: 三段及以上取「首段 + 其余段首字母」(sweep-node-modules → sweep-nm);
- * 一段 / 两段名本身已是短形态, 原样保留 (my-tool 缩写为 my-t 无可辨识度)。
- * 只做派生, 合法性由 validateBinName 兜底; 用户可用 --bin 覆盖。
+ * 由项目名派生 bin 短形态: 三段及以上取「首段 + 其余段首字母」(如 `sweep-node-modules` -> `sweep-nm`);
+ * 一段 / 两段名本身已是短形态, 原样保留 (如 `my-tool` 缩写为 `my-t` 失去辨识度)。
+ * 只做派生, 合法性由 `validateBinName` 兜底; 用户可用 `--bin` 覆盖。
  *
- * ### 数据追踪示例
+ * ### 数据流转示例
  * ```text
- * Input（真实 Payload）
- *   name = 'sweep-node-modules'
- *
- * 步骤 1：按 - 切段
- *   segments = ['sweep', 'node', 'modules']   *(三段, 走缩写分支)*
- *
- * 步骤 2：首段 + 其余段首字母
- *   bin = 'sweep' + '-' + 'n' + 'm'
- *
- * Output（数据契约）
- *   return 'sweep-nm'
+ * Input:  name = 'sweep-node-modules' (两段名如 'my-tool' 直接原样返回)
+ * Step 1: 按 '-' 切段并过滤空段 -> segments = ['sweep', 'node', 'modules'] (长度 >= 3)
+ * Step 2: 取首段 'sweep' + 其余各段首字母 'n' + 'm'
+ * Output: 'sweep-nm'
  * ```
  */
 export function deriveBinName(name: string): string {
@@ -187,35 +176,23 @@ function valueTokenAt(argv: string[], index: number): string | undefined {
 }
 
 /**
- * 解析旗标 (argv 为脚本名之后的参数段)。旗标清单见 docs/designs/scaffold-contract.md
- * 「旗标汇总」: 五个值旗标 + --tier + --no-git / --no-install / --yes, 外加一个位置参数。
+ * 解析命令行旗标 (`argv` 为脚本名之后的参数段; 仅 `update` 子命令由 `cli.ts` 先行拦截)。
  *
  * 约定:
- * - 位置参数是目标目录 [dir]; 项目名缺省取该目录 basename (--name 优先; `.` / `..` 的
- *   basename 是自身而非目录名, 回退到 resolve 后的 basename), 目录自身的可用性
- *   (存在 / 为空) 由生成流程在落盘前检查, 不属本函数;
- * - 值旗标两种写法 (`--name x` 与 `--name=x`); 重复旗标后者胜;
- * - 解析只做形态判定 (未知旗标 / 缺值 / 档位枚举), 取值合法性交 resolveVocabulary;
- * - `--` 之后的旗标由 npm create 等调用方消费 (生态既有行为), 本函数不重复处理;
- *   `--help` 一类展示面旗标由 CLI 入口先行拦截, 不在此列。
+ * - 支持 `-h`/`--help`、`-V`/`--version` (命中即置位并提前返回) 与 `--` 终止选项解析
+ *   (其后 token 均视作位置参数 `dir`, 可逃逸以 `-` 开头或名为 `update` 的目录);
+ * - 位置参数是目标目录 `[dir]`; 未给 `--name` 时由目录 basename 推导 `suggestedName`
+ *   (`.` / `..` 回退 `resolve(dir)` 的 basename), 交互模式对其非法值丢弃重问、`--yes` 模式照常校验;
+ * - 值旗标支持 `--name x` 与 `--name=x`, 重复后者胜; 本函数只判语法形态与 `--tier` 枚举,
+ *   字段值语义校验统一交 `resolveVocabulary` / `askAll`。
  *
- * ### 数据追踪示例
+ * ### 数据流转示例
  * ```text
- * Input（真实 Payload）
- *   argv = ['./pkgs/my-tool', '--scope=@me', '--no-git', '--tier', 'full']
- *
- * 步骤 1：逐 token 分类消费
- *   './pkgs/my-tool' → dir (首个位置参数)
- *   '--scope=@me'    → scope = '@me' (内联值形态)
- *   '--no-git'       → git = false
- *   '--tier' 'full'  → tier = 'full' (下一 token 作值, 扫描前进一格)
- *
- * 步骤 2：位置参数回填项目名 (--name 缺席时取 basename)
- *   name = basename('./pkgs/my-tool') = 'my-tool'
- *
- * Output（数据契约）
- *   return { dir: './pkgs/my-tool', name: 'my-tool', scope: '@me', tier: 'full',
- *            git: false, install: true, yes: false }
+ * Input:  argv = ['./pkgs/my-tool', '--scope=@me', '--no-git', '--tier', 'full']
+ * Step 1: 逐 token 消费 -> dir='./pkgs/my-tool', scope='@me', git=false, tier='full'
+ * Step 2: options.name 未给 -> 由 dir basename 派生 suggestedName = 'my-tool' (不写死 name)
+ * Output: { dir: './pkgs/my-tool', suggestedName: 'my-tool', scope: '@me', tier: 'full',
+ *           git: false, install: true, yes: false }
  * ```
  */
 export function parseFlags(argv: string[]): CliOptions | { error: string } {
@@ -314,28 +291,20 @@ export function parseFlags(argv: string[]): CliOptions | { error: string } {
 }
 
 /**
- * 选项 + 环境 → 五变量词汇表 (Vocabulary, 字段一一对齐)。
+ * 选项 + 环境 -> 五变量词汇表 (`Vocabulary`, 字段一一对齐)。
  *
- * 缺省派生: scope 空串 (裸包名) / binName 由 name 派生 / owner 取 git 全局 user.name /
- * repoUrl 由 owner 与 name 合成; 空串旗标视同未提供。任一变量缺失或非法即返回 { error }
- * (调用方打印并以非零退出码结束)。
+ * 缺省派生: `name` 取 `opts.name ?? opts.suggestedName`; `scope` 缺省空串 (裸包名);
+ * `binName` 由 `name` 派生; `owner` 缺省取 `env.gitUserName`; `repoUrl` 合成自 `owner`/`name`;
+ * 空串旗标视同未提供。任一字段缺失或校验不过即返回 `{ error }`。
  *
- * ### 数据追踪示例
+ * ### 数据流转示例
  * ```text
- * Input（真实 Payload）
- *   opts = { name: 'my-tool', git: true, install: true, yes: false }
- *   env  = { gitUserName: 'iyowei' }
- *
- * 步骤 1：逐字段校验 + 缺省派生 (name 缺失或非法即早退)
- *   name     = 'my-tool' ✓
- *   scope    = ''  (未提供, 裸包名)
- *   binName  = deriveBinName('my-tool') = 'my-tool'
- *   owner    = env.gitUserName = 'iyowei'
- *   repoUrl  = 'https://github.com/iyowei/my-tool'
- *
- * Output（数据契约）
- *   return { name: 'my-tool', scope: '', binName: 'my-tool', owner: 'iyowei',
- *            repoUrl: 'https://github.com/iyowei/my-tool' }
+ * Input:  opts = { suggestedName: 'my-tool', git: true, install: true, yes: true }
+ *         env  = { gitUserName: 'iyowei' }
+ * Step 1: 逐字段解析回退并校验 -> name='my-tool', scope='', binName=deriveBinName('my-tool')='my-tool',
+ *         owner='iyowei', repoUrl='https://github.com/iyowei/my-tool'
+ * Output: { name: 'my-tool', scope: '', binName: 'my-tool', owner: 'iyowei',
+ *           repoUrl: 'https://github.com/iyowei/my-tool' }
  * ```
  */
 export function resolveVocabulary(
@@ -377,7 +346,7 @@ export function resolveVocabulary(
 
 /**
  * 读 git 全局 user.name (owner 默认值的环境入口); 未配置或 git 不可用时返回 null。
- * 外部副作用：启动一次 git 子进程。
+ * 外部副作用: 启动一次 git 子进程。
  * 本模块唯一的环境适配出口, 其余函数是纯函数; 测试注入 Environment 即可完全绕开它。
  */
 export function readGitUserName(): string | null {

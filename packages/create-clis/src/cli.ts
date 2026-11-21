@@ -1,10 +1,10 @@
 /**
- * create-clis 入口: 旗标解析 → 变量收集 (交互 / 零交互三态) → 生成主流程 (generate.ts) →
- * next steps 打印。
+ * create-clis CLI 进程入口: `update` 自更新前置分流 -> 旗标解析 -> 目标目录前置校验 ->
+ * 变量收集 (交互 / 零交互三态) -> `generateProject` -> next steps 打印。
  *
- * 契约以 docs/designs/scaffold-contract.md 为权威: 旗标清单、目录缺省 (项目名命名的子目录)、
- * 失败处理 (打印原因 + 非零退出码; 半成品目录如实指出, 不悄悄清理)。
- * 本文件是进程壳: 收集与生成的全部逻辑在 prompt.ts / generate.ts, 测试面见 cli.e2e.test.ts。
+ * 上游由 bin 启动, 下游编排 `variables.ts` / `prompt.ts` / `generate.ts` / `help.ts`。
+ * 契约以 docs/designs/scaffold-contract.md 为权威: 缺省落当前目录 `<name>/`,
+ * 目标已存在且非空直接拒绝 (不覆盖), 写入后失败保留半成品目录并如实提示。
  */
 import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
@@ -72,25 +72,18 @@ function nextSteps(
 /**
  * 入口主流程; 返回进程退出码 (0 成功, 1 任一失败路径)。
  *
- * 注: `-h` / `--help`、`-V` / `--version` 与 `--` 均由 `parseFlags` 统一顺序解析 (支持 `create-clis -- update`)。
+ * 路由顺序: `argv[0] === 'update'` 走自更新子命令 (可用 `create-clis -- update` 逃逸为目录名);
+ * 其余交由 `parseFlags` 顺序解析 `-V`/`-h`/`--` 与旗标, 显式目录在问答前先做可用性校验。
  *
- * ### 数据追踪示例
+ * ### 数据流转示例
  * ```text
- * Input（真实 Payload）
- *   argv = ['.', '--tier', 'core', '--no-git', '--no-install']
- *   env  = { gitUserName: 'iyowei' }   *(git 全局 user.name 的读取结果)*
- *
- * 步骤 1：旗标解析与变量收集 (三态之一)
- *   parseFlags → { dir: '.', tier: 'core', git: false, install: false, yes: false }
- *   askAll 交互收齐 → { state: 'collected', vocabulary: { name: ..., ... } }
- *   *(cancelled / error 两态在此分流: 取消打印后退 1, 旗标非法打印原因后退 1)*
- *
- * 步骤 2：生成
- *   targetDir = resolve(cwd, '.')  *(目录缺省时取 vocabulary.name)*
- *   generateProject 成功 → { executed: [] }  *(--no-git --no-install: 无收尾动作)*
- *
- * Output（数据契约）
- *   return 0  *(stdout 已打印 "已生成: <dir>" 与 next steps)*
+ * Input:  argv = ['.', '--tier', 'core', '--no-git', '--no-install']
+ *         env  = { gitUserName: 'iyowei' }
+ * Step 1: argv[0] !== 'update' -> parseFlags -> { dir: '.', suggestedName: '<cwd>', tier: 'core', git: false, install: false, yes: false }
+ * Step 2: assertTargetAvailable(resolve(cwd, '.')) 前置检查非空目录, 避免答完题才报错
+ * Step 3: askAll 交互收齐 -> { state: 'collected', vocabulary } (cancelled / error 在此早退 1)
+ * Step 4: generateProject(...) -> { executed: [] } (--no-git --no-install 无收尾动作)
+ * Output: return 0 (stdout 输出生成路径与 next steps)
  * ```
  */
 async function main(): Promise<number> {

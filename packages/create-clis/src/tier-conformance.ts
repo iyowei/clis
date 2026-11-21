@@ -1,9 +1,9 @@
 /**
- * 档位裁剪 · CONFORMANCE_GROUP 与 `--conformance` 入口同步摘除 (防裁剪后假绿):
+ * 档位裁剪 · `CONFORMANCE_GROUP` 与 `--conformance` 入口同步摘除 (由 `tier.ts` 在 `pruneCiSource` 调用):
  * 当 `scripts/ci.ts` 中 `CONFORMANCE_GROUP` 的全部真实验收步骤 (`conformance:*`) 被摘除、
  * 仅剩 `'build'` 或空数组时, 同步摘除 `CONFORMANCE_GROUP` 声明、`HELP_TEXT` 中的 `--conformance`
  * 说明行、`resolveSteps` 中的 `--conformance` 识别与返回分支, 并将全链合并简化为直接返回
- * `[...VERIFY_GROUP]`, 确保生成物执行 `bun scripts/ci.ts --conformance` 响亮以退出码 2 拒绝。
+ * `[...VERIFY_GROUP]`, 确保生成物执行 `bun scripts/ci.ts --conformance` 响亮拒绝 (防裁剪后假绿)。
  */
 import { codeChars } from './tier-lexer.ts';
 

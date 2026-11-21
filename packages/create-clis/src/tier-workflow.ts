@@ -1,9 +1,9 @@
 /**
- * GitHub Actions workflow job 裁剪与自检辅助:
+ * GitHub Actions workflow job 裁剪与自检辅助 (由 `tier.ts` 的 `pruneTemplate` 调用):
  * - 严格追踪顶层 `jobs:` 块作用域 (不误伤 on / env / permissions / concurrency 等块内同名键);
  * - 摘除二级 job 块 (含紧贴其上的两空格注释行与多余空行);
- * - 同步收缩保留 job 内的 `needs` 引用: 兼容行内数组 (`needs: [a, b]`)、单值 (`needs: a`)
- *   与多行列表 (`needs:\n  - a`), 被全部摘空时删除整行/整块 `needs:`, 不留悬空 YAML。
+ * - 同步收缩保留 job 内的 `needs` 引用: 兼容行内数组 (`needs: [a, b]`, 剩 1 项收缩为标量)、
+ *   单值 (`needs: a`) 与多行列表 (`needs:\n  - a`), 被全部摘空时删除整行/整块 `needs:`, 不留悬空 YAML。
  */
 
 const TOP_LEVEL_KEY_RE = /^[^ \t#]/;

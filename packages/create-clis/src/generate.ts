@@ -1,27 +1,10 @@
 /**
- * 生成主流程: 复制模板快照 → 载体还原 → 按档裁剪 → 代入变量 → 格式化收口 → 二道自检 → 收尾。
+ * 项目生成主流程: 目标校验 -> 复制快照 -> 载体还原 -> 按档裁剪 -> 代入变量 -> 格式化收口 -> 二道自检 -> 收尾 hooks。
  *
- * 顺序与失败语义以 docs/designs/scaffold-contract.md 为权威: 目标目录已存在且非空直接拒绝
- * (不覆盖, 该路径抛 TargetRejectedError —— 生成尚未写入, 目标目录未被动过); 写入开始后任一步
- * 失败即抛错, 已产生的半成品目录保留不清理 (由调用方如实指出, 用户可自行查看)。
- * 收尾动作经 hooks 注入 (git init / 依赖安装), 未提供的 hook 视为不执行 —— 调用方据此把
- * --no-git / --no-install 折算成 hook 的存在与否, 执行过的动作由返回值如实带回。
- *
- * 与初稿 spec 流程的三处差异, 2026-10-01 已同步进契约文档的流程 (见 docs/designs/
- * scaffold-contract.md): ① 二道自检前置于收尾 (spec 列在收尾之后; 此处取更稳的读法: 残留
- * 未清就不做 git init / 装依赖, 免坏产物被收尾动作固化); ② 多出「格式化收口」一步 (T4 / T5
- * 移交, 见下); ③ 多出「载体还原」一步 (T8 发行面修复, 见下)。
- *
- * 载体还原 (T8, TD-05 的修复面): 模板资产里 npm 面包机制剔除的真实名 (.gitignore / .npmrc)
- * 以载体名随包 (见 template-snapshot.ts 的 ASSET_CARRIERS); 复制进产物目录后立刻还原成真实名,
- * 使后续每一步 (裁剪 / 替换 / 格式化 / 自检) 与用户看到的产物都是真实项目形态。时序上取
- * 「紧贴 cpSync」而非更晚: 还原是落包改名的逆变换, 越早还原, 管道其余环节越少感知载体名;
- * 裁剪与替换的路径面本就不含这两个文件 (裁剪面是 transcription 目录与技术债册子; 替换面是
- * 词汇形态), 故前移不改变它们的既有行为。
- *
- * 格式化收口 (T4 / T5 移交): 占位符替换与档位裁剪都会改变行宽与结构 (如单元素组数组),
- * 产物须回到 prettier 稳定态才过生成物自己的 format-check; 收口用生成器自带的 prettier
- * 与同版本插件 (此时产物尚未安装依赖, 不依赖产物侧 node_modules)。
+ * 上游由 `cli.ts` 调用, 下游串联 `template-snapshot.ts` / `tier.ts` / `render.ts` 与跨平台子进程收尾。
+ * 关键约束: 目标已存在且非空抛 `TargetRejectedError` (未写入, 不得谎报半成品); 写入后失败保留半成品;
+ * 紧贴 `cpSync` 还原 `_gitignore`/`_npmrc` 载体名 (避开 npm 打包机制剔除); 用生成器自带 prettier 收口,
+ * 且二道自检先于 git init / bun install, 避免坏产物被收尾动作固化。
  */
 import { spawnSync } from 'node:child_process';
 import {
@@ -105,27 +88,21 @@ export function assertTargetAvailable(targetDir: string): void {
 }
 
 /**
- * 代入变量: 模板占位词汇 ({{NAME}} 系) 替换为用户词汇, 文件路径与内容一并过替换面
- * (包目录 packages/{{NAME}}/、bin 文件 {{BIN_NAME}}.mjs 等都在路径里)。
- * 路径变名的旧文件删除, 末了自底向上清掉遗留的空目录 (如 packages/{{NAME}}/ 改名后的空壳)。
- * 外部副作用：原地重写 targetDir 内文件 (含改名与删空目录)。
+ * 代入变量: 模板占位词汇 (`{{NAME}}` 系) 替换为用户词汇, 文件路径与内容一并过替换面
+ * (包目录 `packages/{{NAME}}/`、bin 文件 `{{BIN_NAME}}.mjs` 等都在路径里)。
+ * 路径变名的旧文件删除, 末了按路径长度降序 (先深后浅) 删掉遗留的空目录。
+ * 外部副作用: 原地重写 targetDir 内文件 (含改名与删空目录)。
  *
- * ### 数据追踪示例
+ * ### 数据流转示例
  * ```text
- * Input（真实 Payload）
- *   targetDir 内文件 = ['packages/{{NAME}}/package.json', 'packages/{{NAME}}-cli/bin/{{BIN_NAME}}.mjs']
- *   vocabulary = { name: 'demo-tool', scope: '@demo', binName: 'dt', owner: 'demouser',
- *                  repoUrl: 'https://github.com/demouser/demo-tool' }
- *
- * 步骤 1：逐文件算目标路径与内容 (最长匹配替换, 见 render.ts)
- *   'packages/{{NAME}}/package.json' → 'packages/demo-tool/package.json' (改路径)
- *   内容 '"name": "{{SCOPE}}/{{NAME}}"' → '"name": "@demo/demo-tool"'
- *
- * 步骤 2：落盘改名 (写新路径 + 删旧文件), 末了清空目录
- *   packages/{{NAME}}/ 空壳与 packages/{{NAME}}-cli/ 空壳被 rmdir
- *
- * Output（数据契约）
- *   targetDir 内路径与内容均不含模板占位形态 (由二道自检背书)
+ * Input:  files = ['packages/{{NAME}}/package.json', 'packages/{{NAME}}-cli/bin/{{BIN_NAME}}.mjs']
+ *         vocabulary = { name: 'demo-tool', scope: '@demo', binName: 'dt', owner: 'demouser',
+ *                        repoUrl: 'https://github.com/demouser/demo-tool' }
+ * Step 1: 逐文件对相对路径与内容执行 renderTemplate(..., vocabulary, TEMPLATE_VOCABULARY)
+ *         'packages/{{NAME}}/package.json' -> 'packages/demo-tool/package.json'
+ *         内容 '"name": "{{SCOPE}}/{{NAME}}"' -> '"name": "@demo/demo-tool"'
+ * Step 2: 路径变化时写新文件 (保留 mode) 并删旧文件, 末尾自底向上 rmdir 空壳目录
+ * Output: targetDir 内路径与内容均完成占位代入
  * ```
  */
 function substituteVocabulary(targetDir: string, vocabulary: Vocabulary): void {
@@ -155,9 +132,9 @@ function substituteVocabulary(targetDir: string, vocabulary: Vocabulary): void {
 }
 
 /**
- * 载体还原: 把模板的落包载体名 (如 `_gitignore`) 改回 npm 面包机制剔除的真实名 (`.gitignore`);
- * 非载体名原样不动。理由与时序见文件头「载体还原」; 只改名, 不动内容。
- * 外部副作用：原地重命名 targetDir 内文件 (仅命中载体表的两类路径)。
+ * 载体还原: 把模板的落包载体名 (如 `_gitignore`) 改回 npm 打包机制剔除的真实名 (`.gitignore`);
+ * 非载体名原样不动。只改名, 不动内容。
+ * 外部副作用: 原地重命名 targetDir 内文件 (仅命中载体表的路径)。
  */
 function restoreCarrierNames(targetDir: string): void {
   for (const rel of listTemplateFiles(targetDir)) {
@@ -168,26 +145,17 @@ function restoreCarrierNames(targetDir: string): void {
 }
 
 /**
- * 格式化收口: 按产物自带的 .prettierrc / .prettierignore 对全树跑一遍 prettier,
+ * 格式化收口: 按产物自带的 `.prettierrc` / `.prettierignore` 对全树跑一遍 prettier,
  * 使替换与裁剪后的产物回到 prettier 稳定态 (生成物 format-check 的直接前提)。
- * 插件取生成器自带的绝对路径 (产物的 .prettierrc 只声明插件名, 此刻依赖未装解析不到)。
- * 外部副作用：按格式化结果原地重写 targetDir 内文件 (仅变更文件落盘)。
+ * 插件取生成器自带的绝对路径 (产物的 `.prettierrc` 只声明插件名, 此刻依赖未装解析不到)。
+ * 外部副作用: 按格式化结果原地重写 targetDir 内文件 (仅变更文件落盘)。
  *
- * ### 数据追踪示例
+ * ### 数据流转示例
  * ```text
- * Input（真实 Payload）
- *   root/.prettierrc = { tabWidth: 2, singleQuote: true, plugins: ['@trivago/...'] }
- *   待格式化文件 = ['scripts/ci.ts', 'CHANGELOG.md', ...]  (94 个)
- *
- * 步骤 1：取配置与忽略面
- *   config = { ..., plugins: ['<生成器包内 @trivago/... 绝对路径>'] }
- *   'CHANGELOG.md' → getFileInfo: { ignored: true } → 跳过 (与产物 prettier --check 同口径)
- *
- * 步骤 2：逐文件格式化 (仅变更文件写回)
- *   'scripts/ci.ts' 裁剪后的条件表达式与数组缩进回到 prettier 稳定态
- *
- * Output（数据契约）
- *   return void; targetDir 全树通过 prettier --check (由 e2e 与 T8 heavy-smoke 在产物内实跑背书)
+ * Input:  root/.prettierrc + 可选 root/.prettierignore + targetDir 全树模板文件
+ * Step 1: 解析生成器内 `@trivago/prettier-plugin-sort-imports` 绝对路径并合并 `.prettierrc`
+ * Step 2: 逐文件调 getFileInfo (跳过 ignored 或无 parser 文件), 格式化有变化的文件写回
+ * Output: return void (targetDir 全树回到 prettier 稳定态)
  * ```
  */
 async function formatTree(root: string): Promise<void> {
@@ -231,10 +199,9 @@ async function formatTree(root: string): Promise<void> {
 }
 
 /**
- * 二道自检: 生成物全树扫描, 路径与内容都不得残留模板占位形态 (替换完整性) 与原项目词汇
- * (替换方向正确性)。快照构建侧已保证模板干净, 这一步是替换面的第二道防线。
- * 原词汇判据排除与用户词汇取值重合的形态 —— 二者同名是合法配置 (如用户 owner 与本仓 owner
- * 同名), 生成物出现同名值是预期结果, 不得误报。
+ * 二道自检: 生成物全树扫描, 路径与内容均不得残留模板占位形态 (含 `TEMPLATE_VOCABULARY` 原始字面量
+ * 兜底检查) 与原项目词汇。原词汇判据传入 `vocabulary` 遮蔽合法同名/超集取值 (如用户 owner 与本仓同名),
+ * 避免误报同时仍能抓出同文件混杂的真残留。
  */
 function assertNoResidual(
   targetDir: string,
@@ -290,29 +257,20 @@ async function runHooks(
 /**
  * 生成独立的新项目目录 (全流程见文件头)。
  *
- * 失败语义: 任一步抛错即中止, 已落盘的半成品目录保留 (不静默清理), 由调用方如实指出。
+ * 失败语义: 目标不可用抛 `TargetRejectedError` (未写入); 写入开始后任一步抛错即中止,
+ * 已落盘的半成品目录保留 (不静默清理), 由调用方如实指出。
  *
- * ### 数据追踪示例
+ * ### 数据流转示例
  * ```text
- * Input（真实 Payload）
- *   options = { templateDir: '<pkg>/assets/template', targetDir: '/work/my-tool',
- *               vocabulary: { name: 'my-tool', ..., binName: 'mt' }, tier: 'core',
- *               original: ORIGINAL, hooks: { gitInit: fn } }
- *
- * 步骤 1：目标可用性 → 复制快照 → 载体还原 → 按档裁剪
- *   '/work/my-tool' 不存在 ✓ (非空即抛错)
- *   targetDir 内出现 94 个模板文件, 其中 _gitignore / _npmrc 还原为 .gitignore / .npmrc
- *   core 档删除 scripts/transcription/ 与 docs/designs/tech-debt.md 并摘除 ci.ts 的 conformance 步骤声明
- *
- * 步骤 2：代入变量 → 格式化收口 → 二道自检
- *   packages/{{NAME}}/ → packages/my-tool/; 占位形态全数替换为用户词汇
- *   行宽 / 结构偏离回到 prettier 稳定态; 全树零残留自检通过
- *
- * 步骤 3：收尾 hooks
- *   gitInit('/work/my-tool') 执行成功 → executed = ['git init']
- *
- * Output（数据契约）
- *   return { executed: ['git init'] }  // 供 CLI 汇报与 e2e 断言
+ * Input:  options = { templateDir: '<pkg>/assets/template', targetDir: '/work/my-tool',
+ *                     vocabulary: { name: 'my-tool', ..., binName: 'my-tool' }, tier: 'core',
+ *                     original: ORIGINAL, hooks: { gitInit: fn } }
+ * Step 1: assertTargetAvailable('/work/my-tool') -> cpSync 快照 -> restoreCarrierNames (_gitignore/_npmrc 还原)
+ * Step 2: pruneTemplate(core) 删 transcription/、tech-debt.md、lint-dependency-direction.{ts,test.ts},
+ *         同步摘除 ci.ts 的 conformance 与 lint:deps 步骤、根 package.json 的 conformance 脚本与 workflow 的 conformance job
+ * Step 3: substituteVocabulary 代入用户词汇 -> formatTree 跑 prettier -> assertNoResidual 零残留自检
+ * Step 4: runHooks 执行 gitInit -> executed = ['git init']
+ * Output: return { executed: ['git init'] }
  * ```
  */
 export async function generateProject(
@@ -496,7 +454,7 @@ const defaultSpawner: HookSpawner = (command, args, options) =>
 
 /**
  * git init 收尾 hook (默认收尾): 清洗 GIT_* 环境变量后静默初始化, 缺失或失败清晰报错。
- * 外部副作用：在 targetDir 建 .git 目录 (启动一次 git 子进程)。
+ * 外部副作用: 在 targetDir 建 .git 目录 (启动一次 git 子进程)。
  */
 export function createGitInitHook(
   spawner: HookSpawner = defaultSpawner,
@@ -546,7 +504,7 @@ export function createGitInitHook(
 /**
  * 依赖安装收尾 hook (默认收尾): 产物是 bun 工程 (packageManager 声明 bun), 用 bun install。
  * 清洗 npm_execpath / npm_lifecycle_* 环境变量, 兼容 Windows .exe/.com/.cmd, 缺 bun 给出清晰指引。
- * 外部副作用：在 targetDir 安装依赖 (stdio 透传给用户看进度)。
+ * 外部副作用: 在 targetDir 安装依赖 (stdio 透传给用户看进度)。
  */
 export function createInstallHook(
   spawner: HookSpawner = defaultSpawner,

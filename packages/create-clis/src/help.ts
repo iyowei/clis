@@ -1,5 +1,5 @@
 /**
- * create-clis 帮助页文案与 Apple HIG 级终端排版渲染 (零外部依赖)。
+ * create-clis 帮助页文案与 Apple HIG 级终端排版渲染 (零外部依赖), 由 `cli.ts` 在 `-h`/`--help` 时调用。
  * 与全仓 CLI 共享同一套分层语言: 光学对齐蓝胶囊 + 细分隔线 + 用法 / 子命令 / 模板变量 / 生成选项 / 说明;
  * 非 TTY / NO_COLOR / TERM=dumb 下自动降级为零 ANSI 且字符骨架逐字等价的纯文本。
  */

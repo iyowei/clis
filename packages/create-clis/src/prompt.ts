@@ -1,9 +1,8 @@
 /**
- * 交互收集: 无旗标 (或未给全) 时逐问五个变量, readline 直问直答 (不依赖交互库)。
- * 风格与默认值提示参照 sweep-node-modules-cli/src/init.ts: 问句后以方括号挂默认值, 校验不过
- * 打印原因后重问该问, EOF / Ctrl+C 折算取消。
- *
- * 交互 IO 经 PromptIO 注入 (测试用脚本化实现, 不打真 TTY); 真实 readline 适配在 createPromptIO。
+ * 交互收集: 无旗标 (或未给全) 时经 readline 逐问五个变量 (不依赖第三方交互库)。
+ * 上游由 `cli.ts` 调用, 复用 `variables.ts` 的校验与派生口径, 最终输出与零交互同源的 `Vocabulary`。
+ * 交互 IO 经 `PromptIO` 注入 (测试用脚本化实现, 不打真 TTY); 真实 readline 适配见 `createPromptIO`。
+ * 校验不过打印原因后重问该问, EOF / Ctrl+C 折算取消并在 finally 释放底层 IO。
  */
 import { type Interface, createInterface } from 'node:readline/promises';
 
@@ -71,29 +70,21 @@ async function askValidated(
 }
 
 /**
- * 交互收集五变量 (项目名 → scope → bin 名 → owner → 仓库地址), 返回与旗标路径同源的 Vocabulary。
+ * 交互收集五变量 (项目名 -> scope -> bin 名 -> owner -> 仓库地址), 返回与旗标路径同源的 `Vocabulary`。
  *
- * 旗标 (seed) 已给出的变量先整体校验 (非法即报错, 不进交互), 合法的直接采用、不再提问;
- * 其余逐问, 空答取默认。seed.yes 为真时等同旗标路径: 全默认、零交互。
+ * 显式旗标 (seed) 先整体校验 (非法即早退 `error`, 不进交互), 合法项直接采用、不再提问;
+ * 目录推导的 `seed.suggestedName` 合法时同样直接采用, 非法时仅丢弃默认并照常提问项目名;
+ * `seed.yes` 为真时直接走 `resolveVocabulary` 全默认、零交互。
  *
- * ### 数据追踪示例
+ * ### 数据流转示例
  * ```text
- * Input（真实 Payload）
- *   seed = { name: 'my-tool', git: true, install: true, yes: false }
- *   env  = { gitUserName: 'iyowei' }
- *   answers = ['', '', '', '']   *(scope / bin 名 / owner / 仓库地址 四问全回车)*
- *
- * 步骤 1：seed 校验 (name 合法, 直接采用; 非法则早退 error)
- *
- * 步骤 2：逐问取答 (空答取默认)
- *   scope   = ''          → '' (裸包名)
- *   binName = ''          → deriveBinName('my-tool') = 'my-tool'
- *   owner   = ''          → env.gitUserName = 'iyowei'
- *   repoUrl = ''          → 'https://github.com/iyowei/my-tool'
- *
- * Output（数据契约）
- *   { state: 'collected', vocabulary: { name: 'my-tool', scope: '', binName: 'my-tool',
- *     owner: 'iyowei', repoUrl: 'https://github.com/iyowei/my-tool' } }
+ * Input:  seed = { name: 'my-tool', git: true, install: true, yes: false }
+ *         env  = { gitUserName: 'iyowei' }, answers = ['', '', '', ''] (四问全回车)
+ * Step 1: 显式 seed 字段先过校验 -> name = 'my-tool' 合法直接采用
+ * Step 2: 逐问取答 (空答取默认) -> scope='', bin='my-tool', owner='iyowei', repo='https://github.com/iyowei/my-tool'
+ * Step 3: 汇入 resolveVocabulary 统一出词表, finally 调用 io.close?.()
+ * Output: { state: 'collected', vocabulary: { name: 'my-tool', scope: '', binName: 'my-tool',
+ *           owner: 'iyowei', repoUrl: 'https://github.com/iyowei/my-tool' } }
  * ```
  */
 export async function askAll(
@@ -218,11 +209,9 @@ export async function askAll(
 }
 
 /**
- * 真实 readline 适配 (薄壳)。
- * 形态与 sweep-node-modules-cli/src/init.ts 的 createReadlineIO 同源: 单 interface 长存 + 行缓冲,
- * 管道一次性投喂多行时先到的行入队、后续问题依次取走 (每问新开 interface 会丢行, 且 EOF 已发生
- * 后永久挂起); stdin 引用随等待区间 ref / unref, 使 TTY 场景收集完成后进程能自然退出。
- * 外部副作用：读写 process.stdin / process.stdout。
+ * 真实 readline 适配 (薄壳): 单 interface 长存 + 行缓冲, 管道一次投喂多行时先到的行入队、
+ * 后续问题依次取走; stdin 引用随等待区间 ref / unref, 使收集完成后进程能自然退出。
+ * 外部副作用: 读写 process.stdin / process.stdout。
  */
 export function createPromptIO(): PromptIO {
   /** 已到达但尚无问题认领的行 (先于问题到达的答案) */
