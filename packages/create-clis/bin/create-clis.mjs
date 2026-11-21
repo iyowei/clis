@@ -14,7 +14,7 @@
 import { spawn, spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { existsSync, readFileSync, realpathSync, statSync } from 'node:fs';
-import { basename, dirname, join, posix, win32 } from 'node:path';
+import { basename, dirname, join, posix, resolve, win32 } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const CLI_FILE = 'create-clis.js';
@@ -62,15 +62,22 @@ const isFileAt = (filePath) => {
 
 export const resolveWin32Executables = (name, pathEnv, fileProbe) => {
   const found = [];
+  const seen = new Set();
   for (const raw of pathEnv.split(';')) {
+    const trimmed = raw.trim();
     const dir =
-      raw.length > 1 && raw.startsWith('"') && raw.endsWith('"')
-        ? raw.slice(1, -1)
-        : raw;
+      trimmed.length > 1 && trimmed.startsWith('"') && trimmed.endsWith('"')
+        ? trimmed.slice(1, -1).trim()
+        : trimmed;
     if (dir === '' || !WIN32_ABS_DIR_RE.test(dir)) continue;
     for (const ext of WIN32_EXEC_EXTS) {
       const candidate = win32.join(dir, name + ext);
-      if (fileProbe(candidate)) found.push(candidate);
+      const key = candidate.toLowerCase();
+      if (seen.has(key)) continue;
+      if (fileProbe(candidate)) {
+        seen.add(key);
+        found.push(candidate);
+      }
     }
   }
   return found;
@@ -78,10 +85,15 @@ export const resolveWin32Executables = (name, pathEnv, fileProbe) => {
 
 export const resolvePosixExecutables = (name, pathEnv, fileProbe) => {
   const found = [];
+  const seen = new Set();
   for (const dir of pathEnv.split(':')) {
     if (dir === '' || !dir.startsWith('/')) continue;
     const candidate = posix.join(dir, name);
-    if (fileProbe(candidate)) found.push(candidate);
+    if (seen.has(candidate)) continue;
+    if (fileProbe(candidate)) {
+      seen.add(candidate);
+      found.push(candidate);
+    }
   }
   return found;
 };
@@ -135,23 +147,32 @@ const artifactProblem = (distDir) => {
   return null;
 };
 
-const isEntry = () => {
-  const entry = process.argv[1];
-  if (typeof entry !== 'string' || entry === '') return false;
-  const self = fileURLToPath(import.meta.url);
-  const norm = (value) =>
-    process.platform === 'win32' ? value.toLowerCase() : value;
-  if (norm(entry) === norm(self)) return true;
+const realpath = realpathSync.native ?? realpathSync;
+
+const normalizeEntryPath = (p, platform = process.platform) => {
+  let normalized = resolve(p);
   try {
-    const realpath = realpathSync.native ?? realpathSync;
-    const realSelf = realpath(self);
-    return norm(realpath(entry)) === norm(realSelf);
+    normalized = realpath(normalized);
   } catch {
-    return false;
+    // realpath 不可用时保留规范绝对路径做字面比对
   }
+  return platform === 'win32' ? normalized.toLowerCase() : normalized;
 };
 
-/** 跨运行时异步派生并隔离父进程 SIGINT, 防止 Ctrl+C 先杀父进程留下孤儿进程 */
+export const isEntry = (
+  entryArg = process.argv[1],
+  selfUrl = import.meta.url,
+  platform = process.platform,
+) => {
+  if (typeof entryArg !== 'string' || entryArg === '') return false;
+  const self = fileURLToPath(selfUrl);
+  return (
+    normalizeEntryPath(entryArg, platform) ===
+    normalizeEntryPath(self, platform)
+  );
+};
+
+/** 跨运行时异步派生并隔离父进程 SIGINT, settled 防重入, 防止 Ctrl+C 先杀父进程留下孤儿进程 */
 const runChild = (command, args, extraEnv) =>
   new Promise((resolveExit) => {
     const onSigint = () => {};
@@ -160,14 +181,19 @@ const runChild = (command, args, extraEnv) =>
       stdio: 'inherit',
       env: extraEnv ? { ...process.env, ...extraEnv } : process.env,
     });
-    child.on('error', (error) => {
+    let settled = false;
+    const finish = (result) => {
+      if (settled) return;
+      settled = true;
       process.off('SIGINT', onSigint);
+      resolveExit(result);
+    };
+    child.once('error', (error) => {
       process.stderr.write(`create-clis: 启动运行时失败 (${error.message})\n`);
-      resolveExit({ status: 1, signal: null });
+      finish({ status: 1, signal: null });
     });
-    child.on('close', (code, signal) => {
-      process.off('SIGINT', onSigint);
-      resolveExit({ status: code, signal });
+    child.once('close', (code, signal) => {
+      finish({ status: code, signal });
     });
   });
 

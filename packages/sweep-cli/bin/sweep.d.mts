@@ -24,3 +24,9 @@ export declare const pickRuntime: (options?: {
   probe?: (command: string) => boolean;
   names?: readonly string[];
 }) => string | null;
+
+export declare const isEntry: (
+  entryArg?: string,
+  selfUrl?: string,
+  platform?: NodeJS.Platform,
+) => boolean;

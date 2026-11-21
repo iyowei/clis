@@ -16,6 +16,9 @@ if not defined RUNNER for %%I in (node.com node.exe) do if not defined RUNNER se
 if not defined RUNNER echo create-clis: bun or node not found in PATH 1>&2
 if not defined RUNNER exit /b 1
 
+if defined IS_BUN if not exist "%BUNFIG%" echo create-clis: missing bin/bunfig.toml 1>&2
+if defined IS_BUN if not exist "%BUNFIG%" exit /b 1
+
 if defined IS_BUN "%RUNNER%" "--config=%BUNFIG%" --no-env-file "%ENTRY%" %*
 if not defined IS_BUN "%RUNNER%" "%ENTRY%" %*
 exit /b %errorlevel%

@@ -59,10 +59,11 @@ export const resolveWin32Executables = (name, pathEnv, fileProbe) => {
   const found = [];
   const seen = new Set();
   for (const raw of pathEnv.split(';')) {
+    const trimmed = raw.trim();
     const dir =
-      raw.length > 1 && raw.startsWith('"') && raw.endsWith('"')
-        ? raw.slice(1, -1)
-        : raw;
+      trimmed.length > 1 && trimmed.startsWith('"') && trimmed.endsWith('"')
+        ? trimmed.slice(1, -1).trim()
+        : trimmed;
     if (dir === '' || !WIN32_ABS_DIR_RE.test(dir)) continue;
     for (const ext of WIN32_EXEC_EXTS) {
       const candidate = win32.join(dir, name + ext);
@@ -229,16 +230,18 @@ const main = async () => {
     );
     process.exit(1);
   }
-  if (!existsSync(isolatedBunfig)) {
+  const ensureIsolatedBunfig = () => {
+    if (existsSync(isolatedBunfig)) return;
     process.stderr.write(
       'codd: 缺少隔离配置文件 (bin/bunfig.toml), 已拒绝启动以防工作目录配置污染。\n' +
         '  处置: 重装本包 (@iyowei/codd-cli) 或恢复包内 bin/bunfig.toml。\n',
     );
     process.exit(1);
-  }
+  };
 
   // 当前已是 Bun 且已处于隔离启动态 (CLIS_BUN_ISOLATED=1): 同进程直载, 零二次派生
   if (typeof process.versions.bun === 'string') {
+    ensureIsolatedBunfig();
     if (process.env[BUN_ISOLATED_ENV] === '1') {
       await import(pathToFileURL(entry).href);
       return;
@@ -260,6 +263,7 @@ const main = async () => {
   const currentNodeOk = isSupportedNodeVersion(process.versions.node);
   const bunRuntime = pickRuntime({ names: ['bun'] });
   if (bunRuntime !== null && isBunExecutable(bunRuntime)) {
+    ensureIsolatedBunfig();
     await execChildRuntime(
       bunRuntime,
       [

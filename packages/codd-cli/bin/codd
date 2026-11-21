@@ -19,7 +19,7 @@ while [ -L "$target" ]; do
   esac
   hops=$((hops + 1))
 done
-root=$(cd "$(dirname "$target")/.." && pwd)
+root=$(CDPATH= cd -- "$(dirname "$target")/.." && pwd)
 
 find_in_abs_path() {
   bin_name="$1"
@@ -45,6 +45,10 @@ find_in_abs_path() {
 }
 
 bun_bin=$(find_in_abs_path bun) && {
+  if [ ! -f "$root/bin/bunfig.toml" ]; then
+    echo "codd: 缺少隔离配置文件 (bin/bunfig.toml), 已拒绝启动以防工作目录配置污染" >&2
+    exit 1
+  fi
   CLIS_BUN_ISOLATED=1 exec "$bun_bin" --config="$root/bin/bunfig.toml" --no-env-file "$root/bin/codd.mjs" "$@"
 }
 

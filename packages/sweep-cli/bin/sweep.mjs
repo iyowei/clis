@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * CLI 启动器 (`sweep` bin 入口): 承接三类入口形态 (npm 分发 `dist/cli.js` / 仓内开发回退 `src/cli.ts` /
+ * CLI 启动器 (bin 入口): 承接三类入口形态 (npm 分发 `dist/cli.js` / 仓内开发回退 `src/cli.ts` /
  * 单测直导导出函数), 挑选运行时 (Bun 优先, 其次 Node >= 22.18) 后启动真实入口。
  *
  * 安全防线与进程模型:
@@ -16,7 +16,7 @@
 import { spawn, spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { existsSync, readFileSync, realpathSync, statSync } from 'node:fs';
-import { basename, dirname, join, posix, win32 } from 'node:path';
+import { basename, dirname, join, posix, resolve, win32 } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const CLI_FILE = 'cli.js';
@@ -65,9 +65,10 @@ const isFileAt = (path) => {
   }
 };
 
-/** 在 PATH 中解析命令的全部候选绝对路径 (win32 语义), 严格拦截空、相对与盘根相对条目 */
+/** 在 PATH 中解析命令的全部候选绝对路径 (win32 语义), 严格拦截空、相对与盘根相对条目并去重 */
 export const resolveWin32Executables = (name, pathEnv, fileProbe) => {
   const found = [];
+  const seen = new Set();
   for (const raw of pathEnv.split(';')) {
     const trimmed = raw.trim();
     const unquoted =
@@ -77,19 +78,29 @@ export const resolveWin32Executables = (name, pathEnv, fileProbe) => {
     if (unquoted === '' || !WIN32_ABS_DIR_RE.test(unquoted)) continue;
     for (const ext of WIN32_EXEC_EXTS) {
       const candidate = win32.join(unquoted, name + ext);
-      if (fileProbe(candidate)) found.push(candidate);
+      const key = candidate.toLowerCase();
+      if (seen.has(key)) continue;
+      if (fileProbe(candidate)) {
+        seen.add(key);
+        found.push(candidate);
+      }
     }
   }
   return found;
 };
 
-/** 在 PATH 中解析命令的全部候选绝对路径 (POSIX 语义), 跳过空与相对条目 */
+/** 在 PATH 中解析命令的全部候选绝对路径 (POSIX 语义), 跳过空与相对条目并去重 */
 export const resolvePosixExecutables = (name, pathEnv, fileProbe) => {
   const found = [];
+  const seen = new Set();
   for (const dir of pathEnv.split(':')) {
     if (dir === '' || !dir.startsWith('/')) continue;
     const candidate = posix.join(dir, name);
-    if (fileProbe(candidate)) found.push(candidate);
+    if (seen.has(candidate)) continue;
+    if (fileProbe(candidate)) {
+      seen.add(candidate);
+      found.push(candidate);
+    }
   }
   return found;
 };
@@ -145,52 +156,67 @@ const artifactProblem = (distDir) => {
   return null;
 };
 
-/** 本文件是否作为入口被直接执行 (双端 realpath.native 展开 win32 8.3 短路径 + 大小写归一) */
-const isEntry = () => {
-  const entry = process.argv[1];
-  if (typeof entry !== 'string' || entry === '') return false;
-  const self = fileURLToPath(import.meta.url);
-  const norm = (value) =>
-    process.platform === 'win32' ? value.toLowerCase() : value;
-  if (norm(entry) === norm(self)) return true;
+const realpath = realpathSync.native ?? realpathSync;
+
+const normalizeEntryPath = (p, platform = process.platform) => {
+  let normalized = resolve(p);
   try {
-    const realpath = realpathSync.native ?? realpathSync;
-    const realSelf = realpath(self);
-    return norm(realpath(entry)) === norm(realSelf);
+    normalized = realpath(normalized);
   } catch {
-    return false;
+    // realpath 不可用时保留规范绝对路径做字面比对
   }
+  return platform === 'win32' ? normalized.toLowerCase() : normalized;
 };
 
-/** 跨运行时异步派生子进程: 运行期父进程忽略 SIGINT 防孤儿, 退出后卸载监听并透传信号或退出码 */
+/** 本文件是否作为入口被直接执行 (双端 resolve + realpath.native 归一 + win32 大小写折叠) */
+export const isEntry = (
+  entryArg = process.argv[1],
+  selfUrl = import.meta.url,
+  platform = process.platform,
+) => {
+  if (typeof entryArg !== 'string' || entryArg === '') return false;
+  const self = fileURLToPath(selfUrl);
+  return (
+    normalizeEntryPath(entryArg, platform) ===
+    normalizeEntryPath(self, platform)
+  );
+};
+
+/** 跨运行时异步派生子进程: 运行期父进程忽略 SIGINT 防孤儿, settled 防重入, close 后透传信号或退出码 */
 const runChild = (command, args, extraEnv) =>
-  new Promise((resolve) => {
+  new Promise((resolveExit) => {
     const ignoreSigint = () => {};
     process.on('SIGINT', ignoreSigint);
     const child = spawn(command, args, {
       stdio: 'inherit',
       env: extraEnv ? { ...process.env, ...extraEnv } : process.env,
     });
-    const cleanup = () => {
+    let settled = false;
+    const finish = (cb) => {
+      if (settled) return;
+      settled = true;
       process.off('SIGINT', ignoreSigint);
+      cb();
+      resolveExit();
     };
-    child.on('error', (error) => {
-      cleanup();
-      process.stderr.write(`sweep: 启动运行时失败 (${error.message})\n`);
-      process.exit(1);
+    child.once('error', (error) => {
+      finish(() => {
+        process.stderr.write(`sweep: 启动运行时失败 (${error.message})\n`);
+        process.exit(1);
+      });
     });
-    child.on('exit', (code, signal) => {
-      cleanup();
-      if (signal) {
-        try {
-          process.kill(process.pid, signal);
-        } catch {
-          process.exit(1);
+    child.once('close', (code, signal) => {
+      finish(() => {
+        if (signal) {
+          try {
+            process.kill(process.pid, signal);
+          } catch {
+            process.exit(1);
+          }
+          return;
         }
-        resolve();
-        return;
-      }
-      process.exit(code ?? 1);
+        process.exit(code ?? 1);
+      });
     });
   });
 
