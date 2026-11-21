@@ -33,6 +33,8 @@ export interface TsBlock {
 export interface CliTarget {
   /** 命令名 (package.json 的 bin 字段声明的可执行名) */
   binName: string;
+  /** 包名 (供 bunx/npx <pkgName> 映射回 binName) */
+  packageName?: string;
   /** CLI 源码入口相对仓库根路径 */
   entryPath: string;
 }
@@ -41,6 +43,34 @@ export interface CliTarget {
 export interface NamedShellCommand {
   binName: string;
   command: string;
+}
+
+/** 词边界匹配: 防止 --yes 被 --yes-all 或子串误放行 */
+export function hasHelpToken(helpText: string, token: string): boolean {
+  return new RegExp(
+    `(?<![A-Za-z0-9_-])${escapeRegex(token)}(?![A-Za-z0-9_-])`,
+  ).test(helpText);
+}
+
+/**
+ * 判断某 CLI 的 --help 文本是否应把首位置词当作子命令核对:
+ * - 若用法行声明了通用位置参数 (如 `[目标目录]` / `[dir]` / `<dir>`), 首个裸词可能是用户输入目录名, 跳过子命令误判;
+ * - 否则当 help 文本存在子命令面时, 严格核对首个纯小写标识符子命令。
+ */
+export function cliHasSubcommands(binName: string, helpText: string): boolean {
+  const escaped = escapeRegex(binName);
+  if (
+    new RegExp(
+      `${escaped}\\s+(?:\\[|<)(?:目标目录|目录|路径|项目|dir|path|target|project|name)(?:\\]|>)`,
+      'i',
+    ).test(helpText)
+  ) {
+    return false;
+  }
+  if (/(?:^|\n)\s*(?:子命令|Commands?)\s*[:：]?/i.test(helpText)) return true;
+  return new RegExp(`(?:^|\\n)\\s*${escaped}\\s+[a-z][a-z0-9-]*(?:\\s|$)`).test(
+    helpText,
+  );
 }
 
 /** 提取全文的 ```ts 块 (闭合围栏以 ``` 收尾; startLine 指向内容首行) */
@@ -74,16 +104,27 @@ export function isSelfContained(block: string): boolean {
 const escapeRegex = (value: string): string =>
   value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
-/** 提取 shell/bash/sh 块中以指定命令名集合开头的命令行 (跳过注释行) */
+/**
+ * 提取 shell/bash/sh 块中以指定命令名或 `bunx`/`npx` 包装开头的命令行 (跳过注释行)。
+ * aliases 可将包名 (如 `@scope/pkg-cli`) 映射回对应 binName。
+ */
 export function extractNamedShellCommands(
   content: string,
   cliNames: readonly string[],
+  aliases?: ReadonlyMap<string, string>,
 ): NamedShellCommand[] {
   if (cliNames.length === 0) return [];
-  const patterns = cliNames.map((binName) => ({
+  const directPatterns = cliNames.map((binName) => ({
     binName,
     re: new RegExp(`^${escapeRegex(binName)}(?:\\s|$)`),
   }));
+  const runnerMap = new Map<string, string>();
+  for (const binName of cliNames) runnerMap.set(binName, binName);
+  if (aliases !== undefined) {
+    for (const [alias, binName] of aliases.entries()) {
+      runnerMap.set(alias, binName);
+    }
+  }
   const commands: NamedShellCommand[] = [];
   const lines = content.split('\n');
   let inShell = false;
@@ -99,34 +140,50 @@ export function extractNamedShellCommands(
     if (!inShell) continue;
     const trimmed = line.trim();
     if (trimmed === '' || trimmed.startsWith('#')) continue;
-    for (const { binName, re } of patterns) {
+    let matched = false;
+    for (const { binName, re } of directPatterns) {
       if (re.test(trimmed)) {
         commands.push({ binName, command: trimmed });
+        matched = true;
         break;
       }
+    }
+    if (matched) continue;
+    const runnerMatch = /^(?:bunx|npx)\s+(?:-[A-Za-z]+\s+)*([^\s]+)(.*)$/.exec(
+      trimmed,
+    );
+    if (runnerMatch === null) continue;
+    const rawTarget = runnerMatch[1]!.replace(/@[^/]+$/, '');
+    const mappedBin = runnerMap.get(rawTarget);
+    if (mappedBin !== undefined) {
+      const rest = runnerMatch[2] ?? '';
+      commands.push({ binName: mappedBin, command: `${mappedBin}${rest}` });
     }
   }
   return commands;
 }
 
-/** 兼容旧签名: 提取 shell 块中以 sweep 开头的命令行 */
+/** 兼容旧签名: 提取 shell 块中以指定命令名开头的命令行 */
 export function extractShellCommands(
   content: string,
   cliName = 'sweep',
 ): string[] {
-  return extractNamedShellCommands(content, [cliName]).map(
-    (item) => item.command,
-  );
+  return extractNamedShellCommands(content, [cliName])
+    .filter((item) => item.command.startsWith(cliName))
+    .map((item) => item.command);
 }
 
-/** 从一条命令提取待核对 token: --旗标 (去掉 =值, 去重) 与纯标识符形态的首个子命令 */
-export function extractCommandTokens(command: string): string[] {
+/** 从一条命令提取待核对 token: --旗标 (去掉 =值, 去重) 与可选首个纯标识符子命令 */
+export function extractCommandTokens(
+  command: string,
+  includeSubcommand = true,
+): string[] {
   const tokens: string[] = [];
   const parts = command.split(/\s+/).slice(1);
   let sawFlag = false;
   let sawSubcommand = false;
   for (const part of parts) {
-    if (part === '--') break;
+    if (part === '--' || part.startsWith('#')) break;
     if (part === '\\' || part === '&&' || part === '||' || part === '|') break;
     if (part.startsWith('-')) {
       sawFlag = true;
@@ -134,7 +191,12 @@ export function extractCommandTokens(command: string): string[] {
       continue;
     }
     // 仅在首个旗标之前、且形状为纯小写子命令标识符 (不含路径/扩展名/占位符) 时作为子命令核对
-    if (!sawFlag && !sawSubcommand && /^[a-z][a-z0-9-]*$/.test(part)) {
+    if (
+      includeSubcommand &&
+      !sawFlag &&
+      !sawSubcommand &&
+      /^[a-z][a-z0-9-]*$/.test(part)
+    ) {
       sawSubcommand = true;
       tokens.push(part);
     }
@@ -356,7 +418,7 @@ export function discoverCliTargets(root: string): CliTarget[] {
         const entryPath = `${pkg.dir}/src/cli.ts`;
         if (!existsSync(join(root, entryPath))) continue;
         for (const binName of extractBinNames(pkg.name, pkg.manifest.bin)) {
-          targets.push({ binName, entryPath });
+          targets.push({ binName, packageName: pkg.name, entryPath });
         }
       }
     } catch {
@@ -373,14 +435,14 @@ export function discoverCliTargets(root: string): CliTarget[] {
 }
 
 /**
- * CLI 档: 采集 shell 块内全部已发现 CLI 命令, 对照各自 --help 核对旗标与子命令。
+ * CLI 档: 采集 shell 块内全部已发现 CLI 命令 (含 bunx/npx 包装), 对照各自 --help 词边界核对旗标与子命令。
  *
  * ### 数据流转示例
  * ```text
  * Input:  root = 仓库根 (workspace 中带 bin 且含 src/cli.ts 的包)
- * 步骤 1: discoverCliTargets -> 逐个跑 `bun <entryPath> --help` 缓存帮助文本 helpByBin
- * 步骤 2: 走查全部 .md, extractNamedShellCommands 提取对应命令开头的 shell 行
- * 步骤 3: extractCommandTokens 抽 --旗标与首个纯小写子命令, 核对是否出现在对应 --help 中
+ * 步骤 1: discoverCliTargets -> 逐个跑 `bun <entryPath> --help` 缓存帮助文本 helpByBin 与包名映射 aliases
+ * 步骤 2: 走查全部 .md, extractNamedShellCommands 提取直调与 bunx/npx 包装行
+ * 步骤 3: extractCommandTokens 抽 --旗标与 (仅含子命令面的 CLI) 首个纯小写子命令, 经 hasHelpToken 词边界核对
  * Output: missing[] (空数组 = 全绿)
  * ```
  */
@@ -390,6 +452,8 @@ export function checkCliExamples(root: string = REPO_ROOT): string[] {
 
   const missing: string[] = [];
   const helpByBin = new Map<string, string>();
+  const subcommandFlagByBin = new Map<string, boolean>();
+  const aliases = new Map<string, string>();
   for (const target of targets) {
     const help = spawnSync('bun', [join(root, target.entryPath), '--help'], {
       cwd: root,
@@ -401,7 +465,15 @@ export function checkCliExamples(root: string = REPO_ROOT): string[] {
       );
       continue;
     }
-    helpByBin.set(target.binName, `${help.stdout ?? ''}\n${help.stderr ?? ''}`);
+    const text = `${help.stdout ?? ''}\n${help.stderr ?? ''}`;
+    helpByBin.set(target.binName, text);
+    subcommandFlagByBin.set(
+      target.binName,
+      cliHasSubcommands(target.binName, text),
+    );
+    if (target.packageName !== undefined) {
+      aliases.set(target.packageName, target.binName);
+    }
   }
 
   const cliNames = [...helpByBin.keys()];
@@ -412,10 +484,12 @@ export function checkCliExamples(root: string = REPO_ROOT): string[] {
     for (const { binName, command } of extractNamedShellCommands(
       content,
       cliNames,
+      aliases,
     )) {
       const helpText = helpByBin.get(binName)!;
-      for (const token of extractCommandTokens(command)) {
-        if (!helpText.includes(token)) {
+      const checkSub = subcommandFlagByBin.get(binName) === true;
+      for (const token of extractCommandTokens(command, checkSub)) {
+        if (!hasHelpToken(helpText, token)) {
           missing.push(
             `${file} :: 命令 "${command}" 的 ${token} 在 ${binName} --help 输出中不存在`,
           );
