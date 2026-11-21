@@ -2,6 +2,6 @@
 # 模板资产: 它是生成器按骨架清单产出的「新项目根」, 内含从本仓复制过去的 *.test.ts, 不是
 # 本包的测试 (同款排除见 .gitignore / .prettierignore / .oxlintrc.json 与 tsconfig.json)。
 # 根 bunfig.toml 的排除面是根相对路径 (packages/create-clis/assets/**), 在包目录内不解析;
-# 此处以包相对形态复写同一面; 包内 test 脚本的 --path-ignore-patterns 旗标与此互为兜底。
+# 此处以包相对形态复写同一面, 与 package.json `test` 脚本显式指定 `src scripts` 互为兜底。
 [test]
 pathIgnorePatterns = ["assets/**"]
