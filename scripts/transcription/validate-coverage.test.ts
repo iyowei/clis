@@ -84,9 +84,10 @@ describe('reconcile', () => {
 describe('validateCoverage 集成', () => {
   test('健康态全绿; 造一处悬空与一处漏登记即分别抓出', () => {
     const healthy = makeRoot({
-      [CONTRACT_REL]: '| BC-01 | 甲 |\n| BC-02 | 乙 |\n',
+      [CONTRACT_REL]:
+        '| BC-01 | 甲 | 源 | CLI 黑盒 |\n| BC-02 | 乙 | 源 | 模块级 |\n',
       [COVERAGE_REL]:
-        '## 一、覆盖表\n| BC-01 | 1 | 甲语料 |\n## 二、未覆盖条款\n| BC-02 | 模块级 | 理由 |\n',
+        '## 一、覆盖表\n| BC-01 | 1 | a |\n## 二、未覆盖条款\n| BC-02 | 模块级 | 理由 |\n',
       [`${CORPUS_REL}/a.json`]: '{"id":"a","specRefs":["BC-01"]}\n',
     });
     expect(validateCoverage(healthy)).toEqual({
@@ -96,13 +97,18 @@ describe('validateCoverage 集成', () => {
     });
 
     const broken = makeRoot({
-      [CONTRACT_REL]: '| BC-01 | 甲 |\n| BC-02 | 乙 |\n',
-      [COVERAGE_REL]: '## 一、覆盖表\n',
+      [CONTRACT_REL]:
+        '| BC-01 | 甲 | 源 | CLI 黑盒 + API 黑盒 |\n| BC-02 | 乙 | 源 | CLI 黑盒 |\n',
+      [COVERAGE_REL]:
+        '## 一、覆盖表\n| BC-01 | 2 | wrong |\n## 二、未覆盖条款\n| BC-88 | 悬空豁免 | 无 |\n',
       [`${CORPUS_REL}/a.json`]: '{"id":"a","specRefs":["BC-01","BC-77"]}\n',
     });
     const result = validateCoverage(broken);
     expect(result.dangling).toEqual(['BC-77']);
     expect(result.unregistered).toEqual(['BC-02']);
+    expect(result.danglingExempt).toEqual(['BC-88']);
+    expect(result.tableMismatches?.length).toBeGreaterThan(0);
+    expect(result.surfaceGaps?.some((g) => g.includes('BC-01'))).toBe(true);
   });
 
   test('corpus 目录单文件缺 specRefs 即抛 (语料损坏属硬错)', () => {
