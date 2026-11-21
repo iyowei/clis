@@ -1,3 +1,7 @@
+# Changelog (`@iyowei/sweep-cli`)
+
+> **包名演进说明**: `@iyowei/sweep-cli` (命令 `sweep`) 承继自 `@iyowei/sweep-node-modules-cli` (`sweep-nm`) 并演进为通用多技术栈工作区清理命令行工具 (当前 `"private": true` 待 `1.0.0` 首发; 决策见 [ADR 0021](../sweep/docs/adrs/0021-sweep-general-cleaner-evolution.md))。以下保留原包历史发布记录供追溯。
+
 # @iyowei/sweep-node-modules-cli [0.7.0](https://github.com/iyowei/clis/compare/@iyowei/sweep-node-modules-cli@0.6.0...@iyowei/sweep-node-modules-cli@0.7.0) (2026-11-20)
 
 

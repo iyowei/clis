@@ -3,6 +3,22 @@
   "version": "1.0.0",
   "private": true,
   "description": "Programmable API for workspace-level cleanup across multiple toolchains (Node.js, Rust, Python, Java, C/C++, OS junk, and custom rules): scan, measure, trash, and safely remove targets with zero runtime dependencies. 工作区级多技术栈清理能力的可编程 API。",
+  "keywords": [
+    "sweep",
+    "cleaner",
+    "cleanup",
+    "workspace",
+    "monorepo",
+    "node_modules",
+    "rust",
+    "python",
+    "java",
+    "cpp",
+    "trash",
+    "disk-usage",
+    "bun",
+    "node"
+  ],
   "author": "iTonyYo (https://github.com/iTonyYo)",
   "license": "MIT",
   "repository": {
@@ -28,6 +44,10 @@
   ],
   "engines": {
     "node": ">=22.18.0"
+  },
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
   },
   "scripts": {
     "build": "bun scripts/build.ts",

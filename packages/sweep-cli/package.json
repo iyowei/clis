@@ -50,6 +50,10 @@
   "engines": {
     "node": ">=22.18.0"
   },
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  },
   "devDependencies": {
     "@iyowei/cli-updater": "1.0.0",
     "@iyowei/sweep": "1.0.0"

@@ -1,3 +1,7 @@
+# Changelog (`@iyowei/sweep`)
+
+> **包名演进说明**: `@iyowei/sweep` 承继自 `@iyowei/sweep-node-modules` 并演进为通用多技术栈工作区清理器 (配置 v2 / 6 大预设 / 自定义 `rules` / 三端零依赖 `trash`, 当前 `"private": true` 待 `1.0.0` 首发; 决策见 [ADR 0021](docs/adrs/0021-sweep-general-cleaner-evolution.md))。以下保留原包历史发布记录供追溯。
+
 # @iyowei/sweep-node-modules [1.2.0](https://github.com/iyowei/clis/compare/@iyowei/sweep-node-modules@1.1.1...@iyowei/sweep-node-modules@1.2.0) (2026-11-20)
 
 
