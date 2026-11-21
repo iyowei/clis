@@ -1,0 +1,42 @@
+{
+  "id": "delete-root-symlink-anchor-rejected",
+  "specRefs": ["BC-39", "BC-26"],
+  "fixture": {
+    "projects": [
+      {
+        "dir": "real-root/app"
+      }
+    ],
+    "symlinks": [
+      {
+        "at": "link-root",
+        "to": "real-root"
+      }
+    ]
+  },
+  "setup": [
+    {
+      "write": {
+        "path": "config.json",
+        "text": "{\n  \"version\": 2,\n  \"roots\": [\n    \"$FIXTURE/link-root\"\n  ],\n  \"exclude\": [],\n  \"presets\": {\n    \"node\": {}\n  }\n}\n"
+      }
+    }
+  ],
+  "run": {
+    "argv": ["--yes"],
+    "env": {
+      "SWEEP_CONFIG": "$FIXTURE/config.json"
+    }
+  },
+  "expect": {
+    "exitCode": 1,
+    "stdoutExact": "",
+    "stderrContains": ["整批拒绝", "根锚点", "$FIXTURE/link-root"],
+    "fs": [
+      {
+        "path": "real-root/app/node_modules",
+        "state": "exists"
+      }
+    ]
+  }
+}

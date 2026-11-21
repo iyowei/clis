@@ -1,0 +1,52 @@
+{
+  "id": "api-trash-xdg-move",
+  "kind": "api",
+  "specRefs": ["BC-48"],
+  "fixture": {},
+  "setup": [
+    {
+      "write": {
+        "path": "zone/temp.log",
+        "text": "trash-me"
+      }
+    }
+  ],
+  "steps": [
+    {
+      "call": {
+        "export": "moveToTrash",
+        "args": [
+          "$FIXTURE/zone/temp.log",
+          {
+            "platform": "linux",
+            "env": {
+              "XDG_DATA_HOME": "$FIXTURE/xdg"
+            }
+          }
+        ]
+      }
+    }
+  ],
+  "expect": {
+    "result": {
+      "subset": {
+        "ok": true,
+        "backend": "linux-xdg-trash"
+      }
+    },
+    "fs": [
+      {
+        "path": "zone/temp.log",
+        "state": "gone"
+      },
+      {
+        "path": "xdg/Trash/files/temp.log",
+        "state": "exists"
+      },
+      {
+        "path": "xdg/Trash/info/temp.log.trashinfo",
+        "state": "exists"
+      }
+    ]
+  }
+}

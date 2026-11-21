@@ -1,0 +1,46 @@
+{
+  "id": "render-banner-4-roots",
+  "specRefs": ["OF-01"],
+  "fixture": {},
+  "setup": [
+    {
+      "write": {
+        "path": "z1/.keep",
+        "text": ""
+      }
+    },
+    {
+      "write": {
+        "path": "z2/.keep",
+        "text": ""
+      }
+    },
+    {
+      "write": {
+        "path": "z3/.keep",
+        "text": ""
+      }
+    },
+    {
+      "write": {
+        "path": "z4/.keep",
+        "text": ""
+      }
+    },
+    {
+      "write": {
+        "path": "config.json",
+        "text": "{\n  \"version\": 2,\n  \"roots\": [\n    \"$FIXTURE/z1\",\n    \"$FIXTURE/z2\",\n    \"$FIXTURE/z3\",\n    \"$FIXTURE/z4\"\n  ],\n  \"exclude\": [],\n  \"presets\": {\n    \"node\": {}\n  }\n}\n"
+      }
+    }
+  ],
+  "run": {
+    "env": {
+      "SWEEP_CONFIG": "$FIXTURE/config.json"
+    }
+  },
+  "expect": {
+    "exitCode": 0,
+    "stdoutExact": "▍ SWEEP  预览 · 4 个根\n  ░ 未发现可清理目标\n"
+  }
+}

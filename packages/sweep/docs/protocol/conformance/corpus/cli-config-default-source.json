@@ -1,0 +1,12 @@
+{
+  "id": "cli-config-default-source",
+  "specRefs": ["BC-35"],
+  "fixture": {},
+  "run": {
+    "argv": ["config"]
+  },
+  "expect": {
+    "exitCode": 0,
+    "stdoutExact": "▍ SWEEP  配置 · 来源: 平台默认\n  ░ 配置路径: $FIXTURE/home/.config/sweep/config.json\n  ░ 文件状态: 不存在\n"
+  }
+}

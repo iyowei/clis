@@ -1,0 +1,28 @@
+{
+  "id": "scan-root-is-node-modules",
+  "specRefs": ["BC-10", "OF-07"],
+  "fixture": {
+    "projects": [
+      {
+        "dir": "."
+      }
+    ]
+  },
+  "setup": [
+    {
+      "write": {
+        "path": "config.json",
+        "text": "{\n  \"version\": 2,\n  \"roots\": [\n    \"$FIXTURE/node_modules\"\n  ],\n  \"exclude\": [],\n  \"presets\": {\n    \"node\": {}\n  }\n}\n"
+      }
+    }
+  ],
+  "run": {
+    "env": {
+      "SWEEP_CONFIG": "$FIXTURE/config.json"
+    }
+  },
+  "expect": {
+    "exitCode": 0,
+    "stdoutExact": "▍ SWEEP  预览 · 1 个根: $FIXTURE/node_modules\n  ░ 未发现可清理目标\n"
+  }
+}

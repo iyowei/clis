@@ -1,0 +1,39 @@
+{
+  "id": "config-flag-over-env",
+  "specRefs": ["BC-16"],
+  "fixture": {
+    "projects": [
+      {
+        "dir": "zone/alpha"
+      },
+      {
+        "dir": "other/gamma"
+      }
+    ]
+  },
+  "setup": [
+    {
+      "write": {
+        "path": "cfg-a.json",
+        "text": "{\n  \"version\": 2,\n  \"roots\": [\n    \"$FIXTURE/zone\"\n  ],\n  \"exclude\": [],\n  \"presets\": {\n    \"node\": {}\n  }\n}\n"
+      }
+    },
+    {
+      "write": {
+        "path": "cfg-b.json",
+        "text": "{\n  \"version\": 2,\n  \"roots\": [\n    \"$FIXTURE/other\"\n  ],\n  \"exclude\": [],\n  \"presets\": {\n    \"node\": {}\n  }\n}\n"
+      }
+    }
+  ],
+  "run": {
+    "argv": ["--config", "$FIXTURE/cfg-a.json"],
+    "env": {
+      "SWEEP_CONFIG": "$FIXTURE/cfg-b.json"
+    }
+  },
+  "expect": {
+    "exitCode": 0,
+    "stdoutContains": ["$FIXTURE/zone/alpha", "合计 1 处"],
+    "stdoutMustNotContain": ["gamma"]
+  }
+}

@@ -1,0 +1,35 @@
+{
+  "id": "config-env-source",
+  "specRefs": ["BC-16", "BC-18"],
+  "fixture": {
+    "projects": [
+      {
+        "dir": "zone/alpha"
+      }
+    ]
+  },
+  "setup": [
+    {
+      "write": {
+        "path": "config.json",
+        "text": "{\n  \"version\": 2,\n  \"roots\": [\n    \"$FIXTURE/zone\"\n  ],\n  \"exclude\": [],\n  \"presets\": {\n    \"node\": {}\n  }\n}\n"
+      }
+    },
+    {
+      "write": {
+        "path": "run/.keep",
+        "text": ""
+      }
+    }
+  ],
+  "run": {
+    "cwd": "run",
+    "env": {
+      "SWEEP_CONFIG": "$FIXTURE/config.json"
+    }
+  },
+  "expect": {
+    "exitCode": 0,
+    "stdoutContains": ["alpha", "合计 1 处"]
+  }
+}

@@ -1,0 +1,128 @@
+{
+  "id": "preset-anchors-multi-stack",
+  "specRefs": ["BC-46", "BC-01"],
+  "fixture": {
+    "projects": [
+      {
+        "dir": "zone/node-bare",
+        "noPackageJson": true
+      }
+    ]
+  },
+  "setup": [
+    {
+      "write": {
+        "path": "zone/rust-ok/Cargo.toml",
+        "text": "[package]\nname=\"ok\"\n"
+      }
+    },
+    {
+      "write": {
+        "path": "zone/rust-ok/target/debug/bin",
+        "text": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+      }
+    },
+    {
+      "write": {
+        "path": "zone/rust-bare/target/data.txt",
+        "text": "keep"
+      }
+    },
+    {
+      "write": {
+        "path": "zone/py-ok/pyproject.toml",
+        "text": "[project]\nname=\"ok\"\n"
+      }
+    },
+    {
+      "write": {
+        "path": "zone/py-ok/.venv/bin/python",
+        "text": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+      }
+    },
+    {
+      "write": {
+        "path": "zone/py-bare/.venv/data.txt",
+        "text": "keep"
+      }
+    },
+    {
+      "write": {
+        "path": "zone/java-ok/pom.xml",
+        "text": "<project/>"
+      }
+    },
+    {
+      "write": {
+        "path": "zone/java-ok/target/app.jar",
+        "text": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+      }
+    },
+    {
+      "write": {
+        "path": "zone/cpp-ok/CMakeLists.txt",
+        "text": "project(ok)\n"
+      }
+    },
+    {
+      "write": {
+        "path": "zone/cpp-ok/build/out.o",
+        "text": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+      }
+    },
+    {
+      "write": {
+        "path": "zone/cpp-bare/build/note.txt",
+        "text": "keep"
+      }
+    },
+    {
+      "write": {
+        "path": "zone/junk/.DS_Store",
+        "text": "junk"
+      }
+    },
+    {
+      "write": {
+        "path": "zone/junk/desktop.ini",
+        "text": "keep"
+      }
+    },
+    {
+      "write": {
+        "path": "zone/junk/._keep",
+        "text": "keep"
+      }
+    },
+    {
+      "write": {
+        "path": "config.json",
+        "text": "{\n  \"version\": 2,\n  \"roots\": [\n    \"$FIXTURE/zone\"\n  ],\n  \"presets\": {\n    \"node\": {},\n    \"rust\": {},\n    \"python\": {},\n    \"java\": {},\n    \"cpp\": {},\n    \"os-junk\": {}\n  }\n}"
+      }
+    }
+  ],
+  "run": {
+    "env": {
+      "SWEEP_CONFIG": "$FIXTURE/config.json"
+    }
+  },
+  "expect": {
+    "exitCode": 0,
+    "stdoutContains": [
+      "$FIXTURE/zone/rust-ok/target",
+      "$FIXTURE/zone/py-ok/.venv",
+      "$FIXTURE/zone/java-ok/target",
+      "$FIXTURE/zone/cpp-ok/build",
+      "$FIXTURE/zone/junk/.DS_Store",
+      "合计 5 处"
+    ],
+    "stdoutMustNotContain": [
+      "node-bare",
+      "rust-bare",
+      "py-bare",
+      "cpp-bare",
+      "desktop.ini",
+      "._keep"
+    ]
+  }
+}

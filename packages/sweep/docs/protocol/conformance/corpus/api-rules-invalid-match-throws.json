@@ -1,0 +1,28 @@
+{
+  "id": "api-rules-invalid-match-throws",
+  "kind": "api",
+  "specRefs": ["BC-47", "BC-19"],
+  "fixture": {},
+  "setup": [
+    {
+      "write": {
+        "path": "bad-rule.json",
+        "text": "{\"version\":2,\"roots\":[\"$FIXTURE/zone\"],\"presets\":{},\"rules\":[{\"name\":\"wild\",\"kind\":\"any\",\"match\":\"*\"}]}"
+      }
+    }
+  ],
+  "steps": [
+    {
+      "call": {
+        "export": "loadConfig",
+        "args": ["$FIXTURE/bad-rule.json"]
+      }
+    }
+  ],
+  "expect": {
+    "error": {
+      "code": "CONFIG_CORRUPT_SHAPE",
+      "name": "SweepError"
+    }
+  }
+}

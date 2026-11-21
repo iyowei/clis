@@ -1,0 +1,27 @@
+{
+  "id": "cli-init-default-summary",
+  "specRefs": ["BC-50", "BC-29", "OF-14"],
+  "fixture": {},
+  "run": {
+    "argv": ["init", "--default", "--config", "$FIXTURE/cfg/config.json"]
+  },
+  "expect": {
+    "exitCode": 0,
+    "stdoutContains": [
+      "▍ SWEEP  初始化配置",
+      "配置已写入:",
+      "激活预设 (6 项):",
+      "自定义规则: 0 条",
+      "全局排除: 32 条 (内置安全护栏)",
+      "快捷指令:",
+      "sweep config"
+    ],
+    "stdoutMustNotContain": ["\"version\": 2", "\"presets\": {"],
+    "fs": [
+      {
+        "path": "cfg/config.json",
+        "state": "exists"
+      }
+    ]
+  }
+}

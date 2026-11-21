@@ -1,0 +1,33 @@
+{
+  "id": "scan-include-exclude-priority",
+  "specRefs": ["BC-32", "BC-33", "OF-03"],
+  "fixture": {
+    "projects": [
+      {
+        "dir": "zone/both/app"
+      },
+      {
+        "dir": "zone/self/proj"
+      }
+    ]
+  },
+  "setup": [
+    {
+      "write": {
+        "path": "config.json",
+        "text": "{\n  \"version\": 2,\n  \"roots\": [\n    \"$FIXTURE/zone\"\n  ],\n  \"exclude\": [\n    \"both\"\n  ],\n  \"include\": [\n    \"both\",\n    \"self\"\n  ],\n  \"presets\": {\n    \"node\": {}\n  }\n}\n"
+      }
+    }
+  ],
+  "run": {
+    "env": {
+      "SWEEP_CONFIG": "$FIXTURE/config.json"
+    }
+  },
+  "expect": {
+    "exitCode": 0,
+    "stdoutExact": "▍ SWEEP  预览 · 1 个根: $FIXTURE/zone\n  ▒ 8 KB  proj    $FIXTURE/zone/self/proj\n  █ 合计 1 处 · 8 KB   加 --yes 执行删除\n",
+    "stdoutMustNotContain": ["app"],
+    "stderrMustNotContain": ["包含名未命中", "包含名单无一条命中"]
+  }
+}

@@ -1,0 +1,44 @@
+{
+  "id": "cli-migrate-legacy-auto",
+  "specRefs": ["BC-49", "OF-12"],
+  "fixture": {
+    "projects": [
+      {
+        "dir": "zone/app"
+      }
+    ]
+  },
+  "setup": [
+    {
+      "write": {
+        "path": "zone/rust-proj/Cargo.toml",
+        "text": "[package]\nname=\"r\"\n"
+      }
+    },
+    {
+      "write": {
+        "path": "zone/rust-proj/target/out",
+        "text": "keep"
+      }
+    },
+    {
+      "write": {
+        "path": "home/.config/sweep-node-modules/config.json",
+        "text": "{\n  \"roots\": [\"$FIXTURE/zone\"]\n}\n"
+      }
+    }
+  ],
+  "run": {},
+  "expect": {
+    "exitCode": 0,
+    "stdoutContains": ["$FIXTURE/zone/app", "合计 1 处"],
+    "stdoutMustNotContain": ["rust-proj"],
+    "stderrContains": ["已自动无损迁移配置到 v2", "新增可用预设: rust"],
+    "fs": [
+      {
+        "path": "home/.config/sweep/config.json",
+        "state": "exists"
+      }
+    ]
+  }
+}

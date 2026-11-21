@@ -1,0 +1,35 @@
+{
+  "id": "rules-custom-trash-default",
+  "specRefs": ["BC-47"],
+  "fixture": {},
+  "setup": [
+    {
+      "write": {
+        "path": "zone/logs/old.log",
+        "text": "hello"
+      }
+    },
+    {
+      "write": {
+        "path": "zone/logs/keep.txt",
+        "text": "keep"
+      }
+    },
+    {
+      "write": {
+        "path": "config.json",
+        "text": "{\n  \"version\": 2,\n  \"roots\": [\n    \"$FIXTURE/zone\"\n  ],\n  \"presets\": {},\n  \"rules\": [\n    {\n      \"name\": \"logs\",\n      \"kind\": \"file\",\n      \"match\": \"*.log\"\n    }\n  ]\n}"
+      }
+    }
+  ],
+  "run": {
+    "env": {
+      "SWEEP_CONFIG": "$FIXTURE/config.json"
+    }
+  },
+  "expect": {
+    "exitCode": 0,
+    "stdoutContains": ["$FIXTURE/zone/logs/old.log", "[TRASH]", "合计 1 处"],
+    "stdoutMustNotContain": ["keep.txt"]
+  }
+}

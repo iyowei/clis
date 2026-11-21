@@ -1,0 +1,61 @@
+{
+  "id": "api-size-three-buckets-and-warning",
+  "kind": "api",
+  "specRefs": ["BC-13", "BC-43"],
+  "fixture": {
+    "projects": [
+      {
+        "dir": "zone/a"
+      },
+      {
+        "dir": "zone/locked"
+      }
+    ],
+    "unreadable": ["zone/locked/node_modules"]
+  },
+  "steps": [
+    {
+      "as": "sizer",
+      "call": {
+        "export": "createSizer"
+      }
+    },
+    {
+      "call": {
+        "on": "sizer",
+        "method": "measure",
+        "args": [
+          [
+            "$FIXTURE/zone/locked/node_modules",
+            "$FIXTURE/zone/ghost/node_modules",
+            "$FIXTURE/zone/a/node_modules"
+          ]
+        ]
+      }
+    }
+  ],
+  "expect": {
+    "result": {
+      "subset": {
+        "entries": [
+          {
+            "target": "$FIXTURE/zone/a/node_modules"
+          }
+        ],
+        "unmeasured": [
+          {
+            "target": "$FIXTURE/zone/locked/node_modules",
+            "code": "SIZE_UNMEASURED_PERMISSION"
+          }
+        ],
+        "gone": ["$FIXTURE/zone/ghost/node_modules"],
+        "warnings": [
+          {
+            "code": "SIZE_TARGET_VANISHED",
+            "path": "$FIXTURE/zone/ghost/node_modules"
+          }
+        ]
+      }
+    }
+  }
+}

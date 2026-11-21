@@ -1,0 +1,24 @@
+{
+  "id": "config-corrupt-shape-roots-empty",
+  "specRefs": ["BC-19", "BC-20"],
+  "fixture": {},
+  "setup": [
+    {
+      "write": {
+        "path": "config.json",
+        "text": "{\n  \"version\": 2,\n  \"roots\": [],\n  \"exclude\": [],\n  \"presets\": { \"node\": {} }\n}\n"
+      }
+    }
+  ],
+  "run": {
+    "env": {
+      "SWEEP_CONFIG": "$FIXTURE/config.json"
+    }
+  },
+  "expect": {
+    "exitCode": 1,
+    "stderrContains": [
+      "配置损坏 ($FIXTURE/config.json): 字段 roots 不能为空数组"
+    ]
+  }
+}

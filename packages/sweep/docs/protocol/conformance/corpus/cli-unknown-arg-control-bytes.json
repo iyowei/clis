@@ -1,0 +1,16 @@
+{
+  "id": "cli-unknown-arg-control-bytes",
+  "specRefs": ["BC-27", "OF-12", "OF-14"],
+  "fixture": {},
+  "run": {
+    "argv": ["--nope\u001b[2J\nfake‮"]
+  },
+  "expect": {
+    "exitCode": 1,
+    "stdoutExact": "",
+    "stderrContains": [
+      "参数错误: 未知参数: --nope[2J fake (用 --help 查看用法)"
+    ],
+    "stderrMustNotContain": ["\u001b", "‮"]
+  }
+}

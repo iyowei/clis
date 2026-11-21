@@ -1,0 +1,24 @@
+{
+  "id": "render-empty-result",
+  "specRefs": ["OF-01", "OF-07", "BC-26"],
+  "fixture": {
+    "projects": []
+  },
+  "setup": [
+    {
+      "write": {
+        "path": "config.json",
+        "text": "{\n  \"version\": 2,\n  \"roots\": [\n    \"$FIXTURE/zone\"\n  ],\n  \"exclude\": [],\n  \"presets\": {\n    \"node\": {}\n  }\n}\n"
+      }
+    }
+  ],
+  "run": {
+    "env": {
+      "SWEEP_CONFIG": "$FIXTURE/config.json"
+    }
+  },
+  "expect": {
+    "exitCode": 0,
+    "stdoutExact": "▍ SWEEP  预览 · 1 个根: $FIXTURE/zone\n  ░ 未发现可清理目标\n"
+  }
+}

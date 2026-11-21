@@ -1,0 +1,32 @@
+{
+  "id": "scan-include-config",
+  "specRefs": ["BC-31", "OF-03"],
+  "fixture": {
+    "projects": [
+      {
+        "dir": "zone/self/proj"
+      },
+      {
+        "dir": "zone/other/proj2"
+      }
+    ]
+  },
+  "setup": [
+    {
+      "write": {
+        "path": "config.json",
+        "text": "{\n  \"version\": 2,\n  \"roots\": [\n    \"$FIXTURE/zone\"\n  ],\n  \"include\": [\n    \"self\"\n  ],\n  \"presets\": {\n    \"node\": {}\n  }\n}\n"
+      }
+    }
+  ],
+  "run": {
+    "env": {
+      "SWEEP_CONFIG": "$FIXTURE/config.json"
+    }
+  },
+  "expect": {
+    "exitCode": 0,
+    "stdoutExact": "▍ SWEEP  预览 · 1 个根: $FIXTURE/zone\n  ▒ 8 KB  proj    $FIXTURE/zone/self/proj\n  █ 合计 1 处 · 8 KB   加 --yes 执行删除\n",
+    "stdoutMustNotContain": ["other", "proj2"]
+  }
+}

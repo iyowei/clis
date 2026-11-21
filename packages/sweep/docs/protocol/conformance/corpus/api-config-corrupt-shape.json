@@ -1,0 +1,28 @@
+{
+  "id": "api-config-corrupt-shape",
+  "kind": "api",
+  "specRefs": ["BC-19", "BC-20"],
+  "fixture": {},
+  "setup": [
+    {
+      "write": {
+        "path": "bad-shape.json",
+        "text": "{\"version\":2,\"roots\":[],\"presets\":{\"node\":{}}}"
+      }
+    }
+  ],
+  "steps": [
+    {
+      "call": {
+        "export": "loadConfig",
+        "args": ["$FIXTURE/bad-shape.json"]
+      }
+    }
+  ],
+  "expect": {
+    "error": {
+      "code": "CONFIG_CORRUPT_SHAPE",
+      "name": "SweepError"
+    }
+  }
+}

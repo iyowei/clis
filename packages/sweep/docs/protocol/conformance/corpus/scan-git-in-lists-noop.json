@@ -1,0 +1,42 @@
+{
+  "id": "scan-git-in-lists-noop",
+  "specRefs": ["BC-34"],
+  "fixture": {
+    "projects": [
+      {
+        "dir": "zone/alpha/app"
+      },
+      {
+        "dir": "zone/beta/app"
+      }
+    ]
+  },
+  "setup": [
+    {
+      "write": {
+        "path": "config.json",
+        "text": "{\n  \"version\": 2,\n  \"roots\": [\"$FIXTURE/zone\"],\n  \"exclude\": [\".git\"],\n  \"include\": [\".git\"],\n  \"presets\": { \"node\": {} }\n}\n"
+      }
+    }
+  ],
+  "run": {
+    "env": {
+      "SWEEP_CONFIG": "$FIXTURE/config.json"
+    },
+    "argv": ["--exclude", ".git", "--include", ".git"]
+  },
+  "expect": {
+    "exitCode": 0,
+    "stdoutContains": [
+      "$FIXTURE/zone/alpha/app",
+      "$FIXTURE/zone/beta/app",
+      "合计 2 处"
+    ],
+    "stdoutMustNotContain": ["未发现可清理目标"],
+    "stderrMustNotContain": [
+      "排除名未命中",
+      "包含名未命中",
+      "包含名单无一条命中"
+    ]
+  }
+}

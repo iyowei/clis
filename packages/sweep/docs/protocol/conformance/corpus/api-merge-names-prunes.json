@@ -1,0 +1,22 @@
+{
+  "id": "api-merge-names-prunes",
+  "kind": "api",
+  "specRefs": ["BC-34"],
+  "fixture": {},
+  "steps": [
+    {
+      "call": {
+        "export": "mergeNames",
+        "args": [
+          [".git", "alpha"],
+          ["beta", ".git"]
+        ]
+      }
+    }
+  ],
+  "expect": {
+    "result": {
+      "exact": ["alpha", "beta"]
+    }
+  }
+}

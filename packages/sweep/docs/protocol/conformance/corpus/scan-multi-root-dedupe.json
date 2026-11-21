@@ -1,0 +1,28 @@
+{
+  "id": "scan-multi-root-dedupe",
+  "specRefs": ["BC-04", "BC-06"],
+  "fixture": {
+    "projects": [
+      {
+        "dir": "zone/a"
+      }
+    ]
+  },
+  "setup": [
+    {
+      "write": {
+        "path": "config.json",
+        "text": "{\n  \"version\": 2,\n  \"roots\": [\n    \"$FIXTURE/zone\",\n    \"$FIXTURE/zone/a\"\n  ],\n  \"exclude\": [],\n  \"presets\": {\n    \"node\": {}\n  }\n}\n"
+      }
+    }
+  ],
+  "run": {
+    "env": {
+      "SWEEP_CONFIG": "$FIXTURE/config.json"
+    }
+  },
+  "expect": {
+    "exitCode": 0,
+    "stdoutExact": "▍ SWEEP  预览 · 2 个根: $FIXTURE/zone · $FIXTURE/zone/a\n  ▒ 8 KB  a    $FIXTURE/zone/a\n  █ 合计 1 处 · 8 KB   加 --yes 执行删除\n"
+  }
+}

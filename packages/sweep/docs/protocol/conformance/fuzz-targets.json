@@ -1,0 +1,81 @@
+{
+  "schemaVersion": 1,
+  "targets": [
+    {
+      "id": "sanitize-line",
+      "export": "sanitizeLine",
+      "generator": "dirty-line",
+      "invariants": [
+        "ok-string",
+        "no-control-chars",
+        "no-newlines",
+        "idempotent"
+      ],
+      "description": "单源行内净化 (OF-14): 剥除控制/ANSI/bidi 字符、折叠空白且满足幂等"
+    },
+    {
+      "id": "sanitize-output-line",
+      "export": "sanitizeOutputLine",
+      "generator": "indented-dirty-line",
+      "invariants": [
+        "ok-string",
+        "no-control-chars",
+        "no-newlines",
+        "idempotent"
+      ],
+      "description": "保留行首缩进的输出行净化 (OF-14): 剥除控制/bidi/换行且满足幂等"
+    },
+    {
+      "id": "format-bytes",
+      "export": "formatBytes",
+      "generator": "byte-size",
+      "invariants": ["ok-string", "non-empty-string"],
+      "description": "人类可读体积格式化 (B/KB/MB/GB/TB 临界边界与取整对齐)"
+    },
+    {
+      "id": "validate-rule-match",
+      "export": "validateRuleMatch",
+      "generator": "rule-match",
+      "invariants": ["no-crash"],
+      "description": "自定义规则高危 match 拦截 (BC-47): 空串/危险字面/分隔符/控制字符/纯通配"
+    },
+    {
+      "id": "resolve-config-path",
+      "export": "resolveConfigPath",
+      "generator": "config-path-options",
+      "generatorOptions": {
+        "envVar": "SWEEP_CONFIG"
+      },
+      "invariants": ["no-crash"],
+      "description": "三平台配置路径三级覆盖 (BC-16): --config > SWEEP_CONFIG > 平台默认"
+    },
+    {
+      "id": "merge-names",
+      "export": "mergeNames",
+      "generator": "name-lists",
+      "invariants": ["no-crash"],
+      "description": "排除/包含名单合并去重与 .git 静默剔除 (BC-34)"
+    },
+    {
+      "id": "convert-v1-to-v2",
+      "export": "convertV1ToV2",
+      "generator": "v1-config-raw",
+      "invariants": ["no-crash"],
+      "description": "配置 v1 -> v2 无损等价升版与未知字段/畸形输入拒迁 (BC-49)"
+    },
+    {
+      "id": "encode-xdg-trash-path",
+      "export": "encodeXdgTrashPath",
+      "generator": "xdg-path",
+      "invariants": ["ok-string"],
+      "description": "Linux XDG Trash RFC 2396 路径编码 (BC-48): 保留斜杠、编码特殊字符与 UTF-8"
+    },
+    {
+      "id": "classify-target",
+      "export": "classifyTarget",
+      "generator": "classify-target",
+      "invariants": ["no-crash"],
+      "description": "node 预设删除侧语义闸 (BC-37): 跨 posix/win32 判定疑似安装树与项目依赖"
+    }
+  ]
+}

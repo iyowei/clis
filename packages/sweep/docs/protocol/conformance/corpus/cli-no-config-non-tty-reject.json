@@ -1,0 +1,27 @@
+{
+  "id": "cli-no-config-non-tty-reject",
+  "specRefs": ["BC-18", "BC-23", "BC-26"],
+  "fixture": {
+    "projects": [
+      {
+        "dir": "zone/a"
+      }
+    ]
+  },
+  "run": {},
+  "expect": {
+    "exitCode": 1,
+    "stdoutExact": "",
+    "stderrContains": [
+      "未找到配置文件 ($FIXTURE/home/.config/sweep/config.json)",
+      "非交互模式下拒绝盲扫",
+      "sweep init"
+    ],
+    "fs": [
+      {
+        "path": "zone/a/node_modules",
+        "state": "exists"
+      }
+    ]
+  }
+}
