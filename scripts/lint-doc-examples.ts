@@ -1,5 +1,6 @@
 /**
  * 文档示例闸门: ts 代码块的真实类型校验 + shell 块的多 CLI 面核对。
+ * 触发方: `scripts/ci.ts` (`lint:examples` 并行只读闸门) 或手动执行。
  *
  * 两档:
  * - 类型档: 采集「自足」ts 块 (行首 import), 拼成临时 tsc 工程对 API 包真实类型校验。
@@ -215,7 +216,18 @@ function hitsWorkspaceModuleNotFound(
   return false;
 }
 
-/** 类型档: 采集自足块 → 临时工程编译 → 返回 (真断裂条目, 片段 INFO 列表) */
+/**
+ * 类型档: 采集自足块 -> 临时工程编译 -> 返回 (真断裂条目, 片段 INFO 列表)。
+ *
+ * ### 数据流转示例
+ * ```text
+ * Input:  root = 仓库根 (全部跳过面外的 .md 文件)
+ * 步骤 1: extractTsBlocks + isSelfContained -> 收集带行首 import 的代码块
+ * 步骤 2: 在 ~/tmp/doc-examples-* 写入 block-N.ts + tsconfig.json, 调用本地 tsc 编译
+ * 步骤 3: parseTscErrors -> classifyBlock (clean / fragment / real), 命中本仓包/scope 的 TS2307 强制判 real
+ * Output: { real: string[], fragments: string[] } (finally 回收临时目录)
+ * ```
+ */
 export function checkTsExamples(root: string = REPO_ROOT): {
   real: string[];
   fragments: string[];
@@ -360,7 +372,18 @@ export function discoverCliTargets(root: string): CliTarget[] {
   return targets.sort((a, b) => a.binName.localeCompare(b.binName));
 }
 
-/** CLI 档: 采集 shell 块内全部已发现 CLI 命令, 对照各自 --help 核对旗标与子命令 */
+/**
+ * CLI 档: 采集 shell 块内全部已发现 CLI 命令, 对照各自 --help 核对旗标与子命令。
+ *
+ * ### 数据流转示例
+ * ```text
+ * Input:  root = 仓库根 (workspace 中带 bin 且含 src/cli.ts 的包)
+ * 步骤 1: discoverCliTargets -> 逐个跑 `bun <entryPath> --help` 缓存帮助文本 helpByBin
+ * 步骤 2: 走查全部 .md, extractNamedShellCommands 提取对应命令开头的 shell 行
+ * 步骤 3: extractCommandTokens 抽 --旗标与首个纯小写子命令, 核对是否出现在对应 --help 中
+ * Output: missing[] (空数组 = 全绿)
+ * ```
+ */
 export function checkCliExamples(root: string = REPO_ROOT): string[] {
   const targets = discoverCliTargets(root);
   if (targets.length === 0) return [];

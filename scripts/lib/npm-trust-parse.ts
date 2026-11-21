@@ -1,5 +1,6 @@
 /**
  * npm Trusted Publisher 登记解析、差异比对与运行环境判定纯函数库 (零副作用、零 I/O)。
+ * 调用方: `scripts/npm-trust-guard.ts` 与单元测试; 清洗终端输出时须先 `stripCsi` 再 `stripPtyNoise`。
  */
 import type { WorkspacePackage } from './workspace.ts';
 

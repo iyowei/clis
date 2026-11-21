@@ -1,12 +1,10 @@
 /**
  * 仓库卫生闸门: 工作树内不得出现备份文件 (*.modified / *.deleted)。
+ * 触发方: `scripts/ci.ts` (`lint:backups` 并行只读闸门) 或手动执行。
  *
- * 动机: 备份纪律要求备份落 ~/tmp (ADR 0009 补记), 但 2026-09-30 漂移清偿时实测工作树内
- * 散落 7 个 .modified: 它们被 .gitignore 忽略、git status 看不见, 却不属于仓库; 包目录
- * 下的备份还会借 npm pack 的 README* 强制收录规则混进发行物 (既有的「包根杂质常驻回归」
- * 只兜包目录)。本闸门做全树兜底: 出现即红灯, 把清理成本压回发生的那一刻。
- *
- * 判据: 全树走查中文件名以 .modified / .deleted 收尾者 (共享跳过面之外的任何位置)。
+ * 动机与判据: 备份文件被 .gitignore 忽略、git status 看不见, 落入包目录还会借 npm pack 的
+ * README* 强制收录规则混进发行物 (ADR 0009 补记); 本闸门全树扫描除 SKIP_DIRS 外的所有位置
+ * (含模板源码目录), 出现 .modified / .deleted 即红灯拦截。
  *
  * 用法: bun scripts/lint-stray-backups.ts
  * 退出码: 0 无散落; 1 有散落 (逐条打印路径)。

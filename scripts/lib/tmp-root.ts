@@ -1,5 +1,6 @@
 /**
- * 临时根工厂: 在 ~/tmp 下建独占临时目录, 测试与闸门生产代码统一经此创建。
+ * 临时根工厂: 在 ~/tmp 下建独占临时目录, 供工程脚本 (`ci.ts` / `lint-doc-examples.ts` /
+ * `run-conformance.ts`) 与测试统一创建沙箱目录。
  *
  * 动机: 套件惯例是临时目录落 ~/tmp (不用系统 /tmp), 本地 ~/tmp 常备而 CI runner
  * 的 HOME 下没有 tmp 目录, 直接 mkdtemp 会因父目录缺失报 ENOENT (2026-09-30 CI

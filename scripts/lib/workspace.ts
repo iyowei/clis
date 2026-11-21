@@ -1,15 +1,14 @@
 /**
  * 工作区坐标派生 (单一事实来源: 根 package.json 的 workspaces)。
+ * 调用方: `ci.ts` / `lint-*` / `npm-trust-guard.ts` / `safe-install.ts` / `make-mutants.ts`。
  *
  * 派生规则 (与「依赖方向纪律」同构):
- * - **双包产品对 (ProductPair)**: 带 `bin` 的 CLI 包, 其 dependencies 或 devDependencies
- *   引用某个仓内无 `bin` 包 (API 包), 按依赖关系单向锚定。
- * - `listWorkspacePackages` 按目录字典序稳定输出, 消除跨 OS readdir 顺序差异。
- * - 当仓内同时存在多个双包产品时, 调用方应使用 `resolveProductPairs`
- *   或为 `resolveCliAndApi` 传入明确的产品包名/目录提示, 不靠数组首项碰运气。
+ * - 双包产品对 (ProductPair): 带 `bin` 的 CLI 包, 其 dependencies 或 devDependencies
+ *   引用某个仓内无 `bin` 专属产品 API 包 (自动排除跨 CLI 共享私有库), 按依赖关系单向锚定;
+ * - `listWorkspacePackages` 按目录字典序稳定输出, 消除跨 OS readdir 顺序差异;
+ * - 多产品仓场景下应使用 `resolveProductPairs` 或为 `resolveCliAndApi` 传明确 `productHint`。
  *
- * 已知的单点同步 (无法运行时派生): `tsconfig.json` 的 paths 是静态配置, 新增 API 包或
- * 改包名时需在此一处手动同步。
+ * 已知单点同步 (无法运行时派生): `tsconfig.json` 的 paths 为静态配置, 新增 API 包或改包名时需手动同步。
  */
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';

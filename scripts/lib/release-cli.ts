@@ -1,10 +1,9 @@
 /**
- * CLI 包发布自证脚本的共享收口层 (供工作区内全部 CLI 包共用)。
+ * CLI 包发布自证脚本的共享收口层 (供工作区内各 CLI 包共用)。
+ * 调用方: 各 CLI 包的 `scripts/write-dist-manifest.ts` / `verify-release.ts` / `release-artifact.ts`。
  *
- * 动机: 三个 CLI 包此前各自复制了 write-dist-manifest.ts / verify-release.ts /
- * release-artifact.ts 的绝大多数逻辑 (~500 行), 已衍生出文案漂移、资产校验分叉与
- * `import.meta.dir` vs `fileURLToPath` 不一致。本模块将共享的 git 采集、清单构建、
- * 写盘、资产白名单展开与 CLI 入口收口在一处, 各包只保留纯声明配置。
+ * 动机: 多个 CLI 包此前各自复制了约 500 行同构逻辑, 易衍生文案漂移与资产校验分叉。
+ * 本模块将 git 采集、清单构建写盘、动态资产白名单展开与 CLI 入口收口在一处, 各包只保留纯声明配置。
  */
 import { existsSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { basename, join } from 'node:path';

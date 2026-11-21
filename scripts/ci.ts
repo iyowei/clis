@@ -1,12 +1,12 @@
 /**
- * 本地 CI 预演 (闸门清单的单一事实来源): 全部步骤在此一处定义, 其余消费方 — 手动全链、
- * lefthook pre-push、CI 三路 job (Linux / Windows / macOS) 与 Release 前置门禁 —
+ * 本地 CI 预演 (闸门清单的单一事实来源): 全部步骤在此一处定义, 其余消费方
+ * (手动全链、lefthook pre-push、CI 三路 job (Linux / Windows / macOS) 与 Release 前置门禁)
  * 一律经本入口调用, 不再各自枚举。
  *
  * 分组:
- * - `--verify`         验证组 (ubuntu 权威全量): build → typecheck → test → 7 道只读 lint 并行;
- * - `--verify-windows` Windows OS 兼容组: build → 限并发 test:windows → test:scripts;
- * - `--conformance`    验收组 (语料为 macOS 口径): build → conformance (bun + node 双 target);
+ * - `--verify`         验证组 (ubuntu 权威全量): build -> typecheck -> test -> 7 道只读 lint 并行;
+ * - `--verify-windows` Windows OS 兼容组: build -> 限并发 test:windows -> test:scripts;
+ * - `--conformance`    验收组 (语料为 macOS 口径): build -> conformance (bun + node 双 target);
  * - (无旗标)           全链 = 验证组 + 验收组 (重复步骤去重);
  * - `--only <step>`    单步执行 (步骤名见 `--help`);
  * - `--help`           列出步骤与分组。
@@ -118,7 +118,7 @@ const STEPS: Readonly<Record<string, Step>> = {
     args: ['scripts/lint-stray-backups.ts'],
     parallel: true,
   },
-  // 发布凭据预检 (OIDC 换证): 发布特有, 不进任何组 — 仅 Release 的 release job (获批后)
+  // 发布凭据预检 (OIDC 换证): 发布特有, 不进任何组, 仅 Release 的 release job (获批后)
   // 经 `--only npm-trust` 调用; 非 OIDC 环境下手动跑时脚本自行跳过。
   'npm-trust': {
     command: 'bun',
@@ -291,7 +291,18 @@ async function runParallelBatch(names: readonly string[]): Promise<void> {
   if (firstFailure !== 0) process.exit(firstFailure);
 }
 
-/** 按步骤序列编排执行: 连续的 parallel 步骤自动成批并发, 其余严格串行 */
+/**
+ * 按步骤序列编排执行: 连续的 parallel 步骤自动成批并发, 其余严格串行。
+ *
+ * ### 数据流转示例
+ * ```text
+ * Input:  names = ['build', 'typecheck', 'test', 'lint', 'format-check', 'lint:refs', ...]
+ * 步骤 1: 逐项扫描, 非 parallel 步骤直接串行 runStep (其中 test 挂载临时隔离 HOME)
+ * 步骤 2: 遇到连续 parallel 步骤 (lint .. lint:backups 共 7 道), 聚合成 batch 并发 spawnParallelStep
+ * 步骤 3: 按原声明顺序整块回放各步 stdout/stderr, 首个非零退出码终止进程
+ * Output: 全绿返回 void; 任一步失败以该步退出码退出
+ * ```
+ */
 async function runSteps(names: readonly string[]): Promise<void> {
   let index = 0;
   while (index < names.length) {

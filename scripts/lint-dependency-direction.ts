@@ -1,5 +1,6 @@
 /**
  * 依赖方向闸门: 强制执行 docs/designs/dependency-direction.md 约定的包间依赖有向无环图。
+ * 触发方: `scripts/ci.ts` (`lint:deps` 并行只读闸门) 或手动执行。
  *
  * 包分类 (确定性字段, 与 docs/designs/package-classification.md 同源):
  * - cli:         package.json 有 `bin` 字段
@@ -7,10 +8,10 @@
  * - private-lib: 无 `bin`, 且 `private === true`
  *
  * 规则 (dependencies 与 devDependencies 一视同仁):
- * 1. 禁止 public-lib → cli 与 private-lib → cli (库不得反向依赖工具)
- * 2. 禁止 cli → cli (工具之间不得互相依赖; 共享需求抽库)
- * 3. 禁止任何环依赖 (有向无环图)
- * 4. 禁止 public-lib → public-lib 链条深度 > 2 (即边数 > 2, 超过 3 个公开库串联)
+ * 1. 禁止 public-lib -> cli 与 private-lib -> cli (库不得反向依赖工具)
+ * 2. 禁止 cli -> cli (工具之间不得互相依赖; 共享需求抽库)
+ * 3. 禁止自依赖与任何环依赖 (有向无环图)
+ * 4. 禁止 public-lib -> public-lib 链条深度 > 2 (即边数 > 2, 超过 3 个公开库串联)
  *
  * 用法: bun scripts/lint-dependency-direction.ts
  * 退出码: 0 全绿; 1 存在违规。
@@ -30,7 +31,19 @@ export function classifyPackage(pkg: WorkspacePackage): PackageKind {
   return pkg.manifest.private === true ? 'private-lib' : 'public-lib';
 }
 
-/** 校验工作区所有包的内部依赖方向与无环约束, 返回违规人话列表 */
+/**
+ * 校验工作区所有包的内部依赖方向与无环约束, 返回违规人话列表。
+ *
+ * ### 数据流转示例
+ * ```text
+ * Input:  root = 仓库根 (packages/* 下各 package.json)
+ * 步骤 1: listWorkspacePackages + classifyPackage -> 建立包分类表 kinds 与仓内依赖邻接表 graph
+ * 步骤 2: 逐边拦截自依赖、cli -> cli 与 lib -> cli
+ * 步骤 3: 三色 DFS (0 未访 / 1 栈中 / 2 完成) 检出有向环
+ * 步骤 4: 对每个 public-lib 沿 public-lib 边递归, 拦截链条边数 > 2
+ * Output: violations[] (空数组 = 全绿)
+ * ```
+ */
 export function checkDependencyDirection(root: string = REPO_ROOT): string[] {
   const packages = listWorkspacePackages(root);
   const byName = new Map(packages.map((pkg) => [pkg.name, pkg]));

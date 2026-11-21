@@ -1,9 +1,10 @@
 /**
- * safe-install: 干净重装 — 清掉全部工作区包的可再生构建产物、派生资产、缓存与锁文件,
- * 再按 package.json 重新安装。
+ * 干净重装入口 (`bun run safe-install`): 清掉全部工作区包的可再生构建产物、派生资产、
+ * 缓存与根锁文件/依赖 (`packages/<pkg>/{dist,assets,.turbo}` + 根目录 `.turbo / bun.lock / node_modules`),
+ * 再按 package.json 重新执行 `bun install`。
  *
- * 为什么: ① dist 与 assets 是构建期派生件, 陈旧产物会让入口跑到与源码不一致的字节;
- * ② 锁文件漂移或依赖树深脏时, 全量清掉可再生面再装回, 能重置回「由 package.json 唯一决定」的干净点。
+ * 关键约束: ① dist 与 assets 是构建期派生件, 陈旧产物会让入口跑到与源码不一致的字节;
+ * ② 锁文件漂移或依赖树脏污时全量清零再装回, 回到由 package.json 唯一决定的干净态。
  */
 import { spawnSync } from 'node:child_process';
 import { existsSync, rmSync } from 'node:fs';

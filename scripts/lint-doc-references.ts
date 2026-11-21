@@ -1,5 +1,6 @@
 /**
  * 文档引用闸门: 相对链接 / §章节引用 / ADR 编号与重号检测 / 包 README npm 外链防 404。
+ * 触发方: `scripts/ci.ts` (`lint:refs` 并行只读闸门) 或手动执行。
  *
  * 两级文档模型 (ADR 0019 / docs/designs/docs-layering.md):
  * - 仓库级: `docs/` (纯工程治理、通用设计、仓级 ADR)
@@ -9,7 +10,7 @@
  * 1. 相对链接: `](路径)` 解析到仓内文件/目录须存在; 外链、纯锚点与围栏代码块跳过;
  * 2. 包 README 逃逸拦截: `packages/<pkg>/README*.md` 面向 npm 发布, 禁止逃出包根 (`../` 或
  *    仓库根 `/...`) 的相对链接, 必须改用 GitHub 绝对链接 (消除 npm 页面 404);
- * 3. §章节引用: 目标明确形态 (`x.md §N` 或别名), 同名文件按「同目录 → 同包 → 全仓」就近消歧;
+ * 3. §章节引用: 目标明确形态 (`x.md §N` 或别名), 同名文件按「同目录 -> 同包 -> 全仓」就近消歧;
  * 4. ADR 编号与唯一性: 扫描 `docs/adrs/` 与全部 workspace 包 `packages/<pkg>/docs/adrs/`,
  *    既拦截幽灵编号, 也拦截跨目录重号碰撞。
  *
@@ -175,7 +176,18 @@ export function findLinkIssues(
   return findings;
 }
 
-/** 解析 § 引用的目标文档: 按「同目录 → 同包 → 全仓首项」就近消歧 */
+/**
+ * 解析 § 引用的目标文档: 在 § 前 30 字符窗口内提取 `*.md` (按「同目录 -> 同包 -> 全仓首项」消歧),
+ * 无文件名线索时回退 DOC_ALIASES 别名映射。
+ *
+ * ### 数据流转示例
+ * ```text
+ * Input:  line = "见 behavior-contract.md §3.2", dir = "packages/sweep/docs/designs"
+ * 步骤 1: 截取 § 前 30 字符窗口 -> 命中 "behavior-contract.md"
+ * 步骤 2: 查 nameIndex['behavior-contract'] -> 优先同目录, 其次同包前缀 packages/sweep/, 最后首项
+ * Output: "packages/sweep/docs/protocol/behavior-contract.md" (未命中则回退别名或 null)
+ * ```
+ */
 export function resolveSectionTarget(
   line: string,
   refIndex: number,
@@ -351,7 +363,18 @@ export function findAdrIssues(
   return findings;
 }
 
-/** 全仓扫描引用 (导出供测试用临时根); 返回全部断裂 */
+/**
+ * 全仓扫描引用 (导出供测试用临时根), 返回全部断裂。
+ *
+ * ### 数据流转示例
+ * ```text
+ * Input:  root = 仓库根
+ * 步骤 1: listDocFiles -> 建立文件名索引 nameIndex 与两级 ADR 编号索引 adrIndex
+ * 步骤 2: 先跑 findDuplicateAdrIssues 拦截跨目录 ADR 重号碰撞
+ * 步骤 3: 逐文件 stripFencedCode (保行号) -> 并行采集 link / section / adr 三类断裂
+ * Output: RefFinding[] (空数组 = 全绿)
+ * ```
+ */
 export function findAllIssues(root: string = REPO_ROOT): RefFinding[] {
   const files = listDocFiles(root);
   const nameIndex = buildNameIndex(files);

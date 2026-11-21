@@ -1,9 +1,9 @@
 /**
- * 发布自证闸门的共享实现: 两包 (CLI / API) 的同名闸门共用本模块, 差异经 VerifyProfile
+ * 发布自证闸门的共享实现: 工作区内各 CLI / API 包的发布闸门共用本模块, 差异经 VerifyProfile
  * 参数注入 (产物文件名 / 清单摘要字段名 / schema 版本 / 面包白名单) 与专属判定钩子
  * (如 API 的 d.ts specifier 复查) 表达; 判定是纯函数, 事实可注入 (测试不依赖工作树)。
  *
- * 判定序 (两包统一, 顺序即口径): 先证「检出可信」(git 可读 / 有提交 / 工作树干净),
+ * 判定序 (全仓统一, 顺序即口径): 先证「检出可信」(git 可读 / 有提交 / 工作树干净),
  * 再证产物就位 (存在 / 非空 / 可读), 然后让清单与提交、产物三者逐项对上, 专属判定,
  * 最后对发行面包内文件与白名单。
  */
@@ -270,9 +270,12 @@ export interface NpmCommandInvocation {
 const isWin32AbsolutePath = (dir: string): boolean =>
   /^(?:[A-Za-z]:[/\\]|\\\\[^\\]+\\[^\\]+)/.test(dir);
 
+/** cmd.exe 敏感元字符与空白 */
 const CMD_META_OR_SPACE_RE = /[\s&|<>^()%!]/;
+/** 无法在批处理命令行安全转义的字符 (换行 / NUL / 双引号) */
 const CMD_FORBIDDEN_RE = /[\r\n\0"]/;
 
+/** 双引号包裹片段并倍增尾部连续反斜杠, 防止闭合引号被转义吃掉 */
 const wrapCmdDoubleQuotes = (segment: string): string =>
   `"${segment.replace(/(\\+)$/, '$1$1')}"`;
 
@@ -455,22 +458,21 @@ export const judgePackFiles = (
  * 发布闸门判定 (纯函数, 不碰文件系统): 按固定次序短路, 首条不过即拒。
  * extraJudge 是侧专属判定 (在产物链检查之后、面包白名单之前调用; 返回 null 即通过, 返回人话即拒)。
  *
- * ### 数据追踪示例
+ * ### 数据流转示例
  * ```text
- * Input（真实 Payload）
- *   facts.dist.entrySha256 = "9f2c…", facts.dist.manifest = { commit: "a2109d72f4…", dirty: false, cliSha256: "9f2c…" }
- *   facts.gitHead = "a2109d72f4…", facts.gitStatus = ""
- *   facts.pack.files = ["LICENSE", …, "dist/cli.js"]
+ * Input (真实 Payload):
+ *   facts.dist = { entrySha256: "9f2c...", manifest: { commit: "a2109d72f4...", dirty: false, cliSha256: "9f2c..." } }
+ *   facts.gitHead = "a2109d72f4...", facts.gitStatus = "", facts.pack.files = ["LICENSE", ..., "dist/cli.js"]
  *   profile = { entryFile: "cli.js", shaField: "cliSha256", packExpected: [...] }
  *
- * 步骤 1：检出可信 (git 可读 / 有提交 / 干净) → 全部通过
- * 步骤 2：产物就位 (存在 / 非空 / 可读) → 全部通过
- * 步骤 3：清单对账 (dirty=false; commit == HEAD; shaField == 实测摘要) → 全部通过
- * 步骤 4：专属判定 (extraJudge) → null (通过)
- * 步骤 5：面包白名单 (集合相等) → 通过
+ * 步骤 1: 检出可信 (git 可读 / 有提交 / 干净) -> 全部通过
+ * 步骤 2: 产物就位 (存在 / 非空 / 可读) -> 全部通过
+ * 步骤 3: 清单对账 (dirty=false; commit == HEAD; shaField == 实测摘要) -> 全部通过
+ * 步骤 4: 专属判定 (extraJudge) -> null (通过)
+ * 步骤 5: 面包白名单 (集合相等) -> 通过
  *
- * Output（数据契约）
- *   return { ok: true, commit: "a2109d72f4…", sha256: "9f2c…" }
+ * Output (数据契约):
+ *   return { ok: true, commit: "a2109d72f4...", sha256: "9f2c..." }
  * ```
  */
 export const judgeRelease = (

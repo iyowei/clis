@@ -1,20 +1,15 @@
 /**
  * 发布凭据闸门: 核对 npm 侧 Trusted Publisher 登记与当前仓库形态是否一致。
+ * 触发方: Release job (`bun scripts/ci.ts --only npm-trust`) 或本地运维 (`check` / `fix`)。
  *
- * 动机: 2026-09-30 仓库改名 iyowei/clis 后, npm 侧两包的登记 (repository 字段) 仍指旧仓库名,
+ * 动机: 2026-09-30 仓库改名 iyowei/clis 后, npm 侧既有包的登记 (repository 字段) 仍指旧仓库名,
  * 发布链在 release job 以误导性的 ENONPMTOKEN 挂掉 (OIDC 换证被拒后回落到 token 检查)。
- * 「改名」是平台动作不进 git diff, npm 侧登记是仓库外状态, 本地预演触碰不到, 失配发生时
- * 没有任何机制会喊一声。本闸门分两个场景补上这道声音:
+ * 本闸门分两个场景前置告警:
  *
- * - CI (`verify-oidc`): 用 GitHub OIDC 对每包试一次 token exchange。这一步本身就是 npm 拿
- *   OIDC 令牌与登记表 (repository / workflow file / environment) 逐字段核对的过程: 换到
- *   凭证即全对, 被拒即失配。零密钥, 走的是发布链同一条 OIDC 通道。核对面 = 仓内可发布包
- *   (非 private, 与发布链的 ignorePrivate 排除面同源)。
- * - 本地 (`check` / `fix`): 经 `npm trust list` 对账; fix 删旧建新 (npm 侧已存配置不支持
- *   就地修改, 只能 revoke + 重建)。需要 npm 登录态与交互式终端; npm 对这类敏感操作逐步
- *   要求网页一次性认证, 且认证只对当次调用有效, 一次 fix 可能要在浏览器确认多轮。
- *   npm 的 web 认证交互要求 stdin 与 stdout 都是 TTY (非 TTY 直接把 EOTP 抛给你), 故对
- *   npm 的调用一律经 pty 包装 (`script`), 输出流式透传给操作者。
+ * - CI (`verify-oidc`): 用 GitHub OIDC 对仓内每个可发布包 (非 private) 试一次 token exchange,
+ *   走发布链同一 OIDC 通道, 零密钥校验 repository / workflow file / environment 三字段匹配;
+ * - 本地 (`check` / `fix`): 经 `script` pty 包装调用 `npm trust list` 对账 (满足 npm 网页认证
+ *   对 stdin/stdout 双 TTY 的要求); `fix` 对失配项执行 revoke + 重建并复查。
  *
  * 期望值: repository 从 git origin 派生; workflow 文件名与环境名取下方常量 (与 release.yml 同步)。
  *
@@ -22,7 +17,7 @@
  *   bun scripts/npm-trust-guard.ts verify-oidc   # CI: OIDC 换证预检 (需 id-token: write)
  *   bun scripts/npm-trust-guard.ts check         # 本地: 只读对账
  *   bun scripts/npm-trust-guard.ts fix           # 本地: 对账并修复 (revoke + 重建)
- * 退出码: 0 通过 (或环境不适用); 1 失配或失败。
+ * 退出码: 0 通过 (或环境不适用); 1 失配或失败; 2 参数非法。
  */
 import { spawn } from 'node:child_process';
 
@@ -193,7 +188,18 @@ function printRemediation(repo: string | null): void {
   );
 }
 
-/** CI 预检: 对每个可发布包试 OIDC 换证, 任一被拒即红灯 (改名后的第一次 CI 即被拦下并点名) */
+/**
+ * CI 预检: 对每个可发布包试 OIDC 换证, 任一被拒即红灯 (改名后的第一次 CI 即被拦下并点名)。
+ *
+ * ### 数据流转示例
+ * ```text
+ * Input:  process.env (GITHUB_ACTIONS / ACTIONS_ID_TOKEN_REQUEST_*) + workspace 非 private 包清单
+ * 步骤 1: classifyOidcEnv -> not-ci 跳过 (0), missing-permission 报错 (1), ready 继续
+ * 步骤 2: 逐包 tryExchange: 向 GitHub 换 idToken -> POST npm OIDC exchange 端点 (成功即丢弃短期凭据)
+ * 步骤 3: 汇总 failures; 非空时打印排查清单并置 process.exitCode = 1
+ * Output: 0 (全通过或非 CI) / 1 (权限缺失或任一包换证被拒)
+ * ```
+ */
 async function mainVerifyOidc(): Promise<void> {
   const verdict = classifyOidcEnv(process.env);
   if (verdict === 'not-ci') {
@@ -365,7 +371,19 @@ async function applyRepairAndVerify(
   return false;
 }
 
-/** 本地对账 (check) 与修复 (fix) 的主流程 */
+/**
+ * 本地对账 (check) 与修复 (fix) 的主流程。
+ *
+ * ### 数据流转示例
+ * ```text
+ * Input:  command = 'check' | 'fix', git origin URL -> expected = { repository, file, environment }
+ * 步骤 1: 遍历 workspace 非 private 包, 经 pty 跑 `npm trust list` 解析现网登记 (ok / not-found / error)
+ * 步骤 2: diffTrust 对比三字段; 全一致打 ✔, 缺失或失配按 command 分流:
+ *         - check: 标记 failed 并输出差异
+ *         - fix:   applyRepairAndVerify (白名单校验 ID -> revoke 旧项 -> create 新项 -> 重读复查)
+ * Output: 0 (全部一致或修复复查通过) / 1 (存在失配或修复未通过)
+ * ```
+ */
 async function mainLocal(command: 'check' | 'fix'): Promise<void> {
   if (process.stdin.isTTY !== true || process.stdout.isTTY !== true) {
     process.stderr.write(

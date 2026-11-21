@@ -1,29 +1,14 @@
 #!/usr/bin/env node
 /**
- * 装 git 钩子 (package.json 的 prepare 入口).
+ * 装 git 钩子 (根 package.json 的 prepare 入口; 仅在本包自身 git 仓库执行 `lefthook install`)。
  *
- * 守卫: 只在「本包自身的 git 仓库」执行 `lefthook install`.
- *
- * 为什么需要守卫: prepare 在本包被作为依赖安装时也会在宿主环境执行 (git 依赖的克隆态、
- * vendor / 本地路径依赖形态), 而 `lefthook install` 以「当前目录所在的 git 仓库」为目标;
- * 一旦包目录落在宿主仓库树内 (vendor 进宿主仓库、或经 install-links 落进 node_modules),
- * 安装动作就会把钩子写进宿主仓库的 .git/hooks (消费者仓库被写 VCS 配置, 与消费者本意无关).
- * 判定用「cwd 所在 git 根 === 包根」: 是本包仓库才装, 否则整支跳过.
- *
- * 各形态的判定结果:
- *   - 仓库检出态 (本包开发): 两者相同 → 装;
- *   - git 依赖的临时克隆态: 两者相同 → 装 (落在一次性克隆目录, 无副作用);
- *   - vendor / 解包进宿主仓库的子目录: git 根是宿主 → 跳过;
- *   - 经 npm install-links 落进宿主 node_modules: git 根是宿主 → 跳过;
- *   - 不在任何 git 仓库内 (tarball 解包目录等): git 根不可得 → 跳过.
- *
- * 安装期取用 lefthook 的顺序: PATH 上的 lefthook → lefthook.yml 的 `lefthook:` 配置值
- * (经 bunx 取 pin 版; 与执行期钩子模板同源, 单一事实来源). lefthook 不列为依赖, 以免宿主
- * 安装本包时连带装 lefthook 并触发它的 postinstall 往宿主仓库写钩子.
- * 执行期由 lefthook.yml 的 `lefthook:` + `assert_lefthook_installed` 保证「兜底可取且失败响亮」
- * (官方模板探测链不含 bunx, 且默认静默放行 —— 见 ADR 0005 决策第 1 条).
- *
- * 任何失败都不阻断安装: 装钩子是便利动作, 不是安装的必要条件 (与原 `|| true` 形态一致).
+ * 关键约束:
+ * - 守卫判据: 以 `PKG_ROOT` 为 cwd 查 `git rev-parse --show-toplevel`, 仅当结果与 `PKG_ROOT`
+ *   真实路径一致时才装钩子, 防止本包以 vendor / 本地路径依赖装入宿主仓库时误写宿主 `.git/hooks`;
+ * - 各形态判定: 仓库检出态 / git 依赖临时克隆态 -> 装; vendor / install-links 落宿主树 / 非 git 目录 -> 跳过;
+ * - 取用顺序: PATH 上的 `lefthook` -> `lefthook.yml` 的 `lefthook:` 配置命令 (经 bunx 取 pin 版,
+ *   与执行期模板同源; lefthook 不列为依赖, 避免其 postinstall 污染宿主仓库, 见 ADR 0005 决策第 1 条);
+ * - 容错: CI 跳过; 任何失败仅打印提示不阻断安装 (与 prepare 的 `|| exit 0` 兜底一致)。
  */
 import { spawnSync } from 'node:child_process';
 import { readFileSync, realpathSync } from 'node:fs';
@@ -72,8 +57,8 @@ const gitToplevel = () => {
 };
 
 /**
- * 从 lefthook.yml 读执行期的 lefthook 命令 (按空白切分为 argv; 取不到或为空时 null).
- * 单一事实来源: 钩子模板里的兜底命令与安装期取用同出一处, 避免两处各写一个 pin 版本.
+ * 从 lefthook.yml 读执行期的 lefthook 命令 (按空白切分为 argv; 取不到或为空时 null)。
+ * 单一事实来源: 钩子模板里的兜底命令与安装期取用同出一处, 避免两处各写一个 pin 版本。
  */
 const configuredLefthook = () => {
   try {
@@ -125,7 +110,7 @@ const main = () => {
 try {
   main();
 } catch {
-  // 装钩子失败不阻断依赖安装 (与原 `|| true` 形态一致); 具体原因交给手动补跑时暴露
+  // 装钩子失败不阻断依赖安装 (与 prepare 的 `|| exit 0` 兜底一致); 具体原因交给手动补跑时暴露
   console.error(
     '[prepare] 装钩子跳过 (执行期异常); 稍后可手动补跑 lefthook install',
   );
