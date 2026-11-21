@@ -73,6 +73,18 @@ describe('Podman rootless 兼容与内核调优保护', () => {
     expect(tuneSh).toContain('[ "$cur_maps" -gt 262144 ]');
     expect(tuneSh).toContain('保留系统原值不降配');
     expect(tuneSh).toContain('echo "vm.max_map_count = 262144"');
+    expect(tuneSh).toContain('echo "vm.overcommit_memory = 1"');
+    expect(tuneSh).toContain('force_cgroup_v2_swappiness');
+    expect(tuneSh).toContain('zone_reclaim_mode');
+    expect(tuneSh).toContain('sysctl -p /etc/sysctl.d/99-codd-mongodb.conf');
+    expect(compose).toContain('max-file: "3"');
+    expect(compose).toContain('log-rotate: "true"');
+    const mongodConf = readFileSync(join(bDir, 'mongod.conf'), 'utf8');
+    expect(mongodConf).toContain('mode: "off"');
+    const initJs = readFileSync(join(bDir, 'init.js'), 'utf8');
+    expect(initJs).toContain('MongoNetworkError');
+    const drillTs = readFileSync(join(bDir, 'drill.ts'), 'utf8');
+    expect(drillTs).toContain('warnIfLowMemory');
     if (process.platform !== 'win32') {
       expect(
         spawnSync('sh', ['-n', join(bDir, 'tune-linux-host.sh')]).status,
@@ -178,7 +190,7 @@ describe('macOS LaunchAgent 去重、日志目录与 nextSteps 完整闭环', ()
     expect(resMac.nextSteps[2]).toContain(
       `com.codd.mongo-backup-${resMac.fingerprint}.plist`,
     );
-    expect(resMac.nextSteps[2]).toContain('launchctl load -w');
+    expect(resMac.nextSteps[2]).toContain('launchctl bootstrap');
 
     const resLinux = generateBundle({
       workDir: dir,

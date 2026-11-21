@@ -78,7 +78,7 @@ config:
     # 990MB 为 WiredTiger 官方标注的最小 oplogSizeMB, 与 mongod.conf 保持一致
     oplogSizeMB: 990
   operationProfiling:
-    mode: slowOp
+    mode: off
     slowOpThresholdMs: 100
   security:
     authorization: enabled

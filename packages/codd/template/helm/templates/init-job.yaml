@@ -27,8 +27,6 @@ spec:
           image: {{ printf "%s:%s" .Values.image.repository .Values.image.tag | quote }}
           imagePullPolicy: {{ .Values.image.pullPolicy | default "IfNotPresent" | quote }}
           env:
-            - name: GLIBC_TUNABLES
-              value: "glibc.pthread.rseq=0"
             - name: MONGO_POD_PREFIX
               value: {{ $fullname | quote }}
             - name: MONGO_HEADLESS_SVC

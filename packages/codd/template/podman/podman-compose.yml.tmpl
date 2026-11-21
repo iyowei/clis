@@ -24,6 +24,7 @@ services:
       - |
         f=/etc/mongo/keyfile/mongodb-keyfile
         if [ -n "$$MONGO_KEYFILE" ]; then
+          [ -f "$$f" ] && chmod 600 "$$f" 2>/dev/null || true
           printf '%s' "$$MONGO_KEYFILE" > "$$f"
         elif [ ! -s "$$f" ]; then
           head -c 756 /dev/urandom | base64 | tr -d '\n' > "$$f"
@@ -68,6 +69,8 @@ services:
       driver: k8s-file
       options:
         max-size: {{LOG_MAX_SIZE}}
+        max-file: "3"
+        log-rotate: "true"
 {{MONGO_NETWORK_SECTION}}
 
   mongo-init:
@@ -115,7 +118,6 @@ services:
       - "${RS_PEER_2:-unused-peer2.invalid:127.0.0.1}"
     environment:
       TZ: ${TZ:-{{TZ}}}
-      GLIBC_TUNABLES: glibc.pthread.rseq=0
       MONGO_HOST: {{MONGO_CLIENT_HOST}}
       MONGO_PORT: "${MONGO_PORT:-{{MONGO_PORT}}}"
       RS_NAME: ${RS_NAME:-{{RS_NAME}}}

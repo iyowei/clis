@@ -32,6 +32,7 @@ replication:
   replSetName: "{{RS_NAME}}"
   oplogSizeMB: {{OPLOG_SIZE_MB}}
 
+# 仅记慢操作到容器标准日志 (make logs 可查), 关闭 system.profile 集合双写以避开写入锁放大; 需 BSON 详情时可临时 db.setProfilingLevel(1)
 operationProfiling:
-  mode: "slowOp"
+  mode: "off"
   slowOpThresholdMs: {{SLOW_OP_THRESHOLD_MS}}
