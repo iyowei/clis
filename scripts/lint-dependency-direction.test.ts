@@ -128,4 +128,74 @@ describe('checkDependencyDirection', () => {
     expect(violations).toHaveLength(1);
     expect(violations[0]).toContain('超过最大深度 2');
   });
+
+  test('公开库在 dependencies / peerDependencies 依赖仓内私有库亮红灯, devDependencies 放行', () => {
+    const bad = makeRoot({
+      'package.json': { workspaces: ['packages/*'] },
+      'packages/priv/package.json': { name: '@x/priv', private: true },
+      'packages/pub-a/package.json': {
+        name: '@x/pub-a',
+        dependencies: { '@x/priv': '1.0.0' },
+      },
+      'packages/pub-b/package.json': {
+        name: '@x/pub-b',
+        peerDependencies: { '@x/priv': '1.0.0' },
+      },
+      'packages/pub-ok/package.json': {
+        name: '@x/pub-ok',
+        devDependencies: { '@x/priv': '1.0.0' },
+      },
+    });
+    const violations = checkDependencyDirection(bad);
+    expect(violations).toHaveLength(2);
+    expect(violations.every((v) => v.includes('运行期依赖仓内私有库'))).toBe(
+      true,
+    );
+  });
+
+  test('peerDependencies / optionalDependencies 反向依赖 CLI 同样亮红灯', () => {
+    const root = makeRoot({
+      'package.json': { workspaces: ['packages/*'] },
+      'packages/lib/package.json': {
+        name: '@x/lib',
+        optionalDependencies: { '@x/app-cli': '1.0.0' },
+      },
+      'packages/app-cli/package.json': {
+        name: '@x/app-cli',
+        bin: { app: 'bin/app.mjs' },
+      },
+    });
+    const violations = checkDependencyDirection(root);
+    expect(violations).toHaveLength(1);
+    expect(violations[0]).toContain('反向依赖 CLI');
+  });
+
+  test('暂标 private: true 的双包产品主包同样受公开库最大深度 2 约束', () => {
+    const root = makeRoot({
+      'package.json': { workspaces: ['packages/*'] },
+      'packages/l0/package.json': { name: '@x/l0' },
+      'packages/l1/package.json': {
+        name: '@x/l1',
+        dependencies: { '@x/l0': '1.0.0' },
+      },
+      'packages/l2/package.json': {
+        name: '@x/l2',
+        dependencies: { '@x/l1': '1.0.0' },
+      },
+      'packages/prod/package.json': {
+        name: '@x/prod',
+        private: true,
+        dependencies: { '@x/l2': '1.0.0' },
+      },
+      'packages/prod-cli/package.json': {
+        name: '@x/prod-cli',
+        private: true,
+        bin: { prod: 'bin/prod.mjs' },
+        dependencies: { '@x/prod': '1.0.0' },
+      },
+    });
+    const violations = checkDependencyDirection(root);
+    expect(violations).toHaveLength(1);
+    expect(violations[0]).toContain('超过最大深度 2');
+  });
 });

@@ -29,26 +29,54 @@ export interface ProductPair {
   api: WorkspacePackage;
 }
 
-/** 提取包清单里的全部依赖名 (dependencies + devDependencies) */
+/** 从 package.json 单个依赖字段读取有序包名列表 */
+function readDepField(
+  manifest: Record<string, unknown>,
+  field: string,
+): string[] {
+  const raw = manifest[field];
+  if (raw === null || typeof raw !== 'object' || Array.isArray(raw)) return [];
+  return Object.keys(raw as Record<string, unknown>).sort();
+}
+
+/** 按字段分组提取包清单里的全部声明依赖 */
+export function listDeclaredDepsByField(pkg: WorkspacePackage): {
+  dependencies: string[];
+  devDependencies: string[];
+  peerDependencies: string[];
+  optionalDependencies: string[];
+} {
+  return {
+    dependencies: readDepField(pkg.manifest, 'dependencies'),
+    devDependencies: readDepField(pkg.manifest, 'devDependencies'),
+    peerDependencies: readDepField(pkg.manifest, 'peerDependencies'),
+    optionalDependencies: readDepField(pkg.manifest, 'optionalDependencies'),
+  };
+}
+
+/** 提取包清单里的运行期及外露依赖名 (dependencies + peerDependencies + optionalDependencies) */
+export function listRuntimeDeps(pkg: WorkspacePackage): string[] {
+  const grouped = listDeclaredDepsByField(pkg);
+  return [
+    ...new Set([
+      ...grouped.dependencies,
+      ...grouped.peerDependencies,
+      ...grouped.optionalDependencies,
+    ]),
+  ].sort();
+}
+
+/** 提取包清单里的全部依赖名 (dependencies + devDependencies + peerDependencies + optionalDependencies) */
 export function listDeclaredDeps(pkg: WorkspacePackage): string[] {
-  const deps = pkg.manifest.dependencies;
-  const devDeps = pkg.manifest.devDependencies;
-  const names = new Set<string>();
-  if (deps !== null && typeof deps === 'object' && !Array.isArray(deps)) {
-    for (const key of Object.keys(deps as Record<string, unknown>)) {
-      names.add(key);
-    }
-  }
-  if (
-    devDeps !== null &&
-    typeof devDeps === 'object' &&
-    !Array.isArray(devDeps)
-  ) {
-    for (const key of Object.keys(devDeps as Record<string, unknown>)) {
-      names.add(key);
-    }
-  }
-  return [...names].sort();
+  const grouped = listDeclaredDepsByField(pkg);
+  return [
+    ...new Set([
+      ...grouped.dependencies,
+      ...grouped.devDependencies,
+      ...grouped.peerDependencies,
+      ...grouped.optionalDependencies,
+    ]),
+  ].sort();
 }
 
 /** 读根 package.json 的 workspaces 并展开为包清单 (按目录字典序稳定输出) */

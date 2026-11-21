@@ -19,7 +19,9 @@
 import {
   type WorkspacePackage,
   listDeclaredDeps,
+  listRuntimeDeps,
   listWorkspacePackages,
+  resolveProductPairs,
 } from './lib/workspace.ts';
 import { REPO_ROOT } from './lint-doc-shared.ts';
 
@@ -38,9 +40,9 @@ export function classifyPackage(pkg: WorkspacePackage): PackageKind {
  * ```text
  * Input:  root = 仓库根 (packages/* 下各 package.json)
  * 步骤 1: listWorkspacePackages + classifyPackage -> 建立包分类表 kinds 与仓内依赖邻接表 graph
- * 步骤 2: 逐边拦截自依赖、cli -> cli 与 lib -> cli
+ * 步骤 2: 逐边拦截自依赖、cli -> cli、lib -> cli 与 public-lib 运行期依赖 private-lib
  * 步骤 3: 三色 DFS (0 未访 / 1 栈中 / 2 完成) 检出有向环
- * 步骤 4: 对每个 public-lib 沿 public-lib 边递归, 拦截链条边数 > 2
+ * 步骤 4: 对每个公开库 (含暂标 private 的双包主包) 沿库链递归, 拦截链条边数 > 2
  * Output: violations[] (空数组 = 全绿)
  * ```
  */
@@ -50,12 +52,28 @@ export function checkDependencyDirection(root: string = REPO_ROOT): string[] {
   const kinds = new Map(
     packages.map((pkg) => [pkg.name, classifyPackage(pkg)]),
   );
+  const productApiNames = new Set(
+    resolveProductPairs(root).map((pair) => pair.api.name),
+  );
+  const isPublicTierLib = (name: string): boolean => {
+    const kind = kinds.get(name);
+    if (kind === 'public-lib') return true;
+    const pkg = byName.get(name);
+    return (
+      kind === 'private-lib' &&
+      pkg?.manifest.clisRole !== 'shared-lib' &&
+      productApiNames.has(name)
+    );
+  };
   const graph = new Map<string, string[]>();
   const violations: string[] = [];
 
   for (const pkg of packages) {
     const fromKind = kinds.get(pkg.name)!;
     const internalDeps = listDeclaredDeps(pkg).filter((dep) => byName.has(dep));
+    const runtimeInternalDeps = new Set(
+      listRuntimeDeps(pkg).filter((dep) => byName.has(dep)),
+    );
     graph.set(pkg.name, internalDeps);
 
     for (const dep of internalDeps) {
@@ -71,6 +89,14 @@ export function checkDependencyDirection(root: string = REPO_ROOT): string[] {
       } else if (fromKind !== 'cli' && toKind === 'cli') {
         violations.push(
           `禁止库反向依赖 CLI: ${pkg.name} [${fromKind}] → ${dep} [cli]`,
+        );
+      } else if (
+        fromKind === 'public-lib' &&
+        toKind === 'private-lib' &&
+        runtimeInternalDeps.has(dep)
+      ) {
+        violations.push(
+          `禁止公开库在运行期依赖仓内私有库: ${pkg.name} [public-lib] → ${dep} [private-lib] (发布到 npm 后无法解析; 如仅构建期打包请移至 devDependencies)`,
         );
       }
     }
@@ -105,7 +131,7 @@ export function checkDependencyDirection(root: string = REPO_ROOT): string[] {
     if ((color.get(pkg.name) ?? 0) === 0) dfs(pkg.name);
   }
 
-  // public-lib → public-lib 深度检测 (最大允许深度 2, 即至多 2 条边)
+  // 公开库 (含暂标 private 的双包主包) 依赖链深度检测 (最大允许深度 2, 即至多 2 条边)
   const checkPublicDepth = (node: string, chain: string[]): void => {
     if (chain.length - 1 > 2) {
       violations.push(
@@ -114,14 +140,14 @@ export function checkDependencyDirection(root: string = REPO_ROOT): string[] {
       return;
     }
     for (const next of graph.get(node) ?? []) {
-      if (kinds.get(next) !== 'public-lib') continue;
+      if (!isPublicTierLib(next)) continue;
       if (chain.includes(next)) continue;
       checkPublicDepth(next, [...chain, next]);
     }
   };
 
   for (const pkg of packages) {
-    if (kinds.get(pkg.name) === 'public-lib') {
+    if (isPublicTierLib(pkg.name)) {
       checkPublicDepth(pkg.name, [pkg.name]);
     }
   }
