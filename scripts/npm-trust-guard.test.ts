@@ -9,6 +9,7 @@ import {
   classifyOidcEnv,
   deriveRepoFromRemoteUrl,
   diffTrust,
+  evaluateTrustEntries,
   filterPublishable,
   isValidTrustId,
   parseTrustListEntries,
@@ -206,6 +207,30 @@ describe('diffTrust', () => {
     );
     expect(problems).toHaveLength(2);
     expect(problems[1]).toContain('(未设置)');
+  });
+
+  test('evaluateTrustEntries 全量核对多条登记: 混入过时旧条目或重复条目均判未对齐', () => {
+    const good = {
+      type: 'github',
+      id: 'id-ok',
+      file: 'release.yml',
+      repository: 'iyowei/clis',
+      environment: 'release',
+    };
+    const stale = {
+      type: 'github',
+      id: 'id-old',
+      file: 'old.yml',
+      repository: 'iyowei/legacy',
+      environment: null,
+    };
+    expect(evaluateTrustEntries([good], expected).aligned).toBe(true);
+    const mixed = evaluateTrustEntries([good, stale], expected);
+    expect(mixed.aligned).toBe(false);
+    expect(mixed.matching).toHaveLength(1);
+    expect(mixed.mismatched).toHaveLength(1);
+    expect(mixed.mismatched[0]!.entry.id).toBe('id-old');
+    expect(evaluateTrustEntries([good, good], expected).aligned).toBe(false);
   });
 });
 

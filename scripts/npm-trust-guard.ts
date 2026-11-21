@@ -37,7 +37,7 @@ import {
   stripCsi,
   stripPtyNoise,
 } from './lib/npm-trust-parse.ts';
-import { readGitText } from './lib/release-verify.ts';
+import { readGitText, resolveNpmCommand } from './lib/release-verify.ts';
 import {
   type WorkspacePackage,
   listWorkspacePackages,
@@ -70,23 +70,25 @@ const RELEASE_ENVIRONMENT = 'release';
 /** OIDC 令牌 audience: npm 约定值, 与发布链 @semantic-release/npm 的换证请求一致 */
 const OIDC_AUDIENCE = 'npm:registry.npmjs.org';
 
-/** npm 可执行名 (Windows 是 npm.cmd, execFile/spawn 不走 shell 时不会自动补扩展名) */
-const npmBin = (): string => (process.platform === 'win32' ? 'npm.cmd' : 'npm');
-
 /**
  * 经 pty 跑一条 npm 命令并流式收输出: stdout 逐块透传给操作者 (认证提示 "Press ENTER..." 必须
- * 实时可见) 同时累积供解析; stdin 与 stderr 直通。
- * 不设超时: 网页认证与人工按键的耗时不可控, 等待即预期行为。
+ * 实时可见) 同时累积供解析; stdin 与 stderr 直通。Windows 复用 resolveNpmCommand 零 shell 调用。
  */
 function runNpmCaptured(
   args: string[],
 ): Promise<{ status: number | null; stdout: string; error?: Error }> {
-  const wrapped = ptyWrapArgs(process.platform, npmBin(), args);
+  const invocation =
+    process.platform === 'win32'
+      ? resolveNpmCommand(args)
+      : ptyWrapArgs(process.platform, 'npm', args);
   return new Promise((resolve) => {
-    const child = spawn(wrapped.command, wrapped.args, {
+    const child = spawn(invocation.command, invocation.args, {
       stdio: ['inherit', 'pipe', 'inherit'],
       env: { ...process.env, NO_COLOR: '1' },
-      shell: process.platform === 'win32',
+      ...('windowsVerbatimArguments' in invocation &&
+      invocation.windowsVerbatimArguments === true
+        ? { windowsVerbatimArguments: true }
+        : {}),
     });
     let captured = '';
     child.stdout?.on('data', (chunk: Buffer) => {
@@ -237,14 +239,42 @@ async function mainVerifyOidc(): Promise<void> {
   process.exitCode = 1;
 }
 
-/** 本地读单包登记: ok = 解析成功; not-found = 尚未登记; error = 执行失败或输出异常 */
+/** 多条目对账判定 (纯函数, 供单测与 check/fix 复用) */
+export interface TrustEntriesVerdict {
+  /** 完全匹配期望的条目 */
+  matching: TrustEntry[];
+  /** 不匹配期望的冗余或旧登记 (含逐项差异说明) */
+  mismatched: { entry: TrustEntry; problems: string[] }[];
+  /** 仅当存在恰好 1 条匹配且 0 条不匹配登记时视为完全一致 */
+  aligned: boolean;
+}
+
+export function evaluateTrustEntries(
+  entries: readonly TrustEntry[],
+  expected: TrustExpectation,
+): TrustEntriesVerdict {
+  const matching: TrustEntry[] = [];
+  const mismatched: { entry: TrustEntry; problems: string[] }[] = [];
+  for (const entry of entries) {
+    const problems = diffTrust(entry, expected);
+    if (problems.length === 0) matching.push(entry);
+    else mismatched.push({ entry, problems });
+  }
+  return {
+    matching,
+    mismatched,
+    aligned: matching.length === 1 && mismatched.length === 0,
+  };
+}
+
+/** 本地读单包全部登记: ok = 解析出至少一条; not-found = 尚未登记; error = 执行失败或输出异常 */
 type TrustRead =
-  | { kind: 'ok'; entry: TrustEntry }
+  | { kind: 'ok'; entries: TrustEntry[] }
   | { kind: 'not-found' }
   | { kind: 'error'; detail: string };
 
-/** 跑 `npm trust list` 读登记 (经 pty 包装, 见 runNpmCaptured) */
-async function readTrustEntry(pkgName: string): Promise<TrustRead> {
+/** 跑 `npm trust list` 读全部登记 (经 pty 包装, 见 runNpmCaptured) */
+async function readTrustEntries(pkgName: string): Promise<TrustRead> {
   const result = await runNpmCaptured([
     'trust',
     'list',
@@ -263,8 +293,8 @@ async function readTrustEntry(pkgName: string): Promise<TrustRead> {
       detail: `npm trust list 失败 (退出码 ${String(result.status)}); 若上方提示了网页认证, 请按提示完成后重试`,
     };
   }
-  const entry = parseTrustListOutput(result.stdout);
-  if (entry === null) {
+  const entries = parseTrustListEntries(result.stdout);
+  if (entries.length === 0) {
     const plain = stripPtyNoise(stripCsi(result.stdout));
     if (
       /no trusted publish/i.test(plain) ||
@@ -278,7 +308,7 @@ async function readTrustEntry(pkgName: string): Promise<TrustRead> {
       detail: 'npm trust list 输出无法解析 (未见 repository 行)',
     };
   }
-  return { kind: 'ok', entry };
+  return { kind: 'ok', entries };
 }
 
 /** 跑一条需要交互的 npm 命令 (经 pty, 认证提示与输入都透传), 返回是否成功 */
@@ -319,48 +349,57 @@ async function createTrustEntry(
   ]);
 }
 
-/**
- * 重建或新建单包登记: 已有旧记录时先 revoke (ID 须通过白名单校验), 再按期望值创建。
- * 首次登记 (entry === null) 时直接创建。
- */
+/** 清理全部失配或重复登记并按需重建: 每条待 revoke 的 ID 均须过白名单校验 */
 async function repairPackage(
   pkgName: string,
-  entry: TrustEntry | null,
+  entries: readonly TrustEntry[],
   expected: TrustExpectation,
 ): Promise<boolean> {
-  const verb = entry === null ? '新建' : '重建';
+  const verdict = evaluateTrustEntries(entries, expected);
+  const toRevoke: TrustEntry[] = [
+    ...verdict.mismatched.map((item) => item.entry),
+    ...verdict.matching.slice(1),
+  ];
+  const needCreate = verdict.matching.length === 0;
+  const verb = entries.length === 0 ? '新建' : '修正';
   process.stdout.write(`  → ${verb} ${pkgName} 的 Trusted Publisher 登记:\n`);
-  let revoked = true;
-  if (entry !== null && entry.id !== null) {
-    if (!isValidTrustId(entry.id)) {
+  let ok = true;
+  for (const stale of toRevoke) {
+    if (stale.id === null) continue;
+    if (!isValidTrustId(stale.id)) {
       process.stderr.write(
-        `  ✘ 拒绝 revoke: 登记 ID 含非法字符 (${cleanText(entry.id)})\n`,
+        `  ✘ 拒绝 revoke: 登记 ID 含非法字符 (${cleanText(stale.id)})\n`,
       );
       return false;
     }
-    revoked = await runNpmInteractive([
+    const revoked = await runNpmInteractive([
       'trust',
       'revoke',
       pkgName,
-      `--id=${entry.id}`,
+      `--id=${stale.id}`,
       `--registry=${OFFICIAL_REGISTRY}`,
     ]);
+    if (!revoked) ok = false;
   }
-  const created = await createTrustEntry(pkgName, expected);
-  return revoked && created;
+  if (needCreate) {
+    const created = await createTrustEntry(pkgName, expected);
+    if (!created) ok = false;
+  }
+  return ok;
 }
 
-/** 执行单包修复并复查是否与期望一致, 返回是否最终通过 */
+/** 执行单包修复并重读全部登记复查是否严格对齐, 返回是否最终通过 */
 async function applyRepairAndVerify(
   pkgName: string,
-  entry: TrustEntry | null,
+  entries: readonly TrustEntry[],
   expected: TrustExpectation,
   label: string,
 ): Promise<boolean> {
-  const repaired = await repairPackage(pkgName, entry, expected);
-  const after = await readTrustEntry(pkgName);
+  const repaired = await repairPackage(pkgName, entries, expected);
+  const after = await readTrustEntries(pkgName);
   const verified =
-    after.kind === 'ok' && diffTrust(after.entry, expected).length === 0;
+    after.kind === 'ok' &&
+    evaluateTrustEntries(after.entries, expected).aligned;
   if (verified) {
     process.stdout.write(`  ✔ ${pkgName}: ${label}复查通过\n`);
     return repaired;
@@ -371,19 +410,7 @@ async function applyRepairAndVerify(
   return false;
 }
 
-/**
- * 本地对账 (check) 与修复 (fix) 的主流程。
- *
- * ### 数据流转示例
- * ```text
- * Input:  command = 'check' | 'fix', git origin URL -> expected = { repository, file, environment }
- * 步骤 1: 遍历 workspace 非 private 包, 经 pty 跑 `npm trust list` 解析现网登记 (ok / not-found / error)
- * 步骤 2: diffTrust 对比三字段; 全一致打 ✔, 缺失或失配按 command 分流:
- *         - check: 标记 failed 并输出差异
- *         - fix:   applyRepairAndVerify (白名单校验 ID -> revoke 旧项 -> create 新项 -> 重读复查)
- * Output: 0 (全部一致或修复复查通过) / 1 (存在失配或修复未通过)
- * ```
- */
+/** 本地对账 (check) 与修复 (fix) 的主流程 (覆盖多条登记全量核对与清理) */
 async function mainLocal(command: 'check' | 'fix'): Promise<void> {
   if (process.stdin.isTTY !== true || process.stdout.isTTY !== true) {
     process.stderr.write(
@@ -405,7 +432,7 @@ async function mainLocal(command: 'check' | 'fix'): Promise<void> {
   };
   let failed = false;
   for (const pkg of publishablePackages()) {
-    const read = await readTrustEntry(pkg.name);
+    const read = await readTrustEntries(pkg.name);
     if (read.kind === 'error') {
       process.stderr.write(`✘ ${pkg.name}: ${read.detail}\n`);
       failed = true;
@@ -415,22 +442,34 @@ async function mainLocal(command: 'check' | 'fix'): Promise<void> {
       process.stderr.write(`✘ ${pkg.name}: npm 侧尚未配置 Trusted Publisher\n`);
       if (
         command === 'check' ||
-        !(await applyRepairAndVerify(pkg.name, null, expected, '首次登记'))
+        !(await applyRepairAndVerify(pkg.name, [], expected, '首次登记'))
       ) {
         failed = true;
       }
       continue;
     }
-    const problems = diffTrust(read.entry, expected);
-    if (problems.length === 0) {
+    const verdict = evaluateTrustEntries(read.entries, expected);
+    if (verdict.aligned) {
       process.stdout.write(`✔ ${pkg.name}: npm 侧登记与当前仓库一致\n`);
       continue;
     }
-    process.stderr.write(`✘ ${pkg.name}: npm 侧登记与当前仓库不一致:\n`);
-    for (const problem of problems) process.stderr.write(`    ${problem}\n`);
+    process.stderr.write(
+      `✘ ${pkg.name}: npm 侧登记与当前仓库不一致 (共 ${read.entries.length} 条, 匹配 ${verdict.matching.length} 条, 异常 ${verdict.mismatched.length} 条):\n`,
+    );
+    for (const item of verdict.mismatched) {
+      const idLabel = item.entry.id ?? '(无 ID)';
+      for (const problem of item.problems) {
+        process.stderr.write(`    [${idLabel}] ${problem}\n`);
+      }
+    }
     if (
       command === 'check' ||
-      !(await applyRepairAndVerify(pkg.name, read.entry, expected, '重建后'))
+      !(await applyRepairAndVerify(
+        pkg.name,
+        read.entries,
+        expected,
+        '清理重建后',
+      ))
     ) {
       failed = true;
     }
