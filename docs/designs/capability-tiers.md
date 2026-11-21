@@ -31,12 +31,12 @@
 
 ### 增强档 (按需)
 
-- **转写契约套件 (conformance)**: 行为契约 + 金样本语料 + 确定性验收器 + 变异自证 (机制文件随模板, 语料与条款是项目自填内容);
-- **台账对账闸门** (`lint:coverage`): 契约 / 语料 / 豁免三方对账 (只对启用 conformance 的项目有意义)。
+- **转写契约套件 (conformance)**: 仓级通用纪律 (`docs/transcription/`) + 通用引擎 (`scripts/transcription/`) + 包级行为契约/金样本语料/模糊目标/变异清单 (`packages/<api>/docs/protocol/`); 包含跨平台便携验证 (`conformance:portable`) 与 macOS 全量双运行时验收 (`conformance:bun` / `conformance:node`);
+- **台账对账、变异锚点与差分模糊闸门**: `lint:coverage` (契约 / 语料 / 覆盖表 / 双面 / 豁免替代测试 / 变异表深度对账)、`lint:mutants` (`make-mutants.ts --check-anchors` 锚点守卫) 与 `fuzz` / `fuzz:diff` (纯函数不变量与跨运行时差分模糊测试)。
 
 ## 裁剪点约定
 
-有独立载体的装备, 裁剪 = 删除它的文件 + 删除它在 `ci.ts` 里的步骤声明 (含已空壳的分组与 CLI 旗标分支) + 删除它在根 `package.json` 里的脚本挂载 + 删除它在 `.github/workflows/ci.yml` 里的对应 job (`conformance` job 仅定义于 `.github/workflows/ci.yml`, `release.yml` 经 `workflow_call` 复用 `ci.yml`; 裁剪该处即可避免 PR 与发布双路径白跑 macOS runner)。
+有独立载体的装备, 裁剪 = 删除它的文件 (增强档含 `scripts/transcription/`、`docs/transcription/` 与 `packages/{{NAME}}/docs/`) + 删除它在 `ci.ts` 里的步骤声明 (含已空壳的分组与 CLI 旗标分支) + 删除它在根 `package.json` 里的脚本挂载 (`conformance` / `fuzz` / `fuzz:diff`) + 删除它在 `.github/workflows/ci.yml` 里的对应 job (`conformance` job 仅定义于 `.github/workflows/ci.yml`, `release.yml` 经 `workflow_call` 复用 `ci.yml`; 裁剪该处即可避免 PR 与发布双路径白跑 macOS runner) + 同步摘除 `docs/README.md` 的「转写协议」章节与 PR 模板中的 conformance checklist 行。
 
 标准档中**依赖方向闸门 (`scripts/lint-dependency-direction.ts` + `lint:deps`) 与技术债登记册 (`docs/designs/tech-debt.md`)** 均已具备独立裁剪载体 (`core` 档完整摘除, `standard` 默认档保留); 其余两套结构性装备为形状选择 / 豁免 (不落文件删除):
 
@@ -51,10 +51,11 @@
 
 ## 修订记录
 
-| 日期       | 修订                                                                                                                                                                    |
-| ---------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 2026-09-30 | 初稿: 三档清单、裁剪点约定 (含单源化前提) 与档位策略                                                                                                                    |
-| 2026-10-01 | 发布闭环补发布凭据预检装备; 裁剪点约定的单源化前提随落地更新为既成                                                                                                      |
-| 2026-10-01 | 裁剪点约定补结构性装备的形状选择 / 豁免口径                                                                                                                             |
-| 2026-10-01 | 裁剪点约定补根 package.json 脚本挂载面 (conformance 悬空脚本修复随动)                                                                                                   |
-| 2026-11-20 | 裁剪点约定同步: `conformance` job 仅定义于 `.github/workflows/ci.yml` (`release.yml` 经 `workflow_call` 复用), 补齐 `ci.ts` 空壳分组与 `--conformance` 分支同步摘除口径 |
+| 日期       | 修订                                                                                                                                                                                |
+| ---------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 2026-09-30 | 初稿: 三档清单、裁剪点约定 (含单源化前提) 与档位策略                                                                                                                                |
+| 2026-10-01 | 发布闭环补发布凭据预检装备; 裁剪点约定的单源化前提随落地更新为既成                                                                                                                  |
+| 2026-10-01 | 裁剪点约定补结构性装备的形状选择 / 豁免口径                                                                                                                                         |
+| 2026-10-01 | 裁剪点约定补根 package.json 脚本挂载面 (conformance 悬空脚本修复随动)                                                                                                               |
+| 2026-11-20 | 裁剪点约定同步: `conformance` job 仅定义于 `.github/workflows/ci.yml` (`release.yml` 经 `workflow_call` 复用), 补齐 `ci.ts` 空壳分组与 `--conformance` 分支同步摘除口径             |
+| 2026-11-22 | 增强档与裁剪点同步: 纳入 `docs/transcription/`、`packages/<api>/docs/protocol/`、`lint:mutants`、`fuzz` / `fuzz:diff`、`conformance:portable` 与 `docs/README.md` / PR 模板联动摘除 |

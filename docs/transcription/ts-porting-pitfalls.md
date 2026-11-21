@@ -29,18 +29,18 @@
 | `Math.round` 半值方向 | JS `Math.round(x)` 对 `.5` 向 `+∞` 舍入 (`Math.round(-0.5) === -0`) | Rust `f64::round()` 远离零舍入 (`(-0.5_f64).round() == -1.0`); `round_ties_even()` 银行家舍入 | 涉及小数显示/体积单位换算时, 显式验证正数、负数、边界 `.05` / `.5` 与 1023/1024 临界  |
 | `NaN` / `Infinity`    | JS 数字类型天然包含 `NaN` / `±Infinity`, 比较返回 `false`           | 目标语言整数无 `NaN`, 或浮点强转 `as u64` 静默饱和归零                                        | 明确契约的合法值域; 对 JSON 反序列化来的数值校验 `is_finite()` 并与 TS 校验错误码一致 |
 | 窄化强转静默截断      | JS 无 `u32`/`u16` 溢出截断概念                                      | `len as u32`、`val as i32` 在超界时静默截断高比特                                             | 禁止裸 `as` 做可能失真的窄化转换; 改用 `TryFrom::try_from` 并显式处理超界             |
-| 日期与毫秒时间戳      | `Date.now()` 为毫秒级 `f64`; `olderThanDays` 按 `86_400_000` 毫秒算 | 混用秒与毫秒, 或用 `SystemTime::duration_since` 遇到未来 mtime 直接报错                       | 未来时间戳 (`mtime > now`) 必须安全返回 `false` (不 panic、不负溢出)                  |
+| 日期与毫秒时间戳      | `Date.now()` 为毫秒级 `f64`; 按日换算常用 `86_400_000` 毫秒         | 混用秒与毫秒, 或用 `SystemTime::duration_since` 遇到未来 mtime 直接报错                       | 未来时间戳 (`mtime > now`) 必须安全返回 `false` (不 panic、不负溢出)                  |
 
 ## 4. 文件系统、软链、进程与平台差异
 
-| 暗坑类别             | TS / JS 既定语义                                                        | 目标语言常见误写                                                   | 防护与核验做法                                                                      |
-| -------------------- | ----------------------------------------------------------------------- | ------------------------------------------------------------------ | ----------------------------------------------------------------------------------- |
-| `lstat` vs `stat`    | 扫描与安全闸强制 `lstat` (不跟进软链, 避免目录环与越权删靶)             | 误用 `fs::metadata` / `Path::is_dir()` (二者均跟进软链!)           | 全程使用 `fs::symlink_metadata` 与 `DirEntry::file_type()`; 评审重点搜 `is_dir(`    |
-| 排他写盘 (`wx`)      | `writeFile(p, data, { flag: 'wx' })` 原子排他创建, 已存在即报 `EEXIST`  | 先 `exists()` 再 `write()` 引入 TOCTOU 竞态覆盖既有备份            | 必须用 `OpenOptions::new().write(true).create_new(true)` (底层 `O_CREAT \| O_EXCL`) |
-| 符号链接删除语义     | 删除软链本身绝不清空其指向的目标目录                                    | 跨平台 `remove_dir_all` 在某些旧版本或自写递归里误跟进软链         | 删前先 `symlink_metadata` 判真身; 软链只 `remove_file`, 目录再递归清理              |
-| 大小写折叠           | Windows 路径判定折叠大小写, POSIX 大小写敏感                            | 依赖宿主 OS 行为, 导致在 macOS/Linux 上跑 Windows 风味单测结果漂移 | 按注入的 `PathStyle` 显式 `.to_ascii_lowercase()` / `.to_lowercase()`, 不偷懒靠 OS  |
-| 子进程环境变量与编码 | 调用 `du` 等外部工具须固定 `LC_ALL=C` / `LANG=C` 且直传 `argv` 禁 shell | 通过 `sh -c` 拼接命令行导致含空格/引号/元字符的路径注入            | 始终直接传参数数组 (`Command::args`), 绝不经 shell 拼接用户路径                     |
-| 非 TTY stdout 缓冲   | Node/Bun `process.stdout.write` 退出前自动刷净                          | Rust `BufWriter` / C `stdout` 块缓冲在异常退出或早退时丢末尾字节   | 正常返回前显式 `flush()`, 避免直接 `process::exit()` 跳过析构与缓冲区冲刷           |
+| 暗坑类别             | TS / JS 既定语义                                                       | 目标语言常见误写                                                   | 防护与核验做法                                                                      |
+| -------------------- | ---------------------------------------------------------------------- | ------------------------------------------------------------------ | ----------------------------------------------------------------------------------- |
+| `lstat` vs `stat`    | 扫描与安全闸强制 `lstat` (不跟进软链, 避免目录环与越权删靶)            | 误用 `fs::metadata` / `Path::is_dir()` (二者均跟进软链!)           | 全程使用 `fs::symlink_metadata` 与 `DirEntry::file_type()`; 评审重点搜 `is_dir(`    |
+| 排他写盘 (`wx`)      | `writeFile(p, data, { flag: 'wx' })` 原子排他创建, 已存在即报 `EEXIST` | 先 `exists()` 再 `write()` 引入 TOCTOU 竞态覆盖既有备份            | 必须用 `OpenOptions::new().write(true).create_new(true)` (底层 `O_CREAT \| O_EXCL`) |
+| 符号链接删除语义     | 删除软链本身绝不清空其指向的目标目录                                   | 跨平台 `remove_dir_all` 在某些旧版本或自写递归里误跟进软链         | 删前先 `symlink_metadata` 判真身; 软链只 `remove_file`, 目录再递归清理              |
+| 大小写折叠           | Windows 路径判定折叠大小写, POSIX 大小写敏感                           | 依赖宿主 OS 行为, 导致在 macOS/Linux 上跑 Windows 风味单测结果漂移 | 按注入的 `PathStyle` 显式 `.to_ascii_lowercase()` / `.to_lowercase()`, 不偷懒靠 OS  |
+| 子进程环境变量与编码 | 调用外部命令行工具须固定 `LC_ALL=C` / `LANG=C` 且直传 `argv` 禁 shell  | 通过 `sh -c` 拼接命令行导致含空格/引号/元字符的路径注入            | 始终直接传参数数组 (`Command::args`), 绝不经 shell 拼接用户路径                     |
+| 非 TTY stdout 缓冲   | Node/Bun `process.stdout.write` 退出前自动刷净                         | Rust `BufWriter` / C `stdout` 块缓冲在异常退出或早退时丢末尾字节   | 正常返回前显式 `flush()`, 避免直接 `process::exit()` 跳过析构与缓冲区冲刷           |
 
 ## 5. 格式化、内存与资源清理
 
