@@ -1,5 +1,7 @@
 /**
  * SSH 连接串智能解析与目标服务器目录幂等计算工具。
+ * 供 `validate-sections.ts`、`generate.ts`、`emit-podman*.ts` 与 `codd-cli/wizard-steps.ts` 共用。
+ * 安全约束: 拒绝 Shell 元字符及 `-F`/`-J` (防 rsync 跳转失效); 备份与栈目录计算严格幂等, 防同机多实例重名。
  */
 import { posix } from 'node:path';
 
@@ -20,10 +22,10 @@ export const deriveRemoteHome = (
 };
 
 /**
- * 幂等计算目标服务器上的唯一实例备份目录 (100% 零命名冲突):
- * - 若用户填根目录 (如 /Users/ops/srv/backups), 自动追加 /<prefix>-<name>-<fp>[-<node>];
- * - 若用户填了带实例名的目录 (如 /Users/ops/srv/backups/mongo-hola), 自动归一替换为带指纹目录;
- * - 若路径中已包含当前 fingerprint, 保持原样不重复追加。
+ * 幂等计算目标服务器上的唯一实例备份目录 (防同机多实例重名冲突):
+ * - 末段已是 `<prefix>-<name>-<fp>[-<node>]`, 或无 `nodeSuffix` 且路径中已含该目录段时原样返回;
+ * - 带 `nodeSuffix` 且末段为无节点后缀的 `<prefix>-<name>-<fp>` 时, 末段升级替换为带节点后缀;
+ * - 末段命中旧无指纹名 (`<prefix>-<name>`, `<name>` 等) 时替换为带指纹目录; 其余情况直接追加末段。
  */
 export const resolveServerBackupDir = (
   rawBackupDir: string,
@@ -190,8 +192,20 @@ const scanSshTokens = (
 };
 
 /**
- * 智能提取用户输入的 SSH 连接串或命令, 自动剥离前导 `ssh` 与多余隧道开关 (`-N`, `-L` 等),
- * 提取纯净的 `user@host` 或 `~/.ssh/config` 主机别名, 并保留有效 `-p` / `-i` 供 rsync 使用。
+ * 智能提取用户输入的 SSH 连接串或命令: 剥离前导 `ssh` 与隧道/布尔开关 (`-N`, `-L` 等),
+ * 支持 `-l <user>` 合并进目标地址与 `-p2222`/`-p 2222`、`-i <key>` 透传给 rsync (默认端口 22 省略),
+ * 拒绝 Shell 元字符及 `-F`/`-J`。
+ *
+ * ### 数据流转示例
+ * ```text
+ * Input:  raw = 'ssh -p 2222 -i ~/.ssh/id_ed25519 -N ops@10.0.0.2'
+ * Step 1: 拒检特殊字符 -> 剥离前导 'ssh' -> scanSshTokens 提取 port=2222, identityFile='~/.ssh/id_ed25519',
+ *         跳过 '-N', 捕获 host='ops@10.0.0.2'
+ * Step 2: 组装 normalized 与 rsync '-e' 传输选项 (port=22 时自动省略 -p)
+ * Output: { target: 'ops@10.0.0.2', port: 2222, identityFile: '~/.ssh/id_ed25519',
+ *           normalized: 'ssh -p 2222 -i ~/.ssh/id_ed25519 ops@10.0.0.2',
+ *           rsyncRshFlag: '-e "ssh -p 2222 -i ~/.ssh/id_ed25519" ' }
+ * ```
  */
 export const parseSshInput = (
   raw: string,

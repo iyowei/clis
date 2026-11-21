@@ -1,6 +1,10 @@
 /**
- * 部署包生成主编排器:
- * 模板从包内资产目录读取 (assets/template/), 而配置文件、dist/ 与 .codd-state/ 相对用户当前工作目录解析。
+ * `@iyowei/codd` 部署包生成主编排器: 上游供 `@iyowei/codd-cli` 与编程式调用,
+ * 下游依次编排 `validate.ts` -> `formulas.ts` -> `state.ts` -> `emit-podman.ts` / `emit-k8s.ts`。
+ *
+ * 路径与写盘约束: 内置模板相对包根解析 (`assets/template/`), 而清单、`dist/` 与 `.codd-state/`
+ * 相对 `workDir` 解析; 缺省 `hardware` 回退 2C/2G/32G 并记告警; `dryRun` 不加锁不写盘,
+ * 正式生成在 `withStateLock` 排他锁内执行并以 `0600` 原子写状态与凭证文件。
  */
 import { existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
@@ -108,6 +112,19 @@ const buildBaseCredLines = (
   '',
 ];
 
+/**
+ * 执行完整部署包生成 (或 `--dry-run` 校验与公式测算), 返回汇总结果 `GenerateResult`。
+ *
+ * ### 数据流转示例
+ * ```text
+ * Input:  options = { workDir: '/work', manifestPath: 'deploy.json', outDir: 'dist', rotate: 'none' }
+ * Step 1: 解析模板根 -> 读取 deploy.json -> validateManifest 校验 -> computeSizing 推导硬件参数
+ * Step 2: 若 dryRun=true, 纯内存合并状态并返回预览结果 (bundleDirs=[], 不写盘不加锁)
+ * Step 3: prepareStateDir(.codd-state, 0700) -> withStateLock 加锁 -> loadOrUpdateState 合并指纹与凭证
+ * Step 4: 按 mode 分流 emitPodmanBundles 或 emitK8sBundle -> 0600 原子写 state.json 与 credentials.txt
+ * Output: GenerateResult { deployId, mode, fingerprint, sizing, bundleDirs, backupDirs, stateFile, credentialsFile, warnings, nextSteps }
+ * ```
+ */
 export const generateBundle = (
   options: GenerateOptions = {},
 ): GenerateResult => {

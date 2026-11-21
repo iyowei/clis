@@ -1,5 +1,8 @@
 /**
- * Kubernetes (Helm) 自包含部署包渲染器 (支持单副本与 3 副本高可用 StatefulSet)。
+ * Kubernetes (Helm) 自包含部署包渲染器 (支持 `k8s-single` 1 副本与 `k8s-rs` 3 副本 StatefulSet)。
+ * 上游由 `generate.ts` 调用, 下游复用 `assets.ts`、`render.ts` 与 `state.ts`。
+ * 关键约束: 完整拷贝便携 `chart/` 子目录, 渲染 `values.generated.yaml` / `create-secret.sh` / `deploy.sh`
+ * (后两脚本按 `0700` 原子写); 显式指定 `existingSecret` 时 `deploy.sh` 仅校验其存在, 跳过执行 `create-secret.sh` 防覆写。
  */
 import {
   existsSync,
@@ -82,6 +85,24 @@ const buildDefaultReleaseName = (
   return `${safePrefix}-${fingerprint}`;
 };
 
+/**
+ * 渲染并写出自包含 Kubernetes Helm 部署目录 (`<outDir>/<release>[-<fp>]-k8s/`),
+ * 同时回填 `ctx.bundleDirs`、集群内连接串 (`ctx.credLines`) 与部署命令 (`ctx.nextSteps`)。
+ *
+ * 关键默认值: `namespace='data'`, `serviceType='ClusterIP'`, `nodePort=30117`, `port=27117`,
+ * `rsName='rs0'`, `podAntiAffinity` (多副本 `'hard'` / 单副本 `'soft'`),
+ * `existingSecret` 优先取 `k8s.existingSecret` 回退 `auth.existingSecret`, 未填则用 `${releaseName}-auth`。
+ *
+ * ### 数据流转示例
+ * ```text
+ * Input:  ctx = { manifest: { mode: 'k8s-rs', name: 'app', apps: [{ db: 'shop', user: 'u' }],
+ *                             k8s: { namespace: 'prod' } }, state: { fingerprint: 'a1b2c3d4e5f6', ... }, ... }
+ * Step 1: 推导默认 releaseName='mongo-app-a1b2c3d4e5f6' (<=50 且不截断指纹) -> 重建 `<outDir>/<release>-k8s/`
+ * Step 2: 拷贝便携 Helm chart/ -> 渲染 values.generated.yaml + create-secret.sh (0700) + deploy.sh (0700)
+ * Step 3: 生成 3 副本 headless FQDN 自动切主连接串至 ctx.credLines, 写入 `bash "<k8sDir>/deploy.sh"` 至 ctx.nextSteps
+ * Output: void (产物落盘至 ctx.bundleDirs)
+ * ```
+ */
 export const emitK8sBundle = (ctx: K8sEmitContext): void => {
   const { helmTplDir, outDir, deployId, manifest, sizing, state } = ctx;
   const stackPrefix = manifest.stackPrefix ?? 'mongo';

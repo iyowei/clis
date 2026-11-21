@@ -1,5 +1,8 @@
 /**
- * 部署清单 (DeployManifest) 细粒度校验与运行时引擎兼容性检查。
+ * 部署清单 (`DeployManifest`) 细粒度校验与 Bun 引擎兼容性检查。
+ * 上游由 `generate.ts` 调用 `validateManifest`, 细粒度函数同时被 `codd-cli` 向导单源复用;
+ * 下游将 `k8s` 与 Podman `nodes` 子段校验委托给 `validate-sections.ts`。
+ * 关键约束: 严禁手写 `fingerprint`/`overrides` 与白名单外字段; 硬错误抛 `ConfigError`, 软风险记入 `warnings[]`。
  */
 import {
   type AppInput,
@@ -264,7 +267,7 @@ const matchesUpperBound = (
 };
 
 /**
- * 纯工具函数: 显式检查给定 Bun 版本是否满足目标引擎范围 (支持 >= / ^ / ~ / 精确版本)。
+ * 纯工具函数: 显式检查给定 Bun 版本是否满足目标引擎范围 (支持 `>=` / `^` / `~` 与无前缀下限, 无前缀按 `>=` 处理)。
  */
 export const assertBunEngineCompatible = (
   requiredRange: string | undefined,
@@ -361,6 +364,23 @@ const validateAppsAndAuth = (
   }
 };
 
+/**
+ * 全量校验部署清单合法性并返回非阻断告警列表 (`warnings[]`); 任意配置违规即抛 `ConfigError`。
+ *
+ * 端口与网络约束: `port` 默认 27117, `hostPort` 默认同 `port`, `networkMode` 默认 `'bridge'`;
+ * `replica-set` 或 `networkMode=host` 下要求 `hostPort === port`; 命中 27017-27019 或 `>= 32768` 记告警。
+ *
+ * ### 数据流转示例
+ * ```text
+ * Input:  manifest = { mode: 'single', name: 'app', port: 27017,
+ *                      apps: [{ db: 'shop', user: 'shopuser' }],
+ *                      nodes: [{ os: 'linux', backupDir: '/home/ops/srv/backups' }] }
+ * Step 1: 拦截手写 fingerprint/overrides -> 顶层字段白名单 -> 校验 mode/name/标量字段/port 范围
+ * Step 2: validateAppsAndAuth 校验业务库名 (非 admin/local/config 且无重复) 与 auth 凭证字符集
+ * Step 3: validateK8sSection + validatePodmanNodesSection (single 恰 1 节点, 校验路径/IP/SSH)
+ * Output: warnings = ['port=27017 位于默认扫描/保留/系统临时端口区间, 推荐使用 27117']
+ * ```
+ */
 export const validateManifest = (manifest: DeployManifest): string[] => {
   const warnings: string[] = [];
   if (!isPlainObject(manifest)) {

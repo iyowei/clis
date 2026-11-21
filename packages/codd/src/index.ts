@@ -1,5 +1,7 @@
 /**
- * @iyowei/codd 公共导出入口。
+ * `@iyowei/codd` 核心引擎公共导出入口: 供 `@iyowei/codd-cli` 与编程式调用方消费。
+ * 统一汇聚模板资产定位、硬件资源公式、部署清单校验、SSH 解析、幂等凭证状态机、
+ * 严格模板渲染与 `generateBundle` 编排入口, 保持单一事实来源。
  */
 export {
   ASSET_CARRIERS,

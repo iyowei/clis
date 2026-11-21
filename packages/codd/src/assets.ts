@@ -1,8 +1,7 @@
 /**
- * 包内置模板资产定位与点号载体文件名还原。
- * 向上逐级查找同时存在 package.json 与模板目录 (assets/template 或 template) 的包根,
- * 确保在源码态 (packages/codd/src/assets.ts)、API 产物态 (packages/codd/dist/index.js)、
- * CLI 打包态 (packages/codd-cli/dist/cli.js) 与 npm 装包态下全部精准命中各自包根。
+ * 包内置模板资产定位与点号载体文件名还原, 供 `generate.ts` / `emit-*.ts` 及 `codd-cli` 调用。
+ * 向上逐级 (最多 8 层) 查找同时含 `package.json` 与模板锚点 (`assets/template` 或 `template`) 的包根,
+ * 兼容源码态、API 产物态、CLI 打包态与 npm 装包态; 通过 `ASSET_CARRIERS` 避免点号模板文件被包管理器剔除。
  */
 import { copyFileSync, existsSync, readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
@@ -52,6 +51,9 @@ export const resolvePackageRoot = (
   return nearestPkgDir ?? resolve(startDir, '..');
 };
 
+/**
+ * 解析模板根目录 (优先级: `overrideDir` > 环境变量 `CODD_TEMPLATE_DIR` > 构建资产 `assets/template` > 源码 `template`)。
+ */
 export const resolveTemplateRoot = (
   overrideDir?: string,
   moduleUrl: string = import.meta.url,

@@ -1,5 +1,7 @@
 /**
- * 实例指纹与高熵凭证幂等状态机 (.codd-state/)。
+ * 实例指纹与高熵凭证幂等状态机 (`.codd-state/`), 供 `generate.ts` 与 `emit-*.ts` 消费。
+ * 职责: 排他文件锁 (`withStateLock`)、敏感文件原子写 (`writeSecretFile`, LF + `wx` + `fsync` + `0600` + 跨平台 rename)、
+ * 状态目录初始化 (`0700` + 内建 `.gitignore` 防明文入库) 及旧状态校验与按 `rotate` 策略的凭证合并 (`loadOrUpdateState`)。
  */
 import { randomBytes } from 'node:crypto';
 import {
@@ -250,6 +252,26 @@ const readPreviousState = (stateFile: string): Partial<GenerateState> => {
   );
 };
 
+/**
+ * 读取并校验既有状态文件后, 按 `rotate` 与 `newFingerprint` 策略合并产出新 `GenerateState` (纯计算, 不直接写盘)。
+ *
+ * 合并优先级:
+ * - `fingerprint`: `newFingerprint=true` 时重随机, 否则复用旧指纹 (首次则新建 12 位 hex);
+ * - `rootPassword` / `keyFile`: 清单显式值 > (`rotate !== 'all'` 时的旧值) > 新随机生成;
+ * - `backupPassword` / `appPasswords[db]`: 清单显式值 > (`rotate === 'none'` 时的旧值) > 新随机生成
+ *   (仅保留当前 `manifest.apps` 内的库, 已删业务库不再带入)。
+ *
+ * ### 数据流转示例
+ * ```text
+ * Input:  prev = { fingerprint: 'a1b2c3d4e5f6', rootPassword: 'R0', backupPassword: 'B0',
+ *                  keyFile: 'K0...', appPasswords: { shop: 'S0', legacy: 'L0' } }
+ *         manifest.apps = [{ db: 'shop', user: 'shopu' }], rotate = 'apps', newFingerprint = false
+ * Step 1: readPreviousState 解析并校验旧状态字段格式 (损坏或篡改抛 ConfigError)
+ * Step 2: rotate='apps' -> 保留 fingerprint / rootPassword / keyFile; 轮换 backupPassword 与 shop 密码; 丢弃 legacy
+ * Output: GenerateState { fingerprint: 'a1b2c3d4e5f6', rootPassword: 'R0', backupPassword: '<新24位hex>',
+ *                         keyFile: 'K0...', appPasswords: { shop: '<新24位hex>' }, updatedAt: '<ISO>' }
+ * ```
+ */
 export const loadOrUpdateState = (
   stateFile: string,
   manifest: DeployManifest,
