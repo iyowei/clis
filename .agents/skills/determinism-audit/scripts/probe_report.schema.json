@@ -1,0 +1,135 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "DeterminismAuditProbeReport",
+  "type": "object",
+  "required": [
+    "schemaVersion",
+    "targetInput",
+    "skillName",
+    "resolvedEntryPath",
+    "symlinkChain",
+    "isThinDispatcher",
+    "skillKind",
+    "forwardedAgents",
+    "linkedSkills",
+    "excludedSkills",
+    "linkedRules",
+    "architectureShape",
+    "engineeringFootprint",
+    "documents",
+    "inventory",
+    "executedCommandRefs",
+    "candidateHotspots",
+    "unresolvedTargets",
+    "summaryForJudge"
+  ],
+  "properties": {
+    "schemaVersion": { "type": "integer", "const": 2 },
+    "targetInput": { "type": "string", "minLength": 1 },
+    "skillName": { "type": "string", "minLength": 1 },
+    "resolvedEntryPath": { "type": "string", "minLength": 1 },
+    "symlinkChain": { "type": "array", "items": { "type": "string" } },
+    "isThinDispatcher": { "type": "boolean" },
+    "skillKind": {
+      "type": "string",
+      "enum": ["workflow", "dispatcher", "reference-kb"]
+    },
+    "forwardedAgents": { "type": "array", "items": { "type": "string" } },
+    "linkedSkills": { "type": "array", "items": { "type": "string" } },
+    "excludedSkills": { "type": "array", "items": { "type": "string" } },
+    "linkedRules": { "type": "array", "items": { "type": "string" } },
+    "dotaiRoot": { "type": "string" },
+    "archivePath": { "type": "string" },
+    "architectureShape": {
+      "type": "string",
+      "enum": [
+        "script-backed-loop",
+        "hybrid-assisted",
+        "pure-prompt-skill",
+        "thin-dispatcher",
+        "unresolved-dispatcher"
+      ]
+    },
+    "engineeringFootprint": {
+      "type": "object",
+      "required": [
+        "docCount",
+        "docLines",
+        "docBytes",
+        "implScriptCount",
+        "implScriptLines",
+        "sharedInfraScriptCount",
+        "testFileCount",
+        "schemaFileCount",
+        "hasDeterministicRunner",
+        "hasVerificationGate",
+        "hasMachineReadableContract",
+        "hasTestSuite",
+        "scriptToDocLineRatio"
+      ]
+    },
+    "documents": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["path", "role", "lineCount", "byteCount", "hasFrontmatter"]
+      }
+    },
+    "inventory": {
+      "type": "object",
+      "required": [
+        "implScripts",
+        "sharedInfraScripts",
+        "testFiles",
+        "schemaFiles",
+        "sidecarConfigFiles",
+        "docOnlyFiles"
+      ]
+    },
+    "executedCommandRefs": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["file", "line", "command", "kind"]
+      }
+    },
+    "candidateHotspots": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "file",
+          "docRole",
+          "section",
+          "lineStart",
+          "lineEnd",
+          "categories",
+          "matchedTerms",
+          "score",
+          "likelyBackedByScript",
+          "delegatedOrNegated",
+          "nearbyScripts",
+          "excerpt"
+        ]
+      }
+    },
+    "unresolvedTargets": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["kind", "reference", "sourceFile", "line", "searchedPaths"]
+      }
+    },
+    "summaryForJudge": {
+      "type": "object",
+      "required": [
+        "totalRawHotspotCount",
+        "unbackedHotspotCount",
+        "backedHotspotCount",
+        "topUnbackedHotspots",
+        "auditFocusHints"
+      ]
+    }
+  }
+}
