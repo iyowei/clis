@@ -92,13 +92,15 @@ export function deriveExcludedPackageTerms(
   return [...terms].sort();
 }
 
-/** 从清单中自动派生「被排除的非模板包」短名边界正则 (如 packages/codd → /\bcodd\b/) */
+/** 从清单中自动派生「被排除的非模板包」短名边界正则 (仅针对 domain 领域产品包, 跳过 infra 通用基础设施包防误杀英文常用词) */
 export function deriveExcludedShortNamePatterns(
   manifest: readonly ManifestEntry[],
 ): { term: string; pattern: RegExp }[] {
   const shortNames = new Set<string>();
   for (const entry of manifest) {
-    if (entry.disposition !== 'exclude') continue;
+    if (entry.disposition !== 'exclude' || entry.leakScope === 'infra') {
+      continue;
+    }
     const match = entry.path.match(/^packages\/([^/]+)\/?$/);
     if (match) shortNames.add(match[1]!);
   }

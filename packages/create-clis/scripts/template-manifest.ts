@@ -25,6 +25,8 @@ export interface ManifestEntry {
   disposition: Disposition;
   /** 判定依据 (reset / exclude 必填) */
   note?: string;
+  /** exclude 包禁词作用域: domain 派生短名禁词 (默认); infra 仅防 packages/<pkg> 完整路径泄漏 */
+  leakScope?: 'domain' | 'infra';
 }
 
 const snap = (path: string): ManifestEntry => ({
@@ -44,6 +46,12 @@ const excl = (path: string, note: string): ManifestEntry => ({
   path,
   disposition: 'exclude',
   note,
+});
+const exclInfra = (path: string, note: string): ManifestEntry => ({
+  path,
+  disposition: 'exclude',
+  note,
+  leakScope: 'infra',
 });
 
 export const TEMPLATE_MANIFEST: readonly ManifestEntry[] = [
@@ -212,7 +220,7 @@ export const TEMPLATE_MANIFEST: readonly ManifestEntry[] = [
   excl('.mailmap', '维护者个人提交映射; 不进模板'),
   excl('bun.lock', '锁文件生成物; 新项目 bun install 重建'),
   excl('packages/create-clis/', '生成器自身; 生成物不含生成器'),
-  excl(
+  exclInfra(
     'packages/cli-updater/',
     '本仓多 CLI 共享自更新私有库; 生成物示例包保持最小 greet 骨架, 不进模板',
   ),
