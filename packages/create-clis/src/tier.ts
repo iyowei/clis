@@ -9,7 +9,11 @@
 import { existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-import { pruneEmptyConformanceGroup } from './tier-conformance.ts';
+import {
+  planConformanceDocPrunes,
+  pruneEmptyConformanceGroup,
+  pruneOrphanedCarriers,
+} from './tier-conformance.ts';
 import { codeChars } from './tier-lexer.ts';
 import {
   findResidualWorkflowJobs,
@@ -32,9 +36,10 @@ export interface RemoveRule {
   readonly workflowJobs?: readonly string[];
 }
 
-/** 增强档机制件目录 (转写契约套件 + 仓级通用转写文档) */
+/** 增强档机制件目录 (转写契约套件 + 仓级通用转写文档 + 示例包协议目录) */
 const CONFORMANCE_KIT_DIR = 'scripts/transcription/';
 const CONFORMANCE_DOCS_DIR = 'docs/transcription/';
+const CONFORMANCE_PROTOCOL_DIR = 'packages/{{NAME}}/docs/';
 
 /** 标准档装备: 技术债登记册 + 依赖方向闸门及其单测 */
 const TECH_DEBT_LEDGER = 'docs/designs/tech-debt.md';
@@ -44,6 +49,9 @@ const DEP_DIRECTION_TEST = 'scripts/lint-dependency-direction.test.ts';
 /** 增强档 ci 步骤 */
 const CONFORMANCE_CI_STEPS: readonly string[] = [
   'lint:coverage',
+  'lint:mutants',
+  'fuzz',
+  'conformance:portable',
   'conformance:bun',
   'conformance:node',
 ];
@@ -81,7 +89,11 @@ const TIER_RULES: Readonly<Record<Tier, RemoveRule>> = {
     workflowJobs: [],
   },
   standard: {
-    deletePaths: [CONFORMANCE_KIT_DIR, CONFORMANCE_DOCS_DIR],
+    deletePaths: [
+      CONFORMANCE_KIT_DIR,
+      CONFORMANCE_DOCS_DIR,
+      CONFORMANCE_PROTOCOL_DIR,
+    ],
     ciSteps: CONFORMANCE_CI_STEPS,
     packageScripts: CONFORMANCE_PACKAGE_SCRIPTS,
     workflowJobs: CONFORMANCE_WORKFLOW_JOBS,
@@ -90,6 +102,7 @@ const TIER_RULES: Readonly<Record<Tier, RemoveRule>> = {
     deletePaths: [
       CONFORMANCE_KIT_DIR,
       CONFORMANCE_DOCS_DIR,
+      CONFORMANCE_PROTOCOL_DIR,
       TECH_DEBT_LEDGER,
       DEP_DIRECTION_SCRIPT,
       DEP_DIRECTION_TEST,
@@ -201,6 +214,11 @@ export function pruneTemplate(targetDir: string, rules: RemoveRule): void {
       prunedWorkflows.set(wf.path, pruned);
     }
   }
+  const prunedDocs = planConformanceDocPrunes(
+    targetDir,
+    rules.deletePaths,
+    CONFORMANCE_DOCS_DIR,
+  );
   for (const path of rules.deletePaths) {
     rmSync(join(targetDir, path), { recursive: true, force: true });
   }
@@ -210,6 +228,9 @@ export function pruneTemplate(targetDir: string, rules: RemoveRule): void {
   }
   for (const [wfPath, content] of prunedWorkflows) {
     writeFileSync(wfPath, content);
+  }
+  for (const [docPath, content] of prunedDocs) {
+    writeFileSync(docPath, content);
   }
 }
 
@@ -317,7 +338,7 @@ function pruneCiSource(
   let pruned = removeSpans(source, spans);
   pruned = removeGroupReferences(pruned, steps);
   pruned = pruneEmptyConformanceGroup(source, pruned, CI_SCRIPT);
-  pruned = pruneOrphanedCarriers(pruned);
+  pruned = pruneOrphanedCarriers(pruned, CI_SCRIPT);
   assertStepSurgery(source, pruned, steps, entries);
   return pruned;
 }
@@ -428,73 +449,6 @@ function removeGroupReferences(
     .split('\n')
     .filter((line) => !referenced.has(line.trim()))
     .join('\n');
-}
-
-/** 旧形态 CLI 入口坐标块 (保留以兼容单测手写夹具) */
-const CLI_COORDINATE_BLOCK =
-  /\/\*\* CLI 入口坐标[^\n]*\nconst \{ cli \} = resolveCliAndApi\(process\.cwd\(\)\);\nconst CLI_SRC = [^\n]*\n\n?/;
-
-/** 旧形态导入 */
-const CLI_COORDINATE_IMPORT =
-  /^import \{ resolveCliAndApi \} from '\.\/lib\/workspace\.ts';\n/m;
-
-/** 新形态惰性派生函数声明锚点 (不硬耦合 JSDoc 中文文案, 靠括号配平精确定位函数体) */
-const LAZY_CONFORMANCE_DECL =
-  /^function resolveConformanceCliSrc\s*\([^)]*\)[^{]*\{/m;
-
-/** 新形态导入 */
-const LAZY_CONFORMANCE_IMPORT =
-  /^import \{ resolveProductPairs \} from '\.\/lib\/workspace\.ts';\n/m;
-
-/** 向前回溯吞掉紧贴顶层声明的 JSDoc 块注释或连续行注释 (绝不跨过前方代码吞噬更早的 JSDoc) */
-function expandOverLeadingDocComment(
-  source: string,
-  declStart: number,
-): number {
-  const before = source.slice(0, declStart);
-  if (before.endsWith('*/\n')) {
-    const open = before.lastIndexOf('/**');
-    if (
-      open >= 0 &&
-      (open === 0 || before[open - 1] === '\n') &&
-      before.indexOf('*/', open + 3) === before.length - 3
-    ) {
-      return open;
-    }
-  }
-  return expandOverAttachedComments(source, declStart);
-}
-
-/** 术后载体摘除: 「只服务被摘步骤」的顶层声明与来源导入一并摘净 (兼顾新旧两种形态) */
-function pruneOrphanedCarriers(source: string): string {
-  let out = source;
-  const legacyBlock = CLI_COORDINATE_BLOCK.exec(out);
-  if (legacyBlock !== null) {
-    const withoutBlock = out.replace(legacyBlock[0], '');
-    if (!withoutBlock.includes('CLI_SRC')) {
-      const withoutImport = withoutBlock.replace(CLI_COORDINATE_IMPORT, '');
-      out = withoutImport.includes('resolveCliAndApi')
-        ? withoutBlock
-        : withoutImport;
-    }
-  }
-  const lazyDecl = LAZY_CONFORMANCE_DECL.exec(out);
-  if (lazyDecl !== null) {
-    const openBrace = lazyDecl.index + lazyDecl[0].length - 1;
-    const closeBrace = findMatchingBrace(out, openBrace);
-    let end = out.indexOf('\n', closeBrace);
-    end = end < 0 ? out.length : end + 1;
-    if (out[end] === '\n') end += 1;
-    const start = expandOverLeadingDocComment(out, lazyDecl.index);
-    const withoutBlock = out.slice(0, start) + out.slice(end);
-    if (!withoutBlock.includes('resolveConformanceCliSrc')) {
-      const withoutImport = withoutBlock.replace(LAZY_CONFORMANCE_IMPORT, '');
-      out = withoutImport.includes('resolveProductPairs')
-        ? withoutBlock
-        : withoutImport;
-    }
-  }
-  return out;
 }
 
 /** 术后自检: 步骤名集合对账 + 被摘名零残留 + STEPS 表闭合 + 全文件括号配平 */

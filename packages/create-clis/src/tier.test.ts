@@ -1,16 +1,11 @@
 /**
  * 档位裁剪单测: 三档规则面 (standard 摘增强档 / core ⊇ standard 且加摘标准档)、裁剪行为
- * (删文件 + `scripts/ci.ts` 步骤声明手术)、裁剪自检 (规则与模板不同步即抛错), 以及一条真实
- * 模板端到端 —— 夹具直接取 buildTemplate 的真实产物 (免夹具与真实资产漂移)。
- *
- * 端到端同时钉住两件移交项: ① api-harness.ts 的三档处置 (T4: full 档该文件依赖示例包导出的
- * 领域常量); ② 裁剪后 `bun scripts/ci.ts --help` 仍可跑 (步骤表闭合 / 括号配平的实物验证)。
+ * (删文件 + `scripts/ci.ts` 步骤声明手术 + 根 `package.json` 脚本摘除) 与裁剪自检。
+ * 真实模板三档端到端见 `tier.e2e.test.ts`。
  */
 import { afterEach, describe, expect, test } from 'bun:test';
 
-import { spawnSync } from 'node:child_process';
 import {
-  cpSync,
   existsSync,
   mkdirSync,
   readFileSync,
@@ -20,8 +15,6 @@ import {
 import { join } from 'node:path';
 
 import { makeTmpRoot } from '../../../scripts/lib/tmp-root.ts';
-import { ORIGINAL, buildTemplate } from '../scripts/build-template.ts';
-import { REPO_ROOT } from '../scripts/template-manifest.ts';
 import { pruneTemplate, removeRulesFor } from './tier.ts';
 
 /** 夹具 ci.ts: 形态对齐模板 `scripts/ci.ts` —— 单行条目 / 多行条目 (嵌套数组) / 模板字面量 /
@@ -171,17 +164,6 @@ const setupCiFixture = (): string => {
   return root;
 };
 
-/** 真实模板副本: buildTemplate 产物整棵拷一份 (每档一份, 互不干扰) */
-const buildTemplateCopy = (root: string, label: string): string => {
-  const source = join(root, 'template');
-  if (!existsSync(join(source, 'scripts/ci.ts'))) {
-    buildTemplate({ repoRoot: REPO_ROOT, outDir: source, original: ORIGINAL });
-  }
-  const copy = join(root, label);
-  cpSync(source, copy, { recursive: true });
-  return copy;
-};
-
 describe('removeRulesFor 三档规则面', () => {
   test('standard 相对 full 删除增强档, 保留核心档与标准档', () => {
     const full = removeRulesFor('full');
@@ -191,10 +173,14 @@ describe('removeRulesFor 三档规则面', () => {
     expect(full.workflowJobs).toEqual([]);
 
     const standard = removeRulesFor('standard');
-    // 增强档机制件 (conformance 套件与仓级转写文档整目录) 与对应步骤 / workflow job
+    // 增强档机制件 (conformance 套件、仓级转写文档与示例包协议目录) 与对应步骤 / workflow job
     expect(standard.deletePaths).toContain('scripts/transcription/');
     expect(standard.deletePaths).toContain('docs/transcription/');
+    expect(standard.deletePaths).toContain('packages/{{NAME}}/docs/');
     expect(standard.ciSteps).toContain('lint:coverage');
+    expect(standard.ciSteps).toContain('lint:mutants');
+    expect(standard.ciSteps).toContain('fuzz');
+    expect(standard.ciSteps).toContain('conformance:portable');
     expect(standard.ciSteps).toContain('conformance:bun');
     expect(standard.ciSteps).toContain('conformance:node');
     expect(standard.workflowJobs).toContain('conformance');
@@ -233,11 +219,12 @@ describe('removeRulesFor 三档规则面', () => {
     expect(core.ciSteps).toContain('lint:deps');
   });
 
-  test('core 删除面不触及生成物骨架 (两包结构与 ci.ts 摘除即打断模板)', () => {
+  test('core 删除面不触及生成物骨架 (两包源码/清单与 ci.ts 摘除即打断模板)', () => {
     const core = removeRulesFor('core');
-    expect(core.deletePaths.some((path) => path.startsWith('packages/'))).toBe(
-      false,
+    const pkgDeletes = core.deletePaths.filter((path) =>
+      path.startsWith('packages/'),
     );
+    expect(pkgDeletes).toEqual(['packages/{{NAME}}/docs/']);
     expect(core.deletePaths).not.toContain('scripts/ci.ts');
   });
 });
@@ -377,148 +364,5 @@ describe('pruneTemplate 脚本声明手术', () => {
     expect(readFileSync(join(orphanScript, 'package.json'), 'utf8')).toBe(
       FIXTURE_PACKAGE_JSON,
     );
-  });
-});
-
-describe('真实模板端到端', () => {
-  test('三档裁剪后结构完整; core 档 bun scripts/ci.ts --help 仍可跑', () => {
-    const root = makeTmpRoot('create-clis-tier-e2e-');
-    createdRoots.push(root);
-
-    // full: 全装备不动 (api-harness.ts 依赖示例包领域常量, 满档保留)
-    const fullDir = buildTemplateCopy(root, 'full');
-    pruneTemplate(fullDir, removeRulesFor('full'));
-    expect(
-      existsSync(join(fullDir, 'scripts/transcription/api-harness.ts')),
-    ).toBe(true);
-    expect(existsSync(join(fullDir, 'docs/transcription/README.md'))).toBe(
-      true,
-    );
-    expect(existsSync(join(fullDir, 'docs/designs/tech-debt.md'))).toBe(true);
-    // 满档保留根包的 conformance 脚本与 ci.ts --conformance 入口
-    const fullScripts = (
-      JSON.parse(readFileSync(join(fullDir, 'package.json'), 'utf8')) as {
-        scripts: Record<string, string>;
-      }
-    ).scripts;
-    expect(typeof fullScripts.conformance).toBe('string');
-    expect(typeof fullScripts.fuzz).toBe('string');
-    expect(typeof fullScripts['fuzz:diff']).toBe('string');
-    const fullHelp = spawnSync('bun', ['scripts/ci.ts', '--help'], {
-      cwd: fullDir,
-      encoding: 'utf8',
-    });
-    expect(fullHelp.status).toBe(0);
-    expect(fullHelp.stdout).toContain('--conformance');
-    expect(fullHelp.stdout).toContain('conformance:bun');
-    expect(fullHelp.stdout).toContain('conformance:node');
-
-    // standard: 增强档整目录与 workflow job 摘除, 标准档 (技术债册子 + 依赖方向闸门) 保留
-    const standardDir = buildTemplateCopy(root, 'standard');
-    pruneTemplate(standardDir, removeRulesFor('standard'));
-    expect(existsSync(join(standardDir, 'scripts/transcription'))).toBe(false);
-    expect(existsSync(join(standardDir, 'docs/transcription'))).toBe(false);
-    expect(existsSync(join(standardDir, 'docs/designs/tech-debt.md'))).toBe(
-      true,
-    );
-    expect(
-      existsSync(join(standardDir, 'scripts/lint-dependency-direction.ts')),
-    ).toBe(true);
-    expect(
-      existsSync(join(standardDir, 'packages/{{NAME}}/src/index.ts')),
-    ).toBe(true);
-    expect(
-      existsSync(join(standardDir, 'packages/{{NAME}}-cli/src/cli.ts')),
-    ).toBe(true);
-    // 增强档在根包的脚本挂载与 workflow job 同摘
-    const standardScripts = (
-      JSON.parse(readFileSync(join(standardDir, 'package.json'), 'utf8')) as {
-        scripts: Record<string, string>;
-      }
-    ).scripts;
-    expect(standardScripts.conformance).toBeUndefined();
-    expect(standardScripts.fuzz).toBeUndefined();
-    expect(standardScripts['fuzz:diff']).toBeUndefined();
-    const stdCiYml = readFileSync(
-      join(standardDir, '.github/workflows/ci.yml'),
-      'utf8',
-    );
-    const stdRelYml = readFileSync(
-      join(standardDir, '.github/workflows/release.yml'),
-      'utf8',
-    );
-    expect(stdCiYml).not.toContain('\n  conformance:\n');
-    expect(stdRelYml).not.toContain('\n  conformance:\n');
-    expect(stdRelYml).toContain('uses: ./.github/workflows/ci.yml');
-    expect(stdRelYml).toContain('needs: checks');
-    // standard 档同步摘除 --conformance 入口防假绿
-    const stdHelp = spawnSync('bun', ['scripts/ci.ts', '--help'], {
-      cwd: standardDir,
-      encoding: 'utf8',
-    });
-    expect(stdHelp.status).toBe(0);
-    expect(stdHelp.stdout).toContain('lint:deps');
-    expect(stdHelp.stdout).not.toContain('--conformance');
-    const stdConf = spawnSync('bun', ['scripts/ci.ts', '--conformance'], {
-      cwd: standardDir,
-      encoding: 'utf8',
-    });
-    expect(stdConf.status).toBe(2);
-    expect(stdConf.stderr).toContain('--conformance');
-
-    // core: 连标准档一并摘除
-    const coreDir = buildTemplateCopy(root, 'core');
-    pruneTemplate(coreDir, removeRulesFor('core'));
-    expect(existsSync(join(coreDir, 'scripts/transcription'))).toBe(false);
-    expect(existsSync(join(coreDir, 'docs/transcription'))).toBe(false);
-    expect(existsSync(join(coreDir, 'scripts/ci.ts'))).toBe(true);
-    expect(existsSync(join(coreDir, 'docs/designs/tech-debt.md'))).toBe(false);
-    expect(
-      existsSync(join(coreDir, 'scripts/lint-dependency-direction.ts')),
-    ).toBe(false);
-    const coreScripts = (
-      JSON.parse(readFileSync(join(coreDir, 'package.json'), 'utf8')) as {
-        scripts: Record<string, string>;
-      }
-    ).scripts;
-    expect(coreScripts.conformance).toBeUndefined();
-    expect(coreScripts.fuzz).toBeUndefined();
-    expect(coreScripts['fuzz:diff']).toBeUndefined();
-    expect(typeof coreScripts.ci).toBe('string');
-
-    // 载体摘除在真实模板上生效: 只服务 conformance 步骤的坐标派生与导入不得残留,
-    // 同时文件头注释、其余 import 与 interface Step 必须完好无损 (防回溯吞噬前置代码)
-    const prunedCi = readFileSync(join(coreDir, 'scripts/ci.ts'), 'utf8');
-    expect(prunedCi).not.toContain('resolveConformanceCliSrc');
-    expect(prunedCi).not.toContain('resolveProductPairs');
-    expect(prunedCi).not.toContain('lint:deps');
-    expect(prunedCi).toContain(
-      "import { spawn, spawnSync } from 'node:child_process';",
-    );
-    expect(prunedCi).toContain('interface Step {');
-    expect(prunedCi).toContain(
-      "import { makeTmpRoot } from './lib/tmp-root.ts';",
-    );
-
-    // 步骤表闭合 / 括号配平的实物验证: ci.ts 真跑 --help 与 --conformance (必须退出码 2 防假绿)
-    const help = spawnSync('bun', ['scripts/ci.ts', '--help'], {
-      cwd: coreDir,
-      encoding: 'utf8',
-    });
-    expect(help.status).toBe(0);
-    const printed = help.stdout;
-    expect(printed).toContain('lint:backups');
-    expect(printed).toContain('typecheck');
-    expect(printed).not.toContain('--conformance');
-    expect(printed).not.toContain('lint:deps');
-    expect(printed).not.toContain('lint:coverage');
-    expect(printed).not.toContain('conformance:bun');
-    expect(printed).not.toContain('conformance:node');
-    const coreConf = spawnSync('bun', ['scripts/ci.ts', '--conformance'], {
-      cwd: coreDir,
-      encoding: 'utf8',
-    });
-    expect(coreConf.status).toBe(2);
-    expect(coreConf.stderr).toContain('--conformance');
   });
 });

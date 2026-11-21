@@ -5,6 +5,9 @@
  * 说明行、`resolveSteps` 中的 `--conformance` 识别与返回分支, 并将全链合并简化为直接返回
  * `[...VERIFY_GROUP]`, 确保生成物执行 `bun scripts/ci.ts --conformance` 响亮拒绝 (防裁剪后假绿)。
  */
+import { existsSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
+
 import { codeChars } from './tier-lexer.ts';
 
 /** 定位 `CONFORMANCE_GROUP` 声明行锚点 */
@@ -141,4 +144,104 @@ export function pruneEmptyConformanceGroup(
     );
   }
   return out;
+}
+
+/** 旧形态 CLI 入口坐标块 (保留以兼容单测手写夹具) */
+const CLI_COORDINATE_BLOCK =
+  /\/\*\* CLI 入口坐标[^\n]*\nconst \{ cli \} = resolveCliAndApi\(process\.cwd\(\)\);\nconst CLI_SRC = [^\n]*\n\n?/;
+
+/** 旧形态导入 */
+const CLI_COORDINATE_IMPORT =
+  /^import \{ resolveCliAndApi \} from '\.\/lib\/workspace\.ts';\n/m;
+
+/** 新形态惰性派生函数声明锚点 (不硬耦合 JSDoc 中文文案, 靠括号配平精确定位函数体) */
+const LAZY_CONFORMANCE_DECL =
+  /^function resolveConformanceCliSrc\s*\([^)]*\)[^{]*\{/m;
+
+/** 新形态导入 */
+const LAZY_CONFORMANCE_IMPORT =
+  /^import \{ resolveProductPairs \} from '\.\/lib\/workspace\.ts';\n/m;
+
+/** 定位配对闭合花括号 `}` */
+function findMatchingBrace(
+  source: string,
+  openIndex: number,
+  ciScript: string,
+): number {
+  let depth = 0;
+  for (const { char, index } of codeChars(source, openIndex)) {
+    if (char === '{') depth += 1;
+    else if (char === '}') {
+      depth -= 1;
+      if (depth === 0) return index;
+    }
+  }
+  throw new Error(
+    `${ciScript} 形态预期不符: 第 ${openIndex} 字符起的 \`{\` 未闭合`,
+  );
+}
+
+/** 术后载体摘除: 「只服务被摘步骤」的顶层声明与来源导入一并摘净 (兼顾新旧两种形态) */
+export function pruneOrphanedCarriers(
+  source: string,
+  ciScript: string,
+): string {
+  let out = source;
+  const legacyBlock = CLI_COORDINATE_BLOCK.exec(out);
+  if (legacyBlock !== null) {
+    const withoutBlock = out.replace(legacyBlock[0], '');
+    if (!withoutBlock.includes('CLI_SRC')) {
+      const withoutImport = withoutBlock.replace(CLI_COORDINATE_IMPORT, '');
+      out = withoutImport.includes('resolveCliAndApi')
+        ? withoutBlock
+        : withoutImport;
+    }
+  }
+  const lazyDecl = LAZY_CONFORMANCE_DECL.exec(out);
+  if (lazyDecl !== null) {
+    const openBrace = lazyDecl.index + lazyDecl[0].length - 1;
+    const closeBrace = findMatchingBrace(out, openBrace, ciScript);
+    let end = out.indexOf('\n', closeBrace);
+    end = end < 0 ? out.length : end + 1;
+    if (out[end] === '\n') end += 1;
+    const start = expandOverLeadingComment(out, lazyDecl.index);
+    const withoutBlock = out.slice(0, start) + out.slice(end);
+    if (!withoutBlock.includes('resolveConformanceCliSrc')) {
+      const withoutImport = withoutBlock.replace(LAZY_CONFORMANCE_IMPORT, '');
+      out = withoutImport.includes('resolveProductPairs')
+        ? withoutBlock
+        : withoutImport;
+    }
+  }
+  return out;
+}
+
+/** 增强档降级时同步摘除 docs/README.md 的「## 转写协议」章节与 PR 模板 conformance checklist 行 */
+export function planConformanceDocPrunes(
+  targetDir: string,
+  deletePaths: readonly string[],
+  conformanceDocsDir: string,
+): Map<string, string> {
+  const updates = new Map<string, string>();
+  if (!deletePaths.includes(conformanceDocsDir)) return updates;
+
+  const docsReadmePath = join(targetDir, 'docs/README.md');
+  if (existsSync(docsReadmePath)) {
+    const source = readFileSync(docsReadmePath, 'utf8');
+    const pruned = source
+      .replace(/\n## 转写协议[\s\S]*?(?=\n## |$)/, '')
+      .replace(/\n{3,}/g, '\n\n');
+    if (pruned !== source) updates.set(docsReadmePath, pruned);
+  }
+
+  const prPath = join(targetDir, '.github/PULL_REQUEST_TEMPLATE.md');
+  if (existsSync(prPath)) {
+    const source = readFileSync(prPath, 'utf8');
+    const pruned = source.replace(
+      /^- \[ \] [^\n]*conformance suite[^\n]*\n/gm,
+      '',
+    );
+    if (pruned !== source) updates.set(prPath, pruned);
+  }
+  return updates;
 }
