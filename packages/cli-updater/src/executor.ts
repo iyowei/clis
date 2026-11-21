@@ -32,10 +32,17 @@ import {
   isValidTargetSpec,
 } from './semver.ts';
 import {
-  type PmInvocation,
   isWin32AbsolutePath,
   resolveWindowsBatchInvocation,
 } from './windows-exec.ts';
+
+/** 单个可执行的底层调用结构 */
+export interface PmInvocation {
+  command: string;
+  args: string[];
+  /** Windows .cmd/.bat 经 ComSpec /d /s /c 调用时为 true */
+  windowsVerbatimArguments?: boolean;
+}
 
 /** 子进程调用描述符 */
 export interface CommandSpec {

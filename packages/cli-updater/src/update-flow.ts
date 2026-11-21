@@ -9,6 +9,7 @@ import {
   type ExecuteUpgradeAsyncOptions,
   type ExecuteUpgradeResult,
   type SpawnAsyncLike,
+  type UpgradePlanExecutor,
   executeUpgradePlanAsync,
 } from './exec-async.ts';
 import {
@@ -35,13 +36,6 @@ import {
   sanitize,
   verifyPostUpgrade,
 } from './update-helpers.ts';
-
-/** 兼容同步与异步的升级执行器签名 (保留向下兼容) */
-export type UpgradePlanExecutor = (
-  plan: CommandSpec,
-  env?: NodeJS.ProcessEnv,
-  spawnFn?: SpawnLike,
-) => ExecuteUpgradeResult | Promise<ExecuteUpgradeResult>;
 
 /** 执行层所需依赖切片 */
 export interface UpgradeFlowDeps {

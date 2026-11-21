@@ -19,6 +19,7 @@ import {
   type ExecuteUpgradeAsyncOptions,
   type ExecuteUpgradeResult,
   type SpawnAsyncLike,
+  type UpgradePlanExecutor,
 } from './exec-async.ts';
 import { type CommandSpec, type SpawnLike } from './executor.ts';
 import {
@@ -35,11 +36,7 @@ import {
   extractRegistryHost,
   stderrSupportsSpinner,
 } from './ui.ts';
-import {
-  type UpgradePlanExecutor,
-  dispatchRemoteVersion,
-  handleFetchFailure,
-} from './update-flow.ts';
+import { dispatchRemoteVersion, handleFetchFailure } from './update-flow.ts';
 import {
   describeOrigin,
   handleNonGlobalOrigin,
@@ -48,7 +45,7 @@ import {
   warnCrossPmOverride,
 } from './update-helpers.ts';
 
-export { type UpgradePlanExecutor } from './update-flow.ts';
+export { type UpgradePlanExecutor } from './exec-async.ts';
 
 /** 当前 CLI 包的基本元数据 */
 export interface PackageMeta {

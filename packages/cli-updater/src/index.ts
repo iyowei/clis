@@ -34,6 +34,7 @@ export {
 export {
   type BuildUpgradePlanInput,
   type CommandSpec,
+  type PmInvocation,
   type SpawnLike,
   type UpgradePlanOutcome,
   buildIsolatedEnv,

@@ -11,11 +11,11 @@ import { readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 
 import {
-  normalizeRegistryUrl,
+  normalizeRegistryUrl as normalizeRegistryUrlInternal,
   parseAuthTokenFromBunfig,
   parseAuthTokenFromNpmrc,
-  parseRegistryFromBunfig,
-  parseRegistryFromNpmrc,
+  parseRegistryFromBunfig as parseRegistryFromBunfigInternal,
+  parseRegistryFromNpmrc as parseRegistryFromNpmrcInternal,
 } from './config-parse.ts';
 import { type PackageManager, joinForPath } from './detect.ts';
 import {
@@ -24,11 +24,26 @@ import {
   isValidTargetSpec,
 } from './semver.ts';
 
-export {
-  normalizeRegistryUrl,
-  parseRegistryFromBunfig,
-  parseRegistryFromNpmrc,
-};
+/** 归一 registry URL (去掉末尾斜杠) */
+export function normalizeRegistryUrl(url: string): string {
+  return normalizeRegistryUrlInternal(url);
+}
+
+/** 从 ~/.bunfig.toml 解析 [install] / [install.registry] / [install.scopes] 中的 registry */
+export function parseRegistryFromBunfig(
+  content: string,
+  packageName: string,
+): string | null {
+  return parseRegistryFromBunfigInternal(content, packageName);
+}
+
+/** 从 ~/.npmrc 解析 registry (带 scope 优先匹配 @scope:registry) */
+export function parseRegistryFromNpmrc(
+  content: string,
+  packageName: string,
+): string | null {
+  return parseRegistryFromNpmrcInternal(content, packageName);
+}
 
 /** 默认官方 npm registry */
 export const DEFAULT_REGISTRY = 'https://registry.npmjs.org';

@@ -50,6 +50,20 @@ runOrExit('bun', [
   join(ROOT, 'tsconfig.build.json'),
 ]);
 
+const INTERNAL_DTS_FILES: readonly string[] = [
+  'config-parse.d.ts',
+  'update-flow.d.ts',
+  'update-helpers.d.ts',
+  'windows-exec.d.ts',
+];
+
+for (const file of INTERNAL_DTS_FILES) {
+  rmSync(join(DIST, file), { force: true });
+}
+
+const internalStems = INTERNAL_DTS_FILES.map((f) => f.replace(/\.d\.ts$/, ''));
+const leaked: string[] = [];
+
 for (const path of collectDtsFiles(DIST)) {
   const before = readFileSync(path, 'utf8');
   const after = before
@@ -57,6 +71,22 @@ for (const path of collectDtsFiles(DIST)) {
     .replace(/(import\s+['"])(\.[^'"]+)\.ts(['"])/g, '$1$2.js$3')
     .replace(/(import\(\s*['"])(\.[^'"]+)\.ts(['"]\s*\))/g, '$1$2.js$3');
   if (after !== before) writeFileSync(path, after);
+  for (const stem of internalStems) {
+    if (
+      after.includes(`./${stem}.js`) ||
+      after.includes(`./${stem}'`) ||
+      after.includes(`./${stem}"`)
+    ) {
+      leaked.push(`${path} -> ${stem}`);
+    }
+  }
+}
+
+if (leaked.length > 0) {
+  process.stderr.write(
+    `cli-updater build: 公开 .d.ts 泄漏内部模块引用:\n  ${leaked.join('\n  ')}\n`,
+  );
+  process.exit(1);
 }
 
 process.exit(0);

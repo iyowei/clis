@@ -7,7 +7,18 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { type CommandSpec, buildIsolatedEnv } from './executor.ts';
+import {
+  type CommandSpec,
+  type SpawnLike,
+  buildIsolatedEnv,
+} from './executor.ts';
+
+/** 兼容同步与异步的升级执行器签名 (保留向下兼容) */
+export type UpgradePlanExecutor = (
+  plan: CommandSpec,
+  env?: NodeJS.ProcessEnv,
+  spawnFn?: SpawnLike,
+) => ExecuteUpgradeResult | Promise<ExecuteUpgradeResult>;
 
 /** 静默捕获模式下在内存中保留的最大尾部字节数 (64 KiB, 足以容纳完整排障堆栈且严控内存) */
 export const MAX_CAPTURE_BYTES = 64 * 1024;
