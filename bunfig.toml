@@ -12,7 +12,9 @@ linker = "hoisted"
 # (同款排除见 .gitignore / .prettierignore / .oxlintrc.json 与 tsconfig.json)。
 [test]
 pathIgnorePatterns = [
+  "scripts/transcription/mutants/**",
   "packages/create-clis/assets/**",
+  "packages/create-clis/scripts/template-skeletons/**",
   "packages/codd/assets/**",
   "packages/codd/template/**",
   "packages/codd-cli/assets/**",

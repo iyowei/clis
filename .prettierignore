@@ -8,7 +8,9 @@ CHANGELOG.md
 CODE_OF_CONDUCT.md
 *.modified
 *.deleted
+scripts/transcription/mutants
 packages/create-clis/assets
+packages/create-clis/scripts/template-skeletons
 packages/codd/assets
 packages/codd-cli/assets
 packages/codd/template/helm

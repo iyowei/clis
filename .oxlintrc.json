@@ -44,10 +44,11 @@
     "clearTimeout": "readonly"
   },
   "ignorePatterns": [
-    "dist/**",
-    "node_modules/**",
+    "**/dist/**",
+    "**/node_modules/**",
     "scripts/transcription/mutants/**",
     "packages/create-clis/assets/**",
+    "packages/create-clis/scripts/template-skeletons/**",
     "packages/codd/assets/**",
     "packages/codd/template/**",
     "packages/codd-cli/assets/**"
