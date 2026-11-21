@@ -2,8 +2,10 @@
   "extends": "./tsconfig.json",
   "compilerOptions": {
     "noEmit": false,
+    "noEmitOnError": true,
     "emitDeclarationOnly": true,
     "declaration": true,
+    "paths": {},
     "rootDir": "src",
     "outDir": "dist"
   },
@@ -18,5 +20,5 @@
     "src/render.ts",
     "src/generate.ts"
   ],
-  "exclude": ["src/**/*.test.ts", "src/cli.ts", "src/wizard.ts", "src/ui/**"]
+  "exclude": ["src/**/*.test.ts"]
 }

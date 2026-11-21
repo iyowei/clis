@@ -136,7 +136,7 @@ describe('模板资产构建与 .d.ts 后处理', () => {
     );
   });
 
-  test('pruneInternalDts 清理 3 个内部 .d.ts 并在公开声明泄漏引用时告警', () => {
+  test('pruneInternalDts 清理 4 个内部 .d.ts 并在公开声明泄漏引用时告警', () => {
     const dir = mkdtempSync(join(tmpdir(), 'codd-prune-dts-'));
     dirs.push(dir);
     for (const f of INTERNAL_DTS_FILES) {
