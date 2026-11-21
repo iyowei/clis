@@ -5,7 +5,7 @@
 > **决策者**: 沈委
 > **标签**: [工程]
 > **影响范围**: [全项目]
-> **取代关系**: 本 ADR 局部取代 [ADR 0003](../../packages/sweep-node-modules/docs/adrs/0003-zero-runtime-deps.md) 决策条第 2 条「零构建」, 以及 [ADR 0006](0006-dual-runtime-bun-first.md) 弃用「构建产物分发」的判断。判断反转的理由: 当时弃用的是「为运行而构建」(它和源码直跑互斥, 而且当时分发形态还没定), 现在只加「为分发而构建」, 开发运行路径没有变; 那两处原文按「已接受的决定不原地改写」保留, 修订指引只加在本 ADR 的决策条里。
+> **取代关系**: 本 ADR 局部取代 [ADR 0003](../../packages/sweep/docs/adrs/0003-zero-runtime-deps.md) 决策条第 2 条「零构建」, 以及 [ADR 0006](0006-dual-runtime-bun-first.md) 弃用「构建产物分发」的判断。判断反转的理由: 当时弃用的是「为运行而构建」(它和源码直跑互斥, 而且当时分发形态还没定), 现在只加「为分发而构建」, 开发运行路径没有变; 那两处原文按「已接受的决定不原地改写」保留, 修订指引只加在本 ADR 的决策条里。
 
 ## 上下文与问题 (Context & Problem)
 
@@ -31,9 +31,9 @@
 
 ## 决策与理由 (Decision & Why)
 
-1. **开发时仍然源码直跑**: 仓库里 `bun src/cli.ts` / `node src/cli.ts` 与 sh / cmd 启动器一切照旧, 不要求先构建再运行 ([ADR 0003](../../packages/sweep-node-modules/docs/adrs/0003-zero-runtime-deps.md)「零构建」在开发运行路径继续成立)。
+1. **开发时仍然源码直跑**: 仓库里 `bun src/cli.ts` / `node src/cli.ts` 与 sh / cmd 启动器一切照旧, 不要求先构建再运行 ([ADR 0003](../../packages/sweep/docs/adrs/0003-zero-runtime-deps.md)「零构建」在开发运行路径继续成立)。
 2. **只有 npm 分发时才产出单文件编译产物**: `bun build src/cli.ts --target=node --outfile=dist/cli.js` (package.json 的 `build` 脚本), 发布前由 `prepublishOnly` 触发; `dist/` 是构建产物, 不进仓库 (被 `.gitignore` 忽略), package.json 的 `files` 只列 `bin/sweep-nm.mjs` 与 `dist`。补记 (2026-09-26): `build` 现在是两步 (上述 `bun build` + 写产物自证清单 `dist/manifest.json`), `prepublishOnly` 变成「构建 + 发布前置闸门」; 清单随 `files` 里的 `dist` 目录进包, 详见下方补记。
-3. **npm 入口是 `bin/sweep-nm.mjs`**: package.json 的 `bin` 目标 (命令名仍是 `sweep-nm`); 挑好运行时 (Bun 优先, Node 回退) 后, 按「优先跑 `dist/cli.js`, 没有产物就回退 `src/cli.ts`」选入口; 同一条选择逻辑同时覆盖两种情况: 安装后的包, 和仓库里的开发 (包内只有产物, 开发时通常没有产物)。它与 sh / cmd 启动器是同一套逻辑, 差异在宿主与这条入口选择 (见 [ADR 0007](../../packages/sweep-node-modules/docs/adrs/0007-platform-portability.md))。补记 (2026-09-26): 「优先跑 `dist/cli.js`」现在附加了产物自证前置 (先与随附清单对账摘要, 不符就拒收并给出指引), 详见下方补记。
+3. **npm 入口是 `bin/sweep-nm.mjs`**: package.json 的 `bin` 目标 (命令名仍是 `sweep-nm`); 挑好运行时 (Bun 优先, Node 回退) 后, 按「优先跑 `dist/cli.js`, 没有产物就回退 `src/cli.ts`」选入口; 同一条选择逻辑同时覆盖两种情况: 安装后的包, 和仓库里的开发 (包内只有产物, 开发时通常没有产物)。它与 sh / cmd 启动器是同一套逻辑, 差异在宿主与这条入口选择 (见 [ADR 0007](../../packages/sweep/docs/adrs/0007-platform-portability.md))。补记 (2026-09-26): 「优先跑 `dist/cli.js`」现在附加了产物自证前置 (先与随附清单对账摘要, 不符就拒收并给出指引), 详见下方补记。
 4. **node 版本下限: 两种获取方式一致**: 源码方式需要类型剥离默认启用的版本, 编译产物方式跑的是 JS, 本身不需要该能力, 但两种方式取同一个数值下限 `>= 22.18.0`, 不因为方式不同而放宽 (依据与版本快照见 [ADR 0006](0006-dual-runtime-bun-first.md)「版本要求」)。
 
 理由: 以最小代价解掉「只装 node 的机器装完 npm 包也用不了」这个冲突, 只为分发加一条构建命令, 开发运行路径与单源码原则都不动; 分发产物是单文件 JS, 没有平台分叉, 也没有运行时捆绑。
@@ -70,7 +70,7 @@
 4. **闸门的触发范围与缺口** (2026-09-26 补): 闸门挂在 `prepublishOnly`, 只在 `npm publish` 且发布目标是仓库目录时触发; `npm pack` 与 `npm publish <tarball>` (对打好的包再发布) 不会经过闸门。**不补 `prepack` 兜底**: `npm pack --dry-run` 是常用的只读查看动作, 挂上闸门会让它在工作树脏 / 没构建的时候直接失败, 代价大于收益; 这个缺口由白名单断言补上: 同一风险已在 `verify:release` 里覆盖, 发布流程以 `npm publish` 为准。**bun 发布路径已联网核验 (2026-09-26, 非凭印象)**: `bun publish` 自行打包时会执行 `prepublishOnly`, 所以也在闸门之内; 依据是 bun 官方测试对执行顺序的断言 (`prepublishOnly` → `prepack` → `prepare` → `postpack` → `publish` → `postpublish`, `test/cli/install/bun-publish.test.ts` 的 lifecycle scripts 块) 与源码 `src/runtime/cli/pack_command.rs` 的 `FOR_PUBLISH` 分支 (锚定 main 分支 2026-09-25 快照); bun 官方文档 (`docs/pm/cli/publish`) 只有否定式条件句 "does not run lifecycle scripts ... if you provide a tarball path", 没有正面的支持矩阵, 直接证据来自源码与官方测试。以 tarball 形式发布 (`bun publish <tarball>`) 与 npm 侧的 `npm publish <tarball>` 一样, 都落在这个缺口里。
 5. **双语 README 进包** (2026-09-27 补): 仓库根新增 `README.zh-CN.md` (根 README 的中文对照) 后, 包清单由 6 项变 7 项。这个文件走的是和补记第 3 条一样的强制收录规则 (带后缀的 README 照样被收, 不用写进 `files` 字段; 2026-09-27 实测: `npm pack --dry-run --json --ignore-scripts` 清单 7 项, 即原 6 项加 `README.zh-CN.md`)。处置: 按补记第 3 条的要求同步 `PACK_FILES_EXPECTED`; 白名单断言与单测里和真实 npm 对齐的用例照常钉住。
 
-第 2、3 条决策里的「构建」与「入口选择」由本补记扩展, 完整规格见 [开发指南](../development.md)「发布」和 [设计总纲](../../packages/sweep-node-modules/docs/designs/sweep-node-modules-design.md) 里的代码树, 本文不复述。
+第 2、3 条决策里的「构建」与「入口选择」由本补记扩展, 完整规格见 [开发指南](../development.md)「发布」和 [设计总纲](../../packages/sweep/docs/designs/sweep-design.md) 里的代码树, 本文不复述。
 
 ## 验证方式与关联引用 (Validation & References)
 
@@ -82,7 +82,7 @@
 
 **关联引用**
 
-- 被局部取代的两处判断见 [ADR 0003](../../packages/sweep-node-modules/docs/adrs/0003-zero-runtime-deps.md) 与 [ADR 0006](0006-dual-runtime-bun-first.md); 入口分轨的设计见 [ADR 0007](../../packages/sweep-node-modules/docs/adrs/0007-platform-portability.md)。
-- 代码树与模块结构见 [设计总纲](../../packages/sweep-node-modules/docs/designs/sweep-node-modules-design.md); 文档命名约定见 [docs/README](../README.md)。
+- 被局部取代的两处判断见 [ADR 0003](../../packages/sweep/docs/adrs/0003-zero-runtime-deps.md) 与 [ADR 0006](0006-dual-runtime-bun-first.md); 入口分轨的设计见 [ADR 0007](../../packages/sweep/docs/adrs/0007-platform-portability.md)。
+- 代码树与模块结构见 [设计总纲](../../packages/sweep/docs/designs/sweep-design.md); 文档命名约定见 [docs/README](../README.md)。
 
 > **修订指引 (2026-09-30)**: 本文里的包名与路径是包名翻转前的写法: CLI 发行包现为 `@iyowei/sweep-node-modules-cli` (位于 `packages/sweep-node-modules-cli/`, 含 `bin/` 与 `scripts/`); 同名包 `@iyowei/sweep-node-modules` 现在是 API 包 (见 [ADR 0010](0010-dual-package-monorepo.md))。

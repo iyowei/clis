@@ -8,11 +8,11 @@
 
 本仓每个包都恰好属于下面三类之一 (全部由 `package.json` 确定性字段推导, 无人工维护分类表):
 
-| 类别           | 判定依据 (确定性字段)                                  | 发布              | 例子                                                                  |
-| -------------- | ------------------------------------------------------ | ----------------- | --------------------------------------------------------------------- |
-| **CLI 工具**   | `package.json` 有 `bin` 字段                           | 非 private 发 npm | `create-clis` / `@iyowei/sweep-node-modules-cli` / `@iyowei/codd-cli` |
-| **公开库**     | 没有 `bin`, 且非 `"private": true`                     | 发 npm            | `@iyowei/sweep-node-modules` / `@iyowei/codd`                         |
-| **仓内私有库** | 没有 `bin`, 且自身 `package.json` 标 `"private": true` | 不发 npm          | `@iyowei/cli-updater` (及未来待首发新包)                              |
+| 类别           | 判定依据 (确定性字段)                                  | 发布              | 例子                                                                                                       |
+| -------------- | ------------------------------------------------------ | ----------------- | ---------------------------------------------------------------------------------------------------------- |
+| **CLI 工具**   | `package.json` 有 `bin` 字段                           | 非 private 发 npm | `create-clis` / `@iyowei/sweep-cli` (待首发 `private: true`) / `@iyowei/codd-cli` (待首发 `private: true`) |
+| **公开库**     | 没有 `bin`, 且非 `"private": true`                     | 发 npm            | `@iyowei/sweep` (待首发 `private: true`) / `@iyowei/codd` (待首发 `private: true`)                         |
+| **仓内私有库** | 没有 `bin`, 且自身 `package.json` 标 `"private": true` | 不发 npm          | `@iyowei/cli-updater` (及未来待首发新包)                                                                   |
 
 > **待首发隔离边界**: 任何准备未来发往 npm 但尚未首发的包 (无论是带 `bin` 的 CLI 还是不带 `bin` 的 API 主包) 均通过 npm 原生字段 `"private": true` 隔离于 `multi-semantic-release` (`ignorePrivate` 默认开启) 与 `scripts/npm-trust-guard.ts` 之外; 首发时移除 `"private": true` 并按[开发指南](../development.md)「发布」章完成首次发布、补打首发 tag 与 Trusted Publisher 登记。
 
@@ -51,3 +51,4 @@
 | 2026-09-30 | 初稿: 三类包字段判定、工程要求与入仓门槛                                                     |
 | 2026-10-01 | 改判据: 包隔离字段改为 npm 原生 `"private": true`                                            |
 | 2026-11-19 | 确立默认双包工具范式 (API 主包 + CLI 薄壳包), 泛化待首发包边界, 去除对特定产品的反向外链耦合 |
+| 2026-11-20 | 同步 `@iyowei/sweep` / `@iyowei/sweep-cli` 命名与待首发 `private: true` 隔离状态             |

@@ -5,8 +5,7 @@
 Security fixes are released as new versions; only the latest published release of each published package is supported:
 
 - `create-clis`: the monorepo collection scaffold CLI;
-- `@iyowei/sweep-node-modules-cli`: the `sweep-nm` CLI;
-- `@iyowei/sweep-node-modules`: the `sweep` programmable API;
+- `@iyowei/sweep-cli` / `@iyowei/sweep`: the `sweep` general multi-toolchain workspace cleaner CLI and programmable API (currently pre-release / `private: true`, tracked on `main`);
 - `@iyowei/codd-cli` / `@iyowei/codd`: the MongoDB 9.0 provisioning CLI and programmable API (currently pre-release / `private: true`, tracked on `main`).
 
 Older releases do not receive fixes.
@@ -33,12 +32,12 @@ The project is maintained by one person; responses are best effort, and security
 
 Runtime dependency posture varies by package:
 
-- `@iyowei/sweep-node-modules`, `@iyowei/sweep-node-modules-cli`, `@iyowei/codd`, and `@iyowei/codd-cli` carry no third-party runtime dependencies and make no network calls on the run path;
+- `@iyowei/sweep`, `@iyowei/sweep-cli`, `@iyowei/codd`, and `@iyowei/codd-cli` carry no third-party runtime dependencies and make no network calls on the run path;
 - `create-clis` bundles no network calls on the run path, and carries `prettier` plus `@trivago/prettier-plugin-sort-imports` as runtime dependencies solely to format newly generated scaffold files.
 
 Reports we treat as security issues include, for example:
 
-- **`sweep` (`sweep-nm` / `@iyowei/sweep-node-modules`)**: removal of anything outside the configured roots, bypassing path validation / symlink / suspected install tree / cross-device guards, or forging CLI output so it differs from disk state (deleting listed and confirmed `node_modules` directories is the tool's intended purpose; full safety guarantees and known residual risks are documented in [safety-guardrails.md](packages/sweep-node-modules/docs/designs/safety-guardrails.md), in Chinese);
+- **`sweep` (`sweep` / `@iyowei/sweep` / `@iyowei/sweep-cli`)**: removal of anything outside the configured roots, bypassing path validation / preset anchor / symlink / suspected install tree / cross-device guards, silently falling back from failed `trash` to permanent deletion, or forging CLI output so it differs from disk state (trashing or deleting listed and confirmed matched targets is the tool's intended purpose; full safety guarantees and known residual risks are documented in [safety-guardrails.md](packages/sweep/docs/designs/safety-guardrails.md), in Chinese);
 - **`codd` (`codd` / `@iyowei/codd`)**: template/shell/YAML/XML injection through manifest inputs, path traversal in generated bundle paths, weakening default loopback binding or generated keyfile/credential permissions, or unsafe Helm upgrade secret clobbering;
 - **`create-clis`**: overwriting existing non-empty directories without refusal, path traversal during template rendering, or leaking host secrets/files into generated repositories;
 - **Distribution & release chain**: launcher PATH / cwd config (`bunfig.toml` / `.env`) hijacking, published artifacts that fail or bypass SHA-256 self-verification, or compromise of the release chain.

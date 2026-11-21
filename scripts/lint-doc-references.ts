@@ -33,10 +33,10 @@ export interface RefFinding {
 
 /** 文档别名表 (保留既有通用称谓映射; 仅在目标文件真实存在时参与解析) */
 export const DOC_ALIASES: Readonly<Record<string, string>> = {
-  '可编程 API 面': 'packages/sweep-node-modules/docs/designs/api-surface.md',
-  行为契约: 'packages/sweep-node-modules/docs/protocol/behavior-contract.md',
-  覆盖表: 'packages/sweep-node-modules/docs/protocol/conformance/coverage.md',
-  安全防护: 'packages/sweep-node-modules/docs/designs/safety-guardrails.md',
+  '可编程 API 面': 'packages/sweep/docs/designs/api-surface.md',
+  行为契约: 'packages/sweep/docs/protocol/behavior-contract.md',
+  覆盖表: 'packages/sweep/docs/protocol/conformance/coverage.md',
+  安全防护: 'packages/sweep/docs/designs/safety-guardrails.md',
 };
 
 /** ADR 引用的行级豁免词: 文档正在陈述「该 ADR 尚不存在」时不算断裂 */

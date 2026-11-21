@@ -24,8 +24,8 @@ body:
       label: Affected package
       options:
         - create-clis
-        - '@iyowei/sweep-node-modules-cli (sweep-nm)'
-        - '@iyowei/sweep-node-modules (API)'
+        - '@iyowei/sweep-cli (sweep)'
+        - '@iyowei/sweep (API)'
         - '@iyowei/codd-cli (codd)'
         - '@iyowei/codd (API)'
         - Repository infrastructure / docs

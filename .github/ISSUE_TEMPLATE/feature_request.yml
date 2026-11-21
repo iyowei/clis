@@ -21,8 +21,8 @@ body:
       description: Which part of the repository is this about?
       options:
         - CLI (create-clis)
-        - CLI (sweep-nm)
-        - Programmable API (@iyowei/sweep-node-modules)
+        - CLI (sweep)
+        - Programmable API (@iyowei/sweep)
         - CLI (codd)
         - Programmable API (@iyowei/codd)
         - Documentation / Governance

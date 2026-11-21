@@ -108,10 +108,10 @@ export function extractNamedShellCommands(
   return commands;
 }
 
-/** 兼容旧签名: 提取 shell 块中以 sweep-nm 开头的命令行 */
+/** 兼容旧签名: 提取 shell 块中以 sweep 开头的命令行 */
 export function extractShellCommands(
   content: string,
-  cliName = 'sweep-nm',
+  cliName = 'sweep',
 ): string[] {
   return extractNamedShellCommands(content, [cliName]).map(
     (item) => item.command,
@@ -352,9 +352,9 @@ export function discoverCliTargets(root: string): CliTarget[] {
     }
   }
   if (targets.length === 0) {
-    const fallback = 'packages/sweep-node-modules-cli/src/cli.ts';
+    const fallback = 'packages/sweep-cli/src/cli.ts';
     if (existsSync(join(root, fallback))) {
-      targets.push({ binName: 'sweep-nm', entryPath: fallback });
+      targets.push({ binName: 'sweep', entryPath: fallback });
     }
   }
   return targets.sort((a, b) => a.binName.localeCompare(b.binName));

@@ -14,7 +14,7 @@
     "package-lock.json",
     "*.modified",
     "*.deleted",
-    "packages/sweep-node-modules/bench/results/",
+    "packages/sweep/bench/results/",
     "scripts/transcription/mutants/gen-*/",
     ".turbo/",
     "packages/create-clis/assets/",

@@ -143,7 +143,7 @@ describe('§章节引用', () => {
     const line = '见「可编程 API 面」§3.4 的';
     expect(
       resolveSectionTarget(line, line.indexOf('§'), 'docs', new Map()),
-    ).toBe('packages/sweep-node-modules/docs/designs/api-surface.md');
+    ).toBe('packages/sweep/docs/designs/api-surface.md');
   });
 
   test('同名文档跨包引用优先命中同包而非回退根 docs/', () => {

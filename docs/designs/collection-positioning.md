@@ -29,7 +29,7 @@
 ## 成功标准
 
 - 新 CLI 项目一条指令就能生成, 生成物当场通过全部工程闸门;
-- 现有包 (sweep-node-modules 两包) 的发布链闭环零回退 (验证清单见[重定位执行与验证](collection-relocation.md));
+- 现有双包 (`@iyowei/sweep` / `@iyowei/sweep-cli` 等) 的发布链闭环零回退 (验证清单见[重定位执行与验证](collection-relocation.md));
 - 集合新增包有章可循: 分类、依赖方向、发布开关、工程要求都有明文规定 (见[包分类与发布协议](package-classification.md)与[依赖方向纪律](dependency-direction.md))。
 
 ## 明确不做
@@ -43,3 +43,4 @@
 | 日期       | 修订                                                              |
 | ---------- | ----------------------------------------------------------------- |
 | 2026-09-30 | 初稿: 重定位拍板 (仓库名 `iyowei/clis`)、三层身份、成功标准与边界 |
+| 2026-11-20 | 同步双包命名 (`@iyowei/sweep` / `@iyowei/sweep-cli`)              |

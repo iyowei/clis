@@ -396,7 +396,7 @@ package-lock.json
 *.deleted
 
 
-packages/sweep-node-modules/bench/results/
+packages/sweep/bench/results/
 
 
 scripts/transcription/mutants/gen-*/

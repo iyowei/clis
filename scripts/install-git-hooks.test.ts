@@ -190,7 +190,7 @@ describe.skipIf(!hasGit || isWindows)('install-git-hooks 守卫', () => {
     git(hostRoot, ['init', '--quiet']);
 
     // 宿主仓库树内的包副本, 且不带自己的 .git (tarball 解压 / 导出式 vendor)
-    const pkgRoot = join(hostRoot, 'vendor', 'sweep-node-modules');
+    const pkgRoot = join(hostRoot, 'vendor', 'sweep');
     mkdirSync(pkgRoot, { recursive: true });
     const script = placeScript(pkgRoot);
 
@@ -210,12 +210,7 @@ describe.skipIf(!hasGit || isWindows)('install-git-hooks 守卫', () => {
     mkdirSync(hostRoot, { recursive: true });
     git(hostRoot, ['init', '--quiet']);
 
-    const pkgRoot = join(
-      hostRoot,
-      'node_modules',
-      '@iyowei',
-      'sweep-node-modules',
-    );
+    const pkgRoot = join(hostRoot, 'node_modules', '@iyowei', 'sweep');
     mkdirSync(pkgRoot, { recursive: true });
     const script = placeScript(pkgRoot);
 

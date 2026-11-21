@@ -30,7 +30,7 @@
    - **装钩子**经守卫脚本 `scripts/install-git-hooks.mjs` (prepare 入口): 只在本包自己的 git 仓库根 (当前工作目录所在的 git 根与包根一致) 执行 `lefthook install`, 在 CI 里直接跳过, 装钩子失败不阻断依赖安装。被当依赖装进别的仓库时不往使用方仓库里写钩子: git 依赖的临时克隆态照样装 (落在一次性克隆里, 没有副作用), vendor / 解包进使用方仓库, 或经 `install-links` 落进使用方 `node_modules` 时, 一律跳过; 原形态 (`prepare` 直接 `lefthook install`) 会把钩子写进使用方仓库的 `.git/hooks` (实测见下方「验证方式与关联引用」第 4 条)。
    - **钩子执行**由 `lefthook.yml` 的两个官方配置键兜住: `lefthook: bunx lefthook@2.1.14` 与 `assert_lefthook_installed: true`。理由: 官方 `lefthook install` 生成的钩子模板, 探测顺序是 `LEFTHOOK_BIN` → 本键 (`lefthook:`) → PATH → install 当时的二进制绝对路径 → `node_modules` 扫描 → 各包管理器 / 工具运行器探测, 整条链里都**不含 bunx**; 而且 `assert_lefthook_installed` 默认 false 时, 整条链找不到 lefthook, 只会 echo 一行 `Can't find lefthook in PATH`, 然后以 0 退出。于是「钩子装上了、执行时却找不到 lefthook」= 门禁静默失效, 这正是「装 ≠ 可执行」的验收教训: 只验「装没装上」会漏掉执行链空转, 必须验「没有全局 lefthook 的机器上也能真正跑起来」。配上这两个键之后, 没有全局 lefthook 的机器经 bunx 照样跑; 就算整条链真的都失败, 也会以非零码退出 (响亮), 不再静默放行。
    - **lefthook 不列为依赖**: 它自带 postinstall, 且被包管理器默认信任 (bun 的内置信任名单里就有 lefthook), 以本地路径 / vendor 形态安装时会被装进使用方 `node_modules`, 还会把钩子写进使用方仓库。获取方式改为: 安装期优先用 PATH 上的 `lefthook` (如 `brew install lefthook`), 没有就取 `lefthook.yml` 里 `lefthook:` 配置的值 (安装期与执行期读的是同一行, 版本只有一个来源); 执行期锁定的版本也只在 `lefthook.yml` 这一处, 没有第二份写死的版本号。
-   - **另有登记 (2026-09-27)**: 守卫脚本在 win32 上以 `shell: true` 直接用命令名 (不带路径) 执行 `git` / `lefthook` / `bunx` (Node 在 Windows 上执行 `.cmd` / `.bat` 必须经 shell 解析), 这个解析范围包含当前工作目录 (官方 path 文档: the current directory is always searched before the directories specified in the command path); 而它执行时所在的目录是本包自己或包副本的目录 (属于开发工具链范围), 不在 [ADR 0007](../../packages/sweep-node-modules/docs/adrs/0007-platform-portability.md) 决策第 4 条定下的 EC-08 三个入口解析防御范围之内。
+   - **另有登记 (2026-09-27)**: 守卫脚本在 win32 上以 `shell: true` 直接用命令名 (不带路径) 执行 `git` / `lefthook` / `bunx` (Node 在 Windows 上执行 `.cmd` / `.bat` 必须经 shell 解析), 这个解析范围包含当前工作目录 (官方 path 文档: the current directory is always searched before the directories specified in the command path); 而它执行时所在的目录是本包自己或包副本的目录 (属于开发工具链范围), 不在 [ADR 0007](../../packages/sweep/docs/adrs/0007-platform-portability.md) 决策第 4 条定下的 EC-08 三个入口解析防御范围之内。
 2. **Lint 用 oxlint, 格式用 prettier** (配 `@trivago/prettier-plugin-sort-imports` 的 import 排序); `.oxlintrc.json` 继承我已有项目的严格规则集 (max-depth / max-lines / import 族 / unicorn 族等)。
    > **修订指引 (2026-11-20)**: 随工具链升级至 Bun `1.4.5`, 格式检查与纯类型检查已分别切换为 Bun 原生 `bun fmt` 与 `bun check`, `oxlint`、库包 `.d.ts` 生成用 `typescript` 及 `create-clis` 运行期 `prettier` 保留, 完整边界与理由见 [ADR 0020](0020-bun-native-fmt-and-typecheck.md)。
 3. **分层门禁**: pre-commit 增量 (prettier `--write` 后自动重暂存 + oxlint 只扫暂存文件; type-check 是例外, 不传 `{staged_files}`, 直接全项目跑 `tsc --noEmit`); pre-push 全量只读 (typecheck / test / oxlint / prettier `--check`, 不设 `stage_fixed`)。
@@ -68,5 +68,5 @@
 
 **关联引用**
 
-- 依赖与构建策略见 [ADR 0003](../../packages/sweep-node-modules/docs/adrs/0003-zero-runtime-deps.md)。
+- 依赖与构建策略见 [ADR 0003](../../packages/sweep/docs/adrs/0003-zero-runtime-deps.md)。
 - 门禁的具体操作细节以仓库根的 `lefthook.yml`、`.oxlintrc.json`、`.prettierrc`、`.editorconfig` 为准, 本文不重复。

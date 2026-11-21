@@ -7,7 +7,7 @@
 
 ## 范围
 
-本仓从「sweep-node-modules 单产品仓」改为「`iyowei/clis` 集合仓」。分三阶段, 每阶段独立交付、独立验证。
+本仓从「原单产品仓 (`sweep` 前身)」改为「`iyowei/clis` 集合仓」。分三阶段, 每阶段独立交付、独立验证。
 
 ## 阶段 A: 先行重构 (纯本仓收益, 不涉及改名)
 
@@ -25,10 +25,10 @@
 执行序:
 
 1. 本仓先全绿 (阶段 A 完成标准) 再动改名;
-2. GitHub 端: 仓库改名 `sweep-node-modules` → `clis`;
+2. GitHub 端: 仓库由原单产品名改名为 `clis`;
 3. 仓内同步 (一次性): 根 `package.json` (name 字段与仓库引用), 两包 `package.json` 的 `repository` / `homepage` / `bugs`, 根与两包 README 的徽章与仓库链接, 两个 workflow 内的仓库引用 (如有), issue 模板, `.vscode/launch.json`, `.gitignorerc.json`, git remote; 平台侧设置同步: GitHub 仓库 About (description / topics) 与仓库名强相关, 改名时须一并更新 (2026-10-01 实测遗漏, 已修正为集合仓定位);
 4. npm 侧同步 (仓库外, 必做): 重建两包的 Trusted Publisher 登记 (改名不会自动跟改, 不同步则发布链在 npm 认证处失败, 见上方「依据」段); 自动化入口 `scripts/npm-trust-guard.ts` (`check` 只读对账 / `fix` 自动 revoke + 重建, 需 npm 登录态与交互式终端); CI 侧 Release 的 `release` job (人工批准后) 已挂 `npm-trust` 预检, 改名后的第一次发布在此当场点名 (预检须与发布同 job: 换证核对的 environment 声明来自 job 的 environment, 无 environment 的 job 换证会被 npm 以误导性的 404 拒绝);
-5. 文档自称更新 (docs 里所有「sweep-node-modules」的自称, 都改为「集合仓 + 包」的说法): 允许分批慢慢改, 不阻塞改名 (旧称不算错误, 只是说法过时);
+5. 文档自称更新 (docs 里所有旧单产品自称, 都改为「集合仓 + 包」的说法): 允许分批慢慢改, 不阻塞改名 (旧称不算错误, 只是说法过时);
 6. **生成器包落地** (已落地 2026-10-01): create-clis 的包骨架、快照构建链、档位裁剪、变量与旗标、生成主流程与发行面自证全部就位 (见[生成器包](scaffold-package.md))。
 
 ## 阶段 C: 生成器闭环
@@ -62,3 +62,4 @@
 | 2026-10-01 | 修正「跟仓库名无关」的依据 + 补 npm 侧登记同步与核对      |
 | 2026-10-01 | 阶段 B 第 6 步标完成; 阶段 C 余两项列为待一次性执行       |
 | 2026-10-01 | 阶段 B 执行序补平台侧设置同步 (仓库 About 与仓库名强相关) |
+| 2026-11-20 | 归档文案统一去除旧单产品字面自称                          |

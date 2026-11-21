@@ -59,13 +59,13 @@ describe('extractShellCommands', () => {
     const text = [
       '```shell',
       '# 注释跳过',
-      'sweep-nm --yes',
-      'sweep-nm-rs --target x',
-      'bunx sweep-nm',
+      'sweep --yes',
+      'sweep-rs --target x',
+      'bunx sweep',
       '```',
-      'sweep-nm 块外不算',
+      'sweep 块外不算',
     ].join('\n');
-    expect(extractShellCommands(text)).toEqual(['sweep-nm --yes']);
+    expect(extractShellCommands(text)).toEqual(['sweep --yes']);
   });
 
   test('多命令采集支持 shell / bash 块并精准归属 binName', () => {
@@ -84,18 +84,18 @@ describe('extractShellCommands', () => {
 
 describe('extractCommandTokens', () => {
   test('旗标去 = 值; 仅首个纯标识符位置参数当子命令; 路径/文件不误判为子命令', () => {
-    expect(extractCommandTokens('sweep-nm --yes --force')).toEqual([
+    expect(extractCommandTokens('sweep --yes --force')).toEqual([
       '--yes',
       '--force',
     ]);
     expect(
-      extractCommandTokens('sweep-nm --exclude my-kits --exclude url'),
+      extractCommandTokens('sweep --exclude my-kits --exclude url'),
     ).toEqual(['--exclude']);
-    expect(extractCommandTokens('sweep-nm config')).toEqual(['config']);
+    expect(extractCommandTokens('sweep config')).toEqual(['config']);
     expect(extractCommandTokens('extra ./deploy.json --dry-run')).toEqual([
       '--dry-run',
     ]);
-    expect(extractCommandTokens('sweep-nm')).toEqual([]);
+    expect(extractCommandTokens('sweep')).toEqual([]);
   });
 });
 
@@ -135,12 +135,12 @@ describe('checkCliExamples 集成', () => {
   test('多 CLI 并存时各自按 --help 核对旗标, 缺旗标精准报出', () => {
     const root = makeRoot({
       'package.json': JSON.stringify({ workspaces: ['packages/*'] }),
-      'packages/sweep-node-modules-cli/package.json': JSON.stringify({
-        name: '@iyowei/sweep-node-modules-cli',
-        bin: { 'sweep-nm': 'bin/sweep-nm.mjs' },
+      'packages/sweep-cli/package.json': JSON.stringify({
+        name: '@iyowei/sweep-cli',
+        bin: { sweep: 'bin/sweep.mjs' },
       }),
-      'packages/sweep-node-modules-cli/src/cli.ts':
-        "console.log(['sweep-nm --yes  执行删除', 'sweep-nm config  查看配置'].join('\\n'));\n",
+      'packages/sweep-cli/src/cli.ts':
+        "console.log(['sweep --yes  执行删除', 'sweep config  查看配置'].join('\\n'));\n",
       'packages/extra-cli/package.json': JSON.stringify({
         name: '@acme/extra-cli',
         bin: { extra: 'bin/extra.mjs' },
@@ -149,9 +149,9 @@ describe('checkCliExamples 集成', () => {
         "console.log(['extra --dry-run  干跑', 'extra init  初始化'].join('\\n'));\n",
       'README.md': [
         '```shell',
-        'sweep-nm --yes',
-        'sweep-nm --nope',
-        'sweep-nm config',
+        'sweep --yes',
+        'sweep --nope',
+        'sweep config',
         'extra init',
         'extra --bogus',
         '```',

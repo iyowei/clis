@@ -10,8 +10,8 @@ A collection of command-line tools for my day-to-day development, managed as a m
 ## Packages
 
 - **`create-clis`**: the collection's scaffolding generator, turning this repo's skeleton snapshot into a standalone clis collection repository with capability tiers, generic vocabulary, and a green CI out of the box; usage is documented in its [README](packages/create-clis/README.md).
-- **`@iyowei/sweep-node-modules-cli`**: the `sweep-nm` command-line tool, a workspace-level cleaner that scans multiple root directories in one pass, lists every `node_modules` with its size, and bulk-deletes them after confirmation; installation, usage, configuration, and safety guardrails live in its [README](packages/sweep-node-modules-cli/README.md).
-- **`@iyowei/sweep-node-modules`**: the programmable API package behind `sweep-nm`, for scanning, measuring, and safely removing `node_modules` from your own programs or scripts; usage is documented in its [README](packages/sweep-node-modules/README.md).
+- **`@iyowei/sweep-cli`** _(pre-release, `private: true`)_: the `sweep` command-line tool, a general multi-toolchain workspace cleaner covering 6 built-in anchored presets (`node` / `rust` / `python` / `java` / `cpp` / `os-junk`) and custom `rules`, with zero-dependency cross-platform `trash`, v2 configuration (`SWEEP_CONFIG`, default `~/.config/sweep/config.json`), and automatic `init` / `migrate`; installation, usage, configuration, and safety guardrails live in its [README](packages/sweep-cli/README.md).
+- **`@iyowei/sweep`** _(pre-release, `private: true`)_: the programmable API package behind `sweep`, for scanning, measuring, trashing, and safely removing workspace artifacts across multiple toolchains from your own programs or scripts; usage is documented in its [README](packages/sweep/README.md).
 - **`@iyowei/codd-cli`**: the `codd` command-line tool, a template-driven MongoDB 9.0 provisioning generator for Podman (Linux & macOS) and Kubernetes (Helm) with an interactive terminal wizard and collision-free deployment bundles; usage is documented in its [README](packages/codd-cli/README.md).
 - **`@iyowei/codd`**: the programmable API and template asset package behind `codd`, exposing hardware sizing formulas, manifest validation, state management, and bundle generation for programmatic integration; usage is documented in its [README](packages/codd/README.md).
 - **`@iyowei/cli-updater`** _(private shared library)_: zero-dependency cross-package-manager self-update engine (`bun` / `npm` / `pnpm` / `yarn` / `volta`) bundled into every CLI's `update` subcommand.
@@ -20,5 +20,5 @@ A collection of command-line tools for my day-to-day development, managed as a m
 
 - [Engineering documentation index](docs/README.md): repository-level governance, scaffolding design, repo ADRs, and links to every package's docs;
 - [Development guide](docs/development.md): environment setup, common commands, dual-runtime verification, release chain, and commit hooks;
-- [sweep-node-modules docs](packages/sweep-node-modules/docs/README.md): API surface, product designs, safety guardrails, transcription conformance kit, and product ADRs;
+- [sweep docs](packages/sweep/docs/README.md): API surface, product designs, safety guardrails, transcription conformance kit, and product ADRs;
 - [codd docs](packages/codd/docs/README.md): hardware sizing formulas, Podman & Kubernetes runbooks, visual board (`BOARD.html`), and product ADRs.

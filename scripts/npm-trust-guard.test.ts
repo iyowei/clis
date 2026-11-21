@@ -48,7 +48,7 @@ describe('parseTrustListOutput', () => {
       `type: ${green('github')}`,
       `id: ${green('625b8bc6-f738-4aac-9a92-70ba2f01ce80')}`,
       `file: ${green('release.yml')}`,
-      `repository: ${green('iyowei/sweep-node-modules')}`,
+      `repository: ${green('iyowei/clis')}`,
       `environment: ${green('release')}`,
       'permissions: publish, stage publish',
     ].join('\n');
@@ -56,7 +56,7 @@ describe('parseTrustListOutput', () => {
       type: 'github',
       id: '625b8bc6-f738-4aac-9a92-70ba2f01ce80',
       file: 'release.yml',
-      repository: 'iyowei/sweep-node-modules',
+      repository: 'iyowei/clis',
       environment: 'release',
     });
   });

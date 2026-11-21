@@ -20,8 +20,8 @@ Look for issues labeled `good first issue` to get started.
 The repository is a monorepo whose packages live under `packages/`:
 
 - `packages/create-clis`: the collection scaffolding generator, published as `create-clis`.
-- `packages/sweep-node-modules-cli`: the `sweep-nm` CLI, published as `@iyowei/sweep-node-modules-cli`.
-- `packages/sweep-node-modules`: the programmable API behind `sweep-nm`, published as `@iyowei/sweep-node-modules`.
+- `packages/sweep-cli`: the `sweep` multi-toolchain workspace cleaner CLI (`@iyowei/sweep-cli`, pre-release `private: true`).
+- `packages/sweep`: the programmable API behind `sweep` (`@iyowei/sweep`, pre-release `private: true`).
 - `packages/codd-cli`: the `codd` MongoDB 9.0 provisioning CLI (`@iyowei/codd-cli`, pre-release `private: true`).
 - `packages/codd`: the programmable API and template asset package behind `codd` (`@iyowei/codd`, pre-release `private: true`).
 - `packages/cli-updater`: zero-dependency cross-package-manager self-update engine bundled into every CLI's `update` subcommand (`@iyowei/cli-updater`, internal shared library, `private: true`).
@@ -80,20 +80,20 @@ Behavior must be identical on bun and node; a change that works on only one of t
 
 ```shell
 # Conformance on the bun runtime
-bun run conformance -- --target "bun packages/sweep-node-modules-cli/src/cli.ts"
+bun run conformance -- --target "bun packages/sweep-cli/src/cli.ts"
 
 # Conformance on the node runtime
-bun run conformance -- --target "node packages/sweep-node-modules-cli/src/cli.ts"
+bun run conformance -- --target "node packages/sweep-cli/src/cli.ts"
 ```
 
 To try the CLI itself while working on it, run it straight from source with either runtime:
 
 ```shell
 # Run the CLI from source on bun
-bun packages/sweep-node-modules-cli/src/cli.ts
+bun packages/sweep-cli/src/cli.ts
 
 # Run the same file on node
-node packages/sweep-node-modules-cli/src/cli.ts
+node packages/sweep-cli/src/cli.ts
 ```
 
 ## Commits
