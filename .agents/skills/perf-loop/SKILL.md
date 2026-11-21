@@ -56,7 +56,7 @@ bun .agents/skills/perf-loop/scripts/loop.ts prepare --pkg <pkg> --suite quick
 
 1. **入口严防死守, 内核极致裸奔**: 参数校验与边界防护收拢在公开 API 入口一次做完; 热路径内部信任已建立的不变量, 砍掉重复的 `existsSync`/`typeof`/防御性拷贝与小对象分配;
 2. 单次只验证一个正交假设; 严禁改动 `bench/`; 如架构级重构确须双包协同 (例如 API 主包与 CLI 薄壳联动), 评估时须显式传 `--allow-cross-pkg`;
-3. 严守仓内静态与运行时契约: [.oxlintrc.json](../../../.oxlintrc.json) (`no-bitwise`, `no-plusplus`, `max-depth <= 4`, `max-lines <= 450`), `tsconfig.json` (`erasableSyntaxOnly`, `strict`) 与目标包零依赖约束 (如 [0003-zero-runtime-deps.md](../../../packages/sweep-node-modules/docs/adrs/0003-zero-runtime-deps.md))。
+3. 严守仓内静态与运行时契约: [.oxlintrc.json](../../../.oxlintrc.json) (`no-bitwise`, `no-plusplus`, `max-depth <= 4`, `max-lines <= 450`), `tsconfig.json` (`erasableSyntaxOnly`, `strict`) 与目标包零依赖约束 (如 [0003-zero-runtime-deps.md](../../../packages/sweep/docs/adrs/0003-zero-runtime-deps.md))。
 
 ### 第 3 步: 确定性裁定与自动留退 (`evaluate`)
 

@@ -18,7 +18,7 @@ bun .agents/skills/perf-loop/scripts/loop.ts init-bench --pkg <pkg>
    - 仅用于横向对比的历史实现或兜底对照组标 `role: 'reference'` (参与一致性校验但不稀释主路径得分)。
 3. **必须产出确定性 `digest`**: 把业务输出摘要 (长度、条数、或相对路径/结果拼接的 SHA-256 前 16 位) 填入 `digest`, 防死代码消除并守住语义底线。注意路径类输出一律转相对路径, 避免临时目录前缀随机导致 `digest` 假不一致。
 4. **分档控制耗时 (`--quick` vs `--full`)**: `--quick` 用纯粹合成或隔离临时负载且控制在 `0.3s ~ 3s` 内 (`iterations >= 5`), `--full` 可含长跑压测。
-5. **兼容 Bun 与 Node 双运行时**: 禁止使用 `import.meta.dir` 等单端属性, 统一使用 `dirname(fileURLToPath(import.meta.url))` 与 `node:*` 模块, 并遵守 [0003-zero-runtime-deps.md](../../../../packages/sweep-node-modules/docs/adrs/0003-zero-runtime-deps.md) 与 [.oxlintrc.json](../../../../.oxlintrc.json)。
+5. **兼容 Bun 与 Node 双运行时**: 禁止使用 `import.meta.dir` 等单端属性, 统一使用 `dirname(fileURLToPath(import.meta.url))` 与 `node:*` 模块, 并遵守 [0003-zero-runtime-deps.md](../../../../packages/sweep/docs/adrs/0003-zero-runtime-deps.md) 与 [.oxlintrc.json](../../../../.oxlintrc.json)。
 6. **基准落定双端自证**: 完成后必须依次通过以下全部命令方可冻结 `bench/`:
    - `bun check`
    - `bun x --no-install oxlint packages/<pkg>/bench`

@@ -279,14 +279,9 @@ export function countCommon(a: number[], b: number[]): number {
       expect(digest.targetHotFunctions[0]).toContain('walkParallel');
 
       const repoRoot = join(import.meta.dir, '..', '..', '..', '..');
-      const hints = collectDocHints(
-        repoRoot,
-        'packages/sweep-node-modules-cli',
-      );
-      expect(Number(hints.nextGlobalAdrNumber)).toBeGreaterThanOrEqual(21);
-      expect(hints.pkgDesignsDir).toBe(
-        'packages/sweep-node-modules/docs/designs',
-      );
+      const hints = collectDocHints(repoRoot, 'packages/sweep-cli');
+      expect(Number(hints.nextGlobalAdrNumber)).toBeGreaterThanOrEqual(25);
+      expect(hints.pkgDesignsDir).toBe('packages/sweep/docs/designs');
       expect(hints.existingDesigns).toContain('scan-and-size.md');
     } finally {
       rmSync(dir, { recursive: true, force: true });
