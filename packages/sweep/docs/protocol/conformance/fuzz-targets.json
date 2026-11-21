@@ -76,6 +76,34 @@
       "generator": "classify-target",
       "invariants": ["no-crash"],
       "description": "node 预设删除侧语义闸 (BC-37): 跨 posix/win32 判定疑似安装树与项目依赖"
+    },
+    {
+      "id": "matches-any-rule-leaf",
+      "export": "matchesAnyRuleLeaf",
+      "generator": "rule-leaf-match",
+      "invariants": ["no-crash"],
+      "description": "自定义规则通配编译与叶名匹配 (BC-47): * / ? / 正则元字符转义精确匹配"
+    },
+    {
+      "id": "is-older-than-days",
+      "export": "isOlderThanDays",
+      "generator": "older-than-days",
+      "invariants": ["no-crash"],
+      "description": "自定义规则年龄阈值判定 (BC-47): 未来时间戳与整日毫秒临界边界"
+    },
+    {
+      "id": "has-safe-target-leaf",
+      "export": "hasSafeTargetLeaf",
+      "generator": "safe-target-leaf",
+      "invariants": ["no-crash"],
+      "description": "删除安全闸泛化末段名守卫 (BC-21): 拦截尾斜杠 / . / .. / .git / *"
+    },
+    {
+      "id": "inside-any-root",
+      "export": "insideAnyRoot",
+      "generator": "inside-any-root",
+      "invariants": ["no-crash"],
+      "description": "删除安全闸根包含判定 (BC-21): relative 语义防兄弟前缀误放行与 .. 逃逸"
     }
   ]
 }
