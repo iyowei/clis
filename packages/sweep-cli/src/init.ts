@@ -355,14 +355,15 @@ export async function runInit(deps: InitDeps): Promise<InitResult> {
 
     io.print(neutralLine('首次使用, 先确定扫描范围与清理预设', color));
 
+    const defaultRoot = createDefaultConfig({ homedir: home }).roots[0] ?? home;
     let roots: string[] = [];
     for (;;) {
       const rootsAnswer = await io.ask(
         '扫描根 (逗号或空白分隔多个)',
-        `默认: ${sanitizeLine(shortenHome(home, home))}`,
+        `默认: ${sanitizeLine(shortenHome(defaultRoot, home))}`,
       );
       if (rootsAnswer === null) return cancelled();
-      roots = parsePathList(rootsAnswer, [home], home);
+      roots = parsePathList(rootsAnswer, [defaultRoot], home);
 
       const { missing, notDir, symlinked } = await checkRoots(roots, deps);
       if (missing.length === 0 && notDir.length === 0 && symlinked.length === 0)
