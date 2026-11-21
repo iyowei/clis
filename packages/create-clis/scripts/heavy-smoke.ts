@@ -4,7 +4,8 @@
  * 2) 在完全脱离本仓库 node_modules 继承链的独立临时目录执行 `npm install --omit=dev <tgz>`;
  * 3) 从隔离目录的 `node_modules/.bin/create-clis` (Windows 经装好的 `bin/create-clis.mjs`) 启动:
  *    - 场景 A: 生成默认 `standard` 档项目 → 依赖安装 → 跑通生成物完整 `bun run ci`;
- *    - 场景 B: 生成 `core` 档 + `--scope @smoke` 项目 → 验收裁剪结构、scoped 坐标与中性构建脚本。
+ *    - 场景 B: 生成 `core` 档 + `--scope @smoke` 项目 → 验收裁剪结构、scoped 坐标与中性构建脚本;
+ *    - 场景 C: 生成 `full` 档项目 → 依赖安装 → 跑通生成物完整 `bun run ci` (含双运行时 conformance / fuzz / lint:mutants) 与 `bun run fuzz:diff`。
  *
  * 不可变原则: 本脚本位于 prepublishOnly 的 verify:release 之后, 严禁覆写包内 assets/ 与 dist/,
  * 只读取并验证即将随包发出的同一份 tarball 及其完整运行时依赖闭包 (含 --external prettier)。
@@ -13,7 +14,6 @@ import { spawnSync } from 'node:child_process';
 import {
   existsSync,
   mkdirSync,
-  readFileSync,
   readdirSync,
   rmSync,
   statSync,
@@ -28,9 +28,16 @@ import {
   DEFAULT_TEMPLATE_DIR,
   PACKAGE_ROOT,
 } from './build-template.ts';
+import {
+  verifyCarrierRestored,
+  verifyConformancePruned,
+  verifyCoreScopedProject,
+  verifyGeneratedCliVersion,
+} from './heavy-smoke-verify.ts';
 
 const PROJECT_NAME = 'clis-smoke';
 const CORE_PROJECT_NAME = 'clis-core-smoke';
+const FULL_PROJECT_NAME = 'clis-full-smoke';
 const CORE_SCOPE = '@smoke';
 const PACK_TIMEOUT_MS = 3 * 60 * 1000;
 const INSTALL_TIMEOUT_MS = 10 * 60 * 1000;
@@ -193,166 +200,30 @@ const installIsolatedPackage = (
   return { command: binPath, prefixArgs: [] };
 };
 
-/** 验收载体还原 (.gitignore / .npmrc 存在且载体名消失) */
-const verifyCarrierRestored = (target: string): boolean => {
-  for (const real of ['.gitignore', '.npmrc']) {
-    if (!existsSync(join(target, real))) {
-      process.stderr.write(
-        `heavy-smoke: 生成物缺 ${real} (载体还原步骤回归? 见 generate.ts 的 restoreCarrierNames)\n`,
-      );
-      return false;
-    }
-  }
-  for (const carrier of ['_gitignore', '_npmrc']) {
-    if (existsSync(join(target, carrier))) {
-      process.stderr.write(`heavy-smoke: 生成物残留载体文件 ${carrier}\n`);
-      return false;
-    }
-  }
-  return true;
-};
-
-/** 验收裁剪档 (standard / core) 的 ci.ts 已摘除 --conformance 入口 (防仅跑 build 却假绿) */
-const verifyConformancePruned = (
+/** 经隔离入口生成指定档位示例项目 (复用于 standard / core / full 三场景) */
+const runGenerate = (
+  cli: { command: string; prefixArgs: string[] },
+  workDir: string,
   target: string,
-  tierLabel: string,
-  extraForbidden: readonly string[] = [],
+  opts: { name: string; tier: string; scope?: string; noInstall?: boolean },
 ): boolean => {
-  const help = spawnSync('bun', ['scripts/ci.ts', '--help'], {
-    cwd: target,
-    encoding: 'utf8',
-  });
-  if (help.status !== 0) {
-    process.stderr.write(
-      `heavy-smoke: ${tierLabel} 档 scripts/ci.ts --help 失败: ${help.stderr ?? ''}\n`,
-    );
-    return false;
-  }
-  for (const forbidden of [
-    '--conformance',
-    'lint:coverage',
-    'conformance:bun',
-    'conformance:node',
-    ...extraForbidden,
-  ]) {
-    if ((help.stdout ?? '').includes(forbidden)) {
-      process.stderr.write(
-        `heavy-smoke: ${tierLabel} 档 ci --help 仍残留已摘除项 ${forbidden}\n`,
-      );
-      return false;
-    }
-  }
-  const conf = spawnSync('bun', ['scripts/ci.ts', '--conformance'], {
-    cwd: target,
-    encoding: 'utf8',
-  });
-  if (conf.status !== 2) {
-    process.stderr.write(
-      `heavy-smoke: ${tierLabel} 档 scripts/ci.ts --conformance 应以退出码 2 拒绝, 实得 ${String(conf.status)}\n`,
-    );
-    return false;
-  }
-  return true;
-};
-
-/** 验收生成物示例 CLI 打包产物在 bun / node 下均支持 --version 与 -V */
-const verifyGeneratedCliVersion = (target: string): boolean => {
-  const binEntry = join(
+  const args = [
+    ...cli.prefixArgs,
     target,
-    'packages',
-    `${PROJECT_NAME}-cli`,
-    'bin',
-    `${PROJECT_NAME}.mjs`,
-  );
-  for (const runtime of ['bun', 'node']) {
-    for (const flag of ['--version', '-V']) {
-      const res = spawnSync(runtime, [binEntry, flag], {
-        cwd: target,
-        encoding: 'utf8',
-      });
-      if (res.status !== 0 || (res.stdout ?? '').trim() !== '0.0.0') {
-        process.stderr.write(
-          `heavy-smoke: 生成物 CLI (${runtime} ${flag}) 版本断言失败: status=${String(res.status)} stdout=${JSON.stringify(res.stdout)} stderr=${JSON.stringify(res.stderr)}\n`,
-        );
-        return false;
-      }
-    }
-  }
-  return true;
-};
-
-/** 验收 core 档 + --scope 生成物结构与中性构建脚本 */
-const verifyCoreScopedProject = (target: string): boolean => {
-  if (!verifyCarrierRestored(target)) return false;
-
-  for (const removed of [
-    'scripts/transcription',
-    'docs/designs/tech-debt.md',
-    'scripts/lint-dependency-direction.ts',
-  ]) {
-    if (existsSync(join(target, removed))) {
-      process.stderr.write(
-        `heavy-smoke: core 档不应保留 ${removed} (档位裁剪回归)\n`,
-      );
-      return false;
-    }
-  }
-
-  const apiPkgPath = join(
-    target,
-    'packages',
-    CORE_PROJECT_NAME,
-    'package.json',
-  );
-  const cliPkgPath = join(
-    target,
-    'packages',
-    `${CORE_PROJECT_NAME}-cli`,
-    'package.json',
-  );
-  const apiPkg = JSON.parse(readFileSync(apiPkgPath, 'utf8')) as {
-    name?: string;
-  };
-  const cliPkg = JSON.parse(readFileSync(cliPkgPath, 'utf8')) as {
-    name?: string;
-    dependencies?: Record<string, string>;
-    devDependencies?: Record<string, string>;
-  };
-  const expectedApi = `${CORE_SCOPE}/${CORE_PROJECT_NAME}`;
-  const expectedCli = `${CORE_SCOPE}/${CORE_PROJECT_NAME}-cli`;
-  if (apiPkg.name !== expectedApi || cliPkg.name !== expectedCli) {
-    process.stderr.write(
-      `heavy-smoke: core+scope 包名不符 (期望 ${expectedApi} / ${expectedCli}, 实得 ${String(apiPkg.name)} / ${String(cliPkg.name)})\n`,
-    );
-    return false;
-  }
-  const hasApiDep =
-    cliPkg.dependencies?.[expectedApi] !== undefined ||
-    cliPkg.devDependencies?.[expectedApi] !== undefined;
-  if (!hasApiDep) {
-    process.stderr.write(
-      `heavy-smoke: core+scope CLI 包未声明对 ${expectedApi} 的包依赖\n`,
-    );
-    return false;
-  }
-
-  const buildScript = readFileSync(
-    join(target, 'packages', CORE_PROJECT_NAME, 'scripts', 'build.ts'),
-    'utf8',
-  );
-  if (
-    !buildScript.includes(
-      'const INTERNAL_DTS_FILES: readonly string[] = [];',
-    ) ||
-    !buildScript.includes("'--no-install'")
-  ) {
-    process.stderr.write(
-      'heavy-smoke: 生成物 API 包 scripts/build.ts 未保持干净中性骨架\n',
-    );
-    return false;
-  }
-
-  return verifyConformancePruned(target, 'core', ['lint:deps']);
+    '--name',
+    opts.name,
+    ...(opts.scope === undefined ? [] : ['--scope', opts.scope]),
+    '--owner',
+    'clis-smoke',
+    '--repo',
+    `https://github.com/clis-smoke/${opts.name}`,
+    '--tier',
+    opts.tier,
+    '--yes',
+    '--no-git',
+    ...(opts.noInstall === true ? ['--no-install'] : []),
+  ];
+  return run(cli.command, args, workDir, GENERATE_TIMEOUT_MS);
 };
 
 const main = (): number => {
@@ -378,6 +249,7 @@ const main = (): number => {
   const cacheDir = join(workDir, 'npm-cache');
   const target = join(workDir, PROJECT_NAME);
   const coreTarget = join(workDir, CORE_PROJECT_NAME);
+  const fullTarget = join(workDir, FULL_PROJECT_NAME);
 
   // 2. 打包 tarball 并在独立隔离目录装包 (--omit=dev), 真实验收外部依赖闭包
   process.stdout.write(
@@ -392,26 +264,11 @@ const main = (): number => {
   process.stdout.write(
     `\n=== heavy-smoke: 隔离入口生成 ${PROJECT_NAME} (standard 默认档) → ${target} ===\n`,
   );
-  const generated = run(
-    cli.command,
-    [
-      ...cli.prefixArgs,
-      target,
-      '--name',
-      PROJECT_NAME,
-      '--owner',
-      'clis-smoke',
-      '--repo',
-      `https://github.com/clis-smoke/${PROJECT_NAME}`,
-      '--tier',
-      'standard',
-      '--yes',
-      '--no-git',
-    ],
-    workDir,
-    GENERATE_TIMEOUT_MS,
-  );
-  if (!generated) return fail(workDir, 'standard 档生成步 (含依赖安装)');
+  if (
+    !runGenerate(cli, workDir, target, { name: PROJECT_NAME, tier: 'standard' })
+  ) {
+    return fail(workDir, 'standard 档生成步 (含依赖安装)');
+  }
 
   // 4. 载体还原与启动器执行位断言
   if (!verifyCarrierRestored(target)) {
@@ -445,7 +302,7 @@ const main = (): number => {
   if (!run('bun', ['run', 'ci'], target, CI_TIMEOUT_MS)) {
     return fail(workDir, '生成物 ci 步');
   }
-  if (!verifyGeneratedCliVersion(target)) {
+  if (!verifyGeneratedCliVersion(target, PROJECT_NAME)) {
     return fail(workDir, '生成物 CLI --version / -V 双运行时断言');
   }
 
@@ -453,36 +310,46 @@ const main = (): number => {
   process.stdout.write(
     `\n=== heavy-smoke: 隔离入口生成 ${CORE_PROJECT_NAME} (core 档 + ${CORE_SCOPE}) → ${coreTarget} ===\n`,
   );
-  const coreGenerated = run(
-    cli.command,
-    [
-      ...cli.prefixArgs,
-      coreTarget,
-      '--name',
-      CORE_PROJECT_NAME,
-      '--scope',
-      CORE_SCOPE,
-      '--owner',
-      'clis-smoke',
-      '--repo',
-      `https://github.com/clis-smoke/${CORE_PROJECT_NAME}`,
-      '--tier',
-      'core',
-      '--yes',
-      '--no-git',
-      '--no-install',
-    ],
-    workDir,
-    GENERATE_TIMEOUT_MS,
-  );
-  if (!coreGenerated) return fail(workDir, 'core+scope 生成步');
-  if (!verifyCoreScopedProject(coreTarget)) {
+  if (
+    !runGenerate(cli, workDir, coreTarget, {
+      name: CORE_PROJECT_NAME,
+      tier: 'core',
+      scope: CORE_SCOPE,
+      noInstall: true,
+    })
+  ) {
+    return fail(workDir, 'core+scope 生成步');
+  }
+  if (!verifyCoreScopedProject(coreTarget, CORE_PROJECT_NAME, CORE_SCOPE)) {
     return fail(workDir, 'core+scope 结构断言');
+  }
+
+  // 7. 场景 C: 经隔离入口生成 full 档项目 (含依赖安装) → 跑通生成物完整 ci 与 fuzz:diff
+  process.stdout.write(
+    `\n=== heavy-smoke: 隔离入口生成 ${FULL_PROJECT_NAME} (full 增强档) → ${fullTarget} ===\n`,
+  );
+  if (
+    !runGenerate(cli, workDir, fullTarget, {
+      name: FULL_PROJECT_NAME,
+      tier: 'full',
+    })
+  ) {
+    return fail(workDir, 'full 档生成步 (含依赖安装)');
+  }
+  if (!verifyCarrierRestored(fullTarget)) {
+    return fail(workDir, 'full 档载体还原断言');
+  }
+  process.stdout.write('\n=== heavy-smoke: full 档生成物 bun run ci ===\n');
+  if (!run('bun', ['run', 'ci'], fullTarget, CI_TIMEOUT_MS)) {
+    return fail(workDir, 'full 档生成物 ci 步');
+  }
+  if (!run('bun', ['run', 'fuzz:diff'], fullTarget, CI_TIMEOUT_MS)) {
+    return fail(workDir, 'full 档生成物 fuzz:diff 步');
   }
 
   rmSync(workDir, { recursive: true, force: true });
   process.stdout.write(
-    `\n重量级冒烟通过 ✓ (隔离装包 + ${PROJECT_NAME} standard 档 bun run ci 全绿 + ${CORE_PROJECT_NAME} core+scope 结构校验通过; 临时现场已清理)\n`,
+    `\n重量级冒烟通过 ✓ (隔离装包 + standard / full 档 bun run ci 全绿 + core+scope 校验通过; 临时现场已清理)\n`,
   );
   return 0;
 };
