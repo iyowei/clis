@@ -13,6 +13,7 @@
 | 2026-11-19 | 补记: 迁入 `clis` 集合仓, 统一命令为 `codd`                     |
 
 > **多节点生成器保障**: 3 台独立服务器共用同一套 [`packages/codd/template/podman/`](../../template/podman) 编排源码。在开发机用 `mode: "replica-set"` 运行 `codd` 后, `dist/` 下直接生成 3 个带唯一指纹的独立目录 (`...-node1/`、`...-node2/`、`...-node3/`), 自动共享 `FINGERPRINT`、`756B` `MONGO_KEYFILE`、对称 `RS_PEER_1/2` 与全量 `RS_MEMBERS`。若只有 1 台服务器, 请改用 [Podman 单副本装配手册](podman-single.md) 通过 `apps[]` 多库隔离 (见 [ADR 0017](../adrs/0017-single-replica-set-multi-db-isolation.md))。
+> **生产节点建议**: 3 节点跨机集群建议全部选用 Linux 主机; macOS 上 Podman VM 依赖 `gvproxy` 在宿主机转发端口, 直接绑定 WireGuard 等非默认接口 IP 易触发 `cannot assign requested address`。
 
 ## 一、[3 台目标服务器] 前置网络与防火墙要求
 
@@ -107,7 +108,7 @@ podman exec "$C" mongosh "$URI" --quiet --eval '
 '
 ```
 
-- **业务高可用连接串** (写全 3 节点且**禁止**附带 `directConnection=true`):
+- **业务高可用连接串** (写全 3 节点且**禁止**附带 `directConnection=true`; 若成员地址为 `node1`/`node2`/`node3` 短名, 须确保业务端与各宿主机 `/etc/hosts` 或内网 DNS 可解析到对应私网 IP):
 
   ```text
   mongodb://<USER>:<PWD>@node1:27117,node2:27117,node3:27117/<DB>?replicaSet=rs0&authSource=<DB>

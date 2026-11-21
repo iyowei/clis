@@ -69,19 +69,20 @@ Compose 里的 `MEMORY_LIMIT`、`CPU_LIMIT` 都是上限而不是预分配。出
 | 慢查询变多        | `make logs` 中超过 `100ms` 的慢操作日志持续出现                                            | 先排查缺失索引; 索引充足仍慢再升配 CPU / 内存            |
 | 内存长期贴上限    | `make stats` 内存占用长期超过 `MEMORY_LIMIT` 的 `80%`                                      | 上调 `hardware.memoryGb` 后重跑 `make up`                |
 
-### 升级版本与存储扩容
+### 升级版本、存储扩容与宿主机核验
 
 - **升级 MongoDB 版本**: 调整 `imageTag` 并 `rsync` 到目标机后执行 `make up && make tools-rebuild` (强制 `--no-cache` 无缓存重建工具镜像, 避免命中旧层缓存)。
-- **macOS Podman 虚拟机扩盘** (只可调大不可缩小):
+- **Linux 生产存储与守护进程核对**: 官方推荐数据卷挂载于 **XFS + `noatime`** 文件系统并将底层块设备预读 (`blockdev --setra`) 调为 `8~32`; 若使用 RHEL / Rocky / Alma 等发行版, 需核查 `tuned` 服务不会在开机后覆盖 `make tune-host` 写入的 THP 与 `vm.swappiness=1`。
+- **macOS Podman 虚拟机扩盘与调大内存** (需保证 VM 物理内存大于容器 `MEMORY_LIMIT`, 防止整个 VM 内核 OOM):
 
   ```shell
-  podman machine stop && podman machine set --disk-size 64 && podman machine start
-  podman machine ssh "df -h"
+  podman machine stop && podman machine set --memory 10240 --disk-size 64 && podman machine start
+  podman machine ssh "free -m && df -h"
   ```
 
 ## 四、备份策略、零污染沙箱演练与真实恢复
 
-- **从节点优先热备 (`make backup`)**: 使用仅有 `admin.backup` 只读权限的专用账号, 多节点副本集下自动路由至 `SECONDARY` 从节点读取 (`secondaryPreferred`), 并按核数动态设置 `--numParallelCollections`。
+- **从节点优先热备与一致性边界 (`make backup`)**: 使用仅有 `admin.backup` 只读权限的专用账号, 多节点副本集下自动路由至 `SECONDARY` 从节点读取 (`secondaryPreferred`), 并按核数动态设置 `--numParallelCollections`。注意单库隔离归档按库调用 `mongodump --db=<db>` (MongoDB 限制 `--oplog` 不能与 `--db` 联用), 高频写入下多集合或跨库不构成严格同瞬时间点快照; 若业务要求全实例跨库严格时间点快照, 请改用全实例 `mongodump --oplog` 或 LVM/ZFS/云盘快照。
 - **零污染隔离演练 (`make drill`)**: 在 `mongo-tools` 临时容器内创建 `0700` 私有目录, 通过 Unix Domain Socket (`--bind_ip <sockPath>`, 零 TCP 端口占用与暴露, `0.25GB` 缓存上限) 拉起独立沙箱 `mongod` 导入备份归档, 再通过只读 `backup` 账号对比线上各实体集合索引数量, 对线上生产库写入量为 0。
 - **按库独立留存**: 每库每日保留 `KEEP_DAILY=7` 份; 周日额外通过硬链接 (不支持时自动拷贝) 留存进 `BACKUP_DIR/weekly/` 每库保留 `KEEP_WEEKLY=4` 份。
 

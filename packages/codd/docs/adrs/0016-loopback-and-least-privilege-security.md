@@ -25,7 +25,7 @@
 1. **默认非标准端口 `27117` 且单机默认绑定 `127.0.0.1`**: [podman-compose.yml.tmpl](../../template/podman/podman-compose.yml.tmpl) 默认映射 `${MONGO_BIND_IP:-127.0.0.1}:${MONGO_HOST_PORT:-27117}:${MONGO_PORT:-27117}`; 远程图形工具优先使用 MongoDB Compass 内置 SSH 隧道, 仅家庭 NAT 内网或已配云安全组白名单时按需改填 `0.0.0.0` 或私网 IP。
 2. **运行时落盘 `keyfile` 与 `.codd-state/` 自动隔离**: 密钥由容器入口或生成器动态注入, 绝不入库; [state.ts](../../src/state.ts) 在创建 `.codd-state/` 时自动收紧 `0700` 权限并写入内建 `.gitignore` (`*`), 防止在任何外部仓库调用 `codd` 时误提交明文口令。
 3. **三账号最小权限与字母数字口令**: [init.js](../../template/podman/init.js) 严格划分业务账号 (单库 `readWrite`)、备份账号 (`admin` 只读 `backup`) 与 `root`; 工具凭据仅写入容器内 `0600` 临时文件并在 `finally` 销毁。
-4. **归档完整性校验与禁删卷防呆**: [backup.ts](../../template/podman/backup.ts) 强制验证归档 `>=100B` 且通过完整 `gzip` 流校验; [Makefile.tmpl](../../template/podman/Makefile.tmpl) 不提供删卷快捷目标。
+4. **归档完整性校验与禁删卷防呆**: [backup.ts](../../template/podman/backup.ts) 拒绝 `0` 字节空文件并对归档执行完整 `verifyGzip` 解压校验; [Makefile.tmpl](../../template/podman/Makefile.tmpl) 不提供删卷快捷目标。
 
 理由: 把默认配置收紧在最小攻击面上, 让任何误提交、越权访问与误删数据卷都在物理机制层被挡下。
 
@@ -37,7 +37,7 @@
 
 **代价**
 
-- 全新空库 (`0` 个集合) 因归档小于 `100B` 安全阈值会触发保护性报错, 验收备份前需先写入至少 1 条探测文档。
+- `make backup` 放行合法空库归档 (需通过 `verifyGzip`), 但 `make drill` 恢复后仍要求存在至少 1 个实体集合; 全新空库全链路演练前需先写入至少 1 条探测文档。
 
 ## 验证方式与关联引用 (Validation & References)
 

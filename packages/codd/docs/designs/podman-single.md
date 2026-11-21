@@ -114,13 +114,15 @@ podman exec "$C" mongosh "$APP_URI" --quiet --eval 'db.__deploy_smoke.drop()'
   1. **只用 MongoDB Compass 看库** (保持 `bindIp="127.0.0.1"`): 在 Compass 展开 `Advanced Connection Options -> Proxy/SSH -> SSH with Identity File`, 填服务器内网/WireGuard IP、登录用户名与本机私钥并存书签, 主连接仍填 `127.0.0.1:<HOST_PORT>`, 无需在终端挂 `ssh -L` 进程。
   2. **本地写代码跑服务 + Compass 都要免隧道直连** (仅限家庭路由器 NAT 后内网主机或已配云安全组白名单的主机): 将清单中 `nodes[0].bindIp` 设为 `"0.0.0.0"` 重新生成并 `make up`, 即可在家用局域网 IP、在外用 WireGuard IP、在服务器本机用 `127.0.0.1` 三路直连。
 
-### 2. [目标服务器] 每日 `03:30` 自动备份
+### 2. [目标服务器] 每日 `03:30` 自动备份与开机自启
 
-- **Linux (`crontab -e`)**:
+- **Linux (`crontab -e`, 可选附加 `BACKUP_LOG_FILE` 触发原地日志轮转)**:
 
   ```cron
-  30 3 * * * cd "$HOME/srv/stacks/mongo-app-<fp>" && make backup >> "$HOME/srv/logs/mongo-backup-<fp>.log" 2>&1
+  30 3 * * * cd "$HOME/srv/stacks/mongo-app-<fp>" && BACKUP_LOG_FILE="$HOME/srv/logs/mongo-backup-<fp>.log" make backup >> "$HOME/srv/logs/mongo-backup-<fp>.log" 2>&1
   ```
+
+  > Podman 无后台常驻守护进程, `restart: unless-stopped` 仅在容器运行时异常退出生效; 如需 Linux 服务器重启后自动拉起 rootless 容器, 请执行 `sudo loginctl enable-linger "$USER"` 并通过 systemd / Podman Quadlet (`~/.config/containers/systemd/`) 托管启动。
 
 - **macOS (`LaunchAgent`, 直接加载随包产出的唯一指纹 `.plist`)**:
 

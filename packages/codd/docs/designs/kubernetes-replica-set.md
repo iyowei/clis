@@ -17,7 +17,7 @@
 ## 一、三副本稳定与高性能机制
 
 1. **仅 `-0` 号 Pod 运行 `bootstrap-root` + 智能跳过重复 `chown`**: [statefulset.yaml](../../template/helm/templates/statefulset.yaml) 自动匹配 `*-0` 且仅在 `/data/db/WiredTiger.wt` 为空时预建 `root`; `-1` 与 `-2` 保持空白数据盘借助共享 `keyfile` 完成 Initial Sync; `fix-keyfile-permissions` 仅在目录属主非 `999:999` 时执行修正, 避免重启时递归遍历海量 `.wt` 数据文件。
-2. **零开销内核级 TCP 三层探针 + 等额内存防驱逐**: 配备 `startupProbe`、`livenessProbe` 与 `readinessProbe` (`tcpSocket`), 容器内零进程 fork 与零内存尖峰; `requests.memory == limits.memory` 防止节点内存压力下被高优先级驱逐。
+2. **零开销内核级 TCP 三层探针 + 等额内存防驱逐**: 配备 `startupProbe`、`livenessProbe` 与 `readinessProbe` (`tcpSocket`), 容器内零进程 fork 与零内存尖峰; `requests.memory == limits.memory` 防止节点内存压力下被高优先级驱逐。注意 `tcpSocket` 无法感知副本集 `STARTUP2` 初始同步阶段, 业务连接串必须写全 3 节点 Headless FQDN + `replicaSet=` 走拓扑发现, 不要用单 Service 做从节点只读负载均衡; 生产节点宿主机同样建议按 MongoDB 8.0/9.0 开启 THP 与 `nofile >= 64000`。
 3. **双 Service + Headless DNS + 全凭据 Secret 隔离**: [service.yaml](../../template/helm/templates/service.yaml) 创建 `<release>-headless` (`publishNotReadyAddresses: true`); 主业务库与全部 `extraApps` 口令统一收敛进 Kubernetes `Secret` (`extra-apps` 键), `values.generated.yaml` 零明文泄露。
 
 ## 二、用生成器产出可移植部署包 (推荐)
