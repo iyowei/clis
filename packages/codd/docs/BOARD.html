@@ -2459,8 +2459,8 @@
                 <b>盘×3%~8% / max(30s,8s/G)</b>
               </div>
               <div class="row">
-                <span>句柄/线程 ulimit</span>
-                <b>max(连接×4, 65536<small>官方≥64k</small>)</b>
+                <span>文件句柄 ulimit (nofile)</span>
+                <b>max(连接×4, 65536<small>不硬写 nproc</small>)</b>
               </div>
               <div class="row">
                 <span>块压缩 + 协议压缩</span>
@@ -2866,8 +2866,8 @@ mongodb://&lt;USER&gt;:&lt;PWD&gt;@mongo:&lt;PORT&gt;/&lt;DB&gt;?authSource=&lt;
 # [宿主机 / 远程直连] Compass 展开 Proxy/SSH 选私钥免手敲隧道; 家庭内网机设 bindIp=0.0.0.0 可直接填 WG IP
 mongodb://&lt;USER&gt;:&lt;PWD&gt;@127.0.0.1:&lt;HOST_PORT&gt;/&lt;DB&gt;?authSource=&lt;DB&gt;&amp;directConnection=true
 
-# [执行设备: 目标服务器 Linux] 每日 03:30 自动备份 (crontab -e 加入下行)
-# 30 3 * * * cd "$HOME/srv/stacks/mongo-app-&lt;fp&gt;" &amp;&amp; make backup &gt;&gt; "$HOME/srv/logs/mongo-backup-&lt;fp&gt;.log" 2&gt;&amp;1
+# [执行设备: 目标服务器 Linux] 每日 03:30 自动备份并触发日志原地轮转 (crontab -e 加入下行)
+# 30 3 * * * cd "$HOME/srv/stacks/mongo-app-&lt;fp&gt;" &amp;&amp; BACKUP_LOG_FILE="$HOME/srv/logs/mongo-backup-&lt;fp&gt;.log" make backup &gt;&gt; "$HOME/srv/logs/mongo-backup-&lt;fp&gt;.log" 2&gt;&amp;1
 
 # [执行设备: 目标服务器 macOS] 每日 03:30 自动备份 (加载随包生成的唯一指纹 .plist)
 set -a &amp;&amp; . ./.env &amp;&amp; set +a
@@ -3946,6 +3946,10 @@ make up</code></pre>
                 <span>周日每库加留 (weekly/)</span>
                 <b>4<small>份</small></b>
               </div>
+              <div class="row">
+                <span>磁盘防爆守卫 (v1.2+)</span>
+                <b>最低剩余空间 + 总量封顶 + 日志轮转</b>
+              </div>
             </div>
 
             <!-- 卡 4: 真实恢复与限制 -->
@@ -3961,7 +3965,9 @@ make up</code></pre>
                 <span class="loc srv">目标服务器</span> 从归档文件名解析目标库
                 <code>&lt;db&gt;</code> 并仅
                 <code>--nsInclude=&lt;db&gt;.*</code> 单库覆盖恢复,
-                不动同实例其它库。
+                不动同实例其它库; <code>FILE=</code> 支持日备或
+                <code>weekly/...</code> 周备, 日备缺失时
+                <code>make drill</code> 自动回退至 <code>weekly/</code>。
               </p>
               <div class="dbgwrap">
                 <pre
@@ -3970,10 +3976,10 @@ make up</code></pre>
                   role="region"
                   aria-label="真恢复命令"
                   tabindex="0"
-                ><code># [执行设备: 目标服务器 部署目录内] 1) 先在独立沙箱演练全部库
+                ><code># [执行设备: 目标服务器 部署目录内] 1) 先在独立沙箱演练全部库 (日备缺失自动回退 weekly/)
 make drill
 
-# 2) 按归档文件名识别库名, 确认单库覆盖恢复
+# 2) 按归档文件名识别库名, 确认单库覆盖恢复 (同样支持 FILE=weekly/mongo-&lt;db&gt;-....archive.gz)
 make restore \
   FILE=mongo-&lt;db&gt;-YYYYMMDD_HHMMSS.archive.gz \
   CONFIRM=yes</code></pre>
