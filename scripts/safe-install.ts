@@ -7,7 +7,7 @@
  * ② 锁文件漂移或依赖树脏污时全量清零再装回, 回到由 package.json 唯一决定的干净态。
  */
 import { spawnSync } from 'node:child_process';
-import { existsSync, rmSync } from 'node:fs';
+import { existsSync, readdirSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -22,12 +22,25 @@ for (const pkg of listWorkspacePackages(root)) {
     if (existsSync(join(root, rel))) targets.push(rel);
   }
 }
+const mutantsDir = join(root, 'scripts', 'transcription', 'mutants');
+if (existsSync(mutantsDir)) {
+  for (const entry of readdirSync(mutantsDir, { withFileTypes: true })) {
+    if (entry.isDirectory() && entry.name.startsWith('gen-')) {
+      targets.push(`scripts/transcription/mutants/${entry.name}`);
+    }
+  }
+}
 for (const rootTarget of ['.turbo', 'bun.lock', 'node_modules']) {
   if (existsSync(join(root, rootTarget))) targets.push(rootTarget);
 }
 
 for (const target of targets) {
-  rmSync(join(root, target), { recursive: true, force: true });
+  rmSync(join(root, target), {
+    recursive: true,
+    force: true,
+    maxRetries: 5,
+    retryDelay: 100,
+  });
   console.log(`[safe-install] 已清理: ${target}`);
 }
 

@@ -19,11 +19,10 @@ import * as fs from 'node:fs';
 import { join } from 'node:path';
 
 import { makeTmpRoot } from './lib/tmp-root.ts';
-import { resolveProductPairs } from './lib/workspace.ts';
 
 process.chdir(join(import.meta.dir, '..'));
 
-/** 一个步骤: 展示名与命令参数 (args 支持惰性生成, 避免非验收场景耦合特定产品路径) */
+/** 一个步骤: 展示名与命令参数 (args 支持惰性生成) */
 interface Step {
   command: string;
   args: string[] | (() => string[]);
@@ -33,22 +32,6 @@ interface Step {
   env?: Readonly<Record<string, string>>;
   /** 纯只读无副作用闸门: 连续出现时自动并行执行, 输出按声明序回放 */
   parallel?: boolean;
-}
-
-/** 惰性派生转写验收 CLI 入口坐标 (单产品仓取唯一对; 多产品仓按 docs/protocol 锚点唯一定位) */
-function resolveConformanceCliSrc(): string {
-  const root = process.cwd();
-  const pairs = resolveProductPairs(root);
-  const matched =
-    pairs.length === 1
-      ? pairs[0]
-      : pairs.find(({ api }) =>
-          fs.existsSync(join(root, api.dir, 'docs', 'protocol')),
-        );
-  if (matched === undefined) {
-    throw new Error('未找到承接转写验收的 CLI + API 双包产品');
-  }
-  return `${matched.cli.dir}/src/cli.ts`;
 }
 
 /** Windows 兼容专项测试环境: 跳过已在 Linux 全量校验过的重复真机 npm pack, 禁用 npm 更新检查 */
@@ -113,6 +96,16 @@ const STEPS: Readonly<Record<string, Step>> = {
     args: ['scripts/transcription/validate-coverage.ts'],
     parallel: true,
   },
+  'lint:mutants': {
+    command: 'bun',
+    args: ['scripts/transcription/make-mutants.ts', '--check-anchors'],
+    parallel: true,
+  },
+  fuzz: {
+    command: 'bun',
+    args: ['scripts/transcription/run-diff-fuzz.ts', '--all-products'],
+    parallel: true,
+  },
   'lint:backups': {
     command: 'bun',
     args: ['scripts/lint-stray-backups.ts'],
@@ -124,24 +117,33 @@ const STEPS: Readonly<Record<string, Step>> = {
     command: 'bun',
     args: ['scripts/npm-trust-guard.ts', 'verify-oidc'],
   },
+  'conformance:portable': {
+    command: 'bun',
+    args: [
+      'scripts/transcription/run-conformance.ts',
+      '--all-products',
+      '--runtime',
+      'bun',
+      '--exclude-tag',
+      'apfs-block-size',
+    ],
+  },
   'conformance:bun': {
     command: 'bun',
-    args: () => [
+    args: [
       'scripts/transcription/run-conformance.ts',
-      '--target',
-      `bun ${resolveConformanceCliSrc()}`,
-      '--api-target',
-      'bun scripts/transcription/api-harness.ts',
+      '--all-products',
+      '--runtime',
+      'bun',
     ],
   },
   'conformance:node': {
     command: 'bun',
-    args: () => [
+    args: [
       'scripts/transcription/run-conformance.ts',
-      '--target',
-      `node ${resolveConformanceCliSrc()}`,
-      '--api-target',
-      'node scripts/transcription/api-harness.ts',
+      '--all-products',
+      '--runtime',
+      'node',
     ],
   },
 };
@@ -157,7 +159,10 @@ const VERIFY_GROUP: readonly string[] = [
   'lint:examples',
   'lint:deps',
   'lint:coverage',
+  'lint:mutants',
+  'fuzz',
   'lint:backups',
+  'conformance:portable',
 ];
 
 /** Windows OS 兼容组 (跳过 OS 无关静态检查与已在 Linux 全量校验的重复 npm pack) */
