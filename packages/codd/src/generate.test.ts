@@ -376,7 +376,9 @@ describe('多节点副本集、Kubernetes 与红线拦截验证', () => {
 
       const vals = readFileSync(join(kDir, 'values.generated.yaml'), 'utf8');
       expect(vals).toContain('replicaCount: 3');
-      expect(vals).toContain('cacheSizeGB: 3.5');
+      expect(vals).toContain('cacheSizeGB: 3');
+      expect(vals).toContain('blockCompressor: "snappy"');
+      expect(vals).toContain('mode: "off"');
       expect(vals).toContain('oplogSizeMB: 8190');
       expect(vals).not.toContain('logsu:');
       const createSecretSh = readFileSync(

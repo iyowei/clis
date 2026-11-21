@@ -1,5 +1,8 @@
 /**
- * Podman 部署包渲染器 (支持单节点与 3 物理节点高可用副本集)。
+ * Podman 部署包渲染器 (支持 `single` 单节点与 `replica-set` 3 物理节点高可用副本集)。
+ * 上游由 `generate.ts` 调用, 下游复用 `assets.ts`、`render.ts`、`emit-podman-helpers.ts`、`ssh.ts` 与 `state.ts`。
+ * 关键约束: 所有文本以 LF 写盘, `.env` 走 `writeSecretFile(..., 0o600)` 原子写, `tune-linux-host.sh` 赋 `0755`,
+ * 静态运维脚本含 `backup.ts`/`restore.ts`/`drill.ts`, macOS 节点额外生成 `.plist` 定时备份配置。
  */
 import { chmodSync, mkdirSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
@@ -16,7 +19,7 @@ import {
   formatUploadNextStep,
   writeLfFile,
 } from './emit-podman-helpers.ts';
-import type { ComputedSizing, HardwareSpec } from './formulas.ts';
+import type { ComputedSizing, HardwareSpec, WorkloadType } from './formulas.ts';
 import { TemplateRenderError, renderTemplate } from './render.ts';
 import {
   deriveRemoteHome,
@@ -77,6 +80,18 @@ interface PodmanTemplates {
   toolsPkg: string;
   toolsLock: string;
 }
+
+const formatBlockCompressorReason = (
+  workload: WorkloadType,
+  blockCompressor: 'zstd' | 'snappy',
+): string => {
+  if (workload === 'write-heavy') {
+    return 'write-heavy 优先低开销 snappy 保障写入吞吐';
+  }
+  return blockCompressor === 'zstd'
+    ? 'CPU >= 2 核启用高压缩比 zstd'
+    : '单核低开销 snappy';
+};
 
 const emitSinglePodmanNode = (opts: {
   ctx: PodmanEmitContext;
@@ -178,10 +193,10 @@ const emitSinglePodmanNode = (opts: {
   const mongodRendered = renderTemplate('mongod.conf.tmpl', tpls.mongodTmpl, {
     DEPLOY_ID: deployId,
     NODE_NAME: node.nodeName,
-    BLOCK_COMPRESSOR_REASON:
-      sizing.blockCompressor === 'zstd'
-        ? 'CPU >= 2 核启用高压缩比 zstd'
-        : '单核低开销 snappy',
+    BLOCK_COMPRESSOR_REASON: formatBlockCompressorReason(
+      sizing.workload,
+      sizing.blockCompressor,
+    ),
     MAX_CONNS_FORMULA: `${sizing.maxIncomingConnections} (非缓存内存安全上限)`,
     OPLOG_FORMULA: `${sizing.oplogSizeMb} MB (磁盘 ${hw.diskGb}G x ${sizing.workload})`,
     BLOCK_COMPRESSOR: sizing.blockCompressor,
@@ -260,6 +275,26 @@ const emitSinglePodmanNode = (opts: {
   return { remoteStackDir, parsedSsh };
 };
 
+/**
+ * 渲染并写出 Podman 部署包 (`single` 产出 1 个目录, `replica-set` 产出 3 个节点目录),
+ * 同时就地回填 `ctx.bundleDirs`、`ctx.credLines`、`ctx.nextSteps` 与 `ctx.warnings`。
+ *
+ * 关键默认值: `stackPrefix='mongo'`, `port=27117`, `hostPort=port`, `rsName='rs0'`,
+ * `networkMode='bridge'`, `tz='Asia/Shanghai'`, `imageName='mongo'`, `imageTag='9.0.8'`,
+ * `bunImage='oven/bun:1.4.5-slim'`, `keepDaily=7`, `keepWeekly=4`。
+ *
+ * ### 数据流转示例
+ * ```text
+ * Input:  ctx = { manifest: { mode: 'single', name: 'app', apps: [{ db: 'shop', user: 'u' }],
+ *                             nodes: [{ os: 'linux', backupDir: '/home/ops/srv/backups' }] },
+ *                 state: { fingerprint: 'a1b2c3d4e5f6', ... }, sizing, outDir: '/work/dist', ... }
+ * Step 1: 读取 tools.package.json / tools.bun.lock (替换包名为 `<prefix>-tools`) 及 5 份 `.tmpl` 模板
+ * Step 2: 逐节点清空并重建 `<outDir>/<prefix>-<name>-<fp>[-<node>]/`: 写入 9 个静态脚本 (含 backup/restore/drill),
+ *         渲染 podman-compose.yml / mongod.conf / Makefile / .env (0600), macOS 节点补写 `.plist`
+ * Step 3: 按单机或副本集追加连接串至 ctx.credLines 与上传/启动指引至 ctx.nextSteps
+ * Output: void (产物落盘至 ctx.bundleDirs, 凭证与指引写入 ctx)
+ * ```
+ */
 export const emitPodmanBundles = (ctx: PodmanEmitContext): void => {
   const { podmanTplDir, deployId, manifest, state } = ctx;
   const stackPrefix = manifest.stackPrefix ?? 'mongo';
@@ -386,7 +421,9 @@ export const emitPodmanBundles = (ctx: PodmanEmitContext): void => {
     );
   } else {
     const hostsJoined = resolvedNodes.map((n) => `${n.host}:${port}`).join(',');
-    ctx.credLines.push('# 3 物理节点高可用自动切主连接串:');
+    ctx.credLines.push(
+      '# 3 物理节点高可用自动切主连接串 (若 host 为节点短名, 需在业务端与各宿主配好 DNS / /etc/hosts 解析):',
+    );
     for (const app of manifest.apps) {
       ctx.credLines.push(
         `mongodb://${app.user}:${state.appPasswords[app.db]}@${hostsJoined}/${app.db}?replicaSet=${rsName}&authSource=${app.db}`,

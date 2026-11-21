@@ -40,13 +40,13 @@
           "type": "number",
           "minimum": 1,
           "maximum": 256,
-          "description": "[填入 hardware 时必填] CPU 核数 (1-256)。>= 2 核自动启用 zstd 高压缩并按核数动态设置备份并发度, 单核降为 snappy; K8s 超过 2 核时 requests CPU 按 50% 弹性留余。"
+          "description": "[填入 hardware 时必填] CPU 核数 (1-256)。balanced / read-heavy 下 >= 2 核自动启用 zstd 高压缩 (write-heavy 强制使用低 CPU 开销 snappy), 单核降为 snappy; 并按核数动态设置备份并发度; K8s 超过 2 核时 requests CPU 按 50% 弹性留余。"
         },
         "memoryGb": {
           "type": "number",
           "minimum": 1,
           "maximum": 1024,
-          "description": "[填入 hardware 时必填] 内存配额 GB (1-1024)。自动推导 WT_CACHE_GB (<=8G 按 50%, >8G 按 55%), 软保护线 MEMORY_RESERVATION, K8s 等额 memory requests/limits, 优雅停机窗口及最大入站连接上限。"
+          "description": "[填入 hardware 时必填] 内存配额 GB (1-1024)。按 workload 差异化推导 WT_CACHE_GB (balanced 取 50%, write-heavy 收紧为 45% 防脏页阻塞, read-heavy >8G 放宽至 55%), 软保护线 MEMORY_RESERVATION, K8s 等额 memory requests/limits, 优雅停机窗口及最大入站连接上限。"
         },
         "diskGb": {
           "type": "number",

@@ -51,10 +51,11 @@ describe('硬件资源与数据库参数公式推导', () => {
       diskGb: 200,
       workload: 'write-heavy',
     });
-    expect(s4.wtCacheGb).toBe(3.5);
+    expect(s4.wtCacheGb).toBe(3);
+    expect(s4.blockCompressor).toBe('snappy');
     expect(s4.memoryReservationPodman).toBe('4g');
     expect(s4.k8sRequestMemory).toBe('8Gi');
-    expect(s4.maxIncomingConnections).toBe(350);
+    expect(s4.maxIncomingConnections).toBe(400);
     expect(s4.oplogSizeMb).toBe(16380);
     expect(s4.slowOpThresholdMs).toBe(80);
     expect(s4.stopGracePeriodSec).toBe(64);
@@ -67,9 +68,29 @@ describe('硬件资源与数据库参数公式推导', () => {
       diskGb: 250,
       workload: 'balanced',
     });
-    expect(s8.wtCacheGb).toBe(8.25);
+    expect(s8.wtCacheGb).toBe(7.5);
+    expect(s8.blockCompressor).toBe('zstd');
     expect(s8.stopGracePeriodSec).toBe(128);
     expect(s8.backupConcurrency).toBe(4);
+
+    const s8Read = computeSizing({
+      cpuCores: 8,
+      memoryGb: 16,
+      diskGb: 250,
+      workload: 'read-heavy',
+    });
+    expect(s8Read.wtCacheGb).toBe(8.25);
+    expect(s8Read.blockCompressor).toBe('zstd');
+
+    const s1Write = computeSizing({
+      cpuCores: 1,
+      memoryGb: 1,
+      diskGb: 32,
+      workload: 'write-heavy',
+    });
+    expect(s1Write.wtCacheGb).toBe(0.25);
+    expect(s1Write.blockCompressor).toBe('snappy');
+    expect(s1Write.warnings.some((w) => w.includes('make drill'))).toBe(true);
   });
 
   test('expectedAppConnections 受内存安全上限封顶并在超限时告警', () => {

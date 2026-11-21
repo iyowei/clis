@@ -1,6 +1,8 @@
 /**
- * 资源与数据库参数计算引擎:
- * 根据硬件资源 (CPU / 内存 / 磁盘) 与业务负载特征推算最佳 MongoDB 9.0 + 容器/Pod 参数。
+ * 硬件资源公式与安全端口推导引擎: 供 `generate.ts` 与 `codd-cli/wizard.ts` 调用。
+ * 核心职责: 依 `HardwareSpec` (CPU/内存/磁盘/负载) 确定性推导 WiredTiger 缓存、连接上限、
+ * oplog、压缩算法、ulimit、优雅停机窗口与备份配额 (越界抛 `SizingError`); 同时提供
+ * 10002-29997 区间内避开扫描与基础设施端口黑名单的 5 位安全端口推荐 (`recommendSafePort`)。
  */
 import { randomInt } from 'node:crypto';
 
@@ -139,6 +141,44 @@ const validateHardwareBounds = (hw: HardwareSpec): WorkloadType => {
   return workload;
 };
 
+const resolveWtRatio = (workload: WorkloadType, memGb: number): number => {
+  if (workload === 'write-heavy') return 0.45;
+  if (workload === 'read-heavy' && memGb > 8) return 0.55;
+  return 0.5;
+};
+
+const resolveBlockCompressor = (
+  workload: WorkloadType,
+  cpuLimit: number,
+): 'zstd' | 'snappy' => {
+  if (workload === 'write-heavy') return 'snappy';
+  return cpuLimit >= 2 ? 'zstd' : 'snappy';
+};
+
+const formatCompressorFormula = (
+  workload: WorkloadType,
+  cpuLimit: number,
+): string => {
+  if (workload === 'write-heavy') {
+    return '高频写入优先低开销 snappy 块压缩 + 协议压缩';
+  }
+  return cpuLimit >= 2
+    ? 'CPU >= 2 核启用 zstd 块压缩 + 协议压缩'
+    : '单核启用低开销 snappy + 协议压缩';
+};
+
+const formatCompressorPlainReason = (
+  workload: WorkloadType,
+  cpuLimit: number,
+): string => {
+  if (workload === 'write-heavy') {
+    return '高写入场景选用极速 snappy 减少压缩 CPU 抢占, 保住写入吞吐与低延迟';
+  }
+  return cpuLimit >= 2
+    ? '自动压缩落盘数据与网络传输包, 节省约 70% 硬盘空间与流量'
+    : '单核 CPU 采用轻量 snappy 压缩, 省空间且不卡 CPU';
+};
+
 const resolveMaxConnections = (
   memGb: number,
   wtCacheGb: number,
@@ -165,12 +205,26 @@ const resolveMaxConnections = (
   return hardRamSafeCeiling;
 };
 
+/**
+ * 按硬件规格与负载类型推导 MongoDB 9.0 与 Podman/K8s 全套运行参数, 并返回可展示的 `steps` 与 `warnings`。
+ *
+ * ### 数据流转示例
+ * ```text
+ * Input:  hw = { cpuCores: 4, memoryGb: 8, diskGb: 100, workload: 'balanced' }
+ * Step 1: validateHardwareBounds 校验边界 (CPU 1-256 / RAM 1-1024G / Disk 10-65536G)
+ * Step 2: 容器配额 -> memoryLimitPodman='8g', memoryReservationPodman='4g', k8sRequestCpu=2, k8sRequestMemory='8Gi'
+ * Step 3: WT 缓存  -> balanced 取 0.5 x (8-1) = 3.5G (write-heavy 0.45 / read-heavy 大机 0.55)
+ * Step 4: 并发/日志 -> nonCache=4.5G -> maxIncomingConnections=350; oplogSizeMb=round10(100*1024*0.03)=3070
+ * Step 5: 运维参数 -> blockCompressor='zstd' (write-heavy 选 snappy / 非写重且>=2C 选 zstd), nofileUlimit=65536, stopGracePeriodSec=64, backupConcurrency=2
+ * Output: ComputedSizing { wtCacheGb: 3.5, maxIncomingConnections: 350, oplogSizeMb: 3070, ..., steps: [6 项], warnings: [] }
+ * ```
+ */
 export const computeSizing = (hw: HardwareSpec): ComputedSizing => {
   const workload = validateHardwareBounds(hw);
   const warnings: string[] = [];
   if (hw.memoryGb < 2) {
     warnings.push(
-      `当前仅分配了 ${hw.memoryGb} GB 内存 (低于 2 GB 推荐值): 查询排序或并发稍高时容易因内存不足重启, 建议至少升至 2 GB`,
+      `当前仅分配了 ${hw.memoryGb} GB 内存 (低于 2 GB 推荐值): 查询排序、并发超过 50 连接或执行 make drill 沙箱演练时易因内存不足触发 OOM, 建议至少升至 2 GB`,
     );
   }
 
@@ -190,8 +244,11 @@ export const computeSizing = (hw: HardwareSpec): ComputedSizing => {
   const k8sRequestMemory = formatK8sSize(k8sReqMemGb);
   const persistenceSize = formatK8sSize(hw.diskGb);
 
-  // 2) WiredTiger Cache: <= 8G 遵循 0.5 * (RAM - 1GB); > 8G 大规格提升至 0.55 * (RAM - 1GB)
-  const wtRatio = memGb > 8 ? 0.55 : 0.5;
+  // 2) WiredTiger Cache: 按负载特征分化比例, 为 OS Page Cache、脏页刷盘与 TCMalloc 留足边界
+  // - write-heavy: 0.45 x (RAM - 1G), 控制脏页累积并留余量缩短 Checkpoint 阻塞
+  // - read-heavy (>8G): 0.55 x (RAM - 1G), 大机多拨 5% 给热数据索引缓存
+  // - balanced / read-heavy (<=8G): 遵循官方标准 0.5 x (RAM - 1G)
+  const wtRatio = resolveWtRatio(workload, memGb);
   const wtCacheGb = Math.max(0.25, roundQuarter(wtRatio * (memGb - 1)));
   if (wtCacheGb >= memGb * 0.7) {
     warnings.push(
@@ -211,8 +268,10 @@ export const computeSizing = (hw: HardwareSpec): ComputedSizing => {
   const ratio = OPLOG_DISK_RATIO[workload];
   const oplogSizeMb = clamp(round10(hw.diskGb * 1024 * ratio), 990, 51200);
 
-  // 5) 压缩、进程句柄 ulimit (官方要求 >=64000, 对齐 2^16=65536; nproc 保留参考值不硬写以兼容 rootless Podman)、优雅停机窗口与备份并发度
-  const blockCompressor: 'zstd' | 'snappy' = cpuLimit >= 2 ? 'zstd' : 'snappy';
+  // 5) 压缩 (write-heavy 优先低 CPU 开销 snappy, balanced/read-heavy >=2C 用 zstd)、
+  //    进程句柄 ulimit (官方要求 >=64000, 对齐 2^16=65536; nproc 保留参考值不硬写以兼容 rootless Podman)、
+  //    优雅停机窗口与备份并发度
+  const blockCompressor = resolveBlockCompressor(workload, cpuLimit);
   const slowOpThresholdMs = workload === 'write-heavy' ? 80 : 100;
   const nofileUlimit = clamp(maxIncomingConnections * 4, 65536, 262144);
   const nprocUlimit = nofileUlimit;
@@ -269,14 +328,8 @@ export const computeSizing = (hw: HardwareSpec): ComputedSizing => {
       key: 'blockCompressor',
       label: '存储与网络压缩',
       value: `${blockCompressor} 开启`,
-      formula:
-        cpuLimit >= 2
-          ? 'CPU >= 2 核启用 zstd 块压缩 + 协议压缩'
-          : '单核启用低开销 snappy + 协议压缩',
-      plainReason:
-        cpuLimit >= 2
-          ? '自动压缩落盘数据与网络传输包, 节省约 70% 硬盘空间与流量'
-          : '单核 CPU 采用轻量 snappy 压缩, 省空间且不卡 CPU',
+      formula: formatCompressorFormula(workload, cpuLimit),
+      plainReason: formatCompressorPlainReason(workload, cpuLimit),
     },
     {
       key: 'ulimit / grace / slowOp',

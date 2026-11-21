@@ -2448,7 +2448,7 @@
               >
               <div class="row">
                 <span>WT_CACHE_GB</span>
-                <b>≤8G 0.5× / &gt;8G 0.55×(RAM-1)</b>
+                <b>0.5× / 写重 0.45× / 读重>8G 0.55×</b>
               </div>
               <div class="row">
                 <span>最大入站连接</span>
@@ -2464,7 +2464,7 @@
               </div>
               <div class="row">
                 <span>块压缩 + 协议压缩</span>
-                <b>zstd/snappy + wire(zstd)</b>
+                <b>写重 snappy / 余 zstd + wire</b>
               </div>
               <div class="row">
                 <span>K8s 内存防驱逐</span>
