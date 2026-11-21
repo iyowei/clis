@@ -1,0 +1,387 @@
+/**
+ * 清单渲染与终端视觉构件 (纯函数, 零 IO): 上游供 `cli.ts` 渲染预览/执行清单, 并向 `help.ts` /
+ * `init.ts` / `config-summary.ts` / `migrate-cli.ts` / `progress.ts` 导出同源 `paint` / `bannerLine` /
+ * `neutralLine` / `shortenHome`; 下游复用 `@iyowei/sweep` 的 `formatBytes` 与 `sanitizeLine`。
+ * 红线: `color=false` 输出零 ANSI 且与着色版逐字等价; 路径风味可注入 (设计: `cli-surface.md` & ADR 0007)。
+ */
+import {
+  type CleanupAction,
+  type PathStyle,
+  formatBytes,
+  nativeStyle,
+  sanitizeLine,
+} from '@iyowei/sweep';
+
+// 展示辅助三件现居 API 包 (display.ts, OF-14 的唯一实现); 本行转出, 供本包消费方沿用既有写法
+export { formatBytes, sanitizeLine, sanitizeOutputLine } from '@iyowei/sweep';
+
+/**
+ * 渲染条目: 单个清理目标在清单上的呈现契约 (由 `outcome.ts` 自 `@iyowei/sweep` 领域产物映射而来)。
+ */
+export interface RenderEntry {
+  /** 待清理目标绝对路径 */
+  target: string;
+  /** 字节数; undefined = 体积测不到 (体积列显示 ?, 档位块转中性, 不计入合计总量) */
+  bytes?: number;
+  /** 项目名 */
+  project: string;
+  /** 执行模式: 删除是否成功 (缺省视为成功) */
+  ok?: boolean;
+  /** 执行模式: 失败原因 (ok === false 时附在行尾) */
+  error?: string;
+  /** 行尾补充说明 (如 `[TRASH]` / 疑似安装树 / 跨设备 / 体积统计失败原因); 与失败原因同位并置, note 在前 */
+  note?: string;
+  /** 执行模式: 是否经系统回收站成功移入 (驱动 footExecute 统计回收站数) */
+  trashed?: boolean;
+  /** 计划动作 ('delete' | 'trash') */
+  action?: CleanupAction;
+  /** 疑似安装树 */
+  suspect: boolean;
+}
+
+/** 顶栏品牌标识 (设计: cli-surface.md「命令面」) */
+const BANNER = 'SWEEP';
+
+/**
+ * 顶栏标识块: 输出规范的一部分, 导出给 cli 等消费方复用
+ * (同一视觉常量只应有一处定义, 各消费方各写一份即规范漂移)。
+ */
+export const BAR_BLOCK = '▍';
+
+/** 合计块 / 中性块: 空结果提示与中性行共用 (向导与 config 也复用, 见 neutralLine) */
+const TOTAL_BLOCK = '█';
+export const NEUTRAL_BLOCK = '░';
+
+/** 缺省路径风味: 平台原生 (模块加载时定格一次, 调用期不再读环境, 保持 render 纯函数) */
+const PLATFORM_STYLE = nativeStyle();
+
+/** 档位块的中性形态: 体积测不到的条目用 (与空结果提示同族, 表示不表态) */
+const NEUTRAL_TIER = { block: NEUTRAL_BLOCK, sgr: '2' };
+
+/** 顶栏列出根路径的上限: 根数不超过此值时直接列路径 (只报数量时用户无法确认扫描范围) */
+const ROOT_LIST_LIMIT = 3;
+
+/**
+ * 顶栏行: 反色加粗 (SGR 1;7) 的 `▍ SWEEP` + 两空格 + 本次动作自述。
+ * 清单 / config / init / migrate 共用同一构造 (`help.ts` 仅复用 `BAR_BLOCK`); suffix 由调用方自负净化。
+ */
+export const bannerLine = (suffix: string, color: boolean): string =>
+  paint(`${BAR_BLOCK} ${BANNER}  ${suffix}`, '1;7', color);
+
+/** 中性提示行: 缩进 2 + 中性块 + 整行压暗 (色块视觉规范里的说明性行, 不打断顶栏与主体的紧邻关系) */
+export const neutralLine = (text: string, color: boolean): string =>
+  `  ${paint(`${NEUTRAL_BLOCK} ${text}`, '2', color)}`;
+
+/**
+ * 体积档位阈值 (绝对阈值, 不做分位数动态计算; 已按真实工作区实测重标, 设计: cli-surface.md「体积档位与阈值」)。
+ * 大 >= 512 MiB; 中 >= 100 MiB; 小 < 100 MiB。
+ * 重标依据 (2026-09-24 实测, 主样本 n=5): 原 1 GiB 阈值高于全样本最大值 (590.72 MiB), 该档永不触发;
+ * 一维 k-means 的自然断点落在中 / 大之间 (约 405 MiB), 但红块须保持「稀有而醒目」, 取更保守的 512 MiB (半 GiB)。
+ * 样本量小, 该组阈值属可再重标者, 不是一次定死的分位规则。
+ */
+export const TIER_BIG = 512 * 1024 ** 2;
+export const TIER_MID = 100 * 1024 ** 2;
+
+export interface RenderOptions {
+  /** 预览 (零副作用) 或执行 (逐行结果 + 汇总) */
+  mode: 'preview' | 'execute';
+  /** 扫描根: 顶栏计数并在根数 <= ROOT_LIST_LIMIT 时直接列出缩写路径 */
+  roots: string[];
+  entries: RenderEntry[];
+  /** false (非 TTY / NO_COLOR) 时输出零 ANSI, 信息与行结构与着色版一致 */
+  color: boolean;
+  /** 家目录前缀: 命中则缩写为 ~; 缺省不缩写 (保持纯函数, 不读环境) */
+  home?: string;
+  /** 执行模式: 已释放的字节总量; 提供时汇总行补 "释放 X", 缺省维持原文案 */
+  releasedBytes?: number;
+  /** 路径风味 (分隔符与大小写敏感性): 缺省平台原生; 传入 WIN32_STYLE 可在 posix 上测 win32 语义 */
+  pathStyle?: PathStyle;
+  /** 运行时自述 (如 `bun 1.4.2`): 提供时接在顶栏尾部; 缺省不显示 (调用方按 TTY 决定) */
+  runtime?: string;
+  /** 顶栏下方的中性提示行 (如名单回执); 缺省无。走 stdout 而非 stderr: 它们是本次运行的说明, 与清单同属一次输出 */
+  notes?: string[];
+  /**
+   * 清单末尾的中性说明行 (如疑似安装树跳过计数), 压在合计 / 汇总行之后; 缺省无。
+   * 与 notes 的分工: notes 交代本次运行的前置与过程, trailer 则是对整份清单的事后交代
+   * (读者须先看完清单与合计, 才知道「N 处被跳过」指的是什么)。
+   */
+  trailer?: string[];
+}
+
+/**
+ * 渲染清单 (纯函数, 零 IO)。
+ *
+ * 执行步骤:
+ * 1. 顶栏按模式与根数量成行 (根数 <= ROOT_LIST_LIMIT 时直接列出缩写根路径), 提供 runtime 时接在尾部;
+ * 2. 提供 notes 时先出顶栏下方的中性提示行 (空结果分支同样呈现);
+ * 3. 无条目则输出空结果中性提示行与可选 trailer 后提前返回;
+ * 4. 条目按体积降序 (体积未测到排末尾), 按显示宽度计算体积列 (右对齐) 与项目名列 (左对齐) 列宽;
+ * 5. 逐行成清单 (预览出档位块, 执行出 ✓/✗; 常规 node_modules 目标剥除末尾后缀, 其他技术栈产物与疑似安装树保留完整末段),
+ *    末行出预览合计 (只累加已测字节) 或执行汇总 (`footExecute`, 含回收站计数与可选释放体积);
+ * 6. 提供 trailer 时压在末行之后作为事后说明。
+ *
+ * ### 数据流转示例
+ * ```text
+ * Input (真实 Payload):
+ *   options.mode = 'preview', options.roots = ['/Users/iyowei/workspace/development']
+ *   options.entries = [
+ *     { target: '/Users/iyowei/workspace/development/docs-site/node_modules', bytes: 90177536, project: 'docs-site', suspect: false },
+ *     { target: '/Users/iyowei/workspace/development/acme-web/node_modules', bytes: 4939212390, project: 'acme-web', suspect: false },
+ *   ]
+ *   options.color = false, options.home = '/Users/iyowei'
+ *
+ * 步骤 1 (顶栏与排序):
+ *   head = '▍ SWEEP  预览 · 1 个根: ~/workspace/development'
+ *   rows = [acme-web 4939212390, docs-site 90177536]
+ *
+ * 步骤 2 (定列宽, 按显示宽度):
+ *   volumeWidth = 6 ('4.6 GB' vs '86 MB'), nameWidth = 9 ('docs-site')
+ *
+ * 步骤 3 (逐行成清单: 档位块 + 体积右对齐 + 项目名左对齐 + 路径缩写):
+ *   body = ['  █ 4.6 GB  acme-web     ~/workspace/development/acme-web',
+ *           '  ▒  86 MB  docs-site    ~/workspace/development/docs-site']
+ *
+ * 步骤 4 (末行合计):
+ *   foot = '  █ 合计 2 处 · 4.7 GB   加 --yes 执行删除'
+ *
+ * Output (数据契约):
+ *   return 多行文本 ([head, ...body, foot].join('\n'), 无尾换行)
+ * ```
+ */
+export function render(options: RenderOptions): string {
+  const { mode, roots, entries, color, home, releasedBytes, pathStyle } =
+    options;
+  const style = pathStyle ?? PLATFORM_STYLE;
+  const scope =
+    roots.length > 0 && roots.length <= ROOT_LIST_LIMIT
+      ? `${roots.length} 个根: ${roots.map((root) => sanitizeLine(shortenPath(root, style, home))).join(' · ')}`
+      : `${roots.length} 个根`;
+  const runtime = options.runtime ? ` · ${sanitizeLine(options.runtime)}` : '';
+  const head = bannerLine(
+    `${mode === 'execute' ? '执行' : '预览'} · ${scope}${runtime}`,
+    color,
+  );
+  // 顶栏下方的中性提示: 与清单同一视觉语言, 不打断顶栏与清单的紧邻关系
+  const notes = (options.notes ?? []).map((note) =>
+    neutralLine(sanitizeLine(note), color),
+  );
+  // 末尾的中性说明行: 压在合计 / 汇总之后, 与 notes 同款构件 (同属 stdout 的一次输出)
+  const trailer = (options.trailer ?? []).map((line) =>
+    neutralLine(sanitizeLine(line), color),
+  );
+
+  if (entries.length === 0) {
+    return [
+      head,
+      ...notes,
+      // 空结果行保留内联形态: make-mutants.ts 以此字面量为 mutant 注入锚点, 换成 neutralLine 即失配
+      `  ${paint(`${NEUTRAL_BLOCK} 未发现可清理目标`, '2', color)}`,
+      ...trailer,
+    ].join('\n');
+  }
+
+  const rows = [...entries].sort((a, b) => (b.bytes ?? -1) - (a.bytes ?? -1));
+  const volumeWidth = rows.reduce(
+    (max, row) => Math.max(max, displayWidth(volumeOf(row))),
+    0,
+  );
+  const nameWidth = rows.reduce(
+    (max, row) => Math.max(max, displayWidth(sanitizeLine(row.project))),
+    0,
+  );
+
+  const body = rows.map((row) => {
+    const fail = mode === 'execute' && row.ok === false;
+    const tier = row.bytes === undefined ? NEUTRAL_TIER : tierOf(row.bytes);
+    const mark =
+      mode === 'execute'
+        ? paint(fail ? '✗' : '✓', fail ? '31' : '32', color)
+        : paint(tier.block, tier.sgr, color);
+    const volume = padStart(volumeOf(row), volumeWidth);
+    const name = sanitizeLine(row.project);
+    const rawPath = displayPath(row.target, style, home, row.suspect === true);
+    const path = sanitizeLine(rawPath);
+    // 净化改写了显示名即与磁盘名不一致: 补提示, 防用户照显示名复制路径
+    const rewritten = name !== row.project || path !== rawPath;
+    const tail = tailsOf(row, fail, rewritten);
+    const shown = `${paint(padEnd(name, nameWidth), '1', color)}    ${paint(path, '2', color)}`;
+    return `  ${mark} ${volume}  ${shown}${tail ? `  ${paint(tail, '2', color)}` : ''}`;
+  });
+
+  // 提示整段压暗, 仅 --yes 加粗 (可执行动作是这行的落点; 空格留在着色段之外, 不入色)
+  const hint = [
+    paint('加', '2', color),
+    paint('--yes', '1', color),
+    paint('执行删除', '2', color),
+  ].join(' ');
+  const foot =
+    mode === 'execute'
+      ? footExecute(rows, color, releasedBytes)
+      : `  ${paint(TOTAL_BLOCK, '7', color)} ${paint(`合计 ${rows.length} 处 · ${formatBytes(sum(rows))}`, '1', color)}   ${hint}`;
+
+  return [head, ...notes, ...body, foot, ...trailer].join('\n');
+}
+
+/**
+ * 执行模式末行: 汇总成功 / 失败计数 (取代预览合计);
+ * 当存在成功移入回收站的条目 (`ok !== false && trashed === true`) 时追加 `(含回收站 N 处)`,
+ * 提供 `releasedBytes` 时追加 `· 释放 X`。
+ */
+function footExecute(
+  rows: RenderEntry[],
+  color: boolean,
+  releasedBytes?: number,
+): string {
+  const failed = rows.filter((row) => row.ok === false).length;
+  const trashed = rows.filter(
+    (row) => row.ok !== false && row.trashed === true,
+  ).length;
+  const succeeded = rows.length - failed;
+  const trashNote = trashed > 0 ? ` (含回收站 ${trashed} 处)` : '';
+  const released =
+    releasedBytes === undefined ? '' : ` · 释放 ${formatBytes(releasedBytes)}`;
+  return `  ${paint(TOTAL_BLOCK, '7', color)} ${paint(`汇总 成功 ${succeeded} 处${trashNote}${released} · 失败 ${failed} 处`, '1', color)}`;
+}
+
+/** 体积列文本: 未测到 (bytes undefined) 用 ? 占位 (与 0 B 区分开) */
+const volumeOf = (row: RenderEntry): string =>
+  row.bytes === undefined ? '?' : formatBytes(row.bytes);
+
+/** 显示名被净化改写时的行尾提示 (控制类字符剥除或空白折叠都会改写显示名, 照显示名复制路径即失效) */
+const SANITIZED_NOTE = '名字已净化显示';
+
+/**
+ * 行尾补充: 净化提示 / note / 执行失败原因依次并置
+ * (净化提示最前, 它关乎整行显示名的可信度; note 属目标属性, 失败原因属动作结果)。
+ */
+function tailsOf(row: RenderEntry, fail: boolean, rewritten: boolean): string {
+  const parts: string[] = [];
+  if (rewritten) parts.push(SANITIZED_NOTE);
+  if (row.note) parts.push(sanitizeLine(row.note));
+  if (fail && row.error) parts.push(sanitizeLine(row.error));
+  return parts.join('  ');
+}
+
+/** 档位: 大 (红) / 中 (黄) / 小 (青); 返回色块字符与 SGR 前景码 */
+function tierOf(bytes: number): { block: string; sgr: string } {
+  if (bytes >= TIER_BIG) return { block: '█', sgr: '31' };
+  if (bytes >= TIER_MID) return { block: '▓', sgr: '33' };
+  return { block: '▒', sgr: '36' };
+}
+
+/**
+ * 着色: color 为 false 时原样返回 (降级开关: 非 TTY / NO_COLOR 下输出零 ANSI 转义码,
+ * 且行结构、列对齐与全部信息与着色版逐字等价); 导出供 `cli.ts` / `help.ts` / `progress.ts` 等同源复用。
+ */
+export const paint = (text: string, sgr: string, color: boolean): string =>
+  color ? `\u001b[${sgr}m${text}\u001b[0m` : text;
+
+/** 合计: 只累加已测到的条目 (未测到按 0 计, 不贡献总量; 全未测到时即 0 B) */
+const sum = (rows: RenderEntry[]): number =>
+  rows.reduce((total, row) => total + (row.bytes ?? 0), 0);
+
+/** 大小写折叠: 仅 win32 生效 (与 guard 的折叠约定同源, 保证两处对同一 PathStyle 的解读一致) */
+const fold = (text: string, style: PathStyle): string =>
+  style.caseInsensitive ? text.toLowerCase() : text;
+
+/** 家目录缩写: 先规范去除 home 尾斜杠 (文件系统根除外), 命中前缀 (含家目录本身) 才替换为 ~ */
+function shortenPath(path: string, style: PathStyle, home?: string): string {
+  if (!home) return path;
+  const sep = style.ops.sep;
+  const fsRoot = style.ops.parse(home).root;
+  let normalizedHome = home;
+  while (
+    normalizedHome.length > fsRoot.length &&
+    normalizedHome.endsWith(sep)
+  ) {
+    normalizedHome = normalizedHome.slice(0, -sep.length);
+  }
+  if (fold(path, style) === fold(normalizedHome, style)) return '~';
+  const prefix = normalizedHome.endsWith(sep)
+    ? normalizedHome
+    : `${normalizedHome}${sep}`;
+  return fold(path, style).startsWith(fold(prefix, style))
+    ? `~${sep}${path.slice(prefix.length)}`
+    : path;
+}
+
+/**
+ * 家目录缩写 (默认平台原生风味, 支持注入 PathStyle 测跨平台语义): 与清单渲染内部同源, 导出供向导等复用。
+ * home 缺省时不缩写 (保持纯函数, 不读环境)。
+ */
+export function shortenHome(
+  path: string,
+  home?: string,
+  style: PathStyle = PLATFORM_STYLE,
+): string {
+  return shortenPath(path, style, home);
+}
+
+/**
+ * 展示路径: 对常规 `node_modules` 目标剥除末尾 `${sep}node_modules` (剥空时回退分隔符如 `/node_modules` -> `/`),
+ * 其他技术栈产物 (如 `target` / `.venv` / `.DS_Store`) 与 `keepSuffix=true` 的疑似安装树保留完整末段
+ * (避免把 `~/.bun/install/global` 等非项目目录误读为项目根), 最后统一经 `shortenPath` 做家目录缩写。
+ */
+function displayPath(
+  target: string,
+  style: PathStyle,
+  home?: string,
+  keepSuffix = false,
+): string {
+  const suffix = `${style.ops.sep}node_modules`;
+  let dir = target;
+  if (!keepSuffix && fold(target, style).endsWith(fold(suffix, style))) {
+    const stripped = target.slice(0, -suffix.length);
+    dir = stripped === '' ? style.ops.sep : stripped;
+  }
+  return shortenPath(dir, style, home);
+}
+
+/** 按显示宽度左对齐 (补齐尾部空格) */
+const padEnd = (text: string, width: number): string =>
+  text + ' '.repeat(Math.max(0, width - displayWidth(text)));
+
+/** 按显示宽度右对齐 (补齐前导空格) */
+const padStart = (text: string, width: number): string =>
+  ' '.repeat(Math.max(0, width - displayWidth(text))) + text;
+
+/** 零宽组合标记 / 包围标记 (Unicode Mn / Me): 终端占 0 列 */
+const ZERO_WIDTH_MARK_RE = /[\p{Mn}\p{Me}]/u;
+
+/**
+ * 终端显示列宽: 零宽标记 (\p{Mn}/\p{Me}/ZWJ/变体选择符) 按 0 列计,
+ * 汉字 (含扩展 B+) / 全角标点 / 韩文 / 常用宽 Emoji 按 2 列计, 其余按 1 列。
+ * 只覆盖常见全角区间, 不求穷尽 East Asian Width 全表 (紧凑对齐够用即止)。
+ */
+function displayWidth(text: string): number {
+  let width = 0;
+  for (const char of text) {
+    const code = char.codePointAt(0) ?? 0;
+    if (
+      code === 0x200d ||
+      code === 0xfe0e ||
+      code === 0xfe0f ||
+      ZERO_WIDTH_MARK_RE.test(char)
+    ) {
+      continue;
+    }
+    width += isFullWidth(code) ? 2 : 1;
+  }
+  return width;
+}
+
+function isFullWidth(code: number): boolean {
+  return (
+    (code >= 0x1100 && code <= 0x115f) ||
+    (code >= 0x2e80 && code <= 0xa4cf) ||
+    (code >= 0xac00 && code <= 0xd7a3) ||
+    (code >= 0xf900 && code <= 0xfaff) ||
+    (code >= 0xfe30 && code <= 0xfe6f) ||
+    (code >= 0xff00 && code <= 0xff60) ||
+    (code >= 0xffe0 && code <= 0xffe6) ||
+    (code >= 0x1f300 && code <= 0x1f64f) ||
+    (code >= 0x1f680 && code <= 0x1f6ff) ||
+    (code >= 0x1f900 && code <= 0x1faff) ||
+    (code >= 0x20000 && code <= 0x3fffd)
+  );
+}

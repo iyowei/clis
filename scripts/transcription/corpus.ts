@@ -1,7 +1,7 @@
 /**
- * 转写契约套件 · 语料层。
+ * 转写契约套件 · 语料层 (覆盖 cli + api 双面, 当前全集 93 条 = 61 CLI + 32 API, 以目录实有 .json 为准)。
  *
- * 职责: 语料字段类型 (与 packages/sweep-node-modules/docs/protocol/conformance/corpus.schema.json 对应) + $FIXTURE 变量替换
+ * 职责: 语料字段类型 (与 packages/sweep/docs/protocol/conformance/corpus.schema.json 对应) + $FIXTURE 变量替换
  * 契约 + 目录加载。字段语义以 schema 为准; 手写校验 (schema 的物化子集) 在 validate.ts, 只为尽早
  * 给出可读报错, 不复刻 schema 的全部约束。
  */
@@ -11,7 +11,7 @@ import { join } from 'node:path';
 import { validateCase } from './validate.ts';
 
 /** 协议区相对仓根的唯一路径常量 (文档目录迁徙时仅需单点切换此处) */
-export const PROTOCOL_ROOT = 'packages/sweep-node-modules/docs/protocol';
+export const PROTOCOL_ROOT = 'packages/sweep/docs/protocol';
 export const CONTRACT_REL = `${PROTOCOL_ROOT}/behavior-contract.md`;
 export const COVERAGE_REL = `${PROTOCOL_ROOT}/conformance/coverage.md`;
 export const CORPUS_REL = `${PROTOCOL_ROOT}/conformance/corpus`;
@@ -26,6 +26,8 @@ export interface ProjectSpec {
   bytesPerFile?: number;
   nested?: boolean;
   git?: boolean;
+  /** true 时不写同级 package.json (供 node 预设无锚点防误删反例使用) */
+  noPackageJson?: boolean;
 }
 
 export interface SymlinkSpec {
@@ -81,7 +83,7 @@ export interface CliCorpusCase {
   expect: ExpectSpec;
 }
 
-/** api 用例的单步调用指令 (形状与执行语义见 packages/sweep-node-modules/docs/protocol/conformance/api-harness-protocol.md) */
+/** api 用例的单步调用指令 (形状与执行语义见 packages/sweep/docs/protocol/conformance/api-harness-protocol.md) */
 export interface ApiCallStep {
   as?: string;
   call: {
@@ -151,19 +153,16 @@ export function replaceVarsDeep(value: unknown, root: string): unknown {
  * 读语料目录下全部 .json (按文件名升序, 执行次序确定)。
  * 任一文件非法即抛错 (语料缺陷属于 runner 级错误, 不降级为用例失败)。
  *
- * ### 数据追踪示例
+ * ### 数据流转示例
  * ```text
- * Input（真实 Payload）
- *   dir = 'packages/sweep-node-modules/docs/protocol/conformance/corpus' (含 scan-nested-prune.json 与 delete-execute-ok.json)
+ * Input (真实 Payload):
+ *   dir = 'packages/sweep/docs/protocol/conformance/corpus' (含 cli 与 api 两类 .json)
  *
- * 步骤 1：取 .json 文件名并排序
- *   names = ['delete-execute-ok.json', 'scan-nested-prune.json']
+ * 步骤 1: 取 .json 文件名并字典序排序 (空目录直接抛错防假绿)
+ * 步骤 2: 逐文件 JSON 解析 -> validateCase -> 校验文件名 === `${id}.json` 与 id 唯一性
  *
- * 步骤 2：逐文件 JSON 解析 + validateCase + 文件名/id 一致性 + id 唯一性
- *   全部通过 → cases = [两条 case 对象]
- *
- * Output（数据契约）
- *   return 按文件名的 case 数组; 任一环节失败即 throw (调用方落退出码 2)
+ * Output (数据契约):
+ *   return 按文件名升序的 CorpusCase[]; 任一环节失败即 throw (调用方落退出码 2)
  * ```
  */
 export async function loadCorpus(dir: string): Promise<CorpusCase[]> {

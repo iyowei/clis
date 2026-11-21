@@ -1,0 +1,3 @@
+# CLI 启动器隔离配置: 禁止自动加载当前工作目录的 bunfig.toml (防 preload 劫持与坏配置崩溃) 与 .env
+preload = []
+env = false

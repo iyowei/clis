@@ -66,21 +66,18 @@ export async function checkFs(
 }
 
 /**
- * 逐项比对一条用例的全部断言。超时与执行级失败为短路项 (后续断言无意义, 只报该条)。
+ * 逐项比对一条 cli 用例的全部断言。超时与执行级失败为短路项 (后续断言无意义, 只报该条)。
  *
- * ### 数据追踪示例
+ * ### 数据流转示例
  * ```text
- * Input（真实 Payload）
- *   expect = { exitCode: 0, stdoutExact: '▍ <CLI 显示名>  预览 · 1 个根: $FIXTURE/zone\n…', fs: [{ path: 'zone/a/node_modules', state: 'exists' }] }
- *   exec = { status: 0, stdout: '…与期望一致…', stderr: '', timedOut: false }
+ * Input (真实 Payload):
+ *   expect = { exitCode: 0, stdoutExact: '▍ <CLI 显示名>  预览 · 1 个根: $FIXTURE/zone\n...', fs: [{ path: 'zone/a/node_modules', state: 'exists' }] }
+ *   exec   = { status: 0, stdout: '...与期望一致...', stderr: '', timedOut: false }
  *
- * 步骤 1：短路项检查
- *   timedOut / spawnError 均为假, 继续逐项比对
+ * 步骤 1: 短路项检查 (timedOut / spawnError 均为假, 继续逐项比对)
+ * 步骤 2: 逐项校验 (exitCode -> stdoutExact -> stdout/stderr 含与禁含, 先替换 $FIXTURE -> fs 终态)
  *
- * 步骤 2：逐项 (退出码 → stdoutExact → 子串含与禁含 → fs)
- *   全部通过 → failures = []
- *
- * Output（数据契约）
+ * Output (数据契约):
  *   return [] (通过) 或 FailureItem[] (逐项失败原因与期望 / 实际)
  * ```
  */
@@ -279,24 +276,24 @@ function checkEvents(
 }
 
 /**
- * 逐项比对一条 api 用例的全部断言: 解析 harness 输出 JSON → result (exact / subset) /
+ * 逐项比对一条 api 用例的全部断言: 解析 harness 输出 JSON -> result (exact / subset) /
  * error (code / name) / events (lastIs / mustInclude) / fs。超时与执行级失败为短路项
  * (与 cli 面同口径)。
  *
- * ### 数据追踪示例
+ * ### 数据流转示例
  * ```text
- * Input（真实 Payload）
+ * Input (真实 Payload):
  *   expect = { result: { subset: { hits: [{ target: '$FIXTURE/zone/a/node_modules' }] } } }
- *   exec   = { status: 0, stdout: '{"ok":true,"value":{"hits":[{"target":"<realpath>/zone/a/node_modules", …}], …}}', stderr: '', timedOut: false }
+ *   exec   = { status: 0, stdout: '{"ok":true,"value":{"hits":[{"target":"<realpath>/zone/a/node_modules",...}]}}', stderr: '', timedOut: false }
  *
- * 步骤 1：形态校验
- *   outcome = { ok: true, value: { … } }, 合法 (ok 为布尔且层次正确)
+ * 步骤 1: 短路项与协议形态校验 (timeout / spawnError / 非零退出 / 非法 JSON / 缺 ok 布尔)
+ * 步骤 2: 按 outcome.ok 分流:
+ *         - ok=true:  校验未期抛错 -> replaceVarsDeep($FIXTURE) 后跑 result.exact 或 subsetDiff -> checkEvents
+ *         - ok=false: 未声明 expect.error 判未预期抛错; 声明时比对 error.code / error.name
+ * 步骤 3: 逐项校验 expect.fs 终态
  *
- * 步骤 2：result.subset 递归比对 ($FIXTURE 已替换为 realpath)
- *   $.hits[0].target 命中 → 其余相等 → failures = []
- *
- * Output（数据契约）
- *   return [] 或 FailureItem[] (kind: harness | result | error | events | fs)
+ * Output (数据契约):
+ *   return [] 或 FailureItem[] (kind: timeout | spawn | harness | result | error | events | fs)
  * ```
  */
 export async function compareApiCase(

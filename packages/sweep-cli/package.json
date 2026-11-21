@@ -1,0 +1,64 @@
+{
+  "name": "@iyowei/sweep-cli",
+  "version": "1.0.0",
+  "private": true,
+  "description": "CLI to find and clean build artifacts, dependency caches, OS junk, and custom rules across multiple workspace roots: preview first, trash or delete safely with zero runtime dependencies. 工作区级多技术栈清理工具。",
+  "keywords": [
+    "cli",
+    "cli-tool",
+    "tool",
+    "cleaner",
+    "cleanup",
+    "clean",
+    "prune",
+    "sweep",
+    "trash",
+    "node_modules",
+    "rust",
+    "python",
+    "java",
+    "cpp",
+    "bulk",
+    "batch",
+    "disk-usage",
+    "disk-space",
+    "free-up-space",
+    "workspace",
+    "monorepo",
+    "bun",
+    "node"
+  ],
+  "author": "iTonyYo (https://github.com/iTonyYo)",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/iyowei/clis.git"
+  },
+  "homepage": "https://github.com/iyowei/clis#readme",
+  "bugs": {
+    "url": "https://github.com/iyowei/clis/issues"
+  },
+  "type": "module",
+  "bin": {
+    "sweep": "bin/sweep.mjs"
+  },
+  "files": [
+    "bin/sweep.mjs",
+    "bin/bunfig.toml",
+    "dist"
+  ],
+  "engines": {
+    "node": ">=22.18.0"
+  },
+  "devDependencies": {
+    "@iyowei/cli-updater": "1.0.0",
+    "@iyowei/sweep": "1.0.0"
+  },
+  "scripts": {
+    "build": "bun build src/cli.ts --target=node --minify-whitespace --minify-syntax --outfile=dist/cli.js && bun scripts/write-dist-manifest.ts",
+    "prepublishOnly": "npm run build && npm run verify:release",
+    "verify:release": "bun scripts/verify-release.ts",
+    "typecheck": "bun check",
+    "test": "bun test"
+  }
+}

@@ -9,12 +9,8 @@
     // package.json 的 exports 指向 dist; tsconfig paths 优先级高于 node_modules 解析
     // (bun 运行时 / tsc / bun build 三处已实测), 消费方项目无本配置不受影响
     "paths": {
-      "@iyowei/sweep-node-modules": [
-        "./packages/sweep-node-modules/src/index.ts"
-      ],
-      "@iyowei/sweep-node-modules/testing": [
-        "./packages/sweep-node-modules/src/fixtures.ts"
-      ],
+      "@iyowei/sweep": ["./packages/sweep/src/index.ts"],
+      "@iyowei/sweep/testing": ["./packages/sweep/src/fixtures.ts"],
       "@iyowei/codd": ["./packages/codd/src/index.ts"],
       "@iyowei/cli-updater": ["./packages/cli-updater/src/index.ts"]
     },

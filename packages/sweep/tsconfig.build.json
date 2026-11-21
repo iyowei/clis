@@ -1,0 +1,27 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "emitDeclarationOnly": true,
+    "declaration": true,
+    "rootDir": "src",
+    "outDir": "dist"
+  },
+  "include": ["src"],
+  "exclude": [
+    "src/**/*.test.ts",
+    "src/**/*smoke.ts",
+    "src/config-validate.ts",
+    "src/delete-review.ts",
+    "src/fixtures.ts",
+    "src/guard-device.ts",
+    "src/runtime.ts",
+    "src/scan-match.ts",
+    "src/scan-native.ts",
+    "src/scan-prune.ts",
+    "src/scan-roots.ts",
+    "src/size-du-parse.ts",
+    "src/stale.ts",
+    "src/sweep-options.ts"
+  ]
+}

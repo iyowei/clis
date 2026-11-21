@@ -3,7 +3,7 @@
  *
  * 职责: 把语料声明的 fixture 物化成真实目录树, 以最小白名单 env 启动被测进程 (cli case 起被测
  * 可执行; api case 起 harness 并按步骤指令喂 stdin), 跑完回收现场。
- * 建树与体积口径语义与 src/fixtures.ts 同构 (被测的既有测试口径即验收口径)。
+ * 建树与体积口径语义与 `<api 包目录>/src/fixtures.ts` 同构 (被测的既有测试口径即验收口径)。
  */
 import { spawnSync } from 'node:child_process';
 import { chmod, mkdir, rm, symlink, writeFile } from 'node:fs/promises';
@@ -21,11 +21,11 @@ import {
 /** fixture 内的家目录名 (被测进程的 HOME 指向此处, 见 buildEnv 注释) */
 const HOME_DIR_NAME = 'home';
 
-/** 默认散文件数与字节数 (与 src/fixtures.ts 同值, 保语料与既有测试口径一致) */
+/** 默认散文件数与字节数 (与 `<api 包目录>/src/fixtures.ts` 同值, 保语料与既有测试口径一致) */
 const DEFAULT_FILES = 2;
 const DEFAULT_BYTES_PER_FILE = 256;
 
-/** 嵌套 node_modules 与 .git 诱饵文件的小字节数 (与 src/fixtures.ts 同值) */
+/** 嵌套 node_modules 与 .git 诱饵文件的小字节数 (与 `<api 包目录>/src/fixtures.ts` 同值) */
 const BAIT_FILE_BYTES = 64;
 
 /**
@@ -36,7 +36,7 @@ const BAIT_FILE_BYTES = 64;
  * - SystemRoot / PATHEXT / ComSpec: Windows 下子进程运行基础;
  * - QUOTING_STYLE: 放行宿主设定 (不剔除)。du 仅在其 stdout 为终端时按该变量引用文件名, 本运行器
  *   以管道捕获输出、恒非终端, 故它不进入断言面; 保留放行只为不改写宿主语义 (BSD du 无此变量,
- *   设了无害)。形态依据 (2026-09-27 核实) 见 src/size-du.ts 文件头「输出形态」。
+ *   设了无害)。形态依据 (2026-09-27 核实) 见 `<api 包目录>/src/size-du.ts` 文件头「输出形态」。
  */
 const BASE_ENV_KEYS = [
   'PATH',
@@ -70,15 +70,19 @@ export interface ExecOutcome {
 }
 
 /**
- * 按声明建工作区树。外部副作用：在 root 下创建目录与文件 (root 由调用方创建并保证为空)。
+ * 按声明建工作区树。外部副作用: 在 root 下创建目录与文件 (root 由调用方创建并保证为空)。
  */
 export async function buildFixture(
   root: string,
   fixture: FixtureSpec,
 ): Promise<void> {
   for (const project of fixture.projects ?? []) {
-    const nodeModules = join(root, project.dir, 'node_modules');
+    const projectDir = join(root, project.dir);
+    const nodeModules = join(projectDir, 'node_modules');
     await mkdir(nodeModules, { recursive: true });
+    if (project.noPackageJson !== true) {
+      await writeFile(join(projectDir, 'package.json'), '{"name":"fixture"}\n');
+    }
     const files = project.files ?? DEFAULT_FILES;
     const bytes = project.bytesPerFile ?? DEFAULT_BYTES_PER_FILE;
     for (let index = 0; index < files; index += 1) {
@@ -113,7 +117,7 @@ export async function buildFixture(
 
 /**
  * 应用 setup 预置态 (在 fixture 建树之后按序执行); 写文件时自动创建父目录。
- * 外部副作用：在 root 下写入文件。
+ * 外部副作用: 在 root 下写入文件。
  */
 export async function applySetup(
   root: string,
@@ -151,7 +155,7 @@ export async function cleanupFixture(
 
 /**
  * 组装被测进程环境: 白名单宿主变量 + fixture 内家目录 + case 增量 (后覆盖前)。
- * 外部副作用：无 (纯构造)。
+ * 外部副作用: 无 (纯构造)。
  */
 export function buildEnv(
   root: string,
@@ -175,21 +179,19 @@ export function buildEnv(
 
 /**
  * 执行被测命令一次 (带超时守卫)。
- * 外部副作用：启动子进程 (cwd 为 fixture 内目录, 环境为白名单), 可能改动 fixture 文件系统。
+ * 外部副作用: 启动子进程 (cwd 为 fixture 内目录, 环境为白名单), 可能改动 fixture 文件系统。
  *
- * ### 数据追踪示例
+ * ### 数据流转示例
  * ```text
- * Input（真实 Payload）
- *   ctx.targetArgv = ['bun', '/abs/src/cli.ts']; caseSpec.run = { cwd: 'zone', argv: ['--json'] }
+ * Input (真实 Payload):
+ *   ctx.targetArgv = ['bun', '/abs/<cli 包目录>/src/cli.ts']
+ *   caseSpec.run   = { cwd: 'zone', argv: ['--config', '$FIXTURE/config.json', '--yes'] }
  *
- * 步骤 1：拼装 argv 与 cwd
- *   argv = ['bun', '/abs/src/cli.ts', '--json']; cwd = '<fixture>/zone'
+ * 步骤 1: 拼装 argv (替换 $FIXTURE) 与 cwd = '<fixture>/zone'
+ * 步骤 2: 白名单 env (HOME=<fixture>/home) 启动子进程, 超时守卫 timeoutMs 到期 SIGKILL
  *
- * 步骤 2：白名单 env 启动子进程 (超时守卫 timeoutMs, 到期 SIGKILL)
- *   result = { status: 0, stdout: '…', stderr: '' }
- *
- * Output（数据契约）
- *   return { status, stdout, stderr, timedOut, spawnError? } (spawn 级失败只填 spawnError)
+ * Output (数据契约):
+ *   return { status, stdout, stderr, timedOut, spawnError? } (spawn 级失败仅填 spawnError)
  * ```
  */
 export function executeCase(
@@ -242,7 +244,7 @@ export function executeCase(
 /**
  * 执行 api 用例的 harness 一次 (带超时守卫): 调用指令 JSON (steps 经 $FIXTURE 替换) 经 stdin
  * 喂入, stdout 收结果 JSON。
- * 外部副作用：启动子进程 (cwd 为 fixture 根, 环境为白名单 + case.env), 可能改动 fixture 文件系统。
+ * 外部副作用: 启动子进程 (cwd 为 fixture 根, 环境为白名单 + case.env), 可能改动 fixture 文件系统。
  */
 export function executeApiCase(
   caseSpec: ApiCorpusCase,

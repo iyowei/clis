@@ -1,0 +1,40 @@
+{
+  "name": "@iyowei/sweep",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Programmable API for workspace-level cleanup across multiple toolchains (Node.js, Rust, Python, Java, C/C++, OS junk, and custom rules): scan, measure, trash, and safely remove targets with zero runtime dependencies. 工作区级多技术栈清理能力的可编程 API。",
+  "author": "iTonyYo (https://github.com/iTonyYo)",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/iyowei/clis.git"
+  },
+  "homepage": "https://github.com/iyowei/clis#readme",
+  "bugs": {
+    "url": "https://github.com/iyowei/clis/issues"
+  },
+  "type": "module",
+  "sideEffects": false,
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "engines": {
+    "node": ">=22.18.0"
+  },
+  "scripts": {
+    "build": "bun scripts/build.ts",
+    "typecheck": "bun check",
+    "test": "bun test",
+    "bench": "bun bench/run.ts",
+    "verify:release": "bun scripts/verify-release.ts",
+    "prepublishOnly": "npm run build && npm run verify:release"
+  }
+}

@@ -2,9 +2,10 @@
  * 变异生成器 (反向验收的自证件): 从两包源码 (坐标由 workspaces 派生, 见 scripts/lib/workspace.ts) 复制一份实现
  * 并注入单点缺陷, 生成到 mutants/gen-<id>/; 副本自带 node_modules 链接 (指向 api 副本), 可独立运行。
  *
- * 用途 (变异自证): 语料必须能抓住每一个 mutant; 抓不住 = 语料盲区 (或该 mutant 定义过弱),
- * 不是「实现没问题」。注入面见下方 MUTANTS 清单 (重跑纪律见对应 API 包的 docs/protocol/README.md「维护规则」),
- * 每个 mutant 只做一行级补丁。
+ * 用途 (变异自证): 语料必须能抓住全部 8 个 mutant (3 both: prune-negated / sort-missing /
+ * exclude-silent; 3 cli: exit-swallowed / message-removed / size-unit-wrong; 2 api:
+ * size-gone-dropped / terminal-event-dropped); 抓不住 = 语料盲区 (或该 mutant 定义过弱),
+ * 不是「实现没问题」。重跑纪律见对应 API 包的 docs/protocol/README.md「维护规则」。
  *
  * 幂等: 每次重建自己的 gen-* 目录, 并清掉清单之外的陈旧 gen-*; 锚点失配 (源码在漂移) 时显式
  * 失败并报出文件, 严禁静默产出一份「没注入缺陷」的副本 (那会把反向验收变成永远绿的空转)。
@@ -105,10 +106,11 @@ const MUTANTS: MutantSpec[] = [
     patches: [
       {
         file: 'scan-parallel.ts',
-        find: '        if (name === NODE_MODULES) {',
-        replace: '        if (name !== NODE_MODULES) {',
+        find: "      if (nextIncluded && isPotentialTarget(name, 'dir', matcher)) {",
+        replace:
+          "      if (nextIncluded && !isPotentialTarget(name, 'dir', matcher)) {",
         effect:
-          '命中判定反转: 普通目录被当作命中记录并剪枝, node_modules 反被下钻, 清单全面错乱',
+          '命中判定反转: 普通目录被当作潜在目标剪枝, 真实目标反被下钻, 清单全面错乱',
       },
     ],
   },
@@ -168,7 +170,7 @@ const MUTANTS: MutantSpec[] = [
     patches: [
       {
         file: 'render.ts',
-        find: '`${NEUTRAL_BLOCK} 未发现 node_modules`',
+        find: '`${NEUTRAL_BLOCK} 未发现可清理目标`',
         replace: '`${NEUTRAL_BLOCK} 无结果`',
         effect: '空结果中性提示文案被改, 用户面文案与契约不符',
       },
@@ -182,9 +184,9 @@ const MUTANTS: MutantSpec[] = [
       '带体积数字断言的 CLI 用例; 注意: 仅 du 可用平台 (unix) 生效, Windows 走 js 候选时抓不住',
     patches: [
       {
-        file: 'size-du.ts',
-        find: '    sizes.set(path, Number(sizeKiB) * 1024);',
-        replace: '    sizes.set(path, Number(sizeKiB) * 1000);',
+        file: 'size-du-parse.ts',
+        find: '        sizes.set(path, Number(numPart) * 1024);',
+        replace: '        sizes.set(path, Number(numPart) * 1000);',
         effect: 'du 的 Ki 单位换算错误 (1024 → 1000), 展示体积全线偏移',
       },
     ],
@@ -205,8 +207,8 @@ const MUTANTS: MutantSpec[] = [
       },
       {
         file: 'size-js.ts',
-        find: '            gone.push(target);',
-        replace: '            /* mutant: drop gone target */',
+        find: '        else gone.push(outcome.target);',
+        replace: '        /* mutant: drop gone target */',
         effect:
           'js 候选丢弃已消失目标的 gone 记录, 破坏 SizeResult 三桶完备性恒等式',
       },
@@ -292,7 +294,7 @@ interface AppliedPatch {
 
 /**
  * 在 mutant 的两包副本中定位补丁目标文件 (文件名在两包内不重名)。
- * 外部副作用：只读 (stat)。
+ * 外部副作用: 只读 (stat)。
  */
 async function locatePatchTarget(
   outDir: string,
@@ -312,25 +314,20 @@ async function locatePatchTarget(
 
 /**
  * 生成单个 mutant: 先清掉旧目录, 复制两包源码与 package.json, 建 api 副本链接, 再逐个应用补丁。
- * 外部副作用：删除并重建 mutants/gen-<id>/。
+ * 外部副作用: 删除并重建 mutants/gen-<id>/。
  *
- * ### 数据追踪示例
+ * ### 数据流转示例
  * ```text
- * Input（真实 Payload）
- *   mutant = { id: 'exit-swallowed', patches: [{ file: 'cli.ts', find: 'process.exitCode = await main();', … }] }
- *   sourceFiles = ['cli.ts', 'render.ts', …] (<cli 包目录>/src 下全部非测试 .ts; api 侧同法)
+ * Input (真实 Payload):
+ *   mutant = { id: 'exit-swallowed', patches: [{ file: 'cli.ts', find: 'process.exitCode = await main();', ... }] }
+ *   sourceFiles = <api/cli 两包 src 下全部非测试 .ts>
  *
- * 步骤 1：重建目录并复制两包源码 + package.json
- *   gen-exit-swallowed/<api 包目录>/src/  = api 源文件全量副本
- *   gen-exit-swallowed/<cli 包目录>/src/  = cli 源文件全量副本
- *   gen-exit-swallowed/tsconfig.json  = {} (断对仓库根 paths 的继承)
- *   gen-exit-swallowed/node_modules/<api 包名> -> ../../<api 包目录> (符号链接)
+ * 步骤 1: 重建目录并复制两包源码 + api-harness.ts + 改写副本 package.json
+ *         写入空 tsconfig.json ({}) 切断根 paths 继承, 建 node_modules/<api 包名> 软链指向副本 API
+ * 步骤 2: 逐补丁 locatePatchTarget -> 校验锚点恰好出现 1 次 -> 替换并记录 anchorLine
  *
- * 步骤 2：逐补丁校验锚点唯一后替换 (目标文件按名在两包副本中定位)
- *   锚点出现 1 次 → 替换并记录 anchorLine (第 649 行)
- *
- * Output（数据契约）
- *   return 已注入的实现目录 + 注入记录 (写盘 mutant.json)
+ * Output (数据契约):
+ *   return AppliedPatch[] 并落盘 mutants/gen-<id>/mutant.json
  * ```
  */
 async function makeMutant(mutant: MutantSpec): Promise<AppliedPatch[]> {
@@ -355,7 +352,7 @@ async function makeMutant(mutant: MutantSpec): Promise<AppliedPatch[]> {
   }
   // 套件的 API 参考 harness 副本: 按仓库同相对结构放入, 使 api 面语料可直接以
   // scripts/transcription/mutants/gen-<id>/scripts/transcription/api-harness.ts 为 --api-target
-  // (其相对 import 自动解析到本副本内的 API 源码)。
+  // (其 resolveApiEntry 按副本内 packages/* 自动定位本副本的 API 源码)。
   await mkdir(join(outDir, 'scripts', 'transcription'), { recursive: true });
   await writeFile(
     join(outDir, 'scripts', 'transcription', 'api-harness.ts'),

@@ -23,6 +23,8 @@
     "test": "turbo run test && bun test scripts/",
     "bench": "turbo run bench",
     "conformance": "bun scripts/transcription/run-conformance.ts",
+    "fuzz": "bun scripts/transcription/run-diff-fuzz.ts",
+    "fuzz:diff": "bun scripts/transcription/run-diff-fuzz.ts --api-target \"node scripts/transcription/api-harness.ts\"",
     "ci": "bun scripts/ci.ts"
   },
   "devDependencies": {

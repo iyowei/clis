@@ -1,0 +1,52 @@
+#!/bin/sh
+# sweep 启动器 (POSIX): 挑选运行时 (Bun 优先, 其次 Node) 后 exec 真实入口。
+# 经 ~/.local/bin/sweep 软链调用; 循环 readlink 解析多级符号链接 (40 跳上限防环)。
+# 按 `:` 仅扫描 PATH 中以 `/` 开头的绝对目录, 跳过空段与相对目录防当前目录劫持。
+# 选中 Bun 时强制附加 --config="$root/bin/bunfig.toml" --no-env-file 并透传 CLIS_BUN_ISOLATED=1。
+
+target=$0
+hops=0
+while [ -L "$target" ]; do
+  hops=$((hops + 1))
+  if [ "$hops" -gt 40 ]; then
+    echo "sweep: 符号链接解析超过 40 跳上限, 已中止" >&2
+    exit 1
+  fi
+  link=$(readlink "$target" 2>/dev/null) || break
+  case "$link" in
+    /*) target=$link ;;
+    *) target="$(dirname "$target")/$link" ;;
+  esac
+done
+root=$(CDPATH= cd -- "$(dirname "$target")/.." && pwd)
+
+find_abs_exec() {
+  cmd=$1
+  rest="${PATH:-}:"
+  while [ -n "$rest" ]; do
+    dir=${rest%%:*}
+    rest=${rest#*:}
+    case "$dir" in
+      /*)
+        cand="${dir%/}/$cmd"
+        if [ -f "$cand" ] && [ -x "$cand" ]; then
+          printf '%s\n' "$cand"
+          return 0
+        fi
+        ;;
+    esac
+  done
+  return 1
+}
+
+if bun_bin=$(find_abs_exec bun); then
+  export CLIS_BUN_ISOLATED=1
+  exec "$bun_bin" --config="$root/bin/bunfig.toml" --no-env-file "$root/src/cli.ts" "$@"
+fi
+
+if node_bin=$(find_abs_exec node); then
+  exec "$node_bin" "$root/src/cli.ts" "$@"
+fi
+
+echo "sweep: 未找到 bun 或 node, 请至少安装其一" >&2
+exit 1

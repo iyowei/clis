@@ -1,8 +1,6 @@
 /**
- * 语料台账校验闸门: 行为契约条款 × 语料 specRefs × coverage 豁免登记的三角对账。
- *
- * 动机: 2026-09-30 复审立案「台账校验靠手跑 jq / comm」; 三边一致性是确定性事实, 不该靠
- * 人记得跑, 故固化为闸门 (套件维护规则「条款变更须同步语料与覆盖表」的物理化)。
+ * 语料台账校验闸门: 行为契约条款 x 双面语料 specRefs (当前 93 条 = 61 CLI + 32 API) x coverage 豁免登记的三角对账。
+ * 触发方: `scripts/ci.ts` (`lint:coverage` 并行只读闸门) 或手动执行。
  *
  * 校验 (硬红灯两类):
  * - 悬空引用: 任一语料 specRefs 里的条款号在行为契约主表中不存在;
@@ -92,7 +90,19 @@ export function reconcile(
   return { dangling, unregistered, partial };
 }
 
-/** 在给定仓库根上跑全量对账 (供测试注入临时根) */
+/**
+ * 在给定仓库根上跑全量对账 (供测试注入临时根)。
+ *
+ * ### 数据流转示例
+ * ```text
+ * Input:  root = 仓库根 (由 CONTRACT_REL / COVERAGE_REL / CORPUS_REL 指向协议区三份权威输入)
+ * 步骤 1: extractContractNumbers(behavior-contract.md) -> 全部主表条款集合 contract
+ * 步骤 2: extractExemptNumbers(coverage.md `## 二、`)   -> 已登记豁免集合 exempt
+ * 步骤 3: collectCorpusRefs(corpus/*.json)             -> 全部语料 specRefs 集合 referenced
+ * 步骤 4: reconcile(contract, referenced, exempt)      -> 求差集与交集
+ * Output: { dangling: referenced - contract, unregistered: contract - referenced - exempt, partial: exempt & referenced }
+ * ```
+ */
 export function validateCoverage(
   root: string = REPO_ROOT,
 ): CoverageReconciliation {
