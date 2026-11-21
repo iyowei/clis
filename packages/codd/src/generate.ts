@@ -47,7 +47,7 @@ const loadManifestInput = (
   const manifestPath = resolve(workDir, options.manifestPath ?? 'deploy.json');
   if (!existsSync(manifestPath)) {
     throw new ConfigError(
-      `找不到清单文件 ${manifestPath}, 请运行 codd wizard 打开交互式向导或执行 codd --init-schema 导出模板`,
+      `找不到清单文件 ${manifestPath}, 请运行 codd wizard 打开交互式向导、执行 codd init 导出模板, 或通过 manifest 选项直接传入清单对象`,
     );
   }
   try {

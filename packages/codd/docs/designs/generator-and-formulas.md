@@ -35,7 +35,7 @@
 
 ## 三、用户输入清单 (`deploy.json`) 与 CLI 用法
 
-包内内置 2C2G 起步预设 [deploy-2c2g.json](../../template/schema/deploy-2c2g.json) 与完整字段校验规范 [deploy.schema.json](../../template/schema/deploy.schema.json) (可通过 `codd --init-schema` 一键导出到任意工作目录)。以下命令均在 **[本地开发机]** 任意目录执行:
+包内内置 2C2G 起步预设 [deploy-2c2g.json](../../template/schema/deploy-2c2g.json) 与完整字段校验规范 [deploy.schema.json](../../template/schema/deploy.schema.json) (可通过 `codd init` 或兼容别名 `codd --init-schema` 一键导出到任意工作目录)。以下命令均在 **[本地开发机]** 任意目录执行:
 
 ```shell
 codd wizard                           # 交互式配置向导 (支持保存为 deploy-<name>.json)
@@ -45,7 +45,7 @@ codd deploy.ha.json --dry-run         # 仅核验指定清单与公式推导结�
 codd deploy-prod.json --rotate        # 安全轮换业务/备份密码 (FINGERPRINT、root 与 keyFile 保持不变)
 codd --rotate-all                     # 轮换全部秘密含 root 与 keyFile (仅用于全新实例)
 codd --new-fingerprint                # 重生成 FINGERPRINT (创建全新独立目录、卷与网络命名)
-codd --init-schema                    # 导出 deploy.schema.json 与 deploy-2c2g.json 到当前目录
+codd init                             # 导出 deploy.schema.json、deploy-2c2g.json 与安全 .gitignore (兼容 --init-schema)
 ```
 
 ### 清单全量支持字段

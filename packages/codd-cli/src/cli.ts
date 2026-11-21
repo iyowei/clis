@@ -133,7 +133,10 @@ const printUsage = (): void => {
 };
 
 const exportSchemaAndSample = (workDir: string): void => {
-  const schemaTplDir = join(resolveTemplateRoot(), 'schema');
+  const schemaTplDir = join(
+    resolveTemplateRoot(undefined, import.meta.url),
+    'schema',
+  );
   const dstSchema = join(workDir, 'deploy.schema.json');
   const dstSample = join(workDir, 'deploy-2c2g.json');
   copyTemplateFile(schemaTplDir, 'deploy.schema.json', dstSchema);
