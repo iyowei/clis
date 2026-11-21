@@ -2,7 +2,7 @@
 
 > 定位: 面向想深挖的用户与未来维护者的参考文档, 完整记录这套工具的安全防护保障点与内部账目。
 > 与 CLI 包 README 的关系: CLI 包 README 的安全防护节从本文裁剪而来 (挑出分量重的条目, 写成面向用户的功能细节); 本文是全量版。
-> 权威: 行为语义以包级设计文档 (`packages/sweep/docs/designs/` 与 `packages/sweep-cli/docs/designs/`)、包级 ADR (`0001..0008` 与 `0021..0024`) 与 `packages/sweep/docs/protocol/behavior-contract.md` 的编号条款为准; 本文是面向读者的一份整理稿, 依据都在写作时对照实现核验过。
+> 权威: 行为语义以包级设计文档 (`packages/sweep/docs/designs/` 与 `packages/sweep-cli/docs/designs/`)、包级 ADR (`0001..0004` / `0007..0008` / `0021..0024`) 与 `packages/sweep/docs/protocol/behavior-contract.md` 的编号条款为准; 本文是面向读者的一份整理稿, 依据都在写作时对照实现核验过。
 > 路径约定: 下文「依据」中的 `src/xxx.ts` 为简写。归属 CLI 包 (`packages/sweep-cli/src/`) 的是 `cli.ts` / `cli-commands.ts` / `args.ts` / `render.ts` / `config-summary.ts` / `progress.ts` / `help.ts` / `init.ts` / `init-io.ts` / `migrate-cli.ts` / `outcome.ts`; 其余 (`guard.ts` / `guard-device.ts` / `scan-parallel.ts` / `scan-match.ts` / `scan-roots.ts` / `presets.ts` / `rules.ts` / `trash.ts` / `delete.ts` / `delete-review.ts` / `config.ts` / `config-validate.ts` / `migrate.ts` / `size-du.ts` / `size.ts` / `size-js.ts` / `skip.ts` / `classify.ts` / `stale.ts` / `summary.ts` / `types.ts` / `codes.ts` / `errors.ts` / `scan.ts` / `runtime.ts` / `display.ts` / `sweep.ts`) 归 API 主包 (`packages/sweep/src/`)。
 
 ## 目录
@@ -33,7 +33,7 @@
 
 - 实现: 两包 `src/` 下的模块文件 (归属见上「路径约定」); 启动器在 CLI 包 `bin/`; 发布脚本在 CLI 包 `scripts/`, 转写套件在仓库根 `scripts/transcription/`。
 - 契约: `packages/sweep/docs/protocol/behavior-contract.md` 的编号条款 (BC / OF / EC 三族); 语料名指 `packages/sweep/docs/protocol/conformance/corpus/` 下的金样本用例。
-- 设计文档: 分册 (`deletion-guard.md` / `install-tree-hardening.md` / `scan-and-size.md` / `config-and-initialization.md` / `architecture-overview.md` 在 `packages/sweep/docs/designs/`; `cli-surface.md` 在 CLI 包 `packages/sweep-cli/docs/designs/`); 平台、发布与演进决策在仓库级 `docs/adrs/` 与 API 主包 `packages/sweep/docs/adrs/` (`0001..0008`, `0021..0024`)。
+- 设计文档: 分册 (`deletion-guard.md` / `install-tree-hardening.md` / `scan-and-size.md` / `config-and-initialization.md` / `architecture-overview.md` 在 `packages/sweep/docs/designs/`; `cli-surface.md` 在 CLI 包 `packages/sweep-cli/docs/designs/`); 平台、发布与演进决策在仓库级 `docs/adrs/` 与 API 主包 `packages/sweep/docs/adrs/` (`0001..0004`, `0007..0008`, `0021..0024`)。
 - 覆盖表: 条款与语料的对照见 `packages/sweep/docs/protocol/conformance/coverage.md`。
 
 **分组不是严格分类**: A 到 F 六组按「防的是哪一类错」划分, 同一条防线可能被不止一组提到; 条目编号 (A1 到 F22) 在本文内唯一, 供引用与挑选。
@@ -68,7 +68,7 @@
 
 **A6. 动手删除前逐级复核路径, 半路被掉包就整批停手**
 
-- 依据: `src/delete-review.ts` 的 `reviewComponents` / `reviewPathOnDisk` (自根至目标父目录逐级 `lstat`) 与 `src/delete.ts` 的 `removeTargets` (复核紧跟删除, 压缩替换窗口); 测试 `src/delete.contract.test.ts`。
+- 依据: `src/delete-review.ts` 的 `reviewPathOnDisk` (自根至目标父目录逐级 `lstat`) 与 `src/delete.ts` 的 `removeTargets` (复核紧跟删除, 压缩替换窗口); 测试 `src/delete.contract.test.ts`。
 - 边界: 复核只缩短窗口, 不构成零窗口保证, 复核与 `rm` 之间的微秒级窗口如实登记为残余风险 (见 G 节)。
 
 **A7. 配置里的根或其任一祖先被掉包成符号链接, 删除整批中止 (不可核验亦 fail-closed 拒删)**
@@ -78,7 +78,7 @@
 
 **A8. 删除目标是符号链接时只删链接, 不跟进到它指向的目录**
 
-- 依据: `src/delete-review.ts` 的 `componentChain` (复核链不含末段) 与 `fs.rm` 的 lstat 语义; 契约 EC-04; 测试 `src/delete.contract.test.ts`。
+- 依据: `src/delete-review.ts` 的 `tailComponentChain` (复核链不含末段) 与 `fs.rm` 的 lstat 语义; 契约 EC-04; 测试 `src/delete.contract.test.ts`。
 
 **A9. 疑似安装树默认不进删除批 (删了装不回来的那类, 先拦下)**
 
@@ -171,7 +171,7 @@
 
 **B6. 写入侧: 配置路径或迁移备份路径为既有目录或锚点链 (含祖先链) 有符号链接, `init` / `init --default` / `migrate` 拒写、一个字节不落**
 
-- 依据: 契约 BC-40; `src/guard.ts` 的 `firstSymlinkOnTarget`、`src/init.ts` 的 `checkConfigTarget` 双阶段校验与 `src/migrate.ts` 的 `applyMigration` (对目标配置与备份路径双重检查); 测试 `src/init.test.ts`; 冒烟 `src/init.smoke.ts`。
+- 依据: 契约 BC-40; `src/guard.ts` 的 `firstSymlinkOnTarget`、`src/init.ts` 的 `checkTargetWritable` 双阶段校验与 `src/migrate.ts` 的 `applyMigration` (对目标配置与备份路径双重检查); 测试 `src/init.test.ts`; 冒烟 `src/init.smoke.ts`。
 - 边界: 交互向导中既有目录与悬空链接均在前置阶段直接报错取消退出, 不进入覆盖确认与提问。
 
 **B7. 悬空符号链接照样认得出 (lstat 不跟进末段)**
@@ -227,7 +227,7 @@
 
 **C7. `du` 的英文报错一律转中文告警, 不原样透传**
 
-- 依据: `src/size-du.ts` 的 `describeDuFailure` 与 `parseDuErrorLine`; 测试 `src/size.contract.test.ts`。
+- 依据: `src/size-du-parse.ts` 的 `describeDuFailure` 与 `parseDuErrorLine` (`src/size-du.ts` 消费); 测试 `src/size.contract.test.ts`。
 - 边界: 未识别的短语保留原文摘录便于诊断 (已剥 `du:` 前缀)。
 
 **C8. 体积统计用绝对路径探针找 `du` (`/usr/bin/du`、`/bin/du`), 不经 PATH**
@@ -306,7 +306,7 @@
 
 **D13. 「没删」和「删失败」分开展示, 不混为一谈**
 
-- 依据: `src/cli.ts` 的 `outcomeResult` 三分 (整批中止 / 跳过项 / 体积未测到); 契约 BC-38; 契约 OF-13。
+- 依据: `src/outcome.ts` 的 `outcomeResult` 三分 (整批中止 / 跳过项 / 体积未测到); 契约 BC-38; 契约 OF-13。
 
 **D14. 无损配置迁移 (`v1 → v2`): 写前强制备份原配置, 严禁替用户静默激活新预设**
 
@@ -346,7 +346,7 @@
 
 **E7. `config` 子命令如实报告本次实际生效的配置: 来源三档标签 + 路径 + 文件状态, 退出码恒 0**
 
-- 依据: 契约 BC-35; `src/cli.ts` 的 `reportConfig`; 语料 `cli-config-default-source` / `cli-config-env-source` / `cli-config-flag-source`。
+- 依据: 契约 BC-35; `src/cli-commands.ts` 的 `reportConfig`; 语料 `cli-config-default-source` / `cli-config-env-source` / `cli-config-flag-source`。
 
 **E8. `--help` 的「默认配置」行点明它只对没做覆盖的用户成立, 并指向 `sweep config`**
 
@@ -364,7 +364,7 @@
 
 - 依据: 契约 OF-12; `src/cli.ts` 的 `print` / `warn` / `notice`; 测试 `src/cli.e2e.test.ts`。
 
-**E12. 顶栏如实标注本次实际运行时 (`bun 1.4.2` 或 node)**
+**E12. 顶栏如实标注本次实际运行时 (`bun 1.4.5` 或 node)**
 
 - 依据: `src/cli.ts` 的运行时标签 (自取 `process.versions`, 直接跑与经启动器跑都报真身); `src/render.ts` 的顶栏渲染。
 - 边界: 仅真终端显示。
@@ -383,7 +383,7 @@
 
 **E16. 跨设备行的呈现: 行尾按形态标注 + 执行侧跳过说明 + 末行说明行 (非 TTY 也出现)**
 
-- 依据: 契约 OF-15; `src/skip.ts` (跳过类文案与批次排除的单源); `src/cli.ts` 的 `toRenderEntry`; `src/render.ts` 的 trailer 通道; e2e `src/cli.cross-device.e2e.test.ts`。
+- 依据: 契约 OF-15; `src/skip.ts` (跳过类文案与批次排除的单源); `src/outcome.ts` 的 `toRenderEntry`; `src/render.ts` 的 trailer 通道; e2e `src/cli.cross-device.e2e.test.ts`。
 - 边界: 路径照常剥 `node_modules` 后缀 (与疑似安装树行的保后缀规则不同, 类别提示落在行尾标注上)。
 
 ## F. 韧性、输入健壮与分发
@@ -397,7 +397,7 @@
 
 **F2. 扫描与体积的局部错误不致命: 不可读目录告警跳过; 根预检失败按病因分流且不中断其余根**
 
-- 依据: 契约 BC-07 / BC-08; `src/scan-parallel.ts` 的 `rootFailureWarning`; `src/size-js.ts` 的子树降级; 语料 `scan-root-eacces-warn` / `scan-root-is-file-warn` / `scan-root-missing-warn` / `scan-unreadable-dir-warn`。
+- 依据: 契约 BC-07 / BC-08; `src/scan-roots.ts` 的 `rootFailureWarning`; `src/size-js.ts` 的子树降级; 语料 `scan-root-eacces-warn` / `scan-root-is-file-warn` / `scan-root-missing-warn` / `scan-unreadable-dir-warn`。
 
 **F3. 输出确定性: 并发扫描的清单按 target 升序 (不受完成先后影响)**
 
@@ -425,9 +425,9 @@
 - 依据: ADR 0007; `src/guard.ts` 的路径风味注入 (`PathStyle`); `src/config.ts` 的平台默认路径; 测试 `src/config.contract.test.ts`。
 - 边界: 核心逻辑与测试套件已由真机 Windows CI (`verify-windows`) 常驻覆盖, 仅源码检出用的 `.cmd` 启动器未在 CI 独立实跑 (见 G 节)。
 
-**F9. 零运行时依赖 + 无网络调用 (运行路径只用运行时内置模块)**
+**F9. 零运行时依赖 + 核心清理路径零网络调用 (运行路径只用运行时内置模块)**
 
-- 依据: ADR 0003; `package.json` (无 `dependencies`); 全源码无网络调用。
+- 依据: ADR 0003; `package.json` (无 `dependencies`); API 主包与扫描/清理/初始化/迁移全路径零网络调用 (仅显式执行 `sweep update` 子命令时经内联的 `@iyowei/cli-updater` 访问 npm registry 查询新版本)。
 - 边界: 属「不给新风险」, 不是主动防护功能。
 
 **F10. 分发产物自证来源: 启动器用产物前先与随附清单对账摘要, 不符即拒收 (不静默换源码)**
@@ -458,12 +458,12 @@
 
 **F16. 向导输入解析容错: `~` 展开 (含 win32 习惯 `~\`)、成对引号内的空格与逗号保留、未配对引号不吞后续内容、半角与全角逗号及空白均作分隔、中文路径不被破坏**
 
-- 依据: `src/init.ts` 的 `parseList` / `splitAnswer` / `expandHome`; 测试 `src/init.test.ts`。
+- 依据: `src/init.ts` 的 `parsePathList` / `parseNameList` / `splitAnswer` / `expandHome`; 测试 `src/init.test.ts`。
 - 边界: 仅向导输入; 不解析 `~user` (跨平台语义不一)。
 
 **F17. 交互壳韧性: 管道一次性多行投喂不丢行、EOF 与 Ctrl+C 一律折算取消 (不挂死)、进程退出前释放 stdin 引用**
 
-- 依据: `src/init.ts` 的 `createReadlineIO` (单 interface 长存 + 自管行缓冲); 冒烟驱动器 `src/init.smoke.ts` (挂死即超时判失败)。
+- 依据: `src/init-io.ts` 的 `createReadlineIO` (单 interface 长存 + 自管行缓冲, `src/init.ts` re-export); 冒烟驱动器 `src/init.smoke.ts` (挂死即超时判失败)。
 - 边界: 仅向导交互路径。
 
 **F18. 「不存在」与「测不到」严格分桶: 不存在的目标告警并单列 `gone` 桶 (不进 `entries` / `unmeasured`, 不伪造 0 字节, 三桶构成入参全划分); 存在但测不到的结构化记 `unmeasured`、以占位行留在清单里 (不静默移出)**
@@ -504,7 +504,7 @@
 3. **转写契约套件**: 为未来以 Rust / C 等语言重写准备的机械验收路径 (编号契约 + 金样本语料 + 确定性验收器), 被测命令只是参数, 语言中立。
    - 依据: ADR 0008; `packages/sweep/docs/protocol/README.md`。
    - 不进 README 的理由: 对终端用户无直接价值。
-4. **工程闸门与依赖锁定**: lefthook 提交钩子 (pre-commit 增量 / pre-push 全量: 六步含 conformance 双 target)、oxlint、prettier、tsc, 与 devDependencies 无范围符号的精确锁定; 装钩子收窄到本包仓库 (被作为依赖安装时不写使用方仓库的 `.git/hooks`)。
+4. **工程闸门与依赖锁定**: lefthook 提交钩子 (pre-commit 增量 / pre-push 全量: 经 `scripts/ci.ts` 单源调度全套验证组与双端 conformance)、oxlint、`bun fmt`、`bun check` (ADR 0020), 与 devDependencies 无范围符号的精确锁定; 装钩子收窄到本包仓库 (被作为依赖安装时不写使用方仓库的 `.git/hooks`)。
    - 依据: ADR 0005; `.oxlintrc.json` / `lefthook.yml`; 守卫脚本 `scripts/install-git-hooks.mjs`。
    - 不进 README 的理由: 仓库内开发设施, 写进用户面会让保障清单失焦。
 5. **候选制与程序设计范式**: 同一能力多份实现竞争、由基准数据裁定 (3 个扫描候选、2 个体积候选), 门面只暴露胜出者; 分层、依赖注入、判别联合等范式与它们的代价账单。

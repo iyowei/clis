@@ -1,6 +1,6 @@
 # 安全加固 (续): 会漂移的产物、能被伪造的告警, 与那些逐条核实过的断言
 
-> **状态**: 草稿 (Draft)
+> **状态**: 已接受 (Accepted)
 > **日期**: 2026-09-27
 > **决策者**: 沈委
 > **父文档**: [设计总纲](sweep-design.md)
@@ -68,7 +68,7 @@
 
 > npm 会把仓库根的 `README*` / `LICENSE*` 无条件收进发行包, 且没有任何配置可以排除。
 
-这不是经验之谈: npm 官方 `files` 节原文写着 "Certain files are always included, regardless of settings", 实现侧也印证了这一点 (npm-packlist 里对包根 README / LICENSE 的硬编码规则, 独立于 `files` 与 `.npmignore`)。于是落在仓库根的一份 README 备份, 会被静默发出去。治前实测: 包清单 8 项, 含两份 README 备份; 治后 6 项 (当轮快照; 后在白名单增补 `README.zh-CN.md` 一项, 现为 7 项, 以 `release-artifact.ts` 的 `PACK_FILES_EXPECTED` 实时内容为准)。打包规则里写着「这几样永远随车」, 不设例外通道; 对策只能是: 把不该上车的移出仓库 (备份落 `~/tmp`), 再让白名单断言常驻, 防止复发。
+这不是经验之谈: npm 官方 `files` 节原文写着 "Certain files are always included, regardless of settings", 实现侧也印证了这一点 (npm-packlist 里对包根 README / LICENSE 的硬编码规则, 独立于 `files` 与 `.npmignore`)。于是落在仓库根的一份 README 备份, 会被静默发出去。治前实测: 包清单 8 项, 含两份 README 备份; 治后收口为最小白名单 (实时条目以 `packages/sweep-cli/scripts/release-artifact.ts` 的 `PACK_FILES_EXPECTED` 为准)。打包规则里写着「这几样永远随车」, 不设例外通道; 对策只能是: 把不该上车的移出仓库 (备份落 `~/tmp`), 再让白名单断言常驻, 防止复发。
 
 闸门的触发面查过了, 边界如实交代: `npm publish` 与 `bun publish` 都在闸门内 (`bun publish` 的结论来自官方测试与源码核证, 不是凭印象); 已知的漏口是 `npm pack` 与 `npm publish <tarball>`: 打好的包再发布, 不经这道闸。不补 `prepack` 兜底的理由: `npm pack --dry-run` 是常用的只读查看动作, 挂上闸门会让它在脏树 / 未构建时硬失败, 代价大于收益; 这个漏口的补救, 是白名单断言已在闸门内覆盖同一类风险。本节的闸门与自证设计, 完整规格见 [ADR 0009](../../../../docs/adrs/0009-npm-distribution-form.md) 补记。
 

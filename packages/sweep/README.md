@@ -290,7 +290,7 @@ Pass `onProgress` and/or `signal` to `plan` / `run` or supporting primitives (`s
 
 - [Development guide](https://github.com/iyowei/clis/blob/main/docs/development.md) (source directory: `packages/sweep`)
 - [Engineering documentation index](https://github.com/iyowei/clis/blob/main/docs/README.md)
-- [Product docs & ADRs (`0001..0008`, `0021..0024`)](https://github.com/iyowei/clis/blob/main/packages/sweep/docs/README.md)
+- [Product docs & ADRs (`0001..0004`, `0007..0008`, `0021..0024`)](https://github.com/iyowei/clis/blob/main/packages/sweep/docs/README.md)
 - [API surface design](https://github.com/iyowei/clis/blob/main/packages/sweep/docs/designs/api-surface.md)
 - [Safety guardrails](https://github.com/iyowei/clis/blob/main/packages/sweep/docs/designs/safety-guardrails.md)
 - [CLI package (`@iyowei/sweep-cli`)](https://github.com/iyowei/clis/blob/main/packages/sweep-cli/README.md)

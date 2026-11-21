@@ -290,7 +290,7 @@ console.log(
 
 - [开发指南](https://github.com/iyowei/clis/blob/main/docs/development.md) (源码目录: `packages/sweep`)
 - [工程技术文档总索引](https://github.com/iyowei/clis/blob/main/docs/README.md)
-- [产品文档与包级 ADR (`0001..0008`、`0021..0024`)](https://github.com/iyowei/clis/blob/main/packages/sweep/docs/README.md)
+- [产品文档与包级 ADR (`0001..0004`、`0007..0008`、`0021..0024`)](https://github.com/iyowei/clis/blob/main/packages/sweep/docs/README.md)
 - [可编程 API 面设计](https://github.com/iyowei/clis/blob/main/packages/sweep/docs/designs/api-surface.md)
 - [安全防护保障](https://github.com/iyowei/clis/blob/main/packages/sweep/docs/designs/safety-guardrails.md)
 - [CLI 包 (`@iyowei/sweep-cli`)](https://github.com/iyowei/clis/blob/main/packages/sweep-cli/README.zh-CN.md)
