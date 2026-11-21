@@ -19,13 +19,32 @@ read_active_bracket() {
   sed -n 's/.*\[\([^]]*\)\].*/\1/p' "$1" 2>/dev/null || cat "$1" 2>/dev/null || echo "unknown"
 }
 
+parse_mem_limit_mb() {
+  raw="$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]')"
+  case "$raw" in
+    *g)
+      num="${raw%g}"
+      case "$num" in ''|*[!0-9]*) echo "" ;; *) echo $((num * 1024)) ;; esac
+      ;;
+    *m)
+      num="${raw%m}"
+      case "$num" in ''|*[!0-9]*) echo "" ;; *) echo "$num" ;; esac
+      ;;
+    *) echo "" ;;
+  esac
+}
+
 check_kernel_view() {
+  vm_mem_mb=""
   if [ "$(uname -s)" = "Linux" ]; then
     thp_en="$(read_active_bracket /sys/kernel/mm/transparent_hugepage/enabled)"
     thp_df="$(read_active_bracket /sys/kernel/mm/transparent_hugepage/defrag)"
     ptes="$(cat /sys/kernel/mm/transparent_hugepage/khugepaged/max_ptes_none 2>/dev/null || echo unknown)"
     swap="$(cat /proc/sys/vm/swappiness 2>/dev/null || echo unknown)"
     maps="$(cat /proc/sys/vm/max_map_count 2>/dev/null || echo unknown)"
+    overcommit="$(cat /proc/sys/vm/overcommit_memory 2>/dev/null || echo unknown)"
+    cg_swap="$(cat /proc/sys/vm/force_cgroup_v2_swappiness 2>/dev/null || echo unsupported)"
+    zone_reclaim="$(cat /proc/sys/vm/zone_reclaim_mode 2>/dev/null || echo unsupported)"
   elif command -v podman >/dev/null 2>&1; then
     echo ">>> 当前为 macOS 宿主机, 正在读取 Podman Linux VM 内核参数..."
     vm_out="$(podman machine ssh '
@@ -34,13 +53,21 @@ check_kernel_view() {
       pt=$(cat /sys/kernel/mm/transparent_hugepage/khugepaged/max_ptes_none 2>/dev/null || echo unknown)
       sw=$(cat /proc/sys/vm/swappiness 2>/dev/null || echo unknown)
       mp=$(cat /proc/sys/vm/max_map_count 2>/dev/null || echo unknown)
-      printf "%s|%s|%s|%s|%s\n" "$en" "$df" "$pt" "$sw" "$mp"
-    ' 2>/dev/null || echo 'unknown|unknown|unknown|unknown|unknown')"
+      oc=$(cat /proc/sys/vm/overcommit_memory 2>/dev/null || echo unknown)
+      cg=$(cat /proc/sys/vm/force_cgroup_v2_swappiness 2>/dev/null || echo unsupported)
+      zr=$(cat /proc/sys/vm/zone_reclaim_mode 2>/dev/null || echo unsupported)
+      mt=$(awk "/MemTotal:/ {printf \"%d\", \$2/1024}" /proc/meminfo 2>/dev/null || echo "")
+      printf "%s|%s|%s|%s|%s|%s|%s|%s|%s\n" "$en" "$df" "$pt" "$sw" "$mp" "$oc" "$cg" "$zr" "$mt"
+    ' 2>/dev/null || echo 'unknown|unknown|unknown|unknown|unknown|unknown|unsupported|unsupported|')"
     thp_en="$(printf '%s' "$vm_out" | cut -d'|' -f1)"
     thp_df="$(printf '%s' "$vm_out" | cut -d'|' -f2)"
     ptes="$(printf '%s' "$vm_out" | cut -d'|' -f3)"
     swap="$(printf '%s' "$vm_out" | cut -d'|' -f4)"
     maps="$(printf '%s' "$vm_out" | cut -d'|' -f5)"
+    overcommit="$(printf '%s' "$vm_out" | cut -d'|' -f6)"
+    cg_swap="$(printf '%s' "$vm_out" | cut -d'|' -f7)"
+    zone_reclaim="$(printf '%s' "$vm_out" | cut -d'|' -f8)"
+    vm_mem_mb="$(printf '%s' "$vm_out" | cut -d'|' -f9)"
   else
     echo "错误: 未检测到 Linux 内核或可用的 podman machine"
     exit 1
@@ -51,7 +78,51 @@ check_kernel_view() {
   printf "  %-48s 当前: %-16s 推荐: %s\n" "transparent_hugepage/defrag" "$thp_df" "defer+madvise"
   printf "  %-48s 当前: %-16s 推荐: %s\n" "khugepaged/max_ptes_none" "$ptes" "0"
   printf "  %-48s 当前: %-16s 推荐: %s\n" "vm.swappiness" "$swap" "1"
+  printf "  %-48s 当前: %-16s 推荐: %s\n" "vm.overcommit_memory" "$overcommit" "1"
   printf "  %-48s 当前: %-16s 推荐: %s\n" "vm.max_map_count" "$maps" ">= 262144"
+  if [ "$cg_swap" != "unsupported" ]; then
+    printf "  %-48s 当前: %-16s 推荐: %s\n" "vm.force_cgroup_v2_swappiness" "$cg_swap" "1"
+  fi
+  if [ "$zone_reclaim" != "unsupported" ]; then
+    printf "  %-48s 当前: %-16s 推荐: %s\n" "vm.zone_reclaim_mode" "$zone_reclaim" "0"
+  fi
+
+  if [ "$(uname -s)" = "Linux" ]; then
+    if [ "$(id -u)" -ne 0 ]; then
+      host_hn="$(ulimit -Hn 2>/dev/null || echo 0)"
+      case "$host_hn" in
+        unlimited) ;;
+        ''|*[!0-9]*) ;;
+        *)
+          if [ "$host_hn" -lt 65536 ]; then
+            echo "  [警告] 当前普通用户 ulimit -Hn=$host_hn (< 65536), rootless Podman 将因 RLIMIT_NOFILE 受限而拒启或报句柄不足, 请调高 /etc/security/limits.conf 或 systemd DefaultLimitNOFILE"
+          fi
+          ;;
+      esac
+      if command -v loginctl >/dev/null 2>&1; then
+        linger_state="$(loginctl show-user "$(id -un)" -p Linger --value 2>/dev/null || echo unknown)"
+        if [ "$linger_state" = "no" ]; then
+          echo "  [提示] 当前用户 Linger=no: Podman 无后台守护进程, 如需宿主机重启后自启容器请执行 sudo loginctl enable-linger $(id -un) 并配置 systemd/Quadlet"
+        fi
+      fi
+    fi
+    if command -v systemctl >/dev/null 2>&1 && systemctl is-active --quiet tuned 2>/dev/null; then
+      echo "  [提示] 检测到宿主机 tuned 服务正在运行, 若重启后 THP 或 vm.swappiness 被回写, 请在当前 active tuned profile 中显式对齐上述值"
+    fi
+  elif [ -n "$vm_mem_mb" ]; then
+    printf "  %-48s 当前: %s MiB\n" "Podman Linux VM 物理内存" "$vm_mem_mb"
+    mem_env="$ENV_FILE"
+    if [ -z "$mem_env" ] && [ -f ./.env ]; then
+      mem_env="./.env"
+    fi
+    if [ -n "$mem_env" ] && [ -f "$mem_env" ]; then
+      req_mem_raw="$(awk -F= '/^MEMORY_LIMIT=/{print $2; exit}' "$mem_env" 2>/dev/null || true)"
+      req_mem_mb="$(parse_mem_limit_mb "$req_mem_raw")"
+      if [ -n "$req_mem_mb" ] && [ "$vm_mem_mb" -lt "$req_mem_mb" ]; then
+        echo "  [警告] macOS Podman VM 可用物理内存 (${vm_mem_mb} MiB) 低于容器 MEMORY_LIMIT (${req_mem_raw}), 极易导致整个 VM 内核 OOM, 请执行: podman machine stop && podman machine set --memory $((req_mem_mb + 1024)) && podman machine start"
+      fi
+    fi
+  fi
 
   if [ -n "$CONTAINER" ] && [ -n "$ENV_FILE" ] && [ -f "$ENV_FILE" ]; then
     if podman container exists "$CONTAINER" 2>/dev/null; then
@@ -102,6 +173,13 @@ apply_linux_core() {
   {
     echo "# MongoDB 9.0 Production Kernel Tuning (Managed by Codd)"
     echo "vm.swappiness = 1"
+    echo "vm.overcommit_memory = 1"
+    if [ -f /proc/sys/vm/force_cgroup_v2_swappiness ]; then
+      echo "vm.force_cgroup_v2_swappiness = 1"
+    fi
+    if [ -f /proc/sys/vm/zone_reclaim_mode ]; then
+      echo "vm.zone_reclaim_mode = 0"
+    fi
     if [ "$cur_maps" -gt 262144 ]; then
       echo "# 当前系统 vm.max_map_count ($cur_maps) 已高于 262144, 保留原值不降配"
     else
@@ -111,7 +189,7 @@ apply_linux_core() {
   if [ "$cur_maps" -gt 262144 ]; then
     echo ">>> 当前 vm.max_map_count=$cur_maps 已高于 262144, 保留系统原值不降配。"
   fi
-  sysctl --system >/dev/null
+  sysctl -p /etc/sysctl.d/99-codd-mongodb.conf >/dev/null
 
   if [ -d /etc/systemd/system ] && command -v systemctl >/dev/null 2>&1; then
     cat <<'EOF' > /etc/systemd/system/codd-mongodb-thp.service

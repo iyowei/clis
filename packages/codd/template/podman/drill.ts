@@ -6,7 +6,7 @@
  * 用法: bun run drill.ts [备份文件名 | weekly/备份文件名]   不带参数则按全部已配置业务库各自抽最新备份演练
  */
 import { type ChildProcess, spawn } from 'node:child_process';
-import { mkdir, rm } from 'node:fs/promises';
+import { mkdir, readFile, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 
 import { MongoClient } from 'mongodb';
@@ -28,6 +28,23 @@ import {
 
 const sleep = (ms: number): Promise<void> =>
   new Promise((resolve) => setTimeout(resolve, ms));
+
+/** 探测容器或宿主机剩余可用内存 (MiB), 小于 512 MiB 时提示 OOM 风险 (读失败返回 null 不阻塞演练) */
+const warnIfLowMemory = async (): Promise<void> => {
+  try {
+    const info = await readFile('/proc/meminfo', 'utf8');
+    const m = /^MemAvailable:\s+(\d+)\s+kB$/m.exec(info);
+    if (!m) return;
+    const availMb = Math.floor(Number(m[1]) / 1024);
+    if (availMb > 0 && availMb < 512) {
+      log(
+        `警告: 当前宿主机可用内存仅 ${availMb} MiB (< 512 MiB), 与线上 mongod 同机拉起沙箱演练可能触发 OOM, 建议在低负载时段执行或先升配内存`,
+      );
+    }
+  } catch {
+    // 非 Linux 环境忽略
+  }
+};
 
 const buildSocketUri = (sockPath: string): string =>
   `mongodb://${encodeURIComponent(sockPath)}/?directConnection=true`;
@@ -236,6 +253,7 @@ main(async () => {
   );
 
   try {
+    await warnIfLowMemory();
     await mkdir(sandboxDir, { recursive: true, mode: 0o700 });
     log(
       `启动容器内隔离沙箱 mongod (Unix Socket: ${sandboxSockPath}, 内存上限 0.25GB)...`,
