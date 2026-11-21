@@ -3,10 +3,14 @@
  * 复用根共享库 scripts/lib/release-verify.ts, 校验 git 干净态、commit 对账、dist/index.js 摘要、
  * 递归 .d.ts specifier 零 .ts 残留、assets/manifest.json 完整性与不可发隐藏名拦截、以及 npm pack 白名单。
  */
-import { existsSync, readFileSync, readdirSync } from 'node:fs';
-import { basename, dirname, join, resolve } from 'node:path';
+import { readFileSync, readdirSync } from 'node:fs';
+import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import {
+  type PackExpectation,
+  readAssetPackExpectation,
+} from '../../../scripts/lib/release-cli.ts';
 import {
   type DistState,
   type ReleaseFacts,
@@ -77,10 +81,7 @@ export interface DistManifest {
   builtAt: string;
 }
 
-export interface PackExpectation {
-  files: readonly string[] | null;
-  issue: string | null;
-}
+export type { PackExpectation };
 
 export type VerifyFacts = ReleaseFacts & {
   /** 含相对 '.ts' specifier 残留的 .d.ts 相对路径; 空数组即干净 */
@@ -121,64 +122,16 @@ export const findDtsTsSpecifiers = (
   return hits.sort();
 };
 
-export const readPackExpectation = (root: string): PackExpectation => {
-  const label = `${ASSET_DIR}/${ASSET_MANIFEST_FILE}`;
-  const path = join(root, ASSET_DIR, ASSET_MANIFEST_FILE);
-  if (!existsSync(path)) {
-    return {
-      files: null,
-      issue: `模板资产清单缺失 (${label} 不存在), 请先执行 bun run build`,
-    };
-  }
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(readFileSync(path, 'utf8'));
-  } catch {
-    return {
-      files: null,
-      issue: `模板资产清单 (${label}) 读取失败或不是合法 JSON`,
-    };
-  }
-  if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
-    return { files: null, issue: '模板资产清单应为 JSON 对象' };
-  }
-  const fields = parsed as Record<string, unknown>;
-  if (fields.schemaVersion !== ASSET_MANIFEST_SCHEMA_VERSION) {
-    return {
-      files: null,
-      issue: `模板资产清单 schemaVersion 不受支持 (期望 ${ASSET_MANIFEST_SCHEMA_VERSION})`,
-    };
-  }
-  if (
-    !Array.isArray(fields.files) ||
-    fields.files.length === 0 ||
-    fields.files.some((file) => typeof file !== 'string' || file === '')
-  ) {
-    return {
-      files: null,
-      issue: '模板资产清单 files 字段形状不符 (应为非空字符串数组)',
-    };
-  }
-  const assets = fields.files as string[];
-  const unshippable = assets.filter((file) => {
-    const base = basename(file);
-    return NPM_UNSHIPPABLE_BASENAMES.has(base) || base.startsWith('.');
+export const readPackExpectation = (root: string): PackExpectation =>
+  readAssetPackExpectation(root, {
+    baseFiles: PACK_FILES_BASE,
+    assetDir: ASSET_DIR,
+    templateDir: ASSET_TEMPLATE_DIR,
+    manifestFile: ASSET_MANIFEST_FILE,
+    schemaVersion: ASSET_MANIFEST_SCHEMA_VERSION,
+    unshippableBasenames: [...NPM_UNSHIPPABLE_BASENAMES],
+    rejectDotfiles: true,
   });
-  if (unshippable.length > 0) {
-    return {
-      files: null,
-      issue: `模板资产含易被包管理器忽略的隐藏文件 (请改用载体名): ${unshippable.join(', ')}`,
-    };
-  }
-  return {
-    files: [
-      ...PACK_FILES_BASE,
-      `${ASSET_DIR}/${ASSET_MANIFEST_FILE}`,
-      ...assets.map((file) => `${ASSET_DIR}/${ASSET_TEMPLATE_DIR}/${file}`),
-    ],
-    issue: null,
-  };
-};
 
 export {
   countDirtyEntries,
