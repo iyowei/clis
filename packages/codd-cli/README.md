@@ -100,7 +100,7 @@ codd update
 | -------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
 | `codd wizard` / `-i`, `--wizard` | Launch the interactive 4-step configuration wizard                                                                                     |
 | `codd init` / `--init-schema`    | Export `deploy.schema.json`, `deploy-2c2g.json`, and safe `.gitignore` into the current directory                                      |
-| `codd update`                    | Self-update via the active package manager (`--check`, `--pm`, `--registry`, `--force`)                                                |
+| `codd update`                    | Self-update via the active package manager (`--check`, `--pm`, `--registry`, `--force`, `--verbose`)                                   |
 | `codd [manifest.json]`           | Generate deployment bundle(s) from the specified JSON manifest (defaults to `./deploy.json`)                                           |
 | `-c`, `--config <path>`          | Explicit path to the JSON manifest file                                                                                                |
 | `-o`, `--out <dir>`              | Output directory for generated deployment bundles (defaults to `./dist`)                                                               |
