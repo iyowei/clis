@@ -197,7 +197,15 @@ function expectCoreStructure(target: string): void {
   for (const carrier of ['_gitignore', '_npmrc'])
     expect(existsSync(join(target, carrier)), carrier).toBe(false);
   expect(existsSync(join(target, 'scripts/transcription'))).toBe(false);
+  expect(existsSync(join(target, 'docs/transcription'))).toBe(false);
+  expect(existsSync(join(target, 'packages/demo-tool/docs'))).toBe(false);
   expect(existsSync(join(target, 'docs/designs/tech-debt.md'))).toBe(false);
+  expect(readAt(target, 'docs/README.md')).not.toContain(
+    'transcription/README.md',
+  );
+  expect(readAt(target, '.github/PULL_REQUEST_TEMPLATE.md')).not.toContain(
+    'conformance suite',
+  );
 }
 
 /** 替换面抽样: 根包与 API 包的词汇落位 (全树零残留由 expectNoForm 背书) */
@@ -413,11 +421,42 @@ function defineFlagCases(runner: string, available: boolean): void {
         expect(result.status, `应退 0: ${result.stderr}`).toBe(0);
         const kitFile = 'scripts/transcription/run-conformance.ts';
         expect(has(target, kitFile)).toBe(true);
+        expect(has(target, 'docs/transcription/README.md')).toBe(true);
+        expect(
+          has(target, 'packages/demo-tool/docs/protocol/behavior-contract.md'),
+        ).toBe(true);
         expect(has(target, 'docs/designs/tech-debt.md')).toBe(true);
+        expect(readAt(target, 'docs/README.md')).toContain(
+          'transcription/README.md',
+        );
         // 根包脚本零悬空 + 闸门清单仍可跑: 摘除面不越界 (full 档保留 conformance 套件)
         expectRootScriptsResolve(target);
         const help = ciHelpAt(target);
         expect(help.status, `full 档 ci --help 应退 0: ${help.stderr}`).toBe(0);
+        if (runner === 'bun') {
+          for (const cmd of [
+            ['scripts/lint-doc-references.ts'],
+            ['scripts/transcription/validate-coverage.ts'],
+            ['scripts/transcription/make-mutants.ts', '--check-anchors'],
+            ['scripts/transcription/run-diff-fuzz.ts', '--all-products'],
+            [
+              'scripts/transcription/run-conformance.ts',
+              '--all-products',
+              '--runtime',
+              'bun',
+            ],
+          ]) {
+            const check = spawnSync('bun', cmd, {
+              cwd: target,
+              encoding: 'utf8',
+              timeout: TIMEOUT_MS,
+            });
+            expect(
+              check.status,
+              `full 档生成物直跑 ${cmd.join(' ')} 应退 0:\n${check.stdout}${check.stderr}`,
+            ).toBe(0);
+          }
+        }
       },
       TIMEOUT_MS,
     );
@@ -430,7 +469,15 @@ function defineFlagCases(runner: string, available: boolean): void {
 
         expect(result.status, `应退 0: ${result.stderr}`).toBe(0);
         expect(has(target, 'scripts/transcription')).toBe(false);
+        expect(has(target, 'docs/transcription')).toBe(false);
+        expect(has(target, 'packages/proj/docs')).toBe(false);
         expect(has(target, 'docs/designs/tech-debt.md')).toBe(true);
+        expect(readAt(target, 'docs/README.md')).not.toContain(
+          'transcription/README.md',
+        );
+        expect(
+          readAt(target, '.github/PULL_REQUEST_TEMPLATE.md'),
+        ).not.toContain('conformance suite');
         // 缺省档同样不得留下 conformance 悬空脚本 (I-3 的 standard 侧)
         expectRootScriptsResolve(target);
       },
