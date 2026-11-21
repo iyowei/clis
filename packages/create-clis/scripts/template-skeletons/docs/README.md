@@ -10,13 +10,19 @@
 
 **仓库级架构决策记录**
 [仓库级架构决策记录索引](adrs/README.md)
-仅登记仓库级工程与治理决策 (ADRs); 全仓共用四位递增编号 (新项目从 0001 起), 包级 ADR 去中心化登记在各自 `packages/<pkg>/docs/adrs/README.md`。
+仅登记仓库级工程与治理决策 (ADRs); 全仓共用四位递增编号 (新项目从 0001 起), 包级 ADR 去中心化登记在各自 `packages/<pkg>/docs/README.md`。
 
 ## 设计文档
 
 **设计文档索引 (仓库级)**
 [设计文档索引](designs/README.md)
 仓库级设计 (仓库治理与脚手架) 的登记入口与推荐阅读顺序; 包级设计按需建在各包 `packages/<pkg>/docs/designs/` 内。
+
+## 转写协议
+
+**跨语言转写契约与验证套件**
+[转写纪律与套件索引](transcription/README.md)
+跨语言复刻共用纪律、对抗审阅清单与双面契约验证说明; 示例包的行为契约见 [behavior-contract.md](../packages/{{NAME}}/docs/protocol/behavior-contract.md)。
 
 ## 开发
 

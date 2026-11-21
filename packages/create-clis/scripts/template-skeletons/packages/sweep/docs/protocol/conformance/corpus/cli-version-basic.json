@@ -1,0 +1,13 @@
+{
+  "id": "cli-version-basic",
+  "specRefs": ["OF-01"],
+  "fixture": {},
+  "run": {
+    "argv": ["--version"]
+  },
+  "expect": {
+    "exitCode": 0,
+    "stdoutExact": "0.0.0\n",
+    "stderrExact": ""
+  }
+}

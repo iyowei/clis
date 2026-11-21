@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "mutants": [
+    {
+      "id": "greet-wrong-prefix",
+      "title": "问候语前缀被篡改",
+      "expectCaughtBy": "both",
+      "expectNote": "cli-greet-basic 与 api-greet-basic 均断言 Hello, Alice!",
+      "patches": [
+        {
+          "file": "index.ts",
+          "find": "`Hello, ${normalizeWho(who)}!`",
+          "replace": "`Hi, ${normalizeWho(who)}!`",
+          "effect": "问候语前缀由 Hello 错改为 Hi, 破坏 BC-01 契约"
+        }
+      ]
+    }
+  ]
+}

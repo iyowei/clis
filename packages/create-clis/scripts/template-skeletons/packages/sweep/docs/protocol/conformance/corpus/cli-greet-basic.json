@@ -1,0 +1,13 @@
+{
+  "id": "cli-greet-basic",
+  "specRefs": ["BC-01"],
+  "fixture": {},
+  "run": {
+    "argv": ["--name", "Alice"]
+  },
+  "expect": {
+    "exitCode": 0,
+    "stdoutExact": "Hello, Alice!\n",
+    "stderrExact": ""
+  }
+}

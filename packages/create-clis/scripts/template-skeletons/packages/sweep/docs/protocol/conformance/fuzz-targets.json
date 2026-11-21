@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 1,
+  "targets": [
+    {
+      "id": "normalize-who",
+      "export": "normalizeWho",
+      "generator": "dirty-line",
+      "invariants": [
+        "ok-string",
+        "non-empty-string",
+        "no-control-chars",
+        "no-newlines",
+        "idempotent"
+      ],
+      "description": "示例名称净化纯函数 (BC-01): 剥除 ANSI / 控制字符 / bidi 并满足幂等与非空"
+    }
+  ]
+}

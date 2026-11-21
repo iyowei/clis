@@ -1,0 +1,19 @@
+{
+  "id": "api-greet-basic",
+  "kind": "api",
+  "specRefs": ["BC-01"],
+  "fixture": {},
+  "steps": [
+    {
+      "call": {
+        "export": "greet",
+        "args": [{ "who": "Alice" }]
+      }
+    }
+  ],
+  "expect": {
+    "result": {
+      "exact": "Hello, Alice!"
+    }
+  }
+}
