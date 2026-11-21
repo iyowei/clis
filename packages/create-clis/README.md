@@ -61,7 +61,7 @@ Five variables, matching the template's generalization vocabulary one-to-one:
 
 - **Project name**: the positional argument (the target directory's basename) or `--name`; no default, must be kebab-case (like `my-tool`);
 - **scope**: `--scope`; defaults to none (a bare package name); when given, starts with `@` (like `@me`);
-- **bin name**: `--bin`; defaults to a short form derived from the name (three or more segments take the head plus the initials of the rest: `sweep-node-modules` → `sweep-nm`);
+- **bin name**: `--bin`; defaults to a short form derived from the name (three or more segments take the head plus the initials of the rest: `clean-build-cache` → `clean-bc`);
 - **owner**: `--owner`; defaults to the git-wide `user.name`;
 - **repo URL**: `--repo`; defaults to `https://github.com/<owner>/<name>`.
 

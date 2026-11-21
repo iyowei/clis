@@ -91,11 +91,18 @@ const PLACEHOLDER_FORMS = [
   '{{OWNER}}/{{NAME}}',
 ].filter((form): form is string => typeof form === 'string');
 
-/** 原项目词汇判据: 生成物不得再出现本仓任一形态 */
+/** 原项目词汇判据: 生成物不得再出现本仓任一无歧义复合形态 */
 const ORIGINAL_FORMS = [
-  ORIGINAL.name,
+  ...(ORIGINAL.compoundOnly === true
+    ? [
+        `packages/${ORIGINAL.name}-cli`,
+        `packages/${ORIGINAL.name}/`,
+        `${ORIGINAL.name}-cli`,
+        `bin/${ORIGINAL.binName}`,
+        `${ORIGINAL.binName}: `,
+      ]
+    : [ORIGINAL.name, ORIGINAL.binName]),
   ORIGINAL.scope,
-  ORIGINAL.binName,
   ORIGINAL.owner,
   ORIGINAL.repoUrl,
   ORIGINAL.author ?? '',

@@ -149,7 +149,7 @@ describe('generateProject 二道自检', () => {
       cpSync(TEMPLATE_DIR, broken, { recursive: true });
       writeFileSync(
         join(broken, 'scripts/leftover.txt'),
-        'sweep-node-modules\n',
+        '@iyowei/sweep-cli\n',
       );
 
       const failure = runGenerate(target, { templateDir: broken });

@@ -18,6 +18,7 @@ import {
   containsResidual,
   renderTemplate,
 } from './render.ts';
+import { ORIGINAL as SNAPSHOT_ORIGINAL } from './template-snapshot.ts';
 
 /** 本仓原词汇: 五基线 + 扩展形态 author (LICENSE / author 字段的展示名); 裸词形态不入替换面 */
 const ORIGINAL: Vocabulary = {
@@ -361,13 +362,15 @@ describe('containsResidual 残留检测', () => {
 describe('行为级单源: 清单 generalize 面实扫零残留', () => {
   /**
    * 独立残留清单 (字面量, 不依赖引擎的形态推导, 防同源盲区): 与 T2 清单的词面口径同源 ——
-   * 6 个无歧义复合形态 (原包名含 -cli 变体前缀 / 原 scope / 原 bin 名 / 裸仓库 slug / 原 owner /
-   * 作者名); 裸词 sweep / clis 不入词面, 不参与判定。
+   * 无歧义复合形态 (原包目录/坐标/-cli/bin 路径/scope/slug/owner/作者名);
+   * 裸词 sweep / clis 不入词面, 不参与判定。
    */
   const RESIDUAL_LITERALS = [
-    'sweep-node-modules',
+    'packages/sweep-cli',
+    'packages/sweep/',
+    'sweep-cli',
+    'bin/sweep',
     '@iyowei',
-    'sweep-nm',
     'iyowei/clis',
     'iyowei',
     'iTonyYo',
@@ -381,21 +384,31 @@ describe('行为级单源: 清单 generalize 面实扫零残留', () => {
     expect(generalizeEntries.length).toBeGreaterThan(0);
   });
 
+  test('compoundOnly 源词汇下裸词 sweepStale / sweep.ts 不被误伤', () => {
+    expect(renderTemplate('sweepStale', TARGET, SNAPSHOT_ORIGINAL)).toBe(
+      'sweepStale',
+    );
+    expect(renderTemplate("file: 'sweep.ts'", TARGET, SNAPSHOT_ORIGINAL)).toBe(
+      "file: 'sweep.ts'",
+    );
+    expect(containsResidual('sweepStale', SNAPSHOT_ORIGINAL)).toBe(false);
+  });
+
   test('每个 generalize 文件渲染前含词汇、渲染后零残留', () => {
     for (const entry of generalizeEntries) {
       const source = readFileSync(join(REPO_ROOT, entry.path), 'utf8');
       expect(
-        containsResidual(source, ORIGINAL),
+        containsResidual(source, SNAPSHOT_ORIGINAL),
         `${entry.path} 渲染前应含原词汇 (登记口径自证)`,
       ).toBe(true);
 
-      const rendered = renderTemplate(source, TARGET, ORIGINAL);
+      const rendered = renderTemplate(source, TARGET, SNAPSHOT_ORIGINAL);
       const leftovers = RESIDUAL_LITERALS.filter((term) =>
         rendered.includes(term),
       );
       expect(leftovers, `${entry.path} 残留 (独立字面清单)`).toEqual([]);
       expect(
-        containsResidual(rendered, ORIGINAL),
+        containsResidual(rendered, SNAPSHOT_ORIGINAL),
         `${entry.path} 残留 (引擎判定)`,
       ).toBe(false);
     }

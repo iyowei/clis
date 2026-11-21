@@ -41,8 +41,8 @@
         "!$TURBO_ROOT$/packages/codd/**",
         "!$TURBO_ROOT$/packages/codd-cli/**",
         "!$TURBO_ROOT$/packages/cli-updater/**",
-        "!$TURBO_ROOT$/packages/sweep-node-modules/src/**",
-        "!$TURBO_ROOT$/packages/sweep-node-modules/bench/results/**",
+        "!$TURBO_ROOT$/packages/sweep/src/**",
+        "!$TURBO_ROOT$/packages/sweep/bench/results/**",
         "$TURBO_ROOT$/scripts/**",
         "!$TURBO_ROOT$/scripts/transcription/mutants/**",
         "$TURBO_ROOT$/tsconfig.json"

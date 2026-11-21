@@ -61,7 +61,7 @@ npm create clis -- my-tool --tier core
 
 - **项目名**: 位置参数 (目标目录的 basename) 或 `--name`; 没有默认值, 校验 kebab-case (如 `my-tool`);
 - **scope**: `--scope`; 默认不带 (裸包名), 带时以 `@` 开头 (如 `@me`);
-- **bin 名**: `--bin`; 默认由项目名派生短形态 (三段及以上取「首段 + 其余段首字母」: `sweep-node-modules` → `sweep-nm`);
+- **bin 名**: `--bin`; 默认由项目名派生短形态 (三段及以上取「首段 + 其余段首字母」: `clean-build-cache` → `clean-bc`);
 - **owner**: `--owner`; 默认取 git 全局 `user.name`;
 - **仓库地址**: `--repo`; 默认 `https://github.com/<owner>/<name>`。
 

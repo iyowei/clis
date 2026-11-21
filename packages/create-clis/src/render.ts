@@ -1,30 +1,11 @@
 /**
- * 泛化替换引擎: 把「原项目词汇」的全部实测形态替换为「目标词汇」。
+ * 泛化替换引擎与残留检测: 供构建期 (`scripts/build-template.ts`) 泛化模板资产与生成期
+ * (`generate.ts`) 代入用户词汇共用, `TEMPLATE_VOCABULARY` 作为双花括号占位单源 (`{{NAME}}` 等,
+ * 避开 JS `${name}` 模板插值冲突)。
  *
- * 两处消费 (设计见 docs/designs/scaffold-template-snapshot.md):
- * - 构建期 (build-template): 用模板占位词汇把本仓文件泛化成模板资产;
- * - 生成期 (generate): 用用户词汇代入模板。
- * containsResidual 是两处共用的零残留判据 (构建自检与生成二道防线)。
- *
- * 形态面 (长形态优先, 由单遍扫描消化包含关系):
- * - 基线五形态 (spec 词汇表): `{{SCOPE}}/{{NAME}}` (含 `-cli` 薄壳包坐标) / `{{NAME}}` /
- *   `{{BIN_NAME}}` / `{{OWNER}}` / `{{REPO_URL}}`;
- * - 实测扩展形态 (实扫 generalize 文件面暴露): 作者署名 author (owner 的展示名, 见于 LICENSE 与
- *   package.json author, 如 iTonyYo) / 裸 slug (无 scheme 的 `{{OWNER}}/{{NAME}}`, 如 npm 命令
- *   的 `--repo iyowei/clis`)。
- *
- * 占位符拼写 (三轮裁定): 模板占位用双花括号大写形态 (`{{NAME}}` 式), 不用单花括号 —— 单花括号
- * `{name}` 是 JS 模板字面量插值 `${name}` 的真子串, 生成期替换会把代码里的插值打成 `$用户词`
- * (实测 8 处, 含 `=== ${name} ===` 这类闸门文案); 双花括号全库零命中, 且在 md / json / yaml / ts
- * 各载体下都不与既有语法撞车 (prettier 亦原样保留)。
- *
- * 裸词收窄 (二轮裁定, 与 template-manifest 的词面口径同源): 裸 `sweep` / `clis` 不入替换面 ——
- * 子串匹配会把动词义标识符 `sweepStale` 写成含连字符的错误标识符, 把生成器包名 `create-clis`
- * 写成生成物里不存在的包; 产品义只认复合形态, 落不进复合面的 (产品区路径 `docs/sweep/` 等)
- * 由清单按条目 note 移交 snapshot / reset 处置, 引擎不代劳。
- *
- * 替换语义: 单遍从左到右扫描, 每个位置取最长匹配形态, 命中即整体替换并跳过该段; 已写出的目标
- * 文本不参与后续匹配 (目标值里含源形态也不会被二次替换)。
+ * 核心机制: `buildForms` 按「同源去重先注册胜 + 形态长度降序」建表, `renderTemplate` 单遍从左到右
+ * 取最长匹配整体替换 (已写出文本不参与二次匹配); 短词源词汇可开 `Vocabulary.compoundOnly` 仅按
+ * 无歧义复合形态替换防误伤标识符; `containsResidual` 兼顾构建自检与生成二道防线。
  */
 
 /** 词汇: spec 词汇表五基线变量 + 实测扩展形态 author (可选, 缺省回退见字段说明) */
@@ -41,6 +22,13 @@ export interface Vocabulary {
   repoUrl: string;
   /** 作者署名 (owner 的展示名形态, 见于 LICENSE / package.json author, 如 iTonyYo); 缺省回退 owner */
   author?: string;
+  /**
+   * 仅按无歧义复合形态替换 name / binName (跳过裸 name 与裸 binName):
+   * 当源项目名或命令名为常用英文短词 (如 `ORIGINAL` 的 `sweep`) 时开启,
+   * 仅替换包坐标、`packages/<name>`、`vendor/<name>`、`bin/<bin>` 及受限引号/命令上下文,
+   * 防止无边界子串替换误伤 `sweepStale` / `sweep.ts` 或普通英文文本。
+   */
+  compoundOnly?: boolean;
 }
 
 /**
@@ -83,13 +71,18 @@ function parseRepoSlug(repoUrl: string): string | undefined {
 }
 
 /**
- * 建「源形态 → 目标值」对照表 (同源去重, 先注册者胜; 末尾按形态长度降序)。
+ * 建「源形态 -> 目标值」对照表 (同源去重先注册胜, 末尾按 `from.length` 降序供单遍最长匹配)。
  *
- * **执行步骤**：
- * 1. 仓库地址整段 (带 `.git` / `#readme` / `/issues` 等后缀时由剩余文本承接) 与裸 slug
- *    (源地址非 URL 形态时注册 `owner/name` 组合: 模板占位词汇 `{{OWNER}}/{{NAME}}` 即由此覆盖);
- * 2. 包坐标 (含 `-cli` 薄壳包, 先于裸 name 注册);
- * 3. 裸 name; 4. bin 名; 5. 作者署名 (回退 owner) 与 owner。
+ * 注册序与防误伤规则:
+ * 1. `repoUrl` 整段与裸 slug (源 URL 可解析取路径段, 不可解析如 `{{REPO_URL}}` 时用 `owner/name`);
+ * 2. 包坐标 (`<scope>/<name>-cli`, `<name>-cli`, `<scope>/<name>`);
+ * 3. `name` / `binName`: `source.compoundOnly === true` 时仅注册 13 种路径/引号/命令复合形态
+ *    (`packages/<name>/`, `packages/<name>`, `vendor/<name>`, `bin/<bin>`, `<bin>: `, `<bin> 启动器`,
+ *    `'<bin>'`, `"<bin>"`, `'<bin> `, `"<bin> `, `bunx <bin>`, `<bin>-rs`, `{ <bin>: ` -> `{ '<target>': `),
+ *    不注册裸 `name` 与裸 `binName`; 否则注册裸 `name` 与裸 `binName`;
+ * 4. `scope`: 始终注册 `<scope>/` (目标无 scope 时连同 `/` 剥离防出现 `/pkg`),
+ *    仅当 `source.scope !== @${source.owner}` 才注册裸 `scope` (防误伤 GitHub `@owner` mention);
+ * 5. `author` (目标缺省回退 `target.owner`) 与 `owner`。
  */
 function buildForms(target: Vocabulary, source: Vocabulary): Form[] {
   const forms: Form[] = [];
@@ -121,7 +114,24 @@ function buildForms(target: Vocabulary, source: Vocabulary): Form[] {
     packageName(source.scope, source.name),
     packageName(target.scope, target.name),
   );
-  add(source.name, target.name);
+  if (source.compoundOnly === true) {
+    // 裸短词 (如 sweep) 只走无歧义复合形态, 严禁裸词无边界替换误伤 sweepStale / sweep.ts 等标识
+    add(`packages/${source.name}/`, `packages/${target.name}/`);
+    add(`packages/${source.name}`, `packages/${target.name}`);
+    add(`vendor/${source.name}`, `vendor/${target.name}`);
+    add(`bin/${source.binName}`, `bin/${target.binName}`);
+    add(`${source.binName}: `, `${target.binName}: `);
+    add(`${source.binName} 启动器`, `${target.binName} 启动器`);
+    add(`'${source.binName}'`, `'${target.binName}'`);
+    add(`"${source.binName}"`, `"${target.binName}"`);
+    add(`'${source.binName} `, `'${target.binName} `);
+    add(`"${source.binName} `, `"${target.binName} `);
+    add(`bunx ${source.binName}`, `bunx ${target.binName}`);
+    add(`${source.binName}-rs`, `${target.binName}-rs`);
+    add(`{ ${source.binName}: `, `{ '${target.binName}': `);
+  } else {
+    add(source.name, target.name);
+  }
   if (source.scope.length > 0) {
     // 带斜杠的 npm scope 前缀: 目标无 scope 时连同尾部 `/` 一起省略, 防出现非法 `/pkg`
     add(`${source.scope}/`, target.scope.length > 0 ? `${target.scope}/` : '');
@@ -131,7 +141,9 @@ function buildForms(target: Vocabulary, source: Vocabulary): Form[] {
       add(source.scope, target.scope);
     }
   }
-  add(source.binName, target.binName);
+  if (source.compoundOnly !== true) {
+    add(source.binName, target.binName);
+  }
   if (source.author !== undefined)
     add(source.author, target.author ?? target.owner);
   add(source.owner, target.owner);
@@ -142,26 +154,17 @@ function buildForms(target: Vocabulary, source: Vocabulary): Form[] {
 /**
  * 渲染模板: 把 content 里的原词汇形态替换为目标词汇对应值; 不含词汇的内容原样返回。
  *
- * ### 数据追踪示例
+ * ### 数据流转示例
  * ```text
- * Input（真实 Payload）
- *   content = '@iyowei/sweep-node-modules 与 sweep-nm 与 iTonyYo 与 https://github.com/iyowei/clis 与 docs/sweep/'
- *   v = { name: 'my-tool', scope: '@me', binName: 'mt', owner: 'me', repoUrl: 'https://github.com/me/my-tool' }
- *   original = { name: 'sweep-node-modules', scope: '@iyowei', binName: 'sweep-nm', owner: 'iyowei', repoUrl: 'https://github.com/iyowei/clis', author: 'iTonyYo' }
- *
- * 步骤 1：建形态表 (长形态在前)
- *   forms = [
- *     'https://github.com/iyowei/clis' → 'https://github.com/me/my-tool',
- *     '@iyowei/sweep-node-modules' → '@me/my-tool', 'sweep-node-modules' → 'my-tool',
- *     'iyowei/clis' → 'me/my-tool', 'sweep-nm' → 'mt', 'iTonyYo' → 'me', 'iyowei' → 'me', ...
- *   ]
- *
- * 步骤 2：单遍扫描, 每个位置取最长匹配整体替换 (已写出的目标文本不参与后续匹配)
- *   '@iyowei/sweep-node-modules' 命中包坐标形态; 'sweep-nm' 命中 bin 形态; 'iTonyYo' 命中作者形态;
- *   整段地址命中地址形态; 'docs/sweep/' 的 sweep 是裸词形态, 不在替换面, 原样保留
- *
- * Output（数据契约）
- *   return '@me/my-tool 与 mt 与 me 与 https://github.com/me/my-tool 与 docs/sweep/'
+ * Input:  content = "@iyowei/sweep-cli | 'sweep' | sweepStale() | https://github.com/iyowei/clis"
+ *         v        = { name: 'my-tool', scope: '', binName: 'mt', owner: 'me', repoUrl: 'https://github.com/me/my-tool' }
+ *         original = { name: 'sweep', scope: '@iyowei', binName: 'sweep', owner: 'iyowei',
+ *                      repoUrl: 'https://github.com/iyowei/clis', author: 'iTonyYo', compoundOnly: true }
+ * Step 1: buildForms(v, original) 生成按长度降序的形态表:
+ *         'https://github.com/iyowei/clis' -> 'https://github.com/me/my-tool',
+ *         '@iyowei/sweep-cli' -> 'my-tool-cli' (目标无 scope), "'sweep'" -> "'mt'", ... (不注册裸 'sweep')
+ * Step 2: 单遍从左到右最长匹配替换 (已写出文本不二次匹配); 'sweepStale()' 未命中复合形态, 原样保留
+ * Output: "my-tool-cli | 'mt' | sweepStale() | https://github.com/me/my-tool"
  * ```
  */
 export function renderTemplate(
@@ -186,12 +189,22 @@ export function renderTemplate(
 }
 
 /**
- * 残留检测: content 里是否仍含原词汇的任一形态 (构建自检与生成二道防线的共用判据)。
- * 判据以 original 自身作目标词汇建表取源形态。
+ * 残留检测: 检查 content 是否仍含 `original` 任一注册形态 (构建自检与生成二道防线共用)。
  *
- * 传入 target 时排除与目标词汇形态重合的源形态: 目标词汇与源词汇取值重合是合法配置
- * (如用户 owner 与本仓 owner 同名, 生成物里出现同名值是预期结果), 重合形态不算残留,
- * 防二道自检误报; 不传时维持「源形态全量」判据 (构建自检面)。
+ * 传入 `target` 时采用哨兵遮蔽而非直接剔除源形态: 仅把「包含任一原词汇形态的合法目标形态」
+ * (如同名 `owner === 'iyowei'` 或超集 `owner === 'iyowei-lab'`) 按长形态优先替换为 `'\0'`,
+ * 再检查剩余文本是否仍含原词汇形态 —— 既放行合法重合, 又防短目标词切碎真残留、并拦截同文件混杂的漏替。
+ *
+ * ### 数据流转示例
+ * ```text
+ * Input:  content = 'https://github.com/iyowei-lab/my-tool 与残留 https://github.com/iyowei/clis'
+ *         original = ORIGINAL (含 owner='iyowei', repoUrl='https://github.com/iyowei/clis')
+ *         target   = { ..., owner: 'iyowei-lab', repoUrl: 'https://github.com/iyowei-lab/my-tool' }
+ * Step 1: 筛出含原形态的目标形态 ['https://github.com/iyowei-lab/my-tool', 'iyowei-lab/my-tool', 'iyowei-lab']
+ * Step 2: 依次用 '\0' 遮蔽 -> remaining = '\0 与残留 https://github.com/iyowei/clis'
+ * Step 3: 扫描 remaining 命中原形态 'https://github.com/iyowei/clis'
+ * Output: true (检出混杂真残留; 若无后半段则 remaining = '\0' 返回 false)
+ * ```
  */
 export function containsResidual(
   content: string,

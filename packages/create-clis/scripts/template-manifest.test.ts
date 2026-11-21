@@ -27,9 +27,12 @@ import { REPO_ROOT, TEMPLATE_MANIFEST } from './template-manifest.ts';
  * `iyowei/clis` 这类复合面, 落不进复合面的按条目 note 移交。
  */
 const VOCABULARY = [
-  'sweep-node-modules',
+  'packages/sweep-cli',
+  'packages/sweep/',
+  'sweep-cli',
+  'bin/sweep',
+  'sweep: ',
   '@iyowei',
-  'sweep-nm',
   'iyowei/clis',
   'iyowei',
   'iTonyYo',
@@ -168,9 +171,9 @@ describe('TEMPLATE_MANIFEST 词汇口径', () => {
       ).toBe(false);
     }
     for (const hit of [
-      '@iyowei/sweep-node-modules',
-      'sweep-node-modules-cli',
-      'sweep-nm',
+      '@iyowei/sweep',
+      'packages/sweep-cli',
+      'bin/sweep.mjs',
       'iyowei/clis',
       'iTonyYo',
     ]) {

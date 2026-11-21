@@ -12,16 +12,18 @@ import { fileURLToPath } from 'node:url';
 import { type Vocabulary } from './render.ts';
 
 /**
- * 本仓 (模板来源) 的原项目词汇: author 是 owner 的展示名形态 (LICENSE / package.json author),
- * 缺它会漏替换与漏自检。
+ * 本仓 (模板来源) 的原项目词汇:
+ * - `author` 是 `owner` 的展示名形态 (LICENSE / package.json author), 缺它会漏替换与漏自检;
+ * - `compoundOnly: true` 因本仓包名与命令名均为常用短词 `sweep`, 强制仅按复合形态替换防误伤。
  */
 export const ORIGINAL: Vocabulary = {
-  name: 'sweep-node-modules',
+  name: 'sweep',
   scope: '@iyowei',
-  binName: 'sweep-nm',
+  binName: 'sweep',
   owner: 'iyowei',
   repoUrl: 'https://github.com/iyowei/clis',
   author: 'iTonyYo',
+  compoundOnly: true,
 };
 
 /**
@@ -36,14 +38,12 @@ export function defaultTemplateDir(
 }
 
 /**
- * 资产载体改名表 (真实名 → 随包载体名): npm 面包机制按**文件名**硬性剔除 `.gitignore` 与
- * `.npmrc` (任何层级, `files` 字段也救不回; 平台事实与证据见 scripts/release-artifact.ts 的
- * NPM_UNSHIPPABLE_BASENAMES)。模板若以真实名随包, 这些文件根本进不了发行面包, 发售版生成出的
- * 项目就会缺它们 (TD-05); 故构建期把落包路径换成 `_` 前缀载体名 (不命中剔除表, 也不与常见生态
- * 约定撞车), 生成期在复制模板后立即还原成真实名 (见 generate.ts 的「载体还原」步骤)。
+ * 资产载体改名表 (真实名 -> 随包载体名): npm 打包机制按文件名硬性剔除 `.gitignore` 与
+ * `.npmrc` (任何层级, `files` 字段也救不回; 证据见 `scripts/release-artifact.ts` 的
+ * `NPM_UNSHIPPABLE_BASENAMES`)。构建期改用 `_` 前缀载体名随发行包下发, 生成期在复制模板后
+ * 立即还原成真实名 (见 `generate.ts` 的 `restoreCarrierNames`)。
  *
- * 本表是唯一事实来源: 构建侧 (build-template 的落包改名) 与生成侧 (generate 的载体还原) 共用,
- * 两侧各有一份测试钉住 (build-template.test.ts 的逐条落位 / cli.e2e.test.ts 的生成物真实名断言)。
+ * 本表是唯一事实来源: 构建侧 (`toCarrierPath`) 与生成侧 (`fromCarrierPath`) 共用。
  */
 export const ASSET_CARRIERS: Readonly<Record<string, string>> = {
   '.gitignore': '_gitignore',
