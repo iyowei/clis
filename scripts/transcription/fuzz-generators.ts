@@ -4,6 +4,16 @@
  * 上游: `scripts/transcription/run-diff-fuzz.ts` 按包级 `fuzz-targets.json` 调度本模块生成对抗输入;
  * 下游: 生成的 args 数组封装为 API harness `{ steps }` 指令, 回包由本模块做不变量校验与双实现深等价比对。
  */
+import type { InvariantName } from './fuzz-invariants.ts';
+
+export {
+  type HarnessOutcome,
+  type InvariantName,
+  canonicalJson,
+  checkInvariants,
+  comparableOutcome,
+  hasForbiddenControlChar,
+} from './fuzz-invariants.ts';
 
 /** 单个模糊测试目标声明 (对应包级 `conformance/fuzz-targets.json` 中的一项) */
 export interface FuzzTargetSpec {
@@ -30,27 +40,11 @@ export type GeneratorName =
   | 'name-lists'
   | 'v1-config-raw'
   | 'xdg-path'
-  | 'classify-target';
-
-export type InvariantName =
-  | 'no-crash'
-  | 'ok-string'
-  | 'non-empty-string'
-  | 'no-control-chars'
-  | 'no-newlines'
-  | 'idempotent';
-
-/** API harness 单条规范输出形状 */
-export interface HarnessOutcome {
-  ok: boolean;
-  value?: unknown;
-  error?: {
-    name?: string;
-    code?: string;
-    message?: string;
-    details?: unknown;
-  };
-}
+  | 'classify-target'
+  | 'rule-leaf-match'
+  | 'older-than-days'
+  | 'safe-target-leaf'
+  | 'inside-any-root';
 
 /** Park-Miller / Lehmer 确定性伪随机数生成器 (零位运算): 同 seed 跨运行时/跨平台产出严格一致的 [0, 1) 序列 */
 export function createPrng(seed: number): () => number {
@@ -343,6 +337,105 @@ function genClassifyTarget(rng: () => number, index: number): unknown[] {
   ];
 }
 
+function genRuleLeafMatch(rng: () => number, index: number): unknown[] {
+  const patterns = [
+    '*.log',
+    'build-*',
+    'cache_?.tmp',
+    '.DS_Store',
+    'app[1].tmp',
+    'foo+bar(1).bak',
+  ];
+  const leaves = [
+    'app.log',
+    '.log',
+    'build-debug',
+    'build-',
+    'cache_a.tmp',
+    'cache_ab.tmp',
+    '.DS_Store',
+    'app[1].tmp',
+    'foo+bar(1).bak',
+    'keep.txt',
+  ];
+  const pat = patterns[index % patterns.length]!;
+  const leaf = index < leaves.length ? leaves[index]! : pick(rng, leaves);
+  return [leaf, [{ name: 'fuzz', kind: 'any', match: pat, action: 'trash' }]];
+}
+
+function genOlderThanDays(rng: () => number, index: number): unknown[] {
+  const now = 1_760_000_000_000;
+  const day = 86_400_000;
+  const edges: [number, number, number][] = [
+    [now + day, 1, now],
+    [now, 0, now],
+    [now - day, 1, now],
+    [now - day + 1, 1, now],
+    [now - day * 30, 30, now],
+    [now - day * 30 + 1, 30, now],
+    [0, 365, now],
+  ];
+  if (index < edges.length) return edges[index]!;
+  const deltaDays = randInt(rng, -5, 120);
+  const threshold = randInt(rng, 1, 90);
+  return [now - deltaDays * day, threshold, now];
+}
+
+function genSafeTargetLeaf(rng: () => number, index: number): unknown[] {
+  const win = index % 2 === 1;
+  const samples = win
+    ? [
+        'C:\\work\\a\\node_modules',
+        'C:\\work\\a\\',
+        'C:\\work\\.',
+        'C:\\work\\..',
+        'C:\\work\\.git',
+        'C:\\work\\*',
+        'C:\\work\\app.log',
+        '',
+      ]
+    : [
+        '/work/a/node_modules',
+        '/work/a/',
+        '/work/.',
+        '/work/..',
+        '/work/.git',
+        '/work/*',
+        '/work/app.log',
+        '',
+      ];
+  const target =
+    index < samples.length
+      ? samples[index]!
+      : `${win ? 'C:\\work\\' : '/work/'}${pick(rng, ['dist', 'target', '.git', '..', '*', 'cache/', 'a.log'])}`;
+  return [target, { $probe: win ? 'pathops.win32' : 'pathops.posix' }];
+}
+
+function genInsideAnyRoot(rng: () => number, index: number): unknown[] {
+  const win = index % 2 === 1;
+  const roots = win ? ['C:\\Work', 'D:\\Proj', ''] : ['/work', '/opt/proj', ''];
+  const candidates = win
+    ? [
+        'C:\\work\\app\\target',
+        'C:\\work2\\app\\target',
+        'C:\\Work',
+        'C:\\Work\\..\\secret',
+        'E:\\other\\target',
+        '',
+      ]
+    : [
+        '/work/app/target',
+        '/work2/app/target',
+        '/work',
+        '/work/../secret',
+        '/opt/proj/sub/dist',
+        '',
+      ];
+  const target =
+    index < candidates.length ? candidates[index]! : pick(rng, candidates);
+  return [target, roots, { $probe: win ? 'pathops.win32' : 'pathops.posix' }];
+}
+
 /** 按声明的生成器名称产出 count 组确定性对抗参数列表 */
 export function generateFuzzArgs(
   generator: GeneratorName,
@@ -381,109 +474,19 @@ export function generateFuzzArgs(
       case 'classify-target':
         list.push(genClassifyTarget(rng, index));
         break;
+      case 'rule-leaf-match':
+        list.push(genRuleLeafMatch(rng, index));
+        break;
+      case 'older-than-days':
+        list.push(genOlderThanDays(rng, index));
+        break;
+      case 'safe-target-leaf':
+        list.push(genSafeTargetLeaf(rng, index));
+        break;
+      case 'inside-any-root':
+        list.push(genInsideAnyRoot(rng, index));
+        break;
     }
   }
   return list;
-}
-
-// ---------------------------------------------------------------------------
-// 规范 JSON 深比较与不变量检查
-// ---------------------------------------------------------------------------
-
-/** 递归按对象键字典序归一后序列化, 用于跨语言/跨运行时确定性深等价比较 */
-export function canonicalJson(value: unknown): string {
-  if (value === null || typeof value !== 'object') return JSON.stringify(value);
-  if (Array.isArray(value)) {
-    return `[${value.map(canonicalJson).join(',')}]`;
-  }
-  const entries = Object.entries(value as Record<string, unknown>)
-    .filter(([, item]) => item !== undefined)
-    .sort(([a], [b]) => {
-      if (a < b) return -1;
-      return a > b ? 1 : 0;
-    });
-  return `{${entries.map(([k, v]) => `${JSON.stringify(k)}:${canonicalJson(v)}`).join(',')}}`;
-}
-
-/** 提取用于跨实现差分比较的可比较载荷 (成功比 value; 失败比 error.code 或 error.name) */
-export function comparableOutcome(outcome: HarnessOutcome): string {
-  if (outcome.ok) return canonicalJson({ ok: true, value: outcome.value });
-  return canonicalJson({
-    ok: false,
-    code: outcome.error?.code ?? null,
-    name: outcome.error?.name ?? 'Error',
-  });
-}
-
-/** 检查字符串是否包含禁止的控制字符 (C0 除 \t, DEL, C1, bidi 与零宽/BOM) */
-export function hasForbiddenControlChar(text: string): boolean {
-  for (let i = 0; i < text.length; i += 1) {
-    const code = text.charCodeAt(i);
-    if (
-      (code >= 0x00 && code <= 0x08) ||
-      (code >= 0x0b && code <= 0x1f) ||
-      (code >= 0x7f && code <= 0x9f) ||
-      (code >= 0x200b && code <= 0x200f) ||
-      (code >= 0x202a && code <= 0x202e) ||
-      (code >= 0x2066 && code <= 0x2069) ||
-      code === 0xfeff
-    ) {
-      return true;
-    }
-  }
-  return false;
-}
-
-/** 校验单次执行结果是否满足目标声明的全部非幂等不变量 (返回违例原因列表) */
-export function checkInvariants(
-  outcome: HarnessOutcome,
-  invariants: readonly InvariantName[],
-): string[] {
-  const violations: string[] = [];
-  for (const inv of invariants) {
-    if (inv === 'no-crash' || inv === 'idempotent') continue;
-    if (inv === 'ok-string') {
-      if (!outcome.ok || typeof outcome.value !== 'string') {
-        violations.push(
-          `违反 ok-string: ok=${String(outcome.ok)}, typeof value=${typeof outcome.value}`,
-        );
-      }
-      continue;
-    }
-    if (inv === 'non-empty-string') {
-      if (
-        !outcome.ok ||
-        typeof outcome.value !== 'string' ||
-        outcome.value === ''
-      ) {
-        violations.push('违反 non-empty-string: 结果不是非空字符串');
-      }
-      continue;
-    }
-    if (inv === 'no-control-chars') {
-      if (
-        !outcome.ok ||
-        typeof outcome.value !== 'string' ||
-        hasForbiddenControlChar(outcome.value)
-      ) {
-        violations.push(
-          `违反 no-control-chars: 输出含裸控制/bidi 字符 (${JSON.stringify(outcome.value)})`,
-        );
-      }
-      continue;
-    }
-    if (inv === 'no-newlines') {
-      if (
-        !outcome.ok ||
-        typeof outcome.value !== 'string' ||
-        outcome.value.includes('\n') ||
-        outcome.value.includes('\r')
-      ) {
-        violations.push(
-          `违反 no-newlines: 输出含换行符 (${JSON.stringify(outcome.value)})`,
-        );
-      }
-    }
-  }
-  return violations;
 }
