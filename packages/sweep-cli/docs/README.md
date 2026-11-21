@@ -10,11 +10,7 @@
 | -------------------------------------- | --------------------------------------------------------------------------- |
 | [命令面与输出](designs/cli-surface.md) | 对外契约: 命令 (`init`/`migrate`/`config`/`update`)、旗标、退出码、渲染规格 |
 
-## 包级 ADR
-
-(无: 本包的决策随整个产品一起, 记在主包 [API 包文档](../../sweep/docs/README.md) 与仓库级 ADR 里。)
-
 ## 关联入口
 
 - 仓库级: [仓库文档索引](../../../docs/README.md) / [设计文档索引](../../../docs/designs/README.md);
-- 产品主包: [sweep 文档入口](../../sweep/docs/README.md) / [设计总纲](../../sweep/docs/designs/sweep-design.md) / [配置与初始化](../../sweep/docs/designs/config-and-initialization.md) / [安全防护保障](../../sweep/docs/designs/safety-guardrails.md)。
+- 产品主包 (含全部产品 ADR): [sweep 文档入口](../../sweep/docs/README.md) / [设计总纲](../../sweep/docs/designs/sweep-design.md) / [配置与初始化](../../sweep/docs/designs/config-and-initialization.md) / [安全防护保障](../../sweep/docs/designs/safety-guardrails.md)。
