@@ -36,8 +36,15 @@ bun test
 # 基准组 (经 turbo 调度各包 bench)
 bun run bench
 
-# 转写一致性验收 (金样本语料见 packages/sweep/docs/protocol/; target 为 CLI 包内源码路径)
+# 转写一致性验收 (双运行时全量 93 条, 等价于 CI 的 conformance 组)
+bun run ci -- --conformance
+
+# 转写一致性验收 (验任意目标语言产物; 失败时可加 --emit-failures ~/tmp/failures 导出诊断单)
 bun run conformance -- --target "bun packages/sweep-cli/src/cli.ts"
+
+# 差分模糊测试: 本仓参考实现不变量自检 (900 组对抗输入) 与 Bun vs Node 双运行时差分比对
+bun run fuzz
+bun run fuzz:diff
 
 # 本地 CI 预演 (与 GitHub Actions 的 verify + conformance 同集合: build / 类型 / 测试 / lint / 格式 / 五道治理闸门 / conformance 双 target; pre-push 钩子按同集合自动执行)
 bun run ci
@@ -112,4 +119,5 @@ bun run conformance -- --target "node packages/sweep-cli/src/cli.ts"
 - [工程技术文档总索引](README.md)
 - [设计文档索引](designs/README.md): 设计总纲与各分册
 - [架构决策记录](adrs/README.md): 仓级工程 ADR
-- [sweep 转写契约套件](../packages/sweep/docs/protocol/README.md): 编号行为契约与金样本语料
+- [跨语言转写基建](transcription/README.md): 全仓共享转写纪律、对抗评审指令、TS 暗坑核查表与目标语言通用模板
+- [sweep 转写契约套件](../packages/sweep/docs/protocol/README.md): 编号行为契约、金样本语料与模糊测试目标清单
