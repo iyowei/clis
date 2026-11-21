@@ -161,6 +161,40 @@ describe('CODD-P0-1 & P0-2: networkMode=host 绑定隔离与 RS_SELF_HOST 映射
 
     const conf0 = readFileSync(join(res.bundleDirs[0]!, 'mongod.conf'), 'utf8');
     expect(conf0).toContain('bindIp: "127.0.0.1,10.8.0.11"');
+
+    const macRs = generateBundle({
+      workDir: dir,
+      templateDir: SOURCE_TEMPLATE_ROOT,
+      manifest: {
+        mode: 'replica-set',
+        name: 'macrs',
+        apps: [{ db: 'app', user: 'appu' }],
+        nodes: [
+          {
+            name: 'node1',
+            os: 'linux',
+            bindIp: '10.8.0.11',
+            backupDir: '/home/ops/bak',
+          },
+          {
+            name: 'node2',
+            os: 'linux',
+            bindIp: '10.8.0.12',
+            backupDir: '/home/ops/bak',
+          },
+          {
+            name: 'node3',
+            os: 'macos',
+            bindIp: '10.8.0.13',
+            backupDir: '/Users/ops/bak',
+          },
+        ],
+      },
+    });
+    expect(
+      macRs.warnings.some((w) => w.includes('cannot assign requested address')),
+    ).toBe(true);
+    expect(readFileSync(macRs.credentialsFile, 'utf8')).toContain('/etc/hosts');
   });
 });
 

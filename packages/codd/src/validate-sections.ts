@@ -1,5 +1,8 @@
 /**
- * 清单子段内部校验器: Kubernetes 配置与 Podman 节点列表校验。
+ * 清单子段内部校验器: 由 `validate.ts` 委托调用, 负责 Kubernetes (`k8s`) 与 Podman (`nodes`) 子段校验。
+ * 依赖 `ssh.ts` 校验 `sshTarget`, 复用 `validate.ts` 注入的正则与路径/IP 校验函数。
+ * 关键约束: `single` 恰 1 节点、`replica-set` 恰 3 节点且禁重复 `name`/`host`/`bindIp`;
+ * macOS 节点禁 `networkMode=host`, 且 `backupDir` 须位于 `/Users/` 或 `/private/` 下 (`stackDir` 仅验安全绝对路径)。
  */
 import { parseSshInput } from './ssh.ts';
 import {
@@ -118,6 +121,7 @@ const checkPattern = (val: unknown, re: RegExp, label: string): string => {
   return val;
 };
 
+/** 校验 `k8s` 子段字段白名单、DNS 标签/资源名、`serviceType`/`nodePort` (30000-32767) 与反亲和策略 */
 export const validateK8sSection = (
   k8s: DeployManifest['k8s'],
   validators: SectionValidators,
@@ -246,6 +250,11 @@ const validateSinglePodmanNode = (
       );
     }
     ctx.seenBindIps.add(bindIp);
+    if (node.os === 'macos') {
+      ctx.warnings.push(
+        `跨平台提醒: nodes[${index}] 为 macOS 节点且配置 bindIp=${bindIp}, Podman VM 通过 gvproxy 转发端口, 绑定宿主机 VPN/非默认接口特定 IP 易触发 cannot assign requested address; 若遇启动绑定失败, 请改用 Linux 节点、为 lo0 配置接口别名或改由可信内网防火墙保护的 0.0.0.0`,
+      );
+    }
   }
   if (bindIp === '0.0.0.0') {
     if (ctx.networkMode === 'host') {
@@ -274,6 +283,7 @@ const validateSinglePodmanNode = (
   }
 };
 
+/** 校验 Podman `nodes` 数量 (`single`=1, `replica-set`=3)、各节点安全路径/唯一标识/IP/SSH, 并将 `0.0.0.0` 风险记入 `warnings` */
 export const validatePodmanNodesSection = (
   input: PodmanNodesValidateInput,
 ): void => {

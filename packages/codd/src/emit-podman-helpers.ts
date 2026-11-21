@@ -1,5 +1,7 @@
 /**
- * Podman 渲染器的纯模板辅助函数: 网络拓扑片段、mongod 绑定策略、macOS LaunchAgent 与连接串汇总。
+ * Podman 渲染器的纯模板辅助与交付文案工具, 由 `emit-podman.ts` 调用。
+ * 覆盖 `mongod.conf` 绑定线、compose 网络拓扑片段、macOS LaunchAgent `.plist` 渲染、
+ * 跨平台 (POSIX rsync / Windows scp) 上传指引、单机启动步骤与连接串汇总。
  */
 import { writeFileSync } from 'node:fs';
 import { join, posix } from 'node:path';
@@ -92,6 +94,7 @@ export const computeRsMemberHost = (opts: {
   return '';
 };
 
+/** 生成 `podman-compose.yml` 网络配置片段与客户端连接主机名 (`multiNetAlias` 仅在 `single + bridge` 生效) */
 export const buildNetworkFragments = (opts: {
   manifest: DeployManifest;
   networkMode: NetworkMode;
@@ -235,12 +238,13 @@ export const formatSinglePostUploadSteps = (opts: {
   if (os === 'macos') {
     const plistFile = `com.codd.mongo-backup-${fingerprint}.plist`;
     steps.push(
-      `[macOS 定时备份 (可选)] 在目标 Mac 执行: cp ${dirArg}/${plistFile} ~/Library/LaunchAgents/ && launchctl load -w ~/Library/LaunchAgents/${plistFile}`,
+      `[macOS 定时备份 (可选)] 在目标 Mac 执行: mkdir -p ~/Library/LaunchAgents ~/srv/logs && cp ${dirArg}/${plistFile} ~/Library/LaunchAgents/ && launchctl bootstrap "gui/$(id -u)" ~/Library/LaunchAgents/${plistFile}`,
     );
   }
   return steps;
 };
 
+/** 渲染 macOS 节点每日定时备份 LaunchAgent `.plist`; 无法从 `backupDir` 推导 `/Users/<user>` 时写入占位符并追加告警 */
 export const emitMacosPlist = (opts: {
   node: ResolvedPodmanNode;
   bundleDir: string;
