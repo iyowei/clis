@@ -60,8 +60,10 @@ sweep --help / -h           显示帮助
   █ 4.6 GB  acme-web         ~/dev/acme-web
   ▓ 366 MB  data-pipeline    ~/dev/data-pipeline
   ▒  86 MB  docs-site        ~/lab/docs-site
-  █ 合计 3 处 · 5 GB   加 --yes 执行清理
+  █ 合计 3 处 · 5 GB   加 --yes 执行删除
 ```
+
+> **提示语契约注记**: 预览末行固定文案 `加 --yes 执行删除` 为 [行为契约](../../../sweep/docs/protocol/behavior-contract.md) OF-08 冻结字节契约, 实际执行时仍严格按每条命中的策略 (`trash` 移入回收站或 `delete` 永久删除) 分流。
 
 - **顶栏**: 反色 `▍ SWEEP` + 模式 (预览 / 执行) + 根数 (≤ 3 时列出缩写根路径) + 运行时自述 (如 `bun 1.4.5`, 仅真终端展示, 非 TTY 隐藏)。
 - **中性提示行 (`░`, 仅真终端)**: 展示名单命中回执等上下文说明; 名单拼写未命中告警走 stderr 并在顶栏之前呈现以示强调。
