@@ -42,16 +42,13 @@ describe('detectInstallOriginFromPath 跨包管理器与 OS 矩阵', () => {
 
   test('临时一次性运行器: npx / bunx / pnpm dlx / yarn dlx / deno', () => {
     const cases: readonly (readonly [string, EphemeralRunner])[] = [
-      [
-        '/Users/dev/.npm/_npx/ab12cd/node_modules/@iyowei/sweep-node-modules-cli',
-        'npx',
-      ],
+      ['/Users/dev/.npm/_npx/ab12cd/node_modules/@iyowei/sweep-cli', 'npx'],
       [
         'C:\\Users\\dev\\AppData\\Local\\npm-cache\\_npx\\123\\node_modules\\create-clis',
         'npx',
       ],
       [
-        '/tmp/bunx-501-@iyowei/sweep-node-modules-cli@0.3.0/node_modules/@iyowei/sweep-node-modules-cli',
+        '/tmp/bunx-501-@iyowei/sweep-cli@0.3.0/node_modules/@iyowei/sweep-cli',
         'bunx',
       ],
       [
@@ -87,16 +84,13 @@ describe('detectInstallOriginFromPath 跨包管理器与 OS 矩阵', () => {
 
   test('五大全局包管理器标准路径 (macOS / Linux / Windows)', () => {
     const cases: readonly (readonly [string, PackageManager])[] = [
+      ['/Users/dev/.bun/install/global/node_modules/@iyowei/sweep-cli', 'bun'],
       [
-        '/Users/dev/.bun/install/global/node_modules/@iyowei/sweep-node-modules-cli',
+        'C:\\Users\\dev\\.bun\\install\\global\\node_modules\\@iyowei\\sweep-cli',
         'bun',
       ],
       [
-        'C:\\Users\\dev\\.bun\\install\\global\\node_modules\\@iyowei\\sweep-node-modules-cli',
-        'bun',
-      ],
-      [
-        '/Users/dev/Library/pnpm/global/5/.pnpm/@iyowei+sweep@0.3.0/node_modules/@iyowei/sweep-node-modules-cli',
+        '/Users/dev/Library/pnpm/global/5/.pnpm/@iyowei+sweep@0.3.0/node_modules/@iyowei/sweep-cli',
         'pnpm',
       ],
       ['/home/dev/.local/share/pnpm/global/5/node_modules/create-clis', 'pnpm'],
@@ -104,26 +98,23 @@ describe('detectInstallOriginFromPath 跨包管理器与 OS 矩阵', () => {
         'C:\\Users\\dev\\AppData\\Local\\pnpm\\global\\5\\node_modules\\create-clis',
         'pnpm',
       ],
-      [
-        '/Users/dev/.config/yarn/global/node_modules/@iyowei/sweep-node-modules-cli',
-        'yarn',
-      ],
+      ['/Users/dev/.config/yarn/global/node_modules/@iyowei/sweep-cli', 'yarn'],
       [
         'C:\\Users\\dev\\AppData\\Local\\Yarn\\Data\\global\\node_modules\\create-clis',
         'yarn',
       ],
       [
-        '/Users/dev/.volta/tools/image/packages/@iyowei/sweep-node-modules-cli/lib/node_modules/@iyowei/sweep-node-modules-cli',
+        '/Users/dev/.volta/tools/image/packages/@iyowei/sweep-cli/lib/node_modules/@iyowei/sweep-cli',
         'volta',
       ],
       [
         'C:\\Users\\dev\\AppData\\Local\\Volta\\tools\\image\\packages\\create-clis\\node_modules\\create-clis',
         'volta',
       ],
-      ['/usr/local/lib/node_modules/@iyowei/sweep-node-modules-cli', 'npm'],
-      ['/opt/homebrew/lib/node_modules/@iyowei/sweep-node-modules-cli', 'npm'],
+      ['/usr/local/lib/node_modules/@iyowei/sweep-cli', 'npm'],
+      ['/opt/homebrew/lib/node_modules/@iyowei/sweep-cli', 'npm'],
       [
-        '/Users/dev/.nvm/versions/node/v22.18.0/lib/node_modules/@iyowei/sweep-node-modules-cli',
+        '/Users/dev/.nvm/versions/node/v22.18.0/lib/node_modules/@iyowei/sweep-cli',
         'npm',
       ],
       [
@@ -135,7 +126,7 @@ describe('detectInstallOriginFromPath 跨包管理器与 OS 矩阵', () => {
         'npm',
       ],
       [
-        'C:\\Users\\dev\\AppData\\Roaming\\npm\\node_modules\\@iyowei\\sweep-node-modules-cli',
+        'C:\\Users\\dev\\AppData\\Roaming\\npm\\node_modules\\@iyowei\\sweep-cli',
         'npm',
       ],
       ['C:\\Program Files\\nodejs\\node_modules\\create-clis', 'npm'],
@@ -181,8 +172,7 @@ describe('detectInstallOriginFromPath 跨包管理器与 OS 矩阵', () => {
   });
 
   test('动态实查全局根目录兜底: 自定义 pnpm/npm 全局目录即便含 package.json 也不误判成项目依赖', () => {
-    const customPnpm =
-      '/srv/custom-global/5/node_modules/@iyowei/sweep-node-modules-cli';
+    const customPnpm = '/srv/custom-global/5/node_modules/@iyowei/sweep-cli';
     const origin = detectInstallOriginFromPath({
       packageRoot: customPnpm,
       env: {},
@@ -198,7 +188,7 @@ describe('detectInstallOriginFromPath 本地项目与防误判回归', () => {
 
   test('项目本地依赖按锁文件识别推荐包管理器', () => {
     const proj = '/Users/dev/my-app';
-    const pkgRoot = `${proj}/node_modules/@iyowei/sweep-node-modules-cli`;
+    const pkgRoot = `${proj}/node_modules/@iyowei/sweep-cli`;
     const withFiles =
       (names: string[]) =>
       (p: string): boolean =>
@@ -244,7 +234,7 @@ describe('detectInstallOriginFromPath 本地项目与防误判回归', () => {
 
   test('NPM_CONFIG_PREFIX=$HOME/.local 收紧至 (lib/)?node_modules, 不再抢跑 ~/.local/share/pnpm', () => {
     const pnpmPkg =
-      '/home/dev/.local/share/pnpm/global/5/node_modules/@iyowei/sweep-node-modules-cli';
+      '/home/dev/.local/share/pnpm/global/5/node_modules/@iyowei/sweep-cli';
     expect(
       detectInstallOriginFromPath({
         packageRoot: pnpmPkg,
@@ -271,12 +261,11 @@ describe('detectInstallOriginFromPath 本地项目与防误判回归', () => {
   });
 
   test('高可信 packageRoot 优先于低可信 rawPaths / argv[1], 不被 shim 路径覆盖', () => {
-    const npmRoot =
-      '/opt/homebrew/lib/node_modules/@iyowei/sweep-node-modules-cli';
+    const npmRoot = '/opt/homebrew/lib/node_modules/@iyowei/sweep-cli';
     expect(
       detectInstallOriginFromPath({
         packageRoot: npmRoot,
-        rawPaths: ['/Users/dev/.volta/bin/sweep-nm'],
+        rawPaths: ['/Users/dev/.volta/bin/sweep'],
         env: { VOLTA_HOME: '/Users/dev/.volta' },
         pathExists: noFiles,
       }),

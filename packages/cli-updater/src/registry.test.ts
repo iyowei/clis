@@ -285,7 +285,7 @@ describe('fetchLatestVersion 远端查询', () => {
       seenUrl = String(input);
       return new Response(
         JSON.stringify({
-          name: '@iyowei/sweep-node-modules-cli',
+          name: '@iyowei/sweep-cli',
           version: '0.4.0',
         }),
         {
@@ -296,12 +296,12 @@ describe('fetchLatestVersion 远端查询', () => {
     };
 
     const res = await fetchLatestVersion({
-      packageName: '@iyowei/sweep-node-modules-cli',
+      packageName: '@iyowei/sweep-cli',
       registry: 'https://registry.npmmirror.com/',
       fetchFn: mockFetch,
     });
     expect(seenUrl).toBe(
-      'https://registry.npmmirror.com/%40iyowei%2Fsweep-node-modules-cli/latest',
+      'https://registry.npmmirror.com/%40iyowei%2Fsweep-cli/latest',
     );
     expect(res).toEqual({
       ok: true,

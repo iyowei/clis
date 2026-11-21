@@ -51,7 +51,7 @@ describe('parseSemver / compareSemver / isNewerVersion', () => {
 
 describe('安全白名单校验', () => {
   test('包名白名单拦截空白、命令分隔符与路径穿越', () => {
-    expect(isValidPackageName('@iyowei/sweep-node-modules-cli')).toBe(true);
+    expect(isValidPackageName('@iyowei/sweep-cli')).toBe(true);
     expect(isValidPackageName('create-clis')).toBe(true);
     expect(isValidPackageName('bad; rm -rf /')).toBe(false);
     expect(isValidPackageName('../evil')).toBe(false);

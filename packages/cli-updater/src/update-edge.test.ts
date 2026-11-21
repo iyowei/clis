@@ -23,19 +23,18 @@ function captureIo(): { io: UpdateIO; out: string[]; err: string[] } {
 }
 
 const npmGlobalMeta: PackageMeta = {
-  name: '@iyowei/sweep-node-modules-cli',
+  name: '@iyowei/sweep-cli',
   version: '0.3.0',
   isPrivate: false,
-  rawPackageRoot:
-    '/opt/homebrew/lib/node_modules/@iyowei/sweep-node-modules-cli',
-  packageRoot: '/opt/homebrew/lib/node_modules/@iyowei/sweep-node-modules-cli',
+  rawPackageRoot: '/opt/homebrew/lib/node_modules/@iyowei/sweep-cli',
+  packageRoot: '/opt/homebrew/lib/node_modules/@iyowei/sweep-cli',
 };
 
 describe('runSelfUpdate 鉴权与 --force 容错', () => {
   test('HTTP 401/403 返回清晰鉴权失败提示且退出 1', async () => {
     const { io, err } = captureIo();
     const code = await runSelfUpdate({
-      binName: 'sweep-nm',
+      binName: 'sweep',
       meta: npmGlobalMeta,
       argv: [],
       io,
@@ -61,7 +60,7 @@ describe('runSelfUpdate 鉴权与 --force 容错', () => {
     let executed: CommandSpec | null = null;
     const { io: io1, out: out1, err: err1 } = captureIo();
     const forceCode = await runSelfUpdate({
-      binName: 'sweep-nm',
+      binName: 'sweep',
       meta: npmGlobalMeta,
       argv: ['--force'],
       io: io1,
@@ -86,7 +85,7 @@ describe('runSelfUpdate 鉴权与 --force 容错', () => {
     expect(forceCode).toBe(0);
     expect(executed).not.toBeNull();
     expect(executed!.displayCommand).toBe(
-      'npm install -g @iyowei/sweep-node-modules-cli@latest',
+      'npm install -g @iyowei/sweep-cli@latest',
     );
     expect(err1.join('\n')).toContain('远端版本查询失败');
     expect(out1.join('\n')).toContain('强制重装模式 (--force)');
@@ -96,7 +95,7 @@ describe('runSelfUpdate 鉴权与 --force 容错', () => {
     let checkCalls = 0;
     const { io: io2 } = captureIo();
     const checkCode = await runSelfUpdate({
-      binName: 'sweep-nm',
+      binName: 'sweep',
       meta: npmGlobalMeta,
       argv: ['--force', '--check'],
       io: io2,
@@ -126,7 +125,7 @@ describe('runSelfUpdate 体验收口与轻复核', () => {
   test('--pm 跨安装器覆盖全局与源码态均打印双副本 PATH 阴影警示', async () => {
     const { io: io1, out: out1 } = captureIo();
     const code1 = await runSelfUpdate({
-      binName: 'sweep-nm',
+      binName: 'sweep',
       meta: npmGlobalMeta,
       argv: ['--pm', 'bun', '--check'],
       io: io1,
@@ -179,7 +178,7 @@ describe('runSelfUpdate 体验收口与轻复核', () => {
     let calls = 0;
     const { io: io1, out: out1 } = captureIo();
     const code1 = await runSelfUpdate({
-      binName: 'sweep-nm',
+      binName: 'sweep',
       meta: npmGlobalMeta,
       argv: [],
       io: io1,
@@ -210,7 +209,7 @@ describe('runSelfUpdate 体验收口与轻复核', () => {
   test('子进程被信号中断时透传 signal 文案, 不误报退出码 1', async () => {
     const { io, err } = captureIo();
     const code = await runSelfUpdate({
-      binName: 'sweep-nm',
+      binName: 'sweep',
       meta: npmGlobalMeta,
       argv: [],
       io,
@@ -238,7 +237,7 @@ describe('runSelfUpdate 轻复核与平台失败提示', () => {
   test('升级 status === 0 后轻复核: 原目录版本未变及 PATH 仍指向旧路径时输出核查提示', async () => {
     const { io, out } = captureIo();
     const code = await runSelfUpdate({
-      binName: 'sweep-nm',
+      binName: 'sweep',
       meta: npmGlobalMeta,
       argv: ['--pm', 'bun'],
       io,
@@ -246,7 +245,7 @@ describe('runSelfUpdate 轻复核与平台失败提示', () => {
         platform: 'darwin',
         env: { PATH: '/opt/homebrew/bin:/Users/dev/.bun/bin' },
         isFile: (p) =>
-          p === '/Users/dev/.bun/bin/bun' || p === '/opt/homebrew/bin/sweep-nm',
+          p === '/Users/dev/.bun/bin/bun' || p === '/opt/homebrew/bin/sweep',
         pathExists: () => false,
         readText: (p) =>
           p.endsWith('package.json')
@@ -269,17 +268,17 @@ describe('runSelfUpdate 轻复核与平台失败提示', () => {
 
     // 跨 PM 安装后 PATH 仍优先命中旧 PM 的 shim 目录时发出 PATH 阴影复核提示
     const bunMeta: PackageMeta = {
-      name: '@iyowei/sweep-node-modules-cli',
+      name: '@iyowei/sweep-cli',
       version: '0.3.0',
       isPrivate: false,
       rawPackageRoot:
-        '/Users/dev/.bun/install/global/node_modules/@iyowei/sweep-node-modules-cli',
+        '/Users/dev/.bun/install/global/node_modules/@iyowei/sweep-cli',
       packageRoot:
-        '/Users/dev/.bun/install/global/node_modules/@iyowei/sweep-node-modules-cli',
+        '/Users/dev/.bun/install/global/node_modules/@iyowei/sweep-cli',
     };
     const { io: ioPath, out: outPath } = captureIo();
     const pathCode = await runSelfUpdate({
-      binName: 'sweep-nm',
+      binName: 'sweep',
       meta: bunMeta,
       argv: ['--pm', 'npm'],
       io: ioPath,
@@ -287,7 +286,7 @@ describe('runSelfUpdate 轻复核与平台失败提示', () => {
         platform: 'darwin',
         env: { PATH: '/Users/dev/.bun/bin:/usr/local/bin' },
         isFile: (p) =>
-          p === '/usr/local/bin/npm' || p === '/Users/dev/.bun/bin/sweep-nm',
+          p === '/usr/local/bin/npm' || p === '/Users/dev/.bun/bin/sweep',
         pathExists: () => false,
         readText: () => null,
         fetchLatest: async (_pkg, reg) => ({
@@ -300,7 +299,7 @@ describe('runSelfUpdate 轻复核与平台失败提示', () => {
     });
     expect(pathCode).toBe(0);
     expect(outPath.join('\n')).toContain('仍指向旧路径');
-    expect(outPath.join('\n')).toContain('/Users/dev/.bun/bin/sweep-nm');
+    expect(outPath.join('\n')).toContain('/Users/dev/.bun/bin/sweep');
   });
 
   test('Windows 失败提示点明自身 shim 占锁, pnpm 失败补充 PNPM_HOME / pnpm setup', async () => {

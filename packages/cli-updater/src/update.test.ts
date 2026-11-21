@@ -59,20 +59,20 @@ describe('parseUpdateArgs 参数解析', () => {
 
 describe('runSelfUpdate 全状态机验证', () => {
   const bunMeta: PackageMeta = {
-    name: '@iyowei/sweep-node-modules-cli',
+    name: '@iyowei/sweep-cli',
     version: '0.3.0',
     isPrivate: false,
     rawPackageRoot:
-      '/Users/dev/.bun/install/global/node_modules/@iyowei/sweep-node-modules-cli',
+      '/Users/dev/.bun/install/global/node_modules/@iyowei/sweep-cli',
     packageRoot:
-      '/Users/dev/.bun/install/global/node_modules/@iyowei/sweep-node-modules-cli',
+      '/Users/dev/.bun/install/global/node_modules/@iyowei/sweep-cli',
   };
 
   test('bun 全局安装发现新版本 → --check 零副作用汇报; 默认执行 bun add -g', async () => {
     let executed: CommandSpec | null = null;
     const { io: io1, out: out1 } = captureIo();
     const checkCode = await runSelfUpdate({
-      binName: 'sweep-nm',
+      binName: 'sweep',
       meta: bunMeta,
       argv: ['--check'],
       io: io1,
@@ -95,13 +95,11 @@ describe('runSelfUpdate 全状态机验证', () => {
     expect(checkCode).toBe(0);
     expect(executed).toBeNull();
     expect(out1.join('\n')).toContain('发现新版本: v0.3.0 → v0.4.0');
-    expect(out1.join('\n')).toContain(
-      'bun add -g @iyowei/sweep-node-modules-cli@0.4.0',
-    );
+    expect(out1.join('\n')).toContain('bun add -g @iyowei/sweep-cli@0.4.0');
 
     const { io: io2, out: out2 } = captureIo();
     const updateCode = await runSelfUpdate({
-      binName: 'sweep-nm',
+      binName: 'sweep',
       meta: bunMeta,
       argv: [],
       io: io2,
@@ -124,9 +122,7 @@ describe('runSelfUpdate 全状态机验证', () => {
     });
     expect(updateCode).toBe(0);
     expect(executed).not.toBeNull();
-    expect(executed!.displayCommand).toBe(
-      'bun add -g @iyowei/sweep-node-modules-cli@0.4.0',
-    );
+    expect(executed!.displayCommand).toBe('bun add -g @iyowei/sweep-cli@0.4.0');
     expect(out2.join('\n')).toContain('已通过 bun 更新');
   });
 
@@ -134,7 +130,7 @@ describe('runSelfUpdate 全状态机验证', () => {
     let calls = 0;
     const { io: io1, out: out1 } = captureIo();
     const code1 = await runSelfUpdate({
-      binName: 'sweep-nm',
+      binName: 'sweep',
       meta: bunMeta,
       argv: [],
       io: io1,
@@ -161,13 +157,13 @@ describe('runSelfUpdate 全状态机验证', () => {
 
     const { io: io2 } = captureIo();
     const code2 = await runSelfUpdate({
-      binName: 'sweep-nm',
+      binName: 'sweep',
       meta: {
         ...bunMeta,
         rawPackageRoot:
-          'C:\\Users\\dev\\.bun\\install\\global\\node_modules\\@iyowei\\sweep-node-modules-cli',
+          'C:\\Users\\dev\\.bun\\install\\global\\node_modules\\@iyowei\\sweep-cli',
         packageRoot:
-          'C:\\Users\\dev\\.bun\\install\\global\\node_modules\\@iyowei\\sweep-node-modules-cli',
+          'C:\\Users\\dev\\.bun\\install\\global\\node_modules\\@iyowei\\sweep-cli',
       },
       argv: ['--force'],
       io: io2,

@@ -31,19 +31,18 @@ function captureIo(): { io: UpdateIO; out: string[]; err: string[] } {
 }
 
 const bunMeta: PackageMeta = {
-  name: '@iyowei/sweep-node-modules-cli',
+  name: '@iyowei/sweep-cli',
   version: '0.5.1',
   isPrivate: false,
   rawPackageRoot:
-    '/Users/dev/.bun/install/global/node_modules/@iyowei/sweep-node-modules-cli',
-  packageRoot:
-    '/Users/dev/.bun/install/global/node_modules/@iyowei/sweep-node-modules-cli',
+    '/Users/dev/.bun/install/global/node_modules/@iyowei/sweep-cli',
+  packageRoot: '/Users/dev/.bun/install/global/node_modules/@iyowei/sweep-cli',
 };
 
 describe('update UI 标准 SGR 配色与防注入净化', () => {
   test('formatUpdateHelp 与 createUpdateUi 满足去色等价且零 24-bit RGB 硬编码', () => {
-    const plainHelp = formatUpdateHelp('sweep-nm', bunMeta.name, false);
-    const coloredHelp = formatUpdateHelp('sweep-nm', bunMeta.name, true);
+    const plainHelp = formatUpdateHelp('sweep', bunMeta.name, false);
+    const coloredHelp = formatUpdateHelp('sweep', bunMeta.name, true);
     expect(plainHelp).not.toContain('\u001b');
     expect(coloredHelp).toContain('\u001b[');
     expect(coloredHelp).not.toMatch(/38;2;|48;2;/);
@@ -147,7 +146,7 @@ describe('runSelfUpdate 静默接管、失败展开与 --verbose 透传', () => 
     let seenVerbose: boolean | undefined;
 
     const code = await runSelfUpdate({
-      binName: 'sweep-nm',
+      binName: 'sweep',
       meta: bunMeta,
       argv: [],
       io,
@@ -187,7 +186,7 @@ describe('runSelfUpdate 静默接管、失败展开与 --verbose 透传', () => 
     expect(stdout).not.toContain('即将执行');
     expect(stdout).not.toContain('bun add v1.4.5');
     expect(stdout).toContain(
-      '已通过 bun 更新 @iyowei/sweep-node-modules-cli 至 v0.6.0 (2.6s) ✓',
+      '已通过 bun 更新 @iyowei/sweep-cli 至 v0.6.0 (2.6s) ✓',
     );
   });
 

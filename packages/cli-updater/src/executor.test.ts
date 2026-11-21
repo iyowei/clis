@@ -280,7 +280,7 @@ describe('buildUpgradePlan 五大包管理器与安全拦截', () => {
   test('bun / npm / pnpm / yarn v1 / volta 分别产出精确升级命令与可选 --registry', () => {
     const bunPlan = buildUpgradePlan({
       pm: 'bun',
-      packageName: '@iyowei/sweep-node-modules-cli',
+      packageName: '@iyowei/sweep-cli',
       targetSpec: '0.4.0',
       explicitRegistry: 'https://registry.npmmirror.com/',
       platform: 'darwin',
@@ -292,11 +292,11 @@ describe('buildUpgradePlan 五大包管理器与安全拦截', () => {
       expect(bunPlan.plan.args).toEqual([
         'add',
         '-g',
-        '@iyowei/sweep-node-modules-cli@0.4.0',
+        '@iyowei/sweep-cli@0.4.0',
         '--registry=https://registry.npmmirror.com',
       ]);
       expect(bunPlan.plan.displayCommand).toBe(
-        'bun add -g @iyowei/sweep-node-modules-cli@0.4.0 --registry=https://registry.npmmirror.com',
+        'bun add -g @iyowei/sweep-cli@0.4.0 --registry=https://registry.npmmirror.com',
       );
     }
 

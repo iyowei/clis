@@ -33,8 +33,8 @@ function createFakeChild(): {
 
 const samplePlan: CommandSpec = {
   command: '/usr/local/bin/bun',
-  args: ['add', '-g', '@iyowei/sweep-node-modules-cli@0.6.0'],
-  displayCommand: 'bun add -g @iyowei/sweep-node-modules-cli@0.6.0',
+  args: ['add', '-g', '@iyowei/sweep-cli@0.6.0'],
+  displayCommand: 'bun add -g @iyowei/sweep-cli@0.6.0',
 };
 
 describe('TailByteBuffer 固定上限尾部捕获', () => {
