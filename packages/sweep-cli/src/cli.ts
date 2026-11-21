@@ -237,7 +237,7 @@ async function sweep(
     roots: config.roots,
     exclude: mergeNames(config.exclude, options.exclude),
     include: mergeNames(config.include, options.include),
-    excludeExplicit: excludeExplicit || options.exclude.length > 0,
+    excludeExplicit: excludeExplicit || options.exclude.includes('.gradle'),
     presets: config.presets,
     rules: config.rules,
     home,
