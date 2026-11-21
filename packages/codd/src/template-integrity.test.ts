@@ -387,6 +387,15 @@ describe('生成产物完整性、Shell 语法与可选 Helm 校验', () => {
             { encoding: 'utf8' },
           );
           expect(tpl.status).toBe(0);
+          // init Job 绝不能贴 app.kubernetes.io/name: mongo, 否则 3 节点硬反亲和将因 init Pod 占节点而死锁且 Service 会误选中 init Pod
+          const jobSection = tpl.stdout
+            .split(/^---$/m)
+            .find((doc) => /\bkind:\s*Job\b/.test(doc));
+          expect(jobSection).toBeDefined();
+          expect(jobSection).toContain('app.kubernetes.io/name: mongo-init');
+          expect(jobSection).not.toMatch(
+            /app\.kubernetes\.io\/name:\s*mongo$/m,
+          );
           if (expectEmptyAffinity) {
             expect(tpl.stdout).not.toMatch(/^\s+affinity:\s*$/m);
             expect(tpl.stdout).not.toMatch(/^\s+storageClassName:\s*$/m);
