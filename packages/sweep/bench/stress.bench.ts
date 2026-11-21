@@ -310,7 +310,10 @@ interface Shape {
  * 跑全部 3 种极限形态 x 2 候选, 逐形态交叉核对期望命中数与两候选命中清单一致。
  * 流转: `shape.setup()` -> `prune` / `parallel` 各预热 + 1ms 轮询采样 RSS/fd -> 命中数与清单双校验 -> `StressSample[6]`
  */
-export async function runStressBench(label: string): Promise<StressSample[]> {
+export async function runStressBench(
+  label: string,
+  quiet = false,
+): Promise<StressSample[]> {
   const shapes: Shape[] = [
     {
       case: 'stress-wide-10k',
@@ -343,7 +346,7 @@ export async function runStressBench(label: string): Promise<StressSample[]> {
         include: [],
       };
       const scale = describeScale(setup.scale);
-      console.log(`\n[${shape.case}] ${shape.note} (${scale})`);
+      if (!quiet) console.log(`\n[${shape.case}] ${shape.note} (${scale})`);
 
       const results: MeasureResult[] = [];
       for (const scanner of scanners) {
@@ -367,7 +370,9 @@ export async function runStressBench(label: string): Promise<StressSample[]> {
           fdPeak: result.fdPeak,
           fdAfter: result.fdAfter,
         });
-        console.log(`  ${formatSample(samples[samples.length - 1]!)}`);
+        if (!quiet) {
+          console.log(`  ${formatSample(samples[samples.length - 1]!)}`);
+        }
       }
 
       const reference = results[0]!;

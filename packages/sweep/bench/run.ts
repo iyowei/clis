@@ -83,12 +83,12 @@ if (
   benchSamples.push(...(await runSizeBench()));
 }
 if (!quickMode && (caseFilter === undefined || caseFilter.startsWith('real'))) {
-  benchSamples.push(...(await runRealWorkspaceBench()));
+  benchSamples.push(...(await runRealWorkspaceBench(jsonMode)));
 }
 
 const stressSamples: StressSample[] =
   !quickMode && (caseFilter === undefined || caseFilter.startsWith('stress'))
-    ? await runStressBench(label)
+    ? await runStressBench(label, jsonMode)
     : [];
 
 if (jsonMode) {

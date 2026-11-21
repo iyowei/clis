@@ -11,19 +11,32 @@ import { createDuSizer } from '../src/size-du.ts';
 import { createJsSizer } from '../src/size-js.ts';
 import type { BenchSample } from './scan.bench.ts';
 
-function resolveBenchRoot(): string {
+const VALUE_FLAGS = new Set(['--label', '--case']);
+
+function resolveBenchRoot(
+  argv: readonly string[] = process.argv.slice(2),
+): string {
   const fromEnv = process.env.SWEEP_BENCH_ROOT;
   if (fromEnv !== undefined && fromEnv.trim() !== '') return fromEnv.trim();
-  const arg = process.argv.slice(2).find((item) => !item.startsWith('-'));
-  if (arg !== undefined) return arg;
+  for (let i = 0; i < argv.length; i += 1) {
+    const item = argv[i]!;
+    if (VALUE_FLAGS.has(item)) {
+      i += 1;
+      continue;
+    }
+    if (item.startsWith('-')) continue;
+    return item;
+  }
   return process.cwd();
 }
 
 /** 在解析出的真实工作区上执行单轮只读扫描与 js/du 体积测量, 返回 3 条样本 (根不存在时返回 []) */
-export async function runRealWorkspaceBench(): Promise<BenchSample[]> {
+export async function runRealWorkspaceBench(
+  quiet = false,
+): Promise<BenchSample[]> {
   const root = resolveBenchRoot();
   if (!existsSync(root)) {
-    console.log(`[real-workspace] 跳过: ${root} 不存在`);
+    if (!quiet) process.stderr.write(`[real-workspace] 跳过: ${root} 不存在\n`);
     return [];
   }
 
