@@ -11,6 +11,7 @@ import {
   type ResolvedConfigPath,
   applyMigration,
   detectMigration,
+  loadResolvedConfig,
   sanitizeLine,
 } from '@iyowei/sweep';
 
@@ -95,6 +96,19 @@ export async function runMigrationFlow(
     if (!exists && resolved.source !== 'platform-default') {
       warn(`配置不存在 (${resolved.path}), 请检查路径`);
       return { state: 'error' };
+    }
+    if (exists) {
+      // 显式 migrate 必须复核当前文件确为合法 v2 配置, 避免损坏/非法 JSON 误报「已是最新版 v2」并退 0
+      try {
+        const loaded = await loadResolvedConfig(resolved, { homedir: home });
+        if (loaded.state !== 'ok') {
+          warn(`配置文件无法加载 (${resolved.path})`);
+          return { state: 'error' };
+        }
+      } catch (error) {
+        warn(error instanceof Error ? error.message : String(error));
+        return { state: 'error' };
+      }
     }
     print(bannerLine('配置迁移', colors.stdout));
     print(

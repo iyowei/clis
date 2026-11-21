@@ -357,4 +357,33 @@ describe('runMigrationFlow · 显式 `sweep migrate` 的 none / 幂等 / 错误�
     expect(out).not.toContain('"version":');
     expect(out).not.toContain('"presets":');
   });
+
+  test('显式 `sweep migrate` 遇到损坏 JSON 或非法 v2 配置: 报错返 error, 绝不误报已是最新版', async () => {
+    for (const [name, payload] of [
+      ['corrupt.json', '{ invalid json'],
+      [
+        'invalid-v2.json',
+        JSON.stringify({ version: 2, roots: [], presets: { node: {} } }),
+      ],
+    ] as const) {
+      const dir = makeSandbox();
+      const cfg = join(dir, name);
+      writeFileSync(cfg, payload);
+      const col = makeCollectors();
+
+      const result = await runMigrationFlow({
+        resolved: { path: cfg, source: 'flag' },
+        explicit: true,
+        interactive: false,
+        colors: { stdout: false, stderr: false },
+        home: dir,
+        platform: 'linux',
+        ...col,
+      });
+
+      expect(result, name).toEqual({ state: 'error' });
+      expect(col.prints.join('\n')).not.toContain('已是最新版 v2');
+      expect(col.warns.length).toBeGreaterThan(0);
+    }
+  });
 });
