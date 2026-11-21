@@ -1,6 +1,7 @@
 /**
- * Apple System Settings 级终端排版组件: 页眉、分段步骤指示器、圆角面板与参数卡片。
- * 全部输出行在落框前先按换行符拆分, 并在窄屏下动态收缩左栏防止脱色与边框撑裂。
+ * Apple System Settings 级终端排版组件: 页眉、分段步骤指示器、圆角面板、KV 列表与参数/汇总卡片。
+ * 供 `cli.ts`、`wizard.ts`、`wizard-steps.ts`、`prompts.ts` 与 `text-input.ts` 共用。
+ * 关键约束: 所有输出行落框前先按换行符拆分, 并在窄屏下动态收缩左栏防止脱色与边框撑裂。
  */
 import { stderr, stdout } from 'node:process';
 
@@ -264,6 +265,7 @@ export const printFormulaCard = (
   }
 };
 
+/** 格式化键值对圆角汇总卡片行数组 (窄屏自动压缩键列宽并按显示宽度折行值列) */
 export const formatSummaryCardLines = (
   title: string,
   badgeText: string,
@@ -314,6 +316,7 @@ const alertStyle = (kind: 'ok' | 'warn' | 'err'): ((t: string) => string) => {
   return palette.primary;
 };
 
+/** 打印带状态图标的单/多行提示 (`err` 写 `stderr`, `ok`/`warn` 写 `stdout`) */
 export const printAlert = (kind: 'ok' | 'warn' | 'err', msg: string): void => {
   const w = Math.max(12, getBoxWidth() - 6);
   const wrapped = wrapMultiline(msg, w);

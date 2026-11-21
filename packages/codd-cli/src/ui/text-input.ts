@@ -1,6 +1,7 @@
 /**
- * Apple 原生质感单行文本输入框 (细竖线光标 + 灰色幽灵默认值 + Tab 一键补全)。
- * 交互模式走 withRawModeSession; 非交互/管道模式走共享行队列读取器 (readNonInteractiveLine)。
+ * Apple 原生质感单行文本输入框 (`askText`), 供 `wizard.ts` 与 `wizard-steps.ts` 调用。
+ * 交互态走 `withRawModeSession` (细竖线光标 + 灰色幽灵默认值 + 空输入 `Tab`/`→` 填入默认值 +
+ * `Home`/`End`/`Ctrl+U`/左右移/超宽横向滚动视窗 + 实时校验提示符变色); 非交互/管道态走 `readNonInteractiveLine`。
  */
 import { stdout } from 'node:process';
 
@@ -157,6 +158,19 @@ const askTextNonInteractive = async (cfg: AskTextConfig): Promise<string> => {
   }
 };
 
+/**
+ * 渲染单行文本输入框并返回通过 `validate` 校验的最终字符串 (留空回车采用 `defaultVal`)。
+ * 交互态回车校验失败时在输入框下方就地展示红色错误并留在会话内继续编辑, 通过后折叠为单行完成摘要。
+ *
+ * ### 数据流转示例
+ * ```text
+ * Input:  cfg = { label: '实例名', defaultVal: 'app', validate: (v) => DNS_LABEL_RE.test(v) ? null : '非法' }
+ * Step 1: 空输入展示灰色幽灵 'app'; 若按 Tab/→ 填入缓冲区, 或键入字符更新 editBuf 并按列宽横向裁切视窗
+ * Step 2: 按 Enter -> finalVal = chars.join('').trim() || defaultVal -> 执行 validate(finalVal)
+ * Step 3: 校验失败则设 errorMsg 就地重绘; 校验通过则 controls.finish(finalVal) 擦除输入区并打印完成行
+ * Output: Promise<string>
+ * ```
+ */
 export const askText = async (cfg: AskTextConfig): Promise<string> => {
   if (!isInteractive()) return await askTextNonInteractive(cfg);
 

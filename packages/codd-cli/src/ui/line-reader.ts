@@ -1,6 +1,7 @@
 /**
- * 非交互 / 管道模式共享行队列读取器:
- * 单次监听输入流并缓冲全部预读行, 避免多题向导反复 createInterface 丢弃剩余缓冲区行导致第 2 题 EOF (退出 130)。
+ * 非交互 / 管道模式共享行队列读取器, 供 `prompts.ts`、`text-input.ts` 与 `wizard.ts` (退出清理) 共用。
+ * 单次监听输入流并缓冲全部预读行, 避免多题向导反复 `createInterface` 丢弃缓冲区剩余行导致后续题 EOF (退出 130);
+ * 使用 `StringDecoder('utf8')` 防跨 chunk 多字节截断, 兼容 `\r\n`, 流结束时先交付末尾无换行残段再以 `null` 唤醒等待者。
  */
 import { stdin, stdout } from 'node:process';
 import type { Readable, Writable } from 'node:stream';
@@ -11,6 +12,9 @@ export interface LineQueueReader {
   close: () => void;
 }
 
+/**
+ * 创建可复用的行队列读取器 (惰性挂载 `input` 事件, `question()` 依次返回已缓冲或新到达的行, EOF/关闭后返回 `null`)。
+ */
 export const createLineQueueReader = (
   input: Readable = stdin,
   output: Writable = stdout,

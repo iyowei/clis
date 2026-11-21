@@ -1,5 +1,7 @@
 /**
- * codd CLI 纯参数解析模块 (独立抽离便于直接单元测试)。
+ * codd CLI 纯参数解析模块 (独立抽离供 `cli.ts` 与单元测试消费)。
+ * 关键约束: `update` 仅作首子命令并原样透传剩余参数; `--` 终止选项解析 (其后均作清单路径);
+ * 重复指定清单路径、未知旗标或 `init` 与 `wizard`/生成类选项互斥组合均抛 `ConfigError`; `--rotate-all` 覆盖 `--rotate`。
  */
 import { ConfigError, type RotateMode } from '@iyowei/codd';
 
@@ -78,6 +80,19 @@ const validateExclusiveModes = (flags: CliFlags): void => {
   }
 };
 
+/**
+ * 将命令行参数列表解析为强类型 `CliFlags` 并执行互斥模式校验。
+ *
+ * ### 数据流转示例
+ * ```text
+ * Input:  argv = ['deploy-prod.json', '--out=out', '--rotate', '--dry-run']
+ * Step 1: 优先判定 `argv[0] === 'update'` (若命中则直接返回 `{ update: true, updateArgs }`)
+ * Step 2: 顺序消费位置参数与开关/值旗标 (`--config`/`--out` 支持空格与 `=` 两种写法, `--` 后全作位置参数)
+ * Step 3: validateExclusiveModes 校验 `init` 与 `wizard` / 清单路径 / `--dry-run` / `--out` / `--rotate` 互斥
+ * Output: { manifestPath: 'deploy-prod.json', outDir: 'out', rotate: 'apps',
+ *           newFingerprint: false, dryRun: true, wizard: false, initSchema: false, update: false, help: false, version: false }
+ * ```
+ */
 export const parseCliArgs = (argv: string[]): CliFlags => {
   const flags: CliFlags = {
     rotate: 'none',

@@ -1,5 +1,7 @@
 /**
- * codd-cli 终端 UI 构件统一导出。
+ * codd-cli 终端 UI 构件统一导出入口, 供 `cli.ts`、`wizard.ts` 与 `wizard-steps.ts` 消费。
+ * 聚合色彩与宽度测量 (`ansi.ts`)、非交互共享行队列 (`line-reader.ts`)、Raw-Mode 会话守卫 (`raw-session.ts`)、
+ * 交互选择/确认/文本输入控件 (`prompts.ts` / `text-input.ts`) 与排版卡片 (`widgets.ts`)。
  */
 export {
   SUMMARY_LABEL_COL,

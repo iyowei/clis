@@ -1,9 +1,8 @@
 /**
- * 终端 Raw-Mode 交互会话统一守卫:
- * - 统一 StringDecoder('utf8') 防跨 chunk 中文/Emoji 截断乱码
- * - 统一 60ms resize 防抖、try/catch 保护 setRawMode
- * - 交互期挂载 SIGTERM / SIGHUP 信号恢复终端回显与默认光标后再退出
- * - 统一将 Ctrl+C (\u0003) 与 Ctrl+D (\u0004) 纳入取消路径
+ * 终端 Raw-Mode 交互会话统一守卫, 供 `ui/prompts.ts` 与 `ui/text-input.ts` 共用。
+ * 职责: `StringDecoder('utf8')` 防跨 chunk 多字节乱码、`tokenizeKeyStream` 拆分 CSI/SS3/Alt/码点按键、
+ * 60ms resize 防抖、`try/catch` 保护 `setRawMode`、SIGTERM/SIGHUP 退出前复位终端与默认光标,
+ * 并将 Ctrl+C (`\u0003`)、Ctrl+D (`\u0004`) 及流关闭统一收敛为 `PromptCancelledError`。
  */
 import { stdin, stdout } from 'node:process';
 import { StringDecoder } from 'node:string_decoder';
@@ -101,6 +100,19 @@ export interface RawSessionHandlers<T> {
 
 const RESIZE_DEBOUNCE_MS = 60;
 
+/**
+ * 开启受保护的终端 Raw-Mode 会话并在结束后确保恢复终端状态与默认光标。
+ * 同一 chunk 中若 `Ctrl+C`/`Ctrl+D` 前仍有按键, 会先派发前置按键 (若其已结算则直接返回), 再触发取消。
+ *
+ * ### 数据流转示例
+ * ```text
+ * Input:  handlers = { onKeys, onResize, onBeforeClose, onAfterCancel }
+ * Step 1: 开启 raw mode 并挂 data / end / close / resize / SIGTERM / SIGHUP 监听
+ * Step 2: stdin chunk -> StringDecoder('utf8') -> tokenizeKeyStream -> 检测 \u0003/\u0004 截断或派发 onKeys(keys, controls)
+ * Step 3: 命中 controls.finish(val) 或 controls.cancel(msg) -> 幂等 cleanup (解绑 + 退出 raw mode + 恢复光标) -> 执行回调
+ * Output: Promise<T> (正常结算 resolve(val); 取消或流关闭 reject(PromptCancelledError))
+ * ```
+ */
 export const withRawModeSession = async <T>(
   handlers: RawSessionHandlers<T>,
 ): Promise<T> =>

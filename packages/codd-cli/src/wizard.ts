@@ -1,5 +1,7 @@
 /**
- * 交互式 MongoDB 部署配置向导主编排 (4 步引导 + --dry-run 跳过落盘 + 覆写确认 + 自动建父目录)。
+ * 交互式 MongoDB 部署配置向导主编排器: 上游由 `cli.ts` 调用, 下游串联 `wizard-steps.ts`、`ui/` 与 `@iyowei/codd`。
+ * 4 步顺序采集配置并实时预览硬件推导卡片; 非 `--dry-run` 下询问保存 JSON 清单 (支持覆写确认、自动建父目录
+ * 与同目录存在 `deploy.schema.json` 时自动补挂 `$schema`); 无论成功或中断均在 `finally` 释放共享行读取器。
  */
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
@@ -129,6 +131,20 @@ const maybeSaveManifest = async (
   writeFileSync(fullSavePath, `${JSON.stringify(manifest, null, 2)}\n`, 'utf8');
 };
 
+/**
+ * 启动 4 步交互式配置向导并返回组装完成的 `DeployManifest` (供 `cli.ts` 交给 `generateBundle`)。
+ *
+ * ### 数据流转示例
+ * ```text
+ * Input:  workDir = '/work', targetManifestPath = 'configs/prod.json', dryRun = false
+ * Step 0: 若传入 targetManifestPath, 先跑 validateManifestFileName (非法直接抛 ConfigError)
+ * Step 1: 1/4 选择部署模式 (single/replica-set/k8s-single/k8s-rs)、实例名与安全推荐端口 (recommendSafePort)
+ * Step 2: 2/4 collectHardware -> computeSizing 实时打印参数配比卡片
+ * Step 3: 3/4 收集逗号分隔的 `db:user` 业务库清单 -> 4/4 按模式分流 collectPodmanNodes 或 collectK8sConfig
+ * Step 4: maybeSaveManifest (dryRun 跳过写盘; 否则询问保存、同目录有 deploy.schema.json 自动挂 $schema)
+ * Output: DeployManifest { mode, name, port, hardware, apps, nodes | k8s } (finally 关闭共享行读取器)
+ * ```
+ */
 export const runWizard = async (
   workDir: string,
   targetManifestPath?: string,

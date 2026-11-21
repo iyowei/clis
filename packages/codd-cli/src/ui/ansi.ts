@@ -1,7 +1,8 @@
 /**
- * Apple Human Interface Guidelines (HIG) 级终端色彩、全角宽度与光标微控引擎:
- * - 1:1 遵循 Apple System Colors (macOS Sequoia Dark / Light 自适应 sRGB 色阶与 4 级灰阶)
- * - 表面涂装 (paintSurface) 与 DECSCUSR 细竖线光标 (\x1b[6 q) 退出自动复位
+ * Apple Human Interface Guidelines (HIG) 级终端色彩、全角宽度、安全折行与光标微控引擎。
+ * 供 `ui/widgets.ts`、`ui/prompts.ts`、`ui/text-input.ts`、`ui/raw-session.ts` 与 `cli.ts` 共用。
+ * - 遵循 Apple System Colors (macOS Sequoia Dark / Light 自适应 sRGB 与 256 色回退, 支持 `CODD_THEME`/`COLORFGBG`)
+ * - 表面涂装 (`paintSurface`) 与 DECSCUSR 细竖线光标 (`\x1b[6 q`) 退出自动复位
  */
 import { stdin, stdout } from 'node:process';
 

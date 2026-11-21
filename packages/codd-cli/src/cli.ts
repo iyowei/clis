@@ -1,7 +1,8 @@
 /**
- * codd CLI 薄壳入口 (@iyowei/codd-cli):
- * 支持交互式向导 (codd wizard)、模板导出 (codd init / --init-schema) 与清单生成 (codd [deploy.json])。
- * 全部核心公式推导、校验与模板渲染能力均来自 @iyowei/codd。
+ * codd CLI 薄壳入口 (`@iyowei/codd-cli`): 编排 `args.ts`、`wizard.ts`、`ui/` 与 `@iyowei/codd`。
+ * 支持交互式向导 (`codd wizard`, 且无参无 `deploy.json` 时 TTY 自动进入)、模板导出 (`codd init`)、
+ * 自更新 (`codd update`) 与清单生成 (`codd [deploy.json]`)。
+ * 退出码契约: `0` 成功 (含 help/version/init/dry-run), `1` 配置或运行错误, `130` 交互取消。
  */
 import { existsSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
@@ -181,6 +182,10 @@ const exportSchemaAndSample = (workDir: string): void => {
   console.log('');
 };
 
+/**
+ * CLI 主路由: 依次分流 `--version` -> `--help` -> `update` -> `init` -> 向导或清单生成 (`generateBundle`),
+ * 打印参数配比/汇总卡片并映射进程退出码 (`0` / `1` / `130`)。
+ */
 const main = async (): Promise<number> => {
   try {
     const opts = parseCliArgs(process.argv.slice(2));

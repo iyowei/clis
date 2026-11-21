@@ -1,9 +1,7 @@
 /**
- * Apple 原生质感终端交互控件:
- * - selectOption: Spotlight / System Settings 级单选高亮面板
- * - askConfirm: 双胶囊分段切换器 (Segmented Pill Toggle)
- * - 交互模式走 withRawModeSession (StringDecoder + SIGTERM/SIGHUP + Ctrl+C/D + 60ms resize 防抖)
- * - 非交互/管道模式走共享行队列读取器 (readNonInteractiveLine) 支持多题连续读取
+ * Apple 原生质感终端选择与确认控件 (`selectOption` 单选面板 + `askConfirm` 双胶囊切换器), 供 `wizard.ts` / `wizard-steps.ts` 调用。
+ * 交互态经 `withRawModeSession` 驱动实时重绘与 60ms resize 防抖, 非交互/管道态自动降级至共享行队列 (`readNonInteractiveLine`);
+ * 确认后擦除控件面板并折叠为单行 `printCompletedRow` 摘要, Ctrl+C/D 或 EOF 统一抛 `PromptCancelledError`。
  */
 import { stdout } from 'node:process';
 
@@ -151,6 +149,19 @@ const selectOptionNonInteractive = async <T>(
 const UP_KEYS = new Set(['\x1b[A', '\x1bOA', 'k']);
 const DOWN_KEYS = new Set(['\x1b[B', '\x1bOB', 'j']);
 
+/**
+ * 渲染单选高亮面板并返回所选项的 `value` (支持 `↑↓` / `j k` / `1-9` 数字快选 / `Enter` 确认)。
+ * 非交互态回退为编号菜单 + 共享行队列读取 (`''` 采纳 `defaultIndex`, EOF 抛 `PromptCancelledError`)。
+ *
+ * ### 数据流转示例
+ * ```text
+ * Input:  cfg = { label: '选择部署方式', options: [{ label: '单机', value: 'single' }, { label: '三机', value: 'replica-set' }] }
+ * Step 1: isInteractive() -> true 进入 withRawModeSession; 初始 idx = defaultIndex (0), 隐藏光标并绘制面板
+ * Step 2: 收到按键序列 ['\x1b[B', '\r'] -> 下移 idx=1 重绘 -> Enter 触发 controls.finish('replica-set')
+ * Step 3: 恢复终端状态 -> eraseBlock 擦除面板 -> printCompletedRow 打印最终单行摘要
+ * Output: Promise<'replica-set'>
+ * ```
+ */
 export const selectOption = async <T>(cfg: SelectConfig<T>): Promise<T> => {
   if (!isInteractive()) return await selectOptionNonInteractive(cfg);
 
@@ -280,6 +291,9 @@ const askConfirmNonInteractive = async (
   }
 };
 
+/**
+ * 渲染双胶囊布尔确认控件 (交互态支持 `←→` / `Tab` / `Space` / `h l` 切换与 `y`/`n` 直选, 非交互态回退 `Y/n` 行输入)。
+ */
 export const askConfirm = async (cfg: AskConfirmConfig): Promise<boolean> => {
   if (!isInteractive()) return await askConfirmNonInteractive(cfg);
 

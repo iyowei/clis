@@ -35,6 +35,7 @@ const detectMacDefaultBackupRoot = (): string => {
   return '/Users/ops/srv/backups';
 };
 
+/** 校验逗号分隔的 `db:user` 业务库输入串, 复用 `validateAppInput` 并阻止重复库名 */
 export const validateAppsInput = (v: string): string | null => {
   const entries = v
     .split(',')
@@ -58,6 +59,7 @@ export const validateAppsInput = (v: string): string | null => {
   return null;
 };
 
+/** 收集硬件规格 (预设档位或自定义 CPU/内存/磁盘, 复用 `HARDWARE_BOUNDS`) 与读写负载特征 */
 export const collectHardware = async (): Promise<HardwareSpec> => {
   const { cpuCores: cpuB, memoryGb: memB, diskGb: diskB } = HARDWARE_BOUNDS;
   const hwPreset = await selectOption<'2c2g' | '4c8g' | '8c16g' | 'custom'>({
@@ -105,7 +107,7 @@ export const collectHardware = async (): Promise<HardwareSpec> => {
       await askText({
         label: '分配几核 CPU?',
         summaryLabel: 'CPU 核数',
-        hint: `填 ${cpuB.min} 到 ${cpuB.max} 之间的数字 (2 核及以上自动开启 zstd 省硬盘空间)`,
+        hint: `填 ${cpuB.min} 到 ${cpuB.max} 之间的数字 (balanced/read-heavy >= 2 核自动用 zstd 省盘, 高频写入自动选 snappy 保吞吐)`,
         defaultVal: '4',
         validate: (v) => {
           const n = Number(v);
@@ -171,6 +173,7 @@ export const collectHardware = async (): Promise<HardwareSpec> => {
   return { cpuCores, memoryGb, diskGb, workload };
 };
 
+/** 收集 Podman 节点列表 (`single` 1 台 / `replica-set` 3 台), 实时校验 IP 唯一性、安全路径与 SSH 归一化 */
 export const collectPodmanNodes = async (
   mode: DeployMode,
   name: string,
@@ -278,6 +281,7 @@ export const collectPodmanNodes = async (
   return nodes;
 };
 
+/** 收集 Kubernetes 命名空间、可选 StorageClass, 并按模式自动设定 `podAntiAffinity` (`k8s-rs` 为 `hard`, 否则 `soft`) */
 export const collectK8sConfig = async (
   mode: DeployMode,
 ): Promise<NonNullable<DeployManifest['k8s']>> => {
