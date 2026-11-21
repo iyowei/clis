@@ -1,5 +1,6 @@
 {
   "id": "delete-suspect-install-tree-skip",
+  "tags": ["apfs-block-size"],
   "specRefs": ["BC-37", "BC-38", "BC-26", "OF-13"],
   "fixture": {
     "projects": [

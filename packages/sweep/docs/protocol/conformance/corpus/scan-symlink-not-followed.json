@@ -1,5 +1,6 @@
 {
   "id": "scan-symlink-not-followed",
+  "tags": ["apfs-block-size"],
   "specRefs": ["BC-02", "BC-04", "OF-03"],
   "fixture": {
     "projects": [

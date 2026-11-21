@@ -1,5 +1,6 @@
 {
   "id": "delete-partial-failure-shell",
+  "tags": ["apfs-block-size"],
   "specRefs": ["BC-25", "BC-26", "EC-05"],
   "fixture": {
     "projects": [

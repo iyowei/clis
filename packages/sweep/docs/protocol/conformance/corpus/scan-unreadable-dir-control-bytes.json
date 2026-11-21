@@ -1,5 +1,6 @@
 {
   "id": "scan-unreadable-dir-control-bytes",
+  "tags": ["apfs-block-size"],
   "specRefs": ["BC-08", "OF-12", "OF-14"],
   "fixture": {
     "projects": [

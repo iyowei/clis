@@ -1,5 +1,6 @@
 {
   "id": "delete-force-includes-suspect",
+  "tags": ["apfs-block-size"],
   "specRefs": ["BC-38", "BC-23", "OF-09", "OF-13"],
   "fixture": {
     "projects": [

@@ -1,5 +1,6 @@
 {
   "id": "scan-multi-root-dedupe",
+  "tags": ["apfs-block-size"],
   "specRefs": ["BC-04", "BC-06"],
   "fixture": {
     "projects": [

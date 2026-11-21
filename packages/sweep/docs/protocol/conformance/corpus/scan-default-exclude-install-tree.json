@@ -1,5 +1,6 @@
 {
   "id": "scan-default-exclude-install-tree",
+  "tags": ["apfs-block-size"],
   "specRefs": ["BC-36", "BC-09", "OF-12"],
   "fixture": {
     "projects": [

@@ -1,5 +1,6 @@
 {
   "id": "delete-execute-ok",
+  "tags": ["apfs-block-size"],
   "specRefs": ["BC-23", "BC-24", "BC-26", "OF-03", "OF-09"],
   "fixture": {
     "projects": [

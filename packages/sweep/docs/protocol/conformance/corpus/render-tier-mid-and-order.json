@@ -1,5 +1,6 @@
 {
   "id": "render-tier-mid-and-order",
+  "tags": ["apfs-block-size"],
   "specRefs": ["BC-12", "OF-02", "OF-04", "OF-05"],
   "fixture": {
     "projects": [

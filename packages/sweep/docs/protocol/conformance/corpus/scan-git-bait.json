@@ -1,5 +1,6 @@
 {
   "id": "scan-git-bait",
+  "tags": ["apfs-block-size"],
   "specRefs": ["BC-05", "OF-03"],
   "fixture": {
     "projects": [

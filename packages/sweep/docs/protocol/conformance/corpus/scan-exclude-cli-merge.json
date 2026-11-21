@@ -1,5 +1,6 @@
 {
   "id": "scan-exclude-cli-merge",
+  "tags": ["apfs-block-size"],
   "specRefs": ["BC-03", "OF-03"],
   "fixture": {
     "projects": [

@@ -1,5 +1,6 @@
 {
   "id": "scan-unreadable-dir-warn",
+  "tags": ["apfs-block-size"],
   "specRefs": ["BC-08", "OF-12"],
   "fixture": {
     "projects": [

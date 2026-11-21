@@ -1,5 +1,6 @@
 {
   "id": "size-unmeasured-blocks-delete",
+  "tags": ["apfs-block-size"],
   "specRefs": ["BC-15", "BC-26", "OF-09", "OF-11"],
   "fixture": {
     "projects": [

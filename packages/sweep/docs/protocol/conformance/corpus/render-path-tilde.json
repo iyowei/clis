@@ -1,5 +1,6 @@
 {
   "id": "render-path-tilde",
+  "tags": ["apfs-block-size"],
   "specRefs": ["OF-01", "OF-03"],
   "fixture": {
     "projects": [

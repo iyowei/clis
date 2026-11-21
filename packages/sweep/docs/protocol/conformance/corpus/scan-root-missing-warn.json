@@ -1,5 +1,6 @@
 {
   "id": "scan-root-missing-warn",
+  "tags": ["apfs-block-size"],
   "specRefs": ["BC-07", "OF-12"],
   "fixture": {
     "projects": [

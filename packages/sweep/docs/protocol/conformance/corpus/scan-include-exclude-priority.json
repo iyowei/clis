@@ -1,5 +1,6 @@
 {
   "id": "scan-include-exclude-priority",
+  "tags": ["apfs-block-size"],
   "specRefs": ["BC-32", "BC-33", "OF-03"],
   "fixture": {
     "projects": [

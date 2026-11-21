@@ -1,5 +1,6 @@
 {
   "id": "render-no-color-degraded",
+  "tags": ["apfs-block-size"],
   "specRefs": ["OF-10"],
   "fixture": {
     "projects": [

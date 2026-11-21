@@ -1,5 +1,6 @@
 {
   "id": "scan-order-target-asc",
+  "tags": ["apfs-block-size"],
   "specRefs": ["BC-06", "OF-02"],
   "fixture": {
     "projects": [

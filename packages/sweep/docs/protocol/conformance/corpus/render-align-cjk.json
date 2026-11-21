@@ -1,5 +1,6 @@
 {
   "id": "render-align-cjk",
+  "tags": ["apfs-block-size"],
   "specRefs": ["OF-03", "OF-06"],
   "fixture": {
     "projects": [

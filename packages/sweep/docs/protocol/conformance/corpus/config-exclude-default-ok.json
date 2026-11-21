@@ -1,5 +1,6 @@
 {
   "id": "config-exclude-default-ok",
+  "tags": ["apfs-block-size"],
   "specRefs": ["BC-20", "BC-36"],
   "fixture": {
     "projects": [

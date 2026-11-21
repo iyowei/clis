@@ -1,5 +1,6 @@
 {
   "id": "scan-basic-preview",
+  "tags": ["apfs-block-size"],
   "specRefs": [
     "BC-01",
     "BC-06",

@@ -1,5 +1,6 @@
 {
   "id": "scan-nested-prune",
+  "tags": ["apfs-block-size"],
   "specRefs": ["BC-01", "OF-03"],
   "fixture": {
     "projects": [

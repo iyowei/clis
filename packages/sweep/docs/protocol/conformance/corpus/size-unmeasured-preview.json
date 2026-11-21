@@ -1,5 +1,6 @@
 {
   "id": "size-unmeasured-preview",
+  "tags": ["apfs-block-size"],
   "specRefs": ["BC-14", "OF-02", "OF-11"],
   "fixture": {
     "projects": [

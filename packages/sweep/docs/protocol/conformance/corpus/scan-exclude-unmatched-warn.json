@@ -1,5 +1,6 @@
 {
   "id": "scan-exclude-unmatched-warn",
+  "tags": ["apfs-block-size"],
   "specRefs": ["BC-09", "OF-12"],
   "fixture": {
     "projects": [

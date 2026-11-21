@@ -1,5 +1,6 @@
 {
   "id": "scan-include-config",
+  "tags": ["apfs-block-size"],
   "specRefs": ["BC-31", "OF-03"],
   "fixture": {
     "projects": [
