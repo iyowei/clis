@@ -2,7 +2,7 @@
 
 本表仅登记**仓库级工程与治理 ADR** (`docs/adrs/` 下的记录)。新增决策按全仓最大号顺延四位递增编号; 已接受的记录不原地改写, 要修订就写新 ADR 或补充说明。
 
-> 分层说明: 全仓共用一套全局唯一四位编号 (由 `scripts/lint-doc-references.ts` 联合扫描仓级与包级 `docs/adrs/` 防幽灵编号与重号碰撞); 包级 ADR 随各自包内聚存放并登记在各自 `packages/<pkg>/docs/adrs/README.md`, 不在本表重复手抄。
+> 分层说明: 全仓共用一套全局唯一四位编号 (由 `scripts/lint-doc-references.ts` 联合扫描仓级与包级 `docs/adrs/` 防幽灵编号与重号碰撞); 包级 ADR 随各自包内聚存放并登记在各自 `packages/<pkg>/docs/README.md`, 不在本表重复手抄。
 
 | 编号 | 标题 | 状态 | 日期 |
 | ---- | ---- | ---- | ---- |

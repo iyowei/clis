@@ -13,8 +13,8 @@ CLI 工具集合仓: 每个工具都住在 `packages/` 下, 文档从各自的 `
 
 <!-- 模板骨架: 示例包 {{NAME}} 与 {{NAME}}-cli 是占位实现 (一个 greet 示例), 替换为自己的工具后同步本节。 -->
 
-- **`{{SCOPE}}/{{NAME}}-cli`**: 命令行工具 `{{BIN_NAME}}`; 安装、用法与配置见其 [README](packages/{{NAME}}-cli/README.md);
-- **`{{SCOPE}}/{{NAME}}`**: 可编程 API 包, 供自己的程序或脚本调用; 用法见其 [README](packages/{{NAME}}/README.md)。
+- **`{{SCOPE}}/{{NAME}}-cli`**: 命令行工具 `{{BIN_NAME}}`; 安装、用法与配置见其 [README](packages/{{NAME}}-cli/README.zh-CN.md);
+- **`{{SCOPE}}/{{NAME}}`**: 可编程 API 包, 供自己的程序或脚本调用; 用法见其 [README](packages/{{NAME}}/README.zh-CN.md)。
 
 ## 文档
 
