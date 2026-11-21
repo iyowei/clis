@@ -22,8 +22,8 @@ The repository is a monorepo whose packages live under `packages/`:
 - `packages/create-clis`: the collection scaffolding generator, published as `create-clis`.
 - `packages/sweep-cli`: the `sweep` multi-toolchain workspace cleaner CLI (`@iyowei/sweep-cli`, pre-release `private: true`).
 - `packages/sweep`: the programmable API behind `sweep` (`@iyowei/sweep`, pre-release `private: true`).
-- `packages/codd-cli`: the `codd` MongoDB 9.0 provisioning CLI (`@iyowei/codd-cli`, pre-release `private: true`).
-- `packages/codd`: the programmable API and template asset package behind `codd` (`@iyowei/codd`, pre-release `private: true`).
+- `packages/codd-cli`: the `codd` MongoDB 9.0 provisioning CLI, published as `@iyowei/codd-cli`.
+- `packages/codd`: the programmable API and template asset package behind `codd`, published as `@iyowei/codd`.
 - `packages/cli-updater`: zero-dependency cross-package-manager self-update engine bundled into every CLI's `update` subcommand (`@iyowei/cli-updater`, internal shared library, `private: true`).
 
 turbo orchestrates the build, typecheck, and test tasks across all workspace packages. The code treats bun and node as first-class runtimes (bun when available, node otherwise, identical behavior), runs on Windows, macOS, and Linux, and keeps runtime dependencies minimal (zero third-party runtime dependencies for `sweep` and `codd`; `prettier` only for `create-clis` scaffold formatting).

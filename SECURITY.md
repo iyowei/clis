@@ -6,7 +6,7 @@ Security fixes are released as new versions; only the latest published release o
 
 - `create-clis`: the monorepo collection scaffold CLI;
 - `@iyowei/sweep-cli` / `@iyowei/sweep`: the `sweep` general multi-toolchain workspace cleaner CLI and programmable API (currently pre-release / `private: true`, tracked on `main`);
-- `@iyowei/codd-cli` / `@iyowei/codd`: the MongoDB 9.0 provisioning CLI and programmable API (currently pre-release / `private: true`, tracked on `main`).
+- `@iyowei/codd-cli` / `@iyowei/codd`: the MongoDB 9.0 provisioning CLI and programmable API.
 
 Older releases do not receive fixes.
 

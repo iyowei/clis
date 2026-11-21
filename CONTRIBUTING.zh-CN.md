@@ -22,8 +22,8 @@
 - `packages/create-clis`: 集合仓生成器, 发布为 `create-clis`。
 - `packages/sweep-cli`: `sweep` 通用多技术栈工作区清理命令行工具 (`@iyowei/sweep-cli`, 待首发 `private: true`)。
 - `packages/sweep`: `sweep` 的可编程 API 包 (`@iyowei/sweep`, 待首发 `private: true`)。
-- `packages/codd-cli`: `codd` 模板化 MongoDB 9.0 部署装配 CLI (`@iyowei/codd-cli`, 待首发 `private: true`)。
-- `packages/codd`: `codd` 的可编程 API 与模板资产包 (`@iyowei/codd`, 待首发 `private: true`)。
+- `packages/codd-cli`: `codd` 模板化 MongoDB 9.0 部署装配 CLI, 发布为 `@iyowei/codd-cli`。
+- `packages/codd`: `codd` 的可编程 API 与模板资产包, 发布为 `@iyowei/codd`。
 - `packages/cli-updater`: 零外部依赖的跨包管理器自更新引擎, 内联打包进各 CLI 的 `update` 子命令 (`@iyowei/cli-updater`, 仓内私有共享库, `private: true`)。
 
 turbo 跨工作区各包编排构建、类型检查与测试任务。代码对 bun 与 node 一视同仁 (有 bun 走 bun, 否则走 node, 行为一致), 支持 Windows / macOS / Linux; 运行时依赖极简 (`sweep` 与 `codd` 全线零第三方运行时依赖, `create-clis` 仅携带 `prettier` 用于生成物格式化)。
