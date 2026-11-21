@@ -1,0 +1,79 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "extract-shared-package Output Contract",
+  "description": "Standard JSON Schema validating scan stdout envelope and summary output JSON structures.",
+  "type": "object",
+  "properties": {
+    "scanEnvelope": {
+      "type": "object",
+      "required": [
+        "stats",
+        "nextAction",
+        "convergence",
+        "degeneratedLibs",
+        "topClusters"
+      ],
+      "properties": {
+        "savedTo": { "type": "string" },
+        "scannedAt": { "type": "string" },
+        "stats": {
+          "type": "object",
+          "required": [
+            "totalPackages",
+            "totalFiles",
+            "totalSymbols",
+            "activeClusters",
+            "migrationResidueCount",
+            "degeneratedLibCount",
+            "coolingDownLibCount",
+            "reabsorbableLibCount"
+          ]
+        },
+        "nextAction": {
+          "type": "object",
+          "required": ["kind", "reason"],
+          "properties": {
+            "kind": {
+              "enum": [
+                "stop",
+                "fix-graph-violations",
+                "reabsorb",
+                "cleanup-unused",
+                "cleanup-residue",
+                "extract-or-triage"
+              ]
+            },
+            "suggestedCommand": { "type": "string" }
+          }
+        },
+        "convergence": {
+          "type": "object",
+          "required": [
+            "shouldStop",
+            "reason",
+            "activeRoundsExecuted",
+            "maxRoundsAllowed"
+          ]
+        }
+      }
+    },
+    "summaryOutput": {
+      "type": "object",
+      "required": [
+        "schemaVersion",
+        "generatedAt",
+        "repoRoot",
+        "roundsExecuted",
+        "activeRoundId",
+        "convergence",
+        "nextAction",
+        "extractedPackages",
+        "reabsorbedPackages",
+        "rejectedOrDeferred",
+        "coolingDownLibs",
+        "orphanedPublicLibs",
+        "rustReadinessAlerts"
+      ]
+    }
+  }
+}

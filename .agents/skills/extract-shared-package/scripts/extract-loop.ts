@@ -1,89 +1,70 @@
 /**
- * extract-shared-package 主命令行编排入口 (确定性扫描 + 四道闸门 + 闭环状态机)。
- *
- * 子命令:
- * - scan [--max-rounds N]                             全量扫描最新工作区包并产出结构化 JSON 账本
- * - check-proposal --name <pkg> --description <d> --consumers <a,b> --exports <x,y>
- * - begin-round --name <pkg> --dir <packages/x> [--touch <f1,f2>]
- * - backup-file --round <id> --file <relPath>
- * - verify-round --round <id> --dir <packages/x> [--skip-ci]
- * - commit-round --round <id> --fingerprint <fp> --name <pkg> --reason <text>
- * - reject --fingerprint <fp> --status <rejected|deferred> --reason <text> --clusters-json <path>
- * - rollback-round --round <id>
+ * extract-shared-package 主命令行编排入口 (单一权威 CLI 契约 + 事务校验 + 双向自均衡)。
  */
-import { spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
-import { dirname, join, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { existsSync } from 'node:fs';
+import { join } from 'node:path';
 
 import { scanWorkspace } from './analyzer.ts';
 import {
-  evaluateEssenceProposal,
-  lintExtractedPackage,
-} from './essence-gate.ts';
+  assertInsideRepo,
+  assertRoundCheckpointMatch,
+  collectSignatureArgs,
+  formatCliUsage as formatUsage,
+  getFlag,
+  hasFlag,
+  parseStrictNonNegativeInt,
+  resolveRepoRoot,
+  runWorkspaceCiVerify,
+  saveLastScanToTmp,
+  splitCsv,
+  writeOut,
+} from './cli-helpers.ts';
+import { evaluateEssenceProposal } from './essence-gate.ts';
+import { buildMemberDigests } from './fs-utils.ts';
 import {
   beginRoundCheckpoint,
-  loadCheckpoint,
   loadLedger,
   recordFileBackup,
   rollbackRoundCheckpoint,
+  syncDegenerationWatches,
   upsertLedgerRecord,
 } from './ledger.ts';
+import { lintExtractedPackage } from './package-lint.ts';
+import { lintReabsorbedTarget } from './reabsorb-lint.ts';
+import { buildExtractSummary } from './summary.ts';
 import { buildWorkspaceGraph } from './workspace-graph.ts';
 
-const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url));
-const REPO_ROOT = resolve(SCRIPT_DIR, '../../../..');
+export { resolveRepoRoot };
 
-function getFlag(argv: readonly string[], name: string): string | undefined {
-  const idx = argv.indexOf(name);
-  if (idx < 0) return undefined;
-  return argv[idx + 1];
-}
-
-function hasFlag(argv: readonly string[], name: string): boolean {
-  return argv.includes(name);
-}
-
-function splitCsv(raw: string | undefined): string[] {
-  if (raw === undefined || raw.trim() === '') return [];
-  return raw
-    .split(',')
-    .map((s) => s.trim())
-    .filter((s) => s.length > 0);
-}
-
-function writeOut(data: unknown): void {
-  process.stdout.write(`${JSON.stringify(data, null, 2)}\n`);
-}
-
-function saveLastScanToTmp(report: unknown): string {
-  const home = process.env.HOME ?? process.env.USERPROFILE;
-  if (!home) return '';
-  const outPath = join(home, 'tmp', 'extract-shared-package', 'last-scan.json');
-  mkdirSync(dirname(outPath), { recursive: true });
-  writeFileSync(outPath, `${JSON.stringify(report, null, 2)}\n`, 'utf8');
-  return outPath;
-}
-
-function cmdScan(argv: readonly string[]): void {
-  const maxRaw = getFlag(argv, '--max-rounds');
-  const maxRounds = maxRaw === undefined ? 5 : Number.parseInt(maxRaw, 10);
-  const ledger = loadLedger(REPO_ROOT);
-  const report = scanWorkspace(
-    REPO_ROOT,
-    ledger,
-    Number.isFinite(maxRounds) ? maxRounds : 5,
+function cmdScan(argv: readonly string[], repoRoot: string): void {
+  const maxRounds = parseStrictNonNegativeInt(argv, '--max-rounds') ?? 10;
+  const cooldownDays = parseStrictNonNegativeInt(
+    argv,
+    '--cooldown-days',
+    'EXTRACT_COOLDOWN_DAYS',
   );
-  const savedTo = saveLastScanToTmp(report);
+  const deadCooldownDays = parseStrictNonNegativeInt(
+    argv,
+    '--dead-cooldown-days',
+    'EXTRACT_DEAD_COOLDOWN_DAYS',
+  );
+
+  const ledger = loadLedger(repoRoot);
+  const report = scanWorkspace(repoRoot, ledger, maxRounds, {
+    cooldownDays,
+    deadCooldownDays,
+  });
+  const watchSync = syncDegenerationWatches(repoRoot, report.degeneratedLibs);
+  const savedTo = saveLastScanToTmp(repoRoot, report);
 
   if (hasFlag(argv, '--full')) {
-    writeOut({ savedTo, report });
+    writeOut({ savedTo, watchSync, report });
     return;
   }
 
-  // 默认输出摘要 + Top 15 活跃复用簇, 避免一次性把全部函数签名塞爆上下文
   writeOut({
     savedTo,
+    watchSync,
     scannedAt: report.scannedAt,
     stats: report.stats,
     graph: {
@@ -91,27 +72,48 @@ function cmdScan(argv: readonly string[]): void {
       layerDomainCounts: report.graph.layerDomainCounts,
       existingViolations: report.graph.existingViolations,
     },
+    nextAction: report.nextAction,
     convergence: report.convergence,
+    degeneratedLibs: report.degeneratedLibs,
+    migrationResidues: report.migrationResidues,
     topClusters: report.clusters.slice(0, 15),
     suppressedCount: report.suppressed.length,
   });
 }
 
-function cmdCheckProposal(argv: readonly string[]): void {
+function cmdSummary(argv: readonly string[], repoRoot: string): void {
+  const cooldownDays = parseStrictNonNegativeInt(
+    argv,
+    '--cooldown-days',
+    'EXTRACT_COOLDOWN_DAYS',
+  );
+  const deadCooldownDays = parseStrictNonNegativeInt(
+    argv,
+    '--dead-cooldown-days',
+    'EXTRACT_DEAD_COOLDOWN_DAYS',
+  );
+  const ledger = loadLedger(repoRoot);
+  const report = scanWorkspace(repoRoot, ledger, 10, {
+    cooldownDays,
+    deadCooldownDays,
+  });
+  writeOut(buildExtractSummary(report, ledger));
+}
+
+function cmdCheckProposal(argv: readonly string[], repoRoot: string): void {
   const packageName = getFlag(argv, '--name');
   const description = getFlag(argv, '--description');
   const consumers = splitCsv(getFlag(argv, '--consumers'));
   const exportedSymbols = splitCsv(getFlag(argv, '--exports'));
   const internalDeps = splitCsv(getFlag(argv, '--internal-deps'));
+  const apiSignatures = collectSignatureArgs(argv);
 
   if (!packageName || !description) {
-    process.stderr.write(
-      '用法: check-proposal --name <pkg> --description <desc> --consumers <a,b> --exports <x,y>\n',
-    );
+    process.stderr.write(`${formatUsage('check-proposal')}\n`);
     process.exit(2);
   }
 
-  const graph = buildWorkspaceGraph(REPO_ROOT);
+  const graph = buildWorkspaceGraph(repoRoot);
   const res = evaluateEssenceProposal(graph, {
     packageName,
     description,
@@ -119,140 +121,315 @@ function cmdCheckProposal(argv: readonly string[]): void {
     exportedSymbols,
     targetKind: 'private-lib',
     internalDeps,
+    apiSignatures,
   });
   writeOut(res);
   if (!res.passed) process.exit(1);
 }
 
-function cmdBeginRound(argv: readonly string[]): void {
+function cmdBeginRound(argv: readonly string[], repoRoot: string): void {
   const name = getFlag(argv, '--name');
   const dir = getFlag(argv, '--dir');
-  if (!name || !dir) {
+  const modeRaw = getFlag(argv, '--mode') ?? 'extract';
+  if (
+    modeRaw !== 'extract' &&
+    modeRaw !== 'reabsorb' &&
+    modeRaw !== 'residue'
+  ) {
     process.stderr.write(
-      '用法: begin-round --name <pkg> --dir <packages/x> [--touch <f1,f2>]\n',
+      `不支持的 --mode "${modeRaw}", 仅允许 extract | reabsorb | residue\n`,
     );
     process.exit(2);
   }
-  const defaultTouches = [
-    'tsconfig.json',
-    'packages/create-clis/scripts/template-manifest.ts',
-    'README.md',
-    'README.zh-CN.md',
-    'docs/README.md',
-  ].filter((f) => existsSync(join(REPO_ROOT, f)));
+  const intoPath = getFlag(argv, '--into');
+  if (!name || !dir) {
+    process.stderr.write(`${formatUsage('begin-round')}\n`);
+    process.exit(2);
+  }
+  const safeDir = assertInsideRepo(repoRoot, dir, '--dir');
+  const safeInto =
+    intoPath !== undefined
+      ? assertInsideRepo(repoRoot, intoPath, '--into')
+      : undefined;
+
+  const defaultTouches =
+    modeRaw === 'residue'
+      ? []
+      : [
+          'tsconfig.json',
+          'packages/create-clis/scripts/template-manifest.ts',
+          'README.md',
+          'README.zh-CN.md',
+          'docs/README.md',
+        ].filter((f) => existsSync(join(repoRoot, f)));
 
   const touches = [
     ...new Set([...defaultTouches, ...splitCsv(getFlag(argv, '--touch'))]),
   ];
-  const cp = beginRoundCheckpoint(REPO_ROOT, name, dir, touches);
+  const cp = beginRoundCheckpoint(
+    repoRoot,
+    name,
+    safeDir,
+    touches,
+    modeRaw,
+    safeInto,
+  );
   writeOut(cp);
 }
 
-function cmdBackupFile(argv: readonly string[]): void {
+function cmdBackupFile(argv: readonly string[], repoRoot: string): void {
   const roundId = getFlag(argv, '--round');
   const file = getFlag(argv, '--file');
   if (!roundId || !file) {
-    process.stderr.write('用法: backup-file --round <id> --file <relPath>\n');
+    process.stderr.write(`${formatUsage('backup-file')}\n`);
     process.exit(2);
   }
-  const cp = loadCheckpoint(REPO_ROOT, roundId);
-  recordFileBackup(cp, file);
-  writeOut({ ok: true, roundId, file });
+  const safeFile = assertInsideRepo(repoRoot, file, '--file');
+  const cp = loadCheckpoint(repoRoot, roundId);
+  recordFileBackup(cp, safeFile);
+  writeOut({ ok: true, roundId, file: safeFile });
 }
 
-function cmdVerifyRound(argv: readonly string[]): void {
-  const dir = getFlag(argv, '--dir');
-  if (!dir) {
-    process.stderr.write('用法: verify-round --dir <packages/x> [--skip-ci]\n');
+function cmdVerifyRound(argv: readonly string[], repoRoot: string): void {
+  const rawDir = getFlag(argv, '--dir');
+  const roundId = getFlag(argv, '--round');
+  const modeRaw = getFlag(argv, '--mode');
+  if (!rawDir) {
+    process.stderr.write(`${formatUsage('verify-round')}\n`);
     process.exit(2);
   }
-  const graph = buildWorkspaceGraph(REPO_ROOT);
-  const pkgLint = lintExtractedPackage(REPO_ROOT, graph, dir);
-  if (!pkgLint.passed) {
+  const dir = assertInsideRepo(repoRoot, rawDir, '--dir');
+
+  if (modeRaw !== undefined && modeRaw !== 'extract' && modeRaw !== 'residue') {
+    process.stderr.write(
+      `verify-round 不支持的 --mode "${modeRaw}", 仅允许 extract | residue\n`,
+    );
+    process.exit(2);
+  }
+
+  let effectiveMode: 'extract' | 'residue' =
+    modeRaw === 'residue' ? 'residue' : 'extract';
+  if (roundId !== undefined) {
+    const cpMode = assertRoundCheckpointMatch(repoRoot, roundId, {
+      expectedDir: dir,
+    });
+    if (cpMode === 'residue') effectiveMode = 'residue';
+  }
+
+  const graph = buildWorkspaceGraph(repoRoot);
+  if (effectiveMode === 'extract') {
+    const staticLint = lintExtractedPackage(repoRoot, graph, dir, {
+      verifyPack: false,
+    });
+    if (!staticLint.passed) {
+      writeOut({
+        ok: false,
+        phase: 'essence-lint',
+        violations: staticLint.violations,
+      });
+      process.exit(1);
+    }
+  }
+
+  if (hasFlag(argv, '--skip-ci')) {
+    writeOut({ ok: true, phase: `${effectiveMode}-lint-only`, dir });
+    return;
+  }
+
+  runWorkspaceCiVerify(repoRoot, 'verify-round');
+
+  if (effectiveMode === 'extract') {
+    const packLint = lintExtractedPackage(repoRoot, graph, dir, {
+      verifyPack: true,
+    });
+    if (!packLint.passed) {
+      writeOut({
+        ok: false,
+        phase: 'npm-pack-dry-run',
+        violations: packLint.violations,
+      });
+      process.exit(1);
+    }
+  }
+
+  writeOut({
+    ok: true,
+    phase:
+      effectiveMode === 'residue'
+        ? 'residue-ci-verified'
+        : 'full-ci-and-pack-verify',
+    dir,
+  });
+}
+
+function cmdVerifyReabsorb(argv: readonly string[], repoRoot: string): void {
+  const name = getFlag(argv, '--name');
+  const rawDir = getFlag(argv, '--dir');
+  const intoPath = getFlag(argv, '--into');
+  const unused = hasFlag(argv, '--unused');
+  if (!name || !rawDir) {
+    process.stderr.write(`${formatUsage('verify-reabsorb')}\n`);
+    process.exit(2);
+  }
+  if (unused && intoPath !== undefined) {
+    process.stderr.write(
+      '参数冲突: --unused (零消费者退役) 与 --into (独立内联目标) 不得同时使用\n',
+    );
+    process.exit(2);
+  }
+  const dir = assertInsideRepo(repoRoot, rawDir, '--dir');
+  const safeInto =
+    intoPath !== undefined
+      ? assertInsideRepo(repoRoot, intoPath, '--into')
+      : undefined;
+
+  const graph = buildWorkspaceGraph(repoRoot);
+  const lint = lintReabsorbedTarget(repoRoot, graph, name, dir, {
+    intoPath: safeInto,
+    unused,
+  });
+  if (!lint.passed) {
     writeOut({
       ok: false,
-      phase: 'essence-lint',
-      violations: pkgLint.violations,
+      phase: 'reabsorb-module-lint',
+      violations: lint.violations,
     });
     process.exit(1);
   }
 
-  if (hasFlag(argv, '--skip-ci')) {
-    writeOut({ ok: true, phase: 'essence-lint-only' });
-    return;
+  if (!hasFlag(argv, '--skip-ci')) {
+    runWorkspaceCiVerify(repoRoot, 'verify-reabsorb');
   }
-
-  const ci = spawnSync('bun', ['scripts/ci.ts', '--verify'], {
-    cwd: REPO_ROOT,
-    stdio: 'inherit',
+  writeOut({
+    ok: true,
+    phase: 'reabsorb-verified',
+    name,
+    dir,
+    into: safeInto ?? null,
+    unused,
   });
-  if (ci.status !== 0) {
-    process.stderr.write(
-      `\nverify-round: scripts/ci.ts --verify 退出码 ${ci.status ?? 1}\n`,
-    );
-    process.exit(ci.status ?? 1);
-  }
-  writeOut({ ok: true, phase: 'full-ci-verify', dir });
 }
 
-function cmdCommitRound(argv: readonly string[]): void {
+function cmdCommitRound(argv: readonly string[], repoRoot: string): void {
   const fingerprint = getFlag(argv, '--fingerprint');
   const name = getFlag(argv, '--name');
   const reason = getFlag(argv, '--reason');
+  const roundId = getFlag(argv, '--round');
+  const modeRaw = getFlag(argv, '--mode') ?? 'extract';
   if (!fingerprint || !name || !reason) {
+    process.stderr.write(`${formatUsage('commit-round')}\n`);
+    process.exit(2);
+  }
+  if (
+    modeRaw !== 'extract' &&
+    modeRaw !== 'reabsorb' &&
+    modeRaw !== 'residue'
+  ) {
     process.stderr.write(
-      '用法: commit-round --fingerprint <fp> --name <pkg> --reason <text>\n',
+      `不支持的 --mode "${modeRaw}", 仅允许 extract | reabsorb | residue\n`,
     );
     process.exit(2);
   }
-  const updated = upsertLedgerRecord(
-    REPO_ROOT,
-    {
-      fingerprint,
-      status: 'accepted',
-      packageName: name,
-      reason,
-      memberDigests: {},
-      distinctDomains: 0,
-      recordedAt: new Date().toISOString(),
-    },
-    true,
-  );
-  writeOut({ ok: true, roundsExecuted: updated.roundsExecuted });
-}
 
-function cmdReject(argv: readonly string[]): void {
-  const fingerprint = getFlag(argv, '--fingerprint');
-  const reason = getFlag(argv, '--reason');
-  const statusRaw = getFlag(argv, '--status') ?? 'rejected';
-  if (!fingerprint || !reason) {
-    process.stderr.write(
-      '用法: reject --fingerprint <fp> --reason <text> [--status rejected|deferred]\n',
-    );
-    process.exit(2);
+  const ledger = loadLedger(repoRoot);
+  const closeId = roundId ?? ledger.activeRoundId;
+  if (closeId !== undefined) {
+    assertRoundCheckpointMatch(repoRoot, closeId, {
+      expectedMode: modeRaw,
+      expectedPkgName: name,
+    });
   }
-  const status = statusRaw === 'deferred' ? 'deferred' : 'rejected';
-  const ledger = loadLedger(REPO_ROOT);
-  const report = scanWorkspace(REPO_ROOT, ledger);
-  const match =
-    report.clusters.find((c) => c.fingerprint === fingerprint) ??
-    report.suppressed.find((c) => c.fingerprint === fingerprint);
 
-  const memberDigests: Record<string, string> = {};
-  if (match !== undefined) {
-    for (const m of match.members) {
-      memberDigests[`${m.file}#${m.symbolName}`] = m.rawDigest;
+  const status = modeRaw === 'reabsorb' ? 'reabsorbed' : 'accepted';
+  let memberDigests: Record<string, string> = {};
+  let distinctDomains = 0;
+
+  if (status === 'accepted') {
+    const report = scanWorkspace(repoRoot, ledger);
+    const match =
+      report.clusters.find((c) => c.fingerprint === fingerprint) ??
+      report.suppressed.find((c) => c.fingerprint === fingerprint) ??
+      report.migrationResidues.find((c) => c.fingerprint === fingerprint);
+    if (match !== undefined) {
+      distinctDomains = match.distinctDomainCount;
+      memberDigests = buildMemberDigests(match);
     }
   }
 
   const updated = upsertLedgerRecord(
-    REPO_ROOT,
+    repoRoot,
     {
       fingerprint,
       status,
+      packageName: name,
       reason,
       memberDigests,
-      distinctDomains: match?.distinctDomainCount ?? 0,
+      distinctDomains,
+      recordedAt: new Date().toISOString(),
+    },
+    true,
+    closeId,
+  );
+  writeOut({ ok: true, status, roundsExecuted: updated.roundsExecuted });
+}
+
+function cmdReject(argv: readonly string[], repoRoot: string): void {
+  const fingerprint = getFlag(argv, '--fingerprint');
+  const reason = getFlag(argv, '--reason');
+  const statusRaw = getFlag(argv, '--status') ?? 'rejected';
+  if (!fingerprint || !reason) {
+    process.stderr.write(`${formatUsage('reject')}\n`);
+    process.exit(2);
+  }
+  if (statusRaw !== 'rejected' && statusRaw !== 'deferred') {
+    process.stderr.write(
+      `不支持的 --status "${statusRaw}", 仅允许 rejected | deferred\n`,
+    );
+    process.exit(2);
+  }
+
+  // 必须现场实扫磁盘最新源码, 禁止复用可能过期的缓存以免写入陈旧 rawDigest
+  const ledger = loadLedger(repoRoot);
+  const report = scanWorkspace(repoRoot, ledger);
+
+  const clusterMatch =
+    report.clusters.find((c) => c.fingerprint === fingerprint) ??
+    report.suppressed.find((c) => c.fingerprint === fingerprint) ??
+    report.migrationResidues.find((c) => c.fingerprint === fingerprint);
+  const degenMatch = report.degeneratedLibs.find(
+    (d) => d.fingerprint === fingerprint,
+  );
+
+  if (clusterMatch === undefined && degenMatch === undefined) {
+    process.stderr.write(
+      `未在当前扫仓报告找到匹配指纹: ${fingerprint}, 拒绝写入空台账\n`,
+    );
+    process.exit(1);
+  }
+
+  let memberDigests: Record<string, string> = {};
+  let distinctDomains = 0;
+  let packageName: string | undefined;
+
+  if (clusterMatch !== undefined) {
+    distinctDomains = clusterMatch.distinctDomainCount;
+    memberDigests = buildMemberDigests(clusterMatch);
+  } else if (degenMatch !== undefined) {
+    packageName = degenMatch.pkgName;
+    distinctDomains = degenMatch.transitiveConsumerDomains.length;
+    memberDigests[degenMatch.pkgName] =
+      degenMatch.transitiveBusinessConsumers.join(',');
+  }
+
+  const updated = upsertLedgerRecord(
+    repoRoot,
+    {
+      fingerprint,
+      status: statusRaw,
+      packageName,
+      reason,
+      memberDigests,
+      distinctDomains,
       recordedAt: new Date().toISOString(),
     },
     false,
@@ -260,13 +437,13 @@ function cmdReject(argv: readonly string[]): void {
   writeOut({ ok: true, suppressedCount: updated.records.length });
 }
 
-function cmdRollbackRound(argv: readonly string[]): void {
+function cmdRollbackRound(argv: readonly string[], repoRoot: string): void {
   const roundId = getFlag(argv, '--round');
   if (!roundId) {
-    process.stderr.write('用法: rollback-round --round <id>\n');
+    process.stderr.write(`${formatUsage('rollback-round')}\n`);
     process.exit(2);
   }
-  const res = rollbackRoundCheckpoint(REPO_ROOT, roundId);
+  const res = rollbackRoundCheckpoint(repoRoot, roundId);
   writeOut({ ok: true, ...res });
 }
 
@@ -274,18 +451,19 @@ function main(): void {
   const argv = process.argv.slice(2);
   const cmd = argv[0];
   const rest = argv.slice(1);
-  if (cmd === 'scan') cmdScan(rest);
-  else if (cmd === 'check-proposal') cmdCheckProposal(rest);
-  else if (cmd === 'begin-round') cmdBeginRound(rest);
-  else if (cmd === 'backup-file') cmdBackupFile(rest);
-  else if (cmd === 'verify-round') cmdVerifyRound(rest);
-  else if (cmd === 'commit-round') cmdCommitRound(rest);
-  else if (cmd === 'reject') cmdReject(rest);
-  else if (cmd === 'rollback-round') cmdRollbackRound(rest);
+  const repoRoot = resolveRepoRoot(rest);
+  if (cmd === 'scan') cmdScan(rest, repoRoot);
+  else if (cmd === 'summary') cmdSummary(rest, repoRoot);
+  else if (cmd === 'check-proposal') cmdCheckProposal(rest, repoRoot);
+  else if (cmd === 'begin-round') cmdBeginRound(rest, repoRoot);
+  else if (cmd === 'backup-file') cmdBackupFile(rest, repoRoot);
+  else if (cmd === 'verify-round') cmdVerifyRound(rest, repoRoot);
+  else if (cmd === 'verify-reabsorb') cmdVerifyReabsorb(rest, repoRoot);
+  else if (cmd === 'commit-round') cmdCommitRound(rest, repoRoot);
+  else if (cmd === 'reject') cmdReject(rest, repoRoot);
+  else if (cmd === 'rollback-round') cmdRollbackRound(rest, repoRoot);
   else {
-    process.stderr.write(
-      '可用命令: scan | check-proposal | begin-round | backup-file | verify-round | commit-round | reject | rollback-round\n',
-    );
+    process.stderr.write(`${formatUsage('')}\n`);
     process.exit(2);
   }
 }

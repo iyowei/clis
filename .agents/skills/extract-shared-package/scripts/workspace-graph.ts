@@ -1,10 +1,10 @@
 /**
- * 工作区拓扑解析器与依赖方向模拟器。
+ * 工作区拓扑解析器、传递产品域反查与依赖方向模拟器。
  *
  * 关键规则:
  * - 从根 package.json workspaces 确定性发现包并推导分类 (cli / public-lib / private-lib);
- * - 识别双包产品绑定关系 (如 pkg + pkg-cli 共用同一个 domainId), 防将同一产品内部耦合误判为跨产品复用;
- * - 按同构职责层 (cli / api / shared-lib / scaffold) 统计独立产品域数;
+ * - 优先按 CLI -> API 绑定归并双包产品域 (无论 API 包是否已首发或标 private: true);
+ * - 提供传递可达业务产品域计算 (computeTransitiveConsumerDomains), 用于识别退化共享库与防止中间库误回收;
  * - 提供假想新包加入后的依赖方向 / 环依赖 / public-lib 链深 (<= 2) 确定性预检。
  */
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
@@ -24,9 +24,7 @@ interface RawPackage {
   manifest: Record<string, unknown>;
 }
 
-function readDeps(manifest: Record<string, unknown>): {
-  all: string[];
-} {
+function readDeps(manifest: Record<string, unknown>): { all: string[] } {
   const names = new Set<string>();
   for (const field of ['dependencies', 'devDependencies'] as const) {
     const bag = manifest[field];
@@ -181,16 +179,24 @@ export function buildWorkspaceGraph(repoRoot: string): WorkspaceGraph {
     }
   }
 
+  // 判断是否为共享库: 显式声明 clisRole === 'shared-lib' 或被多个 CLI 依赖且无对称双包命名
+  const hasSymmetricCli = (apiRaw: RawPackage): boolean =>
+    raws.some(
+      (cli) =>
+        kinds.get(cli.name) === 'cli' &&
+        (cli.name === `${apiRaw.name}-cli` || cli.dir === `${apiRaw.dir}-cli`),
+    );
+
   const isSharedLib = (raw: RawPackage): boolean => {
     if (raw.manifest.clisRole === 'shared-lib') return true;
     const kind = kinds.get(raw.name);
     if (kind === 'cli') return false;
+    if (hasSymmetricCli(raw)) return false;
     return (
       raw.manifest.private === true || (cliInDegree.get(raw.name) ?? 0) > 1
     );
   };
 
-  // 配对 CLI 薄壳与其专属产品 API 主包, 使双包产品共享一个 domainId
   const domainMap = new Map<string, string>();
   const layerMap = new Map<string, PackageLayer>();
 
@@ -224,10 +230,13 @@ export function buildWorkspaceGraph(repoRoot: string): WorkspaceGraph {
       domainMap.set(raw.name, `domain:${raw.dir}`);
     }
     if (!layerMap.has(raw.name)) {
-      layerMap.set(
-        raw.name,
-        kinds.get(raw.name) === 'cli' ? 'cli' : 'shared-lib',
-      );
+      if (kinds.get(raw.name) === 'cli') {
+        layerMap.set(raw.name, 'cli');
+      } else if (isSharedLib(raw)) {
+        layerMap.set(raw.name, 'shared-lib');
+      } else {
+        layerMap.set(raw.name, 'api');
+      }
     }
   }
 
@@ -274,6 +283,51 @@ export function buildWorkspaceGraph(repoRoot: string): WorkspaceGraph {
       'shared-lib': layerDomains['shared-lib'].size,
     },
     existingViolations: validateDependencyGraph(kinds, adj),
+  };
+}
+
+/** 沿着反向依赖边反查某个库最终支撑了多少个独立业务产品域 (CLI / API) */
+export function computeTransitiveConsumerDomains(
+  graph: WorkspaceGraph,
+  targetPkgName: string,
+): {
+  directConsumers: string[];
+  transitiveBusinessConsumers: string[];
+  transitiveConsumerDomains: string[];
+} {
+  const pkgByName = new Map(graph.packages.map((p) => [p.name, p]));
+  const revAdj = new Map<string, string[]>();
+  for (const edge of graph.edges) {
+    const list = revAdj.get(edge.to) ?? [];
+    list.push(edge.from);
+    revAdj.set(edge.to, list);
+  }
+
+  const directConsumers = [...(revAdj.get(targetPkgName) ?? [])].sort();
+  const visited = new Set<string>([targetPkgName]);
+  const queue: string[] = [...directConsumers];
+  const businessConsumers = new Set<string>();
+  const consumerDomains = new Set<string>();
+
+  while (queue.length > 0) {
+    const cur = queue.shift()!;
+    if (visited.has(cur)) continue;
+    visited.add(cur);
+
+    const node = pkgByName.get(cur);
+    if (node !== undefined && (node.layer === 'cli' || node.layer === 'api')) {
+      businessConsumers.add(node.name);
+      consumerDomains.add(node.domainId);
+    }
+    for (const parent of revAdj.get(cur) ?? []) {
+      if (!visited.has(parent)) queue.push(parent);
+    }
+  }
+
+  return {
+    directConsumers,
+    transitiveBusinessConsumers: [...businessConsumers].sort(),
+    transitiveConsumerDomains: [...consumerDomains].sort(),
   };
 }
 

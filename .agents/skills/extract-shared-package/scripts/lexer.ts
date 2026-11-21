@@ -1,10 +1,11 @@
 /**
  * 零外部依赖 TypeScript / JavaScript 确定性词法扫描器。
- * 剥离注释与空白, 准确处理引号字符串与模板插值 `${...}` 嵌套, 提取静态 import。
+ * - 完整处理引号字符串、模板插值 `${...}` 嵌套与正则字面量 `/.../` (防含引号正则吞行);
+ * - 兼容有分号与无分号 (`semi: false`) 语句边界提取静态 import、re-export 与动态 import()。
  */
 
 export interface ScannedToken {
-  kind: 'ident' | 'keyword' | 'punct' | 'string' | 'number';
+  kind: 'ident' | 'keyword' | 'punct' | 'string' | 'number' | 'regex';
   value: string;
   line: number;
 }
@@ -27,6 +28,7 @@ const KEYWORDS: ReadonlySet<string> = new Set([
   'delete',
   'do',
   'else',
+  'enum',
   'export',
   'extends',
   'false',
@@ -60,6 +62,68 @@ const KEYWORDS: ReadonlySet<string> = new Set([
   'while',
   'yield',
 ]);
+
+const REGEX_PREV_KEYWORDS = new Set([
+  'return',
+  'throw',
+  'typeof',
+  'void',
+  'delete',
+  'in',
+  'instanceof',
+  'of',
+  'else',
+  'case',
+  'await',
+  'yield',
+  'new',
+  'default',
+  'export',
+]);
+
+const NON_REGEX_PREV_PUNCTS = new Set([')', ']', '}', '++', '--']);
+
+function isRegexAllowedAfter(prev: ScannedToken | undefined): boolean {
+  if (prev === undefined) return true;
+  if (prev.kind === 'keyword') return REGEX_PREV_KEYWORDS.has(prev.value);
+  if (prev.kind === 'punct') return !NON_REGEX_PREV_PUNCTS.has(prev.value);
+  return false;
+}
+
+function scanRegexLiteral(
+  source: string,
+  startPos: number,
+  startLine: number,
+): { value: string; nextPos: number; line: number } | null {
+  let i = startPos + 1;
+  let inClass = false;
+  while (i < source.length) {
+    const ch = source[i]!;
+    if (ch === '\n' || ch === '\r') return null;
+    if (ch === '\\') {
+      if (i + 1 >= source.length || source[i + 1] === '\n') return null;
+      i += 2;
+      continue;
+    }
+    if (ch === '[' && !inClass) {
+      inClass = true;
+      i += 1;
+      continue;
+    }
+    if (ch === ']' && inClass) {
+      inClass = false;
+      i += 1;
+      continue;
+    }
+    if (ch === '/' && !inClass) {
+      i += 1;
+      while (i < source.length && /[a-z]/i.test(source[i]!)) i += 1;
+      return { value: source.slice(startPos, i), nextPos: i, line: startLine };
+    }
+    i += 1;
+  }
+  return null;
+}
 
 function isIdentStart(ch: string): boolean {
   return (
@@ -141,9 +205,14 @@ const MULTI_OPS = new Set([
   '||',
   '??',
   '?.',
+  '+=',
+  '-=',
+  '*=',
+  '++',
+  '--',
 ]);
 
-/** 确定性词法扫描器: 剥离注释/空白, 保留嵌套模板与操作符结构 */
+/** 确定性词法扫描器 */
 export function tokenizeSource(source: string): ScannedToken[] {
   const tokens: ScannedToken[] = [];
   const tplDepths: number[] = [];
@@ -180,6 +249,14 @@ export function tokenizeSource(source: string): ScannedToken[] {
         i += 1;
       }
       continue;
+    }
+    if (ch === '/' && isRegexAllowedAfter(tokens[tokens.length - 1])) {
+      const rx = scanRegexLiteral(source, i, line);
+      if (rx !== null) {
+        tokens.push({ kind: 'regex', value: rx.value, line: rx.line });
+        i = rx.nextPos;
+        continue;
+      }
     }
     if (ch === "'" || ch === '"') {
       const q = scanQuotedString(source, i, line, ch);
@@ -279,50 +356,4 @@ export function countSloc(source: string): number {
     count += 1;
   }
   return count;
-}
-
-/** 从 token 流解析全部 static import 声明 */
-export function extractImports(
-  tokens: readonly ScannedToken[],
-): ParsedImport[] {
-  const imports: ParsedImport[] = [];
-  for (let i = 0; i < tokens.length; i += 1) {
-    const tok = tokens[i]!;
-    if (tok.kind !== 'keyword' || tok.value !== 'import') continue;
-    if (tokens[i + 1]?.value === '(') continue;
-
-    let isTypeOnly = tokens[i + 1]?.value === 'type';
-    let j = i + 1;
-    while (j < tokens.length) {
-      const cur = tokens[j]!;
-      if (cur.value === ';') break;
-      if (cur.kind === 'keyword' && cur.value === 'from') {
-        const specTok = tokens[j + 1];
-        if (specTok?.kind === 'string') {
-          imports.push({ specifier: specTok.value, isTypeOnly });
-        }
-        i = j + 1;
-        break;
-      }
-      if (cur.kind === 'string' && tokens[j - 1]?.value === 'import') {
-        imports.push({ specifier: cur.value, isTypeOnly: false });
-        i = j;
-        break;
-      }
-      if (
-        j > i + 1 &&
-        cur.kind === 'keyword' &&
-        (cur.value === 'export' ||
-          cur.value === 'function' ||
-          cur.value === 'const')
-      ) {
-        break;
-      }
-      if (cur.value === 'type' && tokens[j - 1]?.value === '{') {
-        isTypeOnly = false;
-      }
-      j += 1;
-    }
-  }
-  return imports;
 }

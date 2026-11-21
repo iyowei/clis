@@ -1,20 +1,17 @@
 /**
- * 四道社区级本质闸门与落盘新包确定性体检器。
- *
- * 闸门列表:
- * 1. 独立消费域达标校验 (小层须 100% 全覆盖, 大层至少 >= 2~3 个独立域, 严禁同一双包产品内部自算多方);
- * 2. 单一职能与去大杂烩校验 (禁止 utils/common/helpers/shared/misc 与双职责拼接词);
- * 3. 去业务领域词泄漏校验 (新包名、描述、导出符号与落盘源码/README 不得出现原产品领域词汇);
- * 4. 社区规格与依赖安全校验 (必须标 "private": true 隔离首发、sideEffects: false、exports、合规依赖方向与链深 <= 2)。
+ * 四道社区级本质闸门预审器:
+ * 1. 仅按独立业务产品域计数 (不计 shared-lib 自凑数; D<=3 时要求该主导层全覆盖, D>=4 时至少 3);
+ * 2. 驼峰/蛇形分词防业务词泄漏 (抓出业务字段换皮透传);
+ * 3. 包名与导出符号垃圾桶词汇禁令 + 单句多职责连接词检查;
+ * 4. 模拟加入新包后校验依赖方向与公开库深度 <= 2。
  */
-import { existsSync, readFileSync, readdirSync } from 'node:fs';
-import { join } from 'node:path';
-
+import { deriveDomainLeakTerms, findMatchedTerms } from './domain-terms.ts';
 import type {
   EssenceGateResult,
   PackageLayer,
   ProposalCheckInput,
   WorkspaceGraph,
+  WorkspacePackageNode,
 } from './types.ts';
 import { simulateNewLibraryExtraction } from './workspace-graph.ts';
 
@@ -33,7 +30,7 @@ const JUNK_BAG_WORDS: readonly string[] = [
 ];
 
 const MULTI_DUTY_CONNECTORS: readonly RegExp[] = [
-  /\band\b/i,
+  /\b(?:and|or)\b/i,
   /以及/,
   /和(?!平)/,
   /兼/,
@@ -41,78 +38,48 @@ const MULTI_DUTY_CONNECTORS: readonly RegExp[] = [
 
 const PACKAGE_NAME_RE = /^(?:@[a-z0-9-]+\/)?[a-z0-9][a-z0-9-]*$/;
 
-/** 从工作区现有产品包自动派生领域专有词表 (防抽出的社区包携带原项目上下文词) */
-export function deriveDomainLeakTerms(graph: WorkspaceGraph): string[] {
-  const terms = new Set<string>(['clis', 'create-clis']);
-  for (const pkg of graph.packages) {
-    // 只从业务产品包 (api / cli / scaffold) 派生禁词, 不封杀通用基础设施词
-    if (pkg.layer === 'shared-lib') continue;
-    const shortDir = pkg.dir.replace(/^packages\//, '');
-    const stem = shortDir.replace(/-cli$/, '');
-    if (stem.length >= 4) terms.add(stem);
-    for (const part of stem.split('-')) {
-      // 过滤过短或纯粹通用的动词/技术词, 保留明显产品特征词
-      if (
-        part.length >= 4 &&
-        part !== 'node' &&
-        part !== 'modules' &&
-        part !== 'create'
-      ) {
-        terms.add(part);
-      }
-    }
-    if (shortDir.includes('node-modules')) terms.add('node_modules');
-    if (shortDir.includes('codd')) terms.add('mongodb');
-  }
-  return [...terms].sort();
-}
-
-function findMatchedTerms(text: string, terms: readonly string[]): string[] {
-  const hits: string[] = [];
-  for (const term of terms) {
-    const escaped = term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    const re = new RegExp(
-      `(?:^|[^a-zA-Z0-9])${escaped}(?:$|[^a-zA-Z0-9])`,
-      'i',
-    );
-    if (re.test(text)) hits.push(term);
-  }
-  return hits;
-}
-
-/** 计算消费方所属主职责层下的最低独立产品域门槛 */
+/** 计算业务消费方所属主职责层下的最低独立产品域门槛 (D<=3 要求全覆盖, D>=4 至少 3) */
 export function computeMinRequiredDomains(
   graph: WorkspaceGraph,
-  consumerLayers: readonly PackageLayer[],
+  businessConsumers: readonly WorkspacePackageNode[],
 ): {
   minRequiredDomains: number;
   totalInDominantLayer: number;
   dominantLayer: PackageLayer;
+  domainsInDominantLayer: number;
 } {
-  const counts = new Map<PackageLayer, number>();
-  for (const layer of consumerLayers) {
-    counts.set(layer, (counts.get(layer) ?? 0) + 1);
+  const layerCounts = new Map<PackageLayer, number>();
+  const layerDomains = new Map<PackageLayer, Set<string>>();
+
+  for (const node of businessConsumers) {
+    layerCounts.set(node.layer, (layerCounts.get(node.layer) ?? 0) + 1);
+    const dSet = layerDomains.get(node.layer) ?? new Set<string>();
+    dSet.add(node.domainId);
+    layerDomains.set(node.layer, dSet);
   }
-  let dominantLayer: PackageLayer = consumerLayers[0] ?? 'cli';
+
+  let dominantLayer: PackageLayer = 'cli';
   let bestCount = -1;
-  for (const [layer, cnt] of counts.entries()) {
-    if (cnt > bestCount) {
+  let bestTotal = -1;
+  for (const layer of ['cli', 'api'] as const) {
+    const cnt = layerCounts.get(layer) ?? 0;
+    const tot = graph.layerDomainCounts[layer] ?? 0;
+    if (cnt > bestCount || (cnt === bestCount && tot > bestTotal)) {
       bestCount = cnt;
+      bestTotal = tot;
       dominantLayer = layer;
     }
   }
 
   const totalInLayer = graph.layerDomainCounts[dominantLayer] ?? 0;
-  // packages(独立产品域)少时要求该层全部复用; 较多时要求至少 2~3 个独立域复用
-  let minRequired = 2;
-  if (totalInLayer <= 2) minRequired = Math.max(2, totalInLayer);
-  else if (totalInLayer === 3) minRequired = 2;
-  else minRequired = 3;
+  // packages(独立产品域)少 (<= 3) 时须该层全覆盖; 多了 (>= 4) 时至少需覆盖 3 个独立域
+  const minRequired = totalInLayer <= 3 ? Math.max(2, totalInLayer) : 3;
 
   return {
     minRequiredDomains: minRequired,
     totalInDominantLayer: totalInLayer,
     dominantLayer,
+    domainsInDominantLayer: layerDomains.get(dominantLayer)?.size ?? 0,
   };
 }
 
@@ -133,13 +100,18 @@ export function evaluateEssenceProposal(
     violations.push(`存在未知消费包: ${missing.join(', ')}`);
   }
 
+  // 业务消费域仅统计 CLI / API 层产品包, 不允许 shared-lib 自算一个独立产品域凑数
+  const businessConsumers = consumerNodes.filter(
+    (c) => c.layer === 'cli' || c.layer === 'api',
+  );
+  const businessDomainSet = new Set(businessConsumers.map((c) => c.domainId));
   const distinctDomains = new Set(consumerNodes.map((c) => c.domainId)).size;
   const consumerLayers = [...new Set(consumerNodes.map((c) => c.layer))].sort();
-  const threshold = computeMinRequiredDomains(graph, consumerLayers);
+  const threshold = computeMinRequiredDomains(graph, businessConsumers);
 
-  if (distinctDomains < threshold.minRequiredDomains) {
+  if (businessDomainSet.size < threshold.minRequiredDomains) {
     violations.push(
-      `有效独立产品域不足: 当前覆盖 ${distinctDomains} 个独立域, 主职责层 ${threshold.dominantLayer} 共 ${threshold.totalInDominantLayer} 个独立域, 要求至少覆盖 ${threshold.minRequiredDomains} 个独立域 (双包产品内部不重复计数)`,
+      `有效独立业务产品域不足: 当前仅覆盖 ${businessDomainSet.size} 个独立业务域 (shared-lib 不计入业务域数), 主职责层 ${threshold.dominantLayer} 共 ${threshold.totalInDominantLayer} 个独立域, 要求至少覆盖 ${threshold.minRequiredDomains} 个独立域`,
     );
   }
 
@@ -171,10 +143,11 @@ export function evaluateEssenceProposal(
   if (descLeaks.length > 0) {
     violations.push(`description 泄漏了原业务领域词 (${descLeaks.join(', ')})`);
   }
+  // 中文复合连词或疑似逗号并列两类职责时发警告; 排除英文常见介词/定语列举误伤仅保留强连接信号
   for (const re of MULTI_DUTY_CONNECTORS) {
     if (re.test(desc)) {
       warnings.push(
-        `description 疑似用连接词 (${re.source}) 拼接多个职能, 请核验是否违背单一职能原则`,
+        `description 含并列连接词 (${re.source}), 请确认只承载单一本质职能而非拼接多个模块`,
       );
     }
   }
@@ -183,10 +156,30 @@ export function evaluateEssenceProposal(
     violations.push('必须声明至少 1 个公开导出符号');
   }
   for (const sym of input.exportedSymbols) {
+    const symWords = sym
+      .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
+      .replace(/[_-]+/g, ' ')
+      .toLowerCase()
+      .split(/\s+/);
+    for (const junk of JUNK_BAG_WORDS) {
+      if (symWords.includes(junk)) {
+        violations.push(
+          `导出符号 ${sym} 含垃圾桶/泛化命名词 "${junk}": 请按本质动作命名`,
+        );
+      }
+    }
     const symLeaks = findMatchedTerms(sym, domainTerms);
     if (symLeaks.length > 0) {
       violations.push(
         `导出符号 ${sym} 泄漏了原业务领域词 (${symLeaks.join(', ')})`,
+      );
+    }
+  }
+  for (const sig of input.apiSignatures ?? []) {
+    const sigLeaks = findMatchedTerms(sig, domainTerms);
+    if (sigLeaks.length > 0) {
+      violations.push(
+        `导出签名/参数字段 "${sig}" 泄漏了原业务领域词 (${sigLeaks.join(', ')})`,
       );
     }
   }
@@ -208,121 +201,10 @@ export function evaluateEssenceProposal(
     metrics: {
       distinctConsumers: consumerNodes.length,
       distinctDomains,
+      businessConsumerDomains: businessDomainSet.size,
       consumerLayers,
       minRequiredDomains: threshold.minRequiredDomains,
-      layerCoverageLabel: `${distinctDomains}/${threshold.totalInDominantLayer} (${threshold.dominantLayer})`,
+      layerCoverageLabel: `${threshold.domainsInDominantLayer}/${threshold.totalInDominantLayer} (${threshold.dominantLayer})`,
     },
   };
-}
-
-/** 落盘后对实际新建的包目录和仓级挂载点执行确定性体检 */
-export function lintExtractedPackage(
-  repoRoot: string,
-  graph: WorkspaceGraph,
-  pkgDirRel: string,
-): { passed: boolean; violations: string[] } {
-  const violations: string[] = [];
-  const pkgAbs = join(repoRoot, pkgDirRel);
-  const manifestPath = join(pkgAbs, 'package.json');
-
-  if (!existsSync(manifestPath)) {
-    return { passed: false, violations: [`缺少 ${pkgDirRel}/package.json`] };
-  }
-
-  const manifest = JSON.parse(readFileSync(manifestPath, 'utf8')) as Record<
-    string,
-    unknown
-  >;
-  const pkgName = typeof manifest.name === 'string' ? manifest.name : '';
-
-  if (manifest.private !== true) {
-    violations.push(`${pkgDirRel}/package.json 必须默认标为 "private": true`);
-  }
-  if (manifest.bin !== undefined) {
-    violations.push(`${pkgDirRel} 抽离的是共享库包, 不得声明 bin 字段`);
-  }
-  if (manifest.sideEffects !== false) {
-    violations.push(`${pkgDirRel}/package.json 必须声明 "sideEffects": false`);
-  }
-  if (manifest.exports === undefined) {
-    violations.push(`${pkgDirRel}/package.json 必须声明 exports 导出面`);
-  }
-  if (manifest.type !== 'module') {
-    violations.push(`${pkgDirRel}/package.json 必须声明 "type": "module"`);
-  }
-
-  const scripts =
-    manifest.scripts !== null &&
-    typeof manifest.scripts === 'object' &&
-    !Array.isArray(manifest.scripts)
-      ? (manifest.scripts as Record<string, unknown>)
-      : {};
-  for (const requiredScript of ['build', 'typecheck', 'test']) {
-    if (typeof scripts[requiredScript] !== 'string') {
-      violations.push(
-        `${pkgDirRel}/package.json 缺少 scripts.${requiredScript}`,
-      );
-    }
-  }
-
-  const srcAbs = join(pkgAbs, 'src');
-  if (!existsSync(srcAbs)) {
-    violations.push(`${pkgDirRel} 缺少 src/ 目录`);
-  } else {
-    const entries = readdirSync(srcAbs);
-    const hasTest = entries.some((f) => f.endsWith('.test.ts'));
-    if (!hasTest) {
-      violations.push(
-        `${pkgDirRel}/src/ 至少须包含 1 个独立单元测试 (*.test.ts)`,
-      );
-    }
-    const domainTerms = deriveDomainLeakTerms(graph);
-    for (const file of entries) {
-      if (!file.endsWith('.ts') || file.endsWith('.test.ts')) continue;
-      const text = readFileSync(join(srcAbs, file), 'utf8');
-      const leaks = findMatchedTerms(text, domainTerms);
-      if (leaks.length > 0) {
-        violations.push(
-          `${pkgDirRel}/src/${file} 仍残留原业务领域词 (${leaks.join(', ')})`,
-        );
-      }
-    }
-  }
-
-  const readmePath = join(pkgAbs, 'README.md');
-  if (!existsSync(readmePath)) {
-    violations.push(`${pkgDirRel} 缺少社区化 README.md`);
-  } else {
-    const readmeText = readFileSync(readmePath, 'utf8');
-    const leaks = findMatchedTerms(readmeText, deriveDomainLeakTerms(graph));
-    if (leaks.length > 0) {
-      violations.push(
-        `${pkgDirRel}/README.md 仍残留原业务领域词 (${leaks.join(', ')})`,
-      );
-    }
-  }
-
-  const rootTsconfigPath = join(repoRoot, 'tsconfig.json');
-  if (existsSync(rootTsconfigPath)) {
-    const tsconfigText = readFileSync(rootTsconfigPath, 'utf8');
-    if (pkgName !== '' && !tsconfigText.includes(`"${pkgName}"`)) {
-      violations.push(`根 tsconfig.json paths 尚未登记 "${pkgName}"`);
-    }
-  }
-
-  const tmPath = join(
-    repoRoot,
-    'packages/create-clis/scripts/template-manifest.ts',
-  );
-  if (existsSync(tmPath)) {
-    const tmText = readFileSync(tmPath, 'utf8');
-    const normalizedDir = pkgDirRel.endsWith('/') ? pkgDirRel : `${pkgDirRel}/`;
-    if (!tmText.includes(normalizedDir) && !tmText.includes(pkgDirRel)) {
-      violations.push(
-        `packages/create-clis/scripts/template-manifest.ts 尚未登记 ${normalizedDir}`,
-      );
-    }
-  }
-
-  return { passed: violations.length === 0, violations };
 }
