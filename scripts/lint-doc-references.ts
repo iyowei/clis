@@ -40,8 +40,15 @@ export const DOC_ALIASES: Readonly<Record<string, string>> = {
   安全防护: 'packages/sweep/docs/designs/safety-guardrails.md',
 };
 
-/** ADR 引用的行级豁免词: 文档正在陈述「该 ADR 尚不存在」时不算断裂 */
-const ADR_LINE_EXEMPT_MARKERS = ['不存在', '未创建', '待创建', '历史'] as const;
+/** ADR 引用的行级豁免词: 文档正在明确陈述「该 ADR 不存在/已删」时不算断裂 */
+const ADR_LINE_EXEMPT_MARKERS = [
+  '不存在',
+  '未创建',
+  '待创建',
+  '历史已删',
+  '历史不存在',
+  '历史编号',
+] as const;
 
 /** §引用解析窗口: § 之前多少字符内找目标文档线索 */
 const SECTION_TARGET_WINDOW = 30;
@@ -103,7 +110,50 @@ function isPackageRootReadme(relPath: string): boolean {
   return /^packages\/[^/]+\/README(?:\.[^/]+)?\.md$/.test(relPath);
 }
 
-/** 校验一个文件里的相对链接 (存在性 + 包根 README 禁止逃逸出包根) */
+/** npm 强制收录于包根的文件名形态 (与 package.json files 白名单互补) */
+const NPM_ALWAYS_INCLUDED_RE =
+  /^(?:package\.json|readme(?:\.[^/]+)?|license(?:\.[^/]+)?|licence(?:\.[^/]+)?|changelog(?:\.[^/]+)?|history(?:\.[^/]+)?|changes(?:\.[^/]+)?)$/i;
+
+/** 读取包 package.json 的 files 白名单; 未声明 files 字段或读取失败返回 null (视为默认全含) */
+function readPackageFilesWhitelist(pkgRootAbs: string): string[] | null {
+  const manifestPath = join(pkgRootAbs, 'package.json');
+  if (!existsSync(manifestPath)) return null;
+  try {
+    const parsed = JSON.parse(readFileSync(manifestPath, 'utf8')) as {
+      files?: unknown;
+    };
+    if (!Array.isArray(parsed.files)) return null;
+    return parsed.files
+      .filter((item): item is string => typeof item === 'string')
+      .map((item) => item.replace(/^\.\//, '').replace(/\/+$/, ''))
+      .filter((item) => item !== '' && !item.startsWith('!'));
+  } catch {
+    return null;
+  }
+}
+
+/** 判定包内相对路径是否会随 npm 发布 (命中 npm 强制项或 package.json files 白名单) */
+function isPublishedInPackage(
+  relFromPkg: string,
+  filesWhitelist: readonly string[] | null,
+): boolean {
+  const normalized = relFromPkg.replace(/^\.\//, '').replace(/\/+$/, '');
+  if (normalized === '' || NPM_ALWAYS_INCLUDED_RE.test(normalized)) {
+    return true;
+  }
+  if (filesWhitelist === null) return true;
+  return filesWhitelist.some((entry) => {
+    if (entry.includes('*')) {
+      const pattern = entry
+        .replace(/[.+^${}()|[\]\\]/g, '\\$&')
+        .replace(/\*/g, '[^/]*');
+      return new RegExp(`^${pattern}(?:/|$)`).test(normalized);
+    }
+    return normalized === entry || normalized.startsWith(`${entry}/`);
+  });
+}
+
+/** 校验一个文件里的相对链接 (存在性 + 包根 README 禁止逃逸或指向未随 npm 发布的相对路径) */
 export function findLinkIssues(
   lines: string[],
   file: string,
@@ -114,6 +164,8 @@ export function findLinkIssues(
   const pkgPrefix = isPackageRootReadme(file) ? packagePrefixOf(file) : null;
   const pkgRootAbs =
     pkgPrefix === null ? null : resolve(root, pkgPrefix.slice(0, -1));
+  const pkgFiles =
+    pkgRootAbs === null ? null : readPackageFilesWhitelist(pkgRootAbs);
 
   for (const [index, line] of lines.entries()) {
     for (const m of line.matchAll(/\]\(([^)\s]+)\)/g)) {
@@ -154,6 +206,17 @@ export function findLinkIssues(
             reference: raw,
             message:
               '包根 README 禁止指向包目录之外的相对链接 (发布到 npm 后会 404, 请改用 GitHub 绝对 URL)',
+          });
+          continue;
+        }
+        if (!isPublishedInPackage(relFromPkg, pkgFiles)) {
+          findings.push({
+            file,
+            line: index + 1,
+            kind: 'link',
+            reference: raw,
+            message:
+              '包根 README 指向未纳入 package.json files 的包内相对路径 (发布到 npm 后会 404, 请改用 GitHub 绝对 URL)',
           });
           continue;
         }

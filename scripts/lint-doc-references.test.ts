@@ -107,6 +107,27 @@ describe('相对链接', () => {
     expect(issues[0]!.file).toBe('packages/demo/README.md');
     expect(issues[0]!.reference).toBe('../../docs/guide.md');
   });
+
+  test('包根 README 指向未纳入 package.json files 的包内文档亮红灯, npm 强制项与白名单项放行', () => {
+    const root = makeRoot({
+      'packages/demo/package.json': JSON.stringify({
+        name: '@x/demo',
+        files: ['dist', 'LICENSE'],
+      }),
+      'packages/demo/LICENSE': 'MIT\n',
+      'packages/demo/README.zh-CN.md': '# 中文\n',
+      'packages/demo/docs/README.md': '# 内部文档\n',
+      'packages/demo/README.md': [
+        '[中文](README.zh-CN.md)',
+        '[协议](LICENSE)',
+        '[未发布文档](docs/README.md)',
+      ].join('\n'),
+    });
+    const issues = findAllIssues(root).filter((f) => f.kind === 'link');
+    expect(issues).toHaveLength(1);
+    expect(issues[0]!.reference).toBe('docs/README.md');
+    expect(issues[0]!.message).toContain('未纳入 package.json files');
+  });
 });
 
 describe('§章节引用', () => {
@@ -161,8 +182,9 @@ describe('§章节引用', () => {
 describe('ADR 编号', () => {
   test('存在的编号过, 幽灵编号抓出; 豁免词行跳过', () => {
     const root = makeRoot({
-      'docs/a.md': '见 ADR 0001 与 ADR 0099。\n',
+      'docs/a.md': '见 ADR 0001 与 ADR 0099 (含历史二字但不应豁免)。\n',
       'docs/b.md': 'ADR 0088 尚未创建, 按历史约定处理。\n',
+      'docs/c.md': 'ADR 0077 属于历史已删编号。\n',
     });
     expect([...collectAdrNumbers(root)]).toEqual(['0001']);
     const issues = findAllIssues(root).filter((f) => f.kind === 'adr');
