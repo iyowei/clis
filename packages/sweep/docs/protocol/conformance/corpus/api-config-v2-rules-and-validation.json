@@ -1,0 +1,47 @@
+{
+  "id": "api-config-v2-rules-and-validation",
+  "kind": "api",
+  "specRefs": ["BC-20", "BC-47"],
+  "fixture": {},
+  "setup": [
+    {
+      "write": {
+        "path": "v2.json",
+        "text": "{\n  \"version\": 2,\n  \"presets\": { \"node\": {} },\n  \"rules\": [\n    { \"name\": \"logs\", \"kind\": \"file\", \"match\": \"*.log\", \"olderThanDays\": 7 }\n  ]\n}\n"
+      }
+    }
+  ],
+  "steps": [
+    {
+      "call": {
+        "export": "loadConfig",
+        "args": [
+          "$FIXTURE/v2.json",
+          {
+            "homedir": "$FIXTURE/home"
+          }
+        ]
+      }
+    }
+  ],
+  "expect": {
+    "result": {
+      "subset": {
+        "config": {
+          "version": 2,
+          "roots": ["$FIXTURE/home"],
+          "presets": { "node": {} },
+          "rules": [
+            {
+              "name": "logs",
+              "kind": "file",
+              "match": "*.log",
+              "action": "trash",
+              "olderThanDays": 7
+            }
+          ]
+        }
+      }
+    }
+  }
+}

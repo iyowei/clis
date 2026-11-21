@@ -1,0 +1,28 @@
+{
+  "id": "cli-init-default-existing-reject",
+  "specRefs": ["BC-29", "BC-26"],
+  "fixture": {},
+  "setup": [
+    {
+      "write": {
+        "path": "home/.config/sweep/config.json",
+        "text": "{\n  \"version\": 2,\n  \"roots\": [\"$FIXTURE/keep\"],\n  \"presets\": { \"node\": {} }\n}\n"
+      }
+    }
+  ],
+  "run": {
+    "argv": ["init", "--default"]
+  },
+  "expect": {
+    "exitCode": 1,
+    "stderrContains": ["已存在"],
+    "fs": [
+      {
+        "path": "home/.config/sweep/config.json",
+        "state": "exists",
+        "kind": "file",
+        "contains": ["$FIXTURE/keep"]
+      }
+    ]
+  }
+}

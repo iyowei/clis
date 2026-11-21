@@ -1,0 +1,91 @@
+{
+  "id": "api-rules-older-than-days-and-collision",
+  "kind": "api",
+  "specRefs": ["BC-47", "BC-46"],
+  "fixture": {},
+  "setup": [
+    {
+      "write": {
+        "path": "zone/logs/old.log",
+        "text": "old",
+        "ageDays": 45
+      }
+    },
+    {
+      "write": {
+        "path": "zone/logs/fresh.log",
+        "text": "fresh",
+        "ageDays": 0
+      }
+    },
+    {
+      "write": {
+        "path": "zone/crate/Cargo.toml",
+        "text": "[package]\nname=\"demo\"\n"
+      }
+    },
+    {
+      "write": {
+        "path": "zone/crate/target/bin",
+        "text": "bin"
+      }
+    }
+  ],
+  "steps": [
+    {
+      "as": "s",
+      "call": {
+        "export": "createScanner"
+      }
+    },
+    {
+      "call": {
+        "on": "s",
+        "method": "scan",
+        "args": [
+          {
+            "roots": ["$FIXTURE/zone"],
+            "exclude": [],
+            "include": [],
+            "presets": {
+              "rust": { "action": "delete" }
+            },
+            "rules": [
+              {
+                "name": "stale-logs",
+                "kind": "file",
+                "match": "*.log",
+                "olderThanDays": 30,
+                "action": "trash"
+              },
+              {
+                "name": "safe-target",
+                "kind": "dir",
+                "match": "target",
+                "action": "trash"
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ],
+  "expect": {
+    "result": {
+      "subset": {
+        "hits": [
+          {
+            "target": "$FIXTURE/zone/crate/target",
+            "action": "trash",
+            "source": { "kind": "preset", "name": "rust" }
+          },
+          {
+            "target": "$FIXTURE/zone/logs/old.log",
+            "action": "trash",
+            "source": { "kind": "rule", "name": "stale-logs" }
+          }
+        ]
+      }
+    }
+  }
+}

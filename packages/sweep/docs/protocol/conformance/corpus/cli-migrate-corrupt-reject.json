@@ -1,0 +1,20 @@
+{
+  "id": "cli-migrate-corrupt-reject",
+  "specRefs": ["BC-49", "BC-19", "BC-26"],
+  "fixture": {},
+  "setup": [
+    {
+      "write": {
+        "path": "home/.config/sweep/config.json",
+        "text": "{ broken json\n"
+      }
+    }
+  ],
+  "run": {
+    "argv": ["migrate"]
+  },
+  "expect": {
+    "exitCode": 1,
+    "stderrContains": ["JSON"]
+  }
+}

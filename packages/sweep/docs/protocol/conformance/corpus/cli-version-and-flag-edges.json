@@ -1,0 +1,13 @@
+{
+  "id": "cli-version-and-flag-edges",
+  "specRefs": ["BC-26", "BC-30"],
+  "fixture": {},
+  "run": {
+    "argv": ["--version"]
+  },
+  "expect": {
+    "exitCode": 0,
+    "stdoutContains": ["."],
+    "stderrExact": ""
+  }
+}

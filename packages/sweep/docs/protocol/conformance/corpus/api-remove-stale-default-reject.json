@@ -25,7 +25,13 @@
   "expect": {
     "result": {
       "subset": {
-        "status": "rejected"
+        "status": "rejected",
+        "rejected": [
+          {
+            "target": "$FIXTURE/zone/ghost/node_modules",
+            "code": "GUARD_TARGET_MISSING"
+          }
+        ]
       }
     },
     "fs": [

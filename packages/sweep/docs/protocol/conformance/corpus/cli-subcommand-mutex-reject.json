@@ -1,0 +1,12 @@
+{
+  "id": "cli-subcommand-mutex-reject",
+  "specRefs": ["BC-27", "BC-26"],
+  "fixture": {},
+  "run": {
+    "argv": ["--default"]
+  },
+  "expect": {
+    "exitCode": 1,
+    "stderrContains": ["--default"]
+  }
+}

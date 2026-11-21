@@ -1,0 +1,148 @@
+{
+  "id": "api-preset-anchors-multi-stack",
+  "kind": "api",
+  "specRefs": ["BC-46", "BC-01"],
+  "fixture": {
+    "projects": [
+      {
+        "dir": "zone/node-bare",
+        "noPackageJson": true
+      }
+    ]
+  },
+  "setup": [
+    {
+      "write": {
+        "path": "zone/java-gradle/build.gradle.kts",
+        "text": "plugins {}\n"
+      }
+    },
+    {
+      "write": {
+        "path": "zone/java-gradle/.gradle/cache.bin",
+        "text": "cache"
+      }
+    },
+    {
+      "write": {
+        "path": "zone/java-gradle/build/app.jar",
+        "text": "jar"
+      }
+    },
+    {
+      "write": {
+        "path": "zone/java-bare/build/keep.txt",
+        "text": "keep"
+      }
+    },
+    {
+      "write": {
+        "path": "zone/py-proj/requirements.txt",
+        "text": "flask\n"
+      }
+    },
+    {
+      "write": {
+        "path": "zone/py-proj/venv/bin/python",
+        "text": "py"
+      }
+    },
+    {
+      "write": {
+        "path": "zone/py-proj/__pycache__/a.pyc",
+        "text": "pyc"
+      }
+    },
+    {
+      "write": {
+        "path": "zone/py-bare/venv/keep.txt",
+        "text": "keep"
+      }
+    },
+    {
+      "write": {
+        "path": "zone/cpp-proj/CMakeLists.txt",
+        "text": "project(demo)\n"
+      }
+    },
+    {
+      "write": {
+        "path": "zone/cpp-proj/cmake-build-debug/out.o",
+        "text": "obj"
+      }
+    },
+    {
+      "write": {
+        "path": "zone/junk/Thumbs.db",
+        "text": "thumb"
+      }
+    },
+    {
+      "write": {
+        "path": "zone/junk/desktop.ini",
+        "text": "keep"
+      }
+    }
+  ],
+  "steps": [
+    {
+      "as": "s",
+      "call": {
+        "export": "createScanner"
+      }
+    },
+    {
+      "call": {
+        "on": "s",
+        "method": "scan",
+        "args": [
+          {
+            "roots": ["$FIXTURE/zone"],
+            "exclude": [],
+            "include": [],
+            "presets": {
+              "node": {},
+              "rust": {},
+              "python": {},
+              "java": {},
+              "cpp": {},
+              "os-junk": {}
+            }
+          }
+        ]
+      }
+    }
+  ],
+  "expect": {
+    "result": {
+      "subset": {
+        "hits": [
+          {
+            "target": "$FIXTURE/zone/cpp-proj/cmake-build-debug",
+            "source": { "kind": "preset", "name": "cpp" }
+          },
+          {
+            "target": "$FIXTURE/zone/java-gradle/.gradle",
+            "source": { "kind": "preset", "name": "java" }
+          },
+          {
+            "target": "$FIXTURE/zone/java-gradle/build",
+            "source": { "kind": "preset", "name": "java" }
+          },
+          {
+            "target": "$FIXTURE/zone/junk/Thumbs.db",
+            "source": { "kind": "preset", "name": "os-junk" }
+          },
+          {
+            "target": "$FIXTURE/zone/py-proj/__pycache__",
+            "source": { "kind": "preset", "name": "python" }
+          },
+          {
+            "target": "$FIXTURE/zone/py-proj/venv",
+            "source": { "kind": "preset", "name": "python" }
+          }
+        ]
+      }
+    }
+  }
+}

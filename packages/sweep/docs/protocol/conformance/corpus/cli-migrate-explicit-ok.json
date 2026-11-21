@@ -1,0 +1,34 @@
+{
+  "id": "cli-migrate-explicit-ok",
+  "specRefs": ["BC-49", "BC-26"],
+  "fixture": {},
+  "setup": [
+    {
+      "write": {
+        "path": "home/.config/sweep/config.json",
+        "text": "{\n  \"roots\": [\"$FIXTURE/zone\"]\n}\n"
+      }
+    }
+  ],
+  "run": {
+    "argv": ["migrate"]
+  },
+  "expect": {
+    "exitCode": 0,
+    "stdoutContains": ["配置迁移", "配置已迁移"],
+    "fs": [
+      {
+        "path": "home/.config/sweep",
+        "state": "exists",
+        "kind": "dir",
+        "globExists": "config.json.*.modified"
+      },
+      {
+        "path": "home/.config/sweep/config.json",
+        "state": "exists",
+        "kind": "file",
+        "contains": ["\"version\": 2", "\"node\""]
+      }
+    ]
+  }
+}

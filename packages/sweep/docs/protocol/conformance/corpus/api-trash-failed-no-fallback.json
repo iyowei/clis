@@ -1,0 +1,72 @@
+{
+  "id": "api-trash-failed-no-fallback",
+  "kind": "api",
+  "specRefs": ["BC-48", "BC-25"],
+  "fixture": {},
+  "setup": [
+    {
+      "write": {
+        "path": "zone/precious.log",
+        "text": "must-survive"
+      }
+    },
+    {
+      "write": {
+        "path": "broken-xdg",
+        "text": "not-a-directory"
+      }
+    }
+  ],
+  "steps": [
+    {
+      "call": {
+        "export": "removeTargets",
+        "args": [
+          ["$FIXTURE/zone/precious.log"],
+          {
+            "roots": [
+              {
+                "configured": "$FIXTURE/zone",
+                "real": "$FIXTURE/zone"
+              }
+            ],
+            "allowGeneralTargets": true,
+            "actions": {
+              "$map": [["$FIXTURE/zone/precious.log", "trash"]]
+            },
+            "trashDeps": {
+              "platform": "linux",
+              "env": {
+                "XDG_DATA_HOME": "$FIXTURE/broken-xdg"
+              }
+            }
+          }
+        ]
+      }
+    }
+  ],
+  "expect": {
+    "result": {
+      "subset": {
+        "removed": [],
+        "trashed": [],
+        "missing": [],
+        "failed": [
+          {
+            "target": "$FIXTURE/zone/precious.log",
+            "code": "TRASH_FAILED",
+            "partialRisk": false
+          }
+        ]
+      }
+    },
+    "fs": [
+      {
+        "path": "zone/precious.log",
+        "state": "exists",
+        "kind": "file",
+        "contains": ["must-survive"]
+      }
+    ]
+  }
+}

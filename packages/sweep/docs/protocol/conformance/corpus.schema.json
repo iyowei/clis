@@ -32,6 +32,7 @@
               "stdoutExact": false,
               "stdoutContains": false,
               "stdoutMustNotContain": false,
+              "stderrExact": false,
               "stderrContains": false,
               "stderrMustNotContain": false
             }
@@ -65,6 +66,12 @@
       "enum": ["cli", "api"],
       "default": "cli",
       "description": "用例形态: cli = 经 --target 的被测命令做黑盒验收 (缺省); api = 经被测方按协议提供的 API harness 做黑盒验收 (经 --api-target 指定, 缺省为参考 harness)"
+    },
+    "tags": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": { "type": "string", "minLength": 1 },
+      "description": "可选运行标签 (如 apfs-block-size), 供 --exclude-tag 跨文件系统筛选"
     },
     "specRefs": {
       "type": "array",
@@ -166,6 +173,15 @@
               "text": {
                 "type": "string",
                 "description": "文件内容 (原样写入, 不做换行归一)"
+              },
+              "mtimeMs": {
+                "type": "number",
+                "description": "可选绝对修改时间毫秒戳 (写入后调用 utimes 设置)"
+              },
+              "ageDays": {
+                "type": "number",
+                "minimum": 0,
+                "description": "可选相对当前时间前移的天数 (写入后按 now - ageDays * 86400000 设置 mtime)"
               }
             }
           }
@@ -290,6 +306,10 @@
           "items": { "type": "string" },
           "description": "stdout 禁含子串断言 (逐项独立判定; 剪枝 / 排除 / 诱饵类用例的「不该出现」面; 仅 cli case)"
         },
+        "stderrExact": {
+          "type": "string",
+          "description": "stderr 逐字节期望 (如强制正常路径 stderr 为空串 \"\"; 仅 cli case)"
+        },
         "stderrContains": {
           "type": "array",
           "items": { "type": "string" },
@@ -325,6 +345,9 @@
             "name": {
               "type": "string",
               "description": "可选: 期望错误类名 (如 SweepError)"
+            },
+            "detailsSubset": {
+              "description": "可选: 期望 error.details 的递归子集"
             }
           }
         },
@@ -341,6 +364,11 @@
               "type": "array",
               "items": { "type": "string" },
               "description": "事件流的 kind 集合须包含的项 (逐项判定, 不计数不定位)"
+            },
+            "mustNotInclude": {
+              "type": "array",
+              "items": { "type": "string" },
+              "description": "事件流的 kind 集合严禁出现的项"
             }
           }
         },
@@ -356,6 +384,20 @@
               "state": {
                 "enum": ["gone", "exists", "empty"],
                 "description": "gone = 不存在; exists = 存在 (文件或目录, lstat 语义); empty = 存在且为空目录"
+              },
+              "kind": {
+                "enum": ["file", "dir", "symlink"],
+                "description": "可选: 实体形态断言 (lstat 语义)"
+              },
+              "contains": {
+                "type": "array",
+                "items": { "type": "string" },
+                "description": "可选: 文件内容必须包含的子串清单 (支持 $FIXTURE)"
+              },
+              "globExists": {
+                "type": "string",
+                "minLength": 1,
+                "description": "可选: 当 path 为目录时, 目录下须存在至少一个匹配该简单通配符 (* / ?) 的条目"
               }
             }
           }
