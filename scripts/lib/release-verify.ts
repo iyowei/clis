@@ -9,17 +9,11 @@
  */
 import { execFileSync, spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import {
-  existsSync,
-  mkdtempSync,
-  readFileSync,
-  rmSync,
-  statSync,
-} from 'node:fs';
-import { tmpdir } from 'node:os';
+import { existsSync, readFileSync, rmSync, statSync } from 'node:fs';
 import { join, win32 } from 'node:path';
 
 import { cleanGitEnv } from './git-env.ts';
+import { makeTmpRoot } from './tmp-root.ts';
 
 /** 一侧闸门的坐标与口径 (差异面全部收口于此) */
 export interface VerifyProfile {
@@ -368,7 +362,7 @@ export const resolveNpmCommand = (
  * 采集失败 (npm 不在 PATH / 非零退出 / 输出非 JSON) 一律落 issue, 不抛: 判定层按「采不到就拒」处理。
  */
 export const readPackFiles = (root: string): PackFacts => {
-  const cacheDir = mkdtempSync(join(tmpdir(), 'npm-pack-cache-'));
+  const cacheDir = makeTmpRoot('npm-pack-cache-');
   let raw: string;
   try {
     const invocation = resolveNpmCommand([

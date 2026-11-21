@@ -31,7 +31,7 @@ function main(): void {
     return;
   }
   process.stderr.write(
-    `检出 ${strays.length} 个散落备份 (备份纪律: 移出仓库至 ~/tmp/clis_backups/, 保留相对结构):\n`,
+    `检出 ${strays.length} 个散落备份 (备份纪律: 移出仓库至 ~/tmp/repo_backups/, 保留相对结构):\n`,
   );
   for (const stray of strays) process.stderr.write(`  ${stray}\n`);
   process.exitCode = 1;
