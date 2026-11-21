@@ -37,7 +37,7 @@
 
 1. 清单内每个文件都成功产出, 并透传源文件/骨架原有权限位 (保持 `bin/` 启动器 `+x`);
 2. 泛化后模板内**不再出现原项目词汇** (无歧义复合形态, 见 `packages/create-clis/src/render.ts`);
-3. **排除包路径与区域镜像零泄漏**: 自动从清单中全部 `exclude` 的 `packages/<pkg>/` 派生禁词 (如 `packages/codd`、`packages/codd-cli`、`packages/create-clis`) 并加上 `registry.npmmirror.com`, 任一产出文件内容或路径命中即构建失败。
+3. **排除包路径与区域镜像零泄漏**: 自动从清单中全部 `exclude` 的 `packages/<pkg>/` 派生路径禁词 (如 `packages/codd`、`packages/codd-cli`、`packages/create-clis`) 并加上 `registry.npmmirror.com`, 仅对业务产品包 (`leakScope !== 'infra'`) 额外派生裸短名边界禁词 (共享基础设施库如 `cli-updater` 记为 `infra` 以避免误杀英文常用词), 任一产出文件内容或路径命中即构建失败。
 
 ## 生成器怎么用模板
 
@@ -51,3 +51,4 @@
 | 2026-10-01 | 占位符拼写改为双花括号大写形态 (`{{NAME}}` 式): 单花括号 `{name}` 是 JS 插值 `${name}` 的真子串, 会撞车 |
 | 2026-10-01 | 骨架清单去掉写死的泛化计数 (改指构建清单文件); 构建自检口径与裸词收窄后的词面一致                       |
 | 2026-11-20 | 同步词汇表示例为 `sweep`                                                                                |
+| 2026-11-21 | 排除包禁词按 `leakScope` 分流: `infra` 通用共享库仅拦截完整包路径, 避免短名误伤英文常用词               |
