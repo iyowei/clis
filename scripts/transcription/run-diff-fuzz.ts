@@ -11,9 +11,10 @@
  */
 import { spawnSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
-import { dirname, isAbsolute, join, resolve } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { resolveCommandArgv } from './command-argv.ts';
 import { PROTOCOL_ROOT } from './corpus.ts';
 import {
   type FuzzConfig,
@@ -25,11 +26,19 @@ import {
   generateFuzzArgs,
 } from './fuzz-generators.ts';
 import {
+  type DispatchMode,
+  type FuzzCliOptions,
+  parseFuzzArgsWithDefaults,
+} from './fuzz-invariants.ts';
+import { discoverProtocolProducts } from './protocol-discovery.ts';
+import {
   type FuzzFailureItem as FuzzFailure,
   type FuzzTargetSummary as TargetSummary,
   emitFuzzFailureDiagnostics,
   printFuzzReport,
 } from './report.ts';
+
+export type { DispatchMode, FuzzCliOptions };
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(HERE, '..', '..');
@@ -39,36 +48,20 @@ const DEFAULT_TARGETS_PATH = join(
   'conformance',
   'fuzz-targets.json',
 );
-const DEFAULT_REF_ARGV: readonly string[] = [
-  'bun',
-  join(HERE, 'api-harness.ts'),
-];
+const API_HARNESS_PATH = join(HERE, 'api-harness.ts');
+const DEFAULT_REF_ARGV: readonly string[] = ['bun', API_HARNESS_PATH];
 const DEFAULT_SEED = 20261121;
 const DEFAULT_CASES = 100;
 const DEFAULT_TIMEOUT_MS = 20000;
-
-export type DispatchMode = 'auto' | 'batch' | 'single';
-
-export interface FuzzCliOptions {
-  targetsPath: string;
-  referenceTarget?: string;
-  apiTarget?: string;
-  seed: number;
-  casesPerTarget: number;
-  mode: DispatchMode;
-  timeoutMs: number;
-  emitFailuresDir?: string;
-  json: boolean;
-  help: boolean;
-}
 
 const HELP_TEXT = [
   '用法: bun scripts/transcription/run-diff-fuzz.ts [选项]',
   '',
   `  --targets <file>           模糊测试目标清单 (默认: ${PROTOCOL_ROOT}/conformance/fuzz-targets.json)`,
+  '  --all-products             自动遍历仓内全部带 fuzz-targets.json 的协议产品',
   '  --reference-target <cmd>   参考 API harness 命令 (默认: bun scripts/transcription/api-harness.ts)',
   '  --api-target <cmd>         待测 API harness 命令 (省略时跑参考实现不变量自检)',
-  `  --seed <int>               确定性随机种子 (默认: ${DEFAULT_SEED})`,
+  `  --seed <int>               确定性随机种子 (支持负整数, 默认: ${DEFAULT_SEED})`,
   `  --cases <int>              每个目标生成的用例数 (默认: ${DEFAULT_CASES})`,
   '  --mode <auto|batch|single> 派发模式 (默认 auto: 优先批量, 不支持自动降级单步)',
   `  --timeout <ms>             单次 harness 调用超时毫秒 (默认: ${DEFAULT_TIMEOUT_MS})`,
@@ -79,94 +72,15 @@ const HELP_TEXT = [
   '退出码: 0 全部通过; 1 检出偏差或不变量违例; 2 用法 / 配置 / 环境错误',
 ].join('\n');
 
-/** 将带引号的命令字符串拆分为 argv, 并把启动目录下存在的相对路径绝对化 */
-function resolveCommandArgv(raw: string, cwd: string): string[] {
-  const parts: string[] = [];
-  let cur = '';
-  let quote: string | null = null;
-  for (const ch of raw) {
-    if (quote !== null) {
-      if (ch === quote) quote = null;
-      else cur += ch;
-    } else if (ch === '"' || ch === "'") {
-      quote = ch;
-    } else if (/\s/.test(ch)) {
-      if (cur !== '') {
-        parts.push(cur);
-        cur = '';
-      }
-    } else {
-      cur += ch;
-    }
-  }
-  if (cur !== '') parts.push(cur);
-  return parts.map((part, idx) => {
-    if (idx === 0 || isAbsolute(part) || part.startsWith('-')) return part;
-    const abs = resolve(cwd, part);
-    return existsSync(abs) ? abs : part;
-  });
-}
-
-const VALUE_FLAGS = new Set([
-  '--targets',
-  '--reference-target',
-  '--api-target',
-  '--seed',
-  '--cases',
-  '--mode',
-  '--timeout',
-  '--emit-failures',
-]);
-
 export function parseFuzzArgs(
   argv: string[],
 ): { ok: true; options: FuzzCliOptions } | { ok: false; message: string } {
-  const options: FuzzCliOptions = {
+  return parseFuzzArgsWithDefaults(argv, {
     targetsPath: DEFAULT_TARGETS_PATH,
     seed: DEFAULT_SEED,
-    casesPerTarget: DEFAULT_CASES,
-    mode: 'auto',
+    cases: DEFAULT_CASES,
     timeoutMs: DEFAULT_TIMEOUT_MS,
-    json: false,
-    help: false,
-  };
-  for (let i = 0; i < argv.length; i += 1) {
-    const arg = argv[i]!;
-    if (arg === '--help' || arg === '-h') {
-      options.help = true;
-      continue;
-    }
-    if (arg === '--json') {
-      options.json = true;
-      continue;
-    }
-    if (!VALUE_FLAGS.has(arg))
-      return { ok: false, message: `未知参数: ${arg}` };
-    const value = argv[i + 1];
-    if (value === undefined || value.startsWith('-')) {
-      return { ok: false, message: `参数 ${arg} 缺少取值` };
-    }
-    i += 1;
-    if (arg === '--targets') options.targetsPath = value;
-    else if (arg === '--reference-target') options.referenceTarget = value;
-    else if (arg === '--api-target') options.apiTarget = value;
-    else if (arg === '--emit-failures') options.emitFailuresDir = value;
-    else if (arg === '--mode') {
-      if (value !== 'auto' && value !== 'batch' && value !== 'single') {
-        return { ok: false, message: '--mode 仅支持 auto|batch|single' };
-      }
-      options.mode = value;
-    } else {
-      const n = Number(value);
-      if (!Number.isInteger(n) || (arg !== '--seed' && n <= 0)) {
-        return { ok: false, message: `${arg} 须为合法整数, 收到: ${value}` };
-      }
-      if (arg === '--seed') options.seed = n;
-      else if (arg === '--cases') options.casesPerTarget = n;
-      else options.timeoutMs = n;
-    }
-  }
-  return { ok: true, options };
+  });
 }
 
 /** 向单个 harness 进程发送 stdin JSON 并解析 stdout JSON */
@@ -398,6 +312,42 @@ function loadFuzzConfig(path: string): FuzzConfig {
   return parsed as FuzzConfig;
 }
 
+function runFuzzConfigFile(
+  targetsPath: string,
+  refArgv: readonly string[],
+  apiArgv: readonly string[] | undefined,
+  options: FuzzCliOptions,
+  emitDir?: string,
+): number {
+  let config: FuzzConfig;
+  try {
+    config = loadFuzzConfig(resolve(targetsPath));
+  } catch (error) {
+    process.stderr.write(`${(error as Error).message}\n`);
+    return 2;
+  }
+  const summaries: TargetSummary[] = [];
+  const allFailures: FuzzFailure[] = [];
+  for (const [index, spec] of config.targets.entries()) {
+    const res = runFuzzTarget(spec, index, refArgv, apiArgv, options);
+    summaries.push(res.summary);
+    allFailures.push(...res.failures);
+  }
+  if (emitDir !== undefined && allFailures.length > 0) {
+    emitFuzzFailureDiagnostics(resolve(emitDir), allFailures, {
+      targetsPath,
+      seed: options.seed,
+    });
+  }
+  printFuzzReport(summaries, allFailures, {
+    apiTarget: options.apiTarget,
+    seed: options.seed,
+    casesPerTarget: options.casesPerTarget,
+    json: options.json,
+  });
+  return summaries.some((s) => s.failed > 0) ? 1 : 0;
+}
+
 export function runDiffFuzzCli(argv: string[]): number {
   const parsed = parseFuzzArgs(argv);
   if (!parsed.ok) {
@@ -409,40 +359,59 @@ export function runDiffFuzzCli(argv: string[]): number {
     process.stdout.write(`${HELP_TEXT}\n`);
     return 0;
   }
-  let config: FuzzConfig;
+
+  let refOverride: string[] | undefined;
+  let apiArgv: string[] | undefined;
   try {
-    config = loadFuzzConfig(resolve(options.targetsPath));
+    if (options.referenceTarget !== undefined) {
+      refOverride = resolveCommandArgv(options.referenceTarget, process.cwd());
+    }
+    if (options.apiTarget !== undefined) {
+      apiArgv = resolveCommandArgv(options.apiTarget, process.cwd());
+    }
   } catch (error) {
-    process.stderr.write(`${(error as Error).message}\n`);
+    process.stderr.write(`参数错误: ${(error as Error).message}\n`);
     return 2;
   }
-  const refArgv = options.referenceTarget
-    ? resolveCommandArgv(options.referenceTarget, process.cwd())
-    : [...DEFAULT_REF_ARGV];
-  const apiArgv = options.apiTarget
-    ? resolveCommandArgv(options.apiTarget, process.cwd())
-    : undefined;
 
-  const summaries: TargetSummary[] = [];
-  const allFailures: FuzzFailure[] = [];
-  for (const [index, spec] of config.targets.entries()) {
-    const res = runFuzzTarget(spec, index, refArgv, apiArgv, options);
-    summaries.push(res.summary);
-    allFailures.push(...res.failures);
+  if (options.allProducts) {
+    const products = discoverProtocolProducts(REPO_ROOT).filter((p) =>
+      existsSync(join(REPO_ROOT, p.fuzzTargetsRel)),
+    );
+    if (products.length === 0) {
+      process.stderr.write('未发现任何带 fuzz-targets.json 的协议产品\n');
+      return 2;
+    }
+    let worst = 0;
+    for (const product of products) {
+      const refArgv = refOverride ?? [
+        'bun',
+        API_HARNESS_PATH,
+        '--product',
+        product.api.dir,
+      ];
+      const code = runFuzzConfigFile(
+        join(REPO_ROOT, product.fuzzTargetsRel),
+        refArgv,
+        apiArgv,
+        options,
+        options.emitFailuresDir !== undefined
+          ? join(options.emitFailuresDir, product.id)
+          : undefined,
+      );
+      if (code === 2) return 2;
+      if (code !== 0) worst = code;
+    }
+    return worst;
   }
-  if (options.emitFailuresDir && allFailures.length > 0) {
-    emitFuzzFailureDiagnostics(resolve(options.emitFailuresDir), allFailures, {
-      targetsPath: options.targetsPath,
-      seed: options.seed,
-    });
-  }
-  printFuzzReport(summaries, allFailures, {
-    apiTarget: options.apiTarget,
-    seed: options.seed,
-    casesPerTarget: options.casesPerTarget,
-    json: options.json,
-  });
-  return summaries.some((s) => s.failed > 0) ? 1 : 0;
+
+  return runFuzzConfigFile(
+    options.targetsPath,
+    refOverride ?? [...DEFAULT_REF_ARGV],
+    apiArgv,
+    options,
+    options.emitFailuresDir,
+  );
 }
 
 if (

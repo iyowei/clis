@@ -16,7 +16,7 @@ import {
   createPrng,
   generateFuzzArgs,
 } from './fuzz-generators.ts';
-import { runDiffFuzzCli } from './run-diff-fuzz.ts';
+import { parseFuzzArgs, runDiffFuzzCli } from './run-diff-fuzz.ts';
 
 const createdRoots: string[] = [];
 afterEach(() => {
@@ -80,7 +80,7 @@ describe('fuzz-generators 纯函数能力', () => {
     expect(seqA).not.toEqual(seqC);
   });
 
-  test('全部 9 类生成器按同种子确定性产出非空参数数组', () => {
+  test('全部 13 类生成器按同种子确定性产出非空参数数组', () => {
     const names: GeneratorName[] = [
       'dirty-line',
       'indented-dirty-line',
@@ -91,12 +91,25 @@ describe('fuzz-generators 纯函数能力', () => {
       'v1-config-raw',
       'xdg-path',
       'classify-target',
+      'rule-leaf-match',
+      'older-than-days',
+      'safe-target-leaf',
+      'inside-any-root',
     ];
     for (const name of names) {
       const first = generateFuzzArgs(name, 2026, 20, { envVar: 'TEST_CFG' });
       const second = generateFuzzArgs(name, 2026, 20, { envVar: 'TEST_CFG' });
       expect(first.length).toBe(20);
       expect(first).toEqual(second);
+    }
+  });
+
+  test('parseFuzzArgs 允许负整数 --seed 且支持 --all-products', () => {
+    const neg = parseFuzzArgs(['--seed', '-42', '--all-products']);
+    expect(neg.ok).toBe(true);
+    if (neg.ok) {
+      expect(neg.options.seed).toBe(-42);
+      expect(neg.options.allProducts).toBe(true);
     }
   });
 
