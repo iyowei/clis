@@ -123,7 +123,11 @@ export function resolveRegistry(input: ResolveRegistryInput): string {
     return normalizeRegistryUrl(input.flagRegistry);
   }
   const env = input.env ?? process.env;
-  const envReg = env.NPM_CONFIG_REGISTRY ?? env.npm_config_registry;
+  const upperReg = env.NPM_CONFIG_REGISTRY?.trim();
+  const envReg =
+    upperReg !== undefined && upperReg !== ''
+      ? upperReg
+      : env.npm_config_registry?.trim();
   if (typeof envReg === 'string' && isValidRegistryUrl(envReg)) {
     return normalizeRegistryUrl(envReg);
   }

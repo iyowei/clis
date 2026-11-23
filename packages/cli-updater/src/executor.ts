@@ -124,13 +124,24 @@ function defaultReadText(path: string): string | null {
   }
 }
 
+function firstNonEmptyEnv(
+  ...values: ReadonlyArray<string | undefined>
+): string {
+  for (const val of values) {
+    if (typeof val === 'string' && val.trim() !== '') return val;
+  }
+  return '';
+}
+
 /** 切分 PATH 并剔除空白、包裹引号与相对路径 (防当前目录与盘根相对路径劫持) */
 function parseAbsolutePathDirs(
   env: NodeJS.ProcessEnv,
   platform: NodeJS.Platform,
 ): string[] {
   const raw =
-    platform === 'win32' ? (env.PATH ?? env.Path ?? '') : (env.PATH ?? '');
+    platform === 'win32'
+      ? firstNonEmptyEnv(env.PATH, env.Path)
+      : firstNonEmptyEnv(env.PATH);
   const sep = platform === 'win32' ? ';' : ':';
   const out: string[] = [];
   for (const item of raw.split(sep)) {

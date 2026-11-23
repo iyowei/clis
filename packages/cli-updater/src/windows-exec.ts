@@ -162,6 +162,15 @@ export function resolveWindowsBatchDirectJs(
   return null;
 }
 
+function pickComSpec(env: NodeJS.ProcessEnv): string {
+  for (const candidate of [env.ComSpec, env.COMSPEC]) {
+    if (typeof candidate === 'string' && candidate.trim() !== '') {
+      return candidate.trim();
+    }
+  }
+  return 'cmd.exe';
+}
+
 /**
  * 构造 Windows .cmd/.bat 的最终安全调用 (先试直调 JS 入口, 否则走 ComSpec /d /s /c 单串)。
  *
@@ -193,7 +202,7 @@ export function resolveWindowsBatchInvocation(
 
   const cmdLine = buildWindowsBatchCommandLine(batchPath, pmArgs);
   if (cmdLine === null) return null;
-  const comspec = env.ComSpec ?? env.COMSPEC ?? 'cmd.exe';
+  const comspec = pickComSpec(env);
   return {
     command: comspec,
     args: ['/d', '/s', '/c', cmdLine],

@@ -37,6 +37,18 @@ describe('resolveExecutableInPath 防当前目录劫持', () => {
         existing.has(p),
       ),
     ).toEqual({ path: 'C:\\tools\\pnpm.cmd', isBatch: true });
+
+    // Windows 下 PATH 为空串或纯空白时自动回退到 Path
+    for (const empty of ['', '   ']) {
+      expect(
+        resolveExecutableInPath(
+          'bun',
+          'win32',
+          { PATH: empty, Path: 'C:\\bun' },
+          (p) => existing.has(p),
+        ),
+      ).toEqual({ path: 'C:\\bun\\bun.exe', isBatch: false });
+    }
   });
 });
 
@@ -148,6 +160,26 @@ describe('resolvePmInvocation 跨平台批处理转义与 JS 入口探测', () =
       ],
       windowsVerbatimArguments: true,
     });
+
+    // ComSpec 为空串或纯空白时自动回退到 COMSPEC, 两者均空时回退默认 cmd.exe
+    const invokeBatch = (env: NodeJS.ProcessEnv) =>
+      resolvePmInvocation(
+        'pnpm',
+        ['add', '-g', 'pkg@1.0.0'],
+        'win32',
+        env,
+        (p) => existing.has(p),
+      )?.command;
+    expect(
+      invokeBatch({
+        PATH: 'C:\\pnpm',
+        ComSpec: '',
+        COMSPEC: 'D:\\Win\\System32\\cmd.exe',
+      }),
+    ).toBe('D:\\Win\\System32\\cmd.exe');
+    expect(invokeBatch({ PATH: 'C:\\pnpm', ComSpec: '   ', COMSPEC: '' })).toBe(
+      'cmd.exe',
+    );
   });
 
   test('Windows .cmd 含空格/括号/&/% 路径及 cmd 元字符参数安全转义, 拒绝引号与换行注入', () => {
@@ -389,35 +421,22 @@ describe('buildUpgradePlan 五大包管理器与安全拦截', () => {
   });
 
   test('恶意包名、非法版本标签与非法 registry 一律拦截', () => {
-    expect(
-      buildUpgradePlan({
-        pm: 'npm',
-        packageName: 'bad;whoami',
-        platform: 'linux',
-        env: posixEnv,
-        isFile: allPosix,
-      }).ok,
-    ).toBe(false);
-    expect(
-      buildUpgradePlan({
-        pm: 'npm',
-        packageName: 'create-clis',
-        targetSpec: '1.0.0 && id',
-        platform: 'linux',
-        env: posixEnv,
-        isFile: allPosix,
-      }).ok,
-    ).toBe(false);
-    expect(
-      buildUpgradePlan({
-        pm: 'npm',
-        packageName: 'create-clis',
-        explicitRegistry: 'file:///etc/passwd',
-        platform: 'linux',
-        env: posixEnv,
-        isFile: allPosix,
-      }).ok,
-    ).toBe(false);
+    const badInputs = [
+      { packageName: 'bad;whoami' },
+      { packageName: 'create-clis', targetSpec: '1.0.0 && id' },
+      { packageName: 'create-clis', explicitRegistry: 'file:///etc/passwd' },
+    ];
+    for (const extra of badInputs) {
+      expect(
+        buildUpgradePlan({
+          pm: 'npm',
+          platform: 'linux',
+          env: posixEnv,
+          isFile: allPosix,
+          ...extra,
+        }).ok,
+      ).toBe(false);
+    }
   });
 
   test('buildIsolatedEnv 剥离宿主 npm 生命周期污染变量并应用覆盖', () => {

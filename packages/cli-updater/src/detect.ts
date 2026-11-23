@@ -144,53 +144,30 @@ function detectEphemeral(
   candidates: readonly string[],
   packageRoot: string,
 ): InstallOrigin | null {
+  const hit = (runner: EphemeralRunner, reason: string): InstallOrigin => ({
+    kind: 'ephemeral',
+    runner,
+    reason,
+    packageRoot,
+  });
   for (const p of candidates) {
-    if (p.includes('/_npx/')) {
-      return {
-        kind: 'ephemeral',
-        runner: 'npx',
-        reason: '位于 npx 临时缓存目录 (_npx)',
-        packageRoot,
-      };
-    }
-    if (p.includes('/bunx-')) {
-      return {
-        kind: 'ephemeral',
-        runner: 'bunx',
-        reason: '位于 bunx 临时执行目录',
-        packageRoot,
-      };
-    }
+    if (p.includes('/_npx/')) return hit('npx', '位于 npx 临时缓存目录 (_npx)');
+    if (p.includes('/bunx-')) return hit('bunx', '位于 bunx 临时执行目录');
     if (
       p.includes('/pnpm/dlx/') ||
       p.includes('/pnpm-cache/dlx/') ||
       p.includes('/pnpm-dlx/')
     ) {
-      return {
-        kind: 'ephemeral',
-        runner: 'pnpm-dlx',
-        reason: '位于 pnpm dlx 临时缓存目录',
-        packageRoot,
-      };
+      return hit('pnpm-dlx', '位于 pnpm dlx 临时缓存目录');
     }
     if (
       (p.includes('/xfs-') && p.includes('/dlx-')) ||
       (p.includes('/berry/cache/') && p.includes('/dlx'))
     ) {
-      return {
-        kind: 'ephemeral',
-        runner: 'yarn-dlx',
-        reason: '位于 yarn dlx 临时执行目录',
-        packageRoot,
-      };
+      return hit('yarn-dlx', '位于 yarn dlx 临时执行目录');
     }
     if (p.includes('/deno/npm/')) {
-      return {
-        kind: 'ephemeral',
-        runner: 'deno',
-        reason: '位于 Deno npm 缓存目录 (/deno/npm/)',
-        packageRoot,
-      };
+      return hit('deno', '位于 Deno npm 缓存目录 (/deno/npm/)');
     }
   }
   return null;
@@ -229,8 +206,9 @@ function buildEnvRootRules(
     if (roots.length > 0) rules.push({ pm, roots, reason });
   }
 
-  const npmPrefix = env.NPM_CONFIG_PREFIX ?? env.npm_config_prefix;
-  if (npmPrefix !== undefined && npmPrefix.trim() !== '') {
+  const npmPrefix =
+    env.NPM_CONFIG_PREFIX?.trim() || env.npm_config_prefix?.trim();
+  if (npmPrefix !== undefined && npmPrefix !== '') {
     const npmRoots: string[] = [];
     for (const base of expandRootVariants(npmPrefix, realpath)) {
       const norm = normalizeSlashes(base);

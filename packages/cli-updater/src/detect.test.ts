@@ -169,6 +169,22 @@ describe('detectInstallOriginFromPath 跨包管理器与 OS 矩阵', () => {
         pathExists: noFiles,
       }),
     ).toMatchObject({ kind: 'global', pm: 'npm' });
+
+    // NPM_CONFIG_PREFIX 为空串或纯空白时自动回退到小写 npm_config_prefix
+    expect(
+      detectInstallOriginFromPath({
+        packageRoot: '/data/lower-npm/lib/node_modules/create-clis',
+        env: { NPM_CONFIG_PREFIX: '', npm_config_prefix: '/data/lower-npm' },
+        pathExists: noFiles,
+      }),
+    ).toMatchObject({ kind: 'global', pm: 'npm' });
+    expect(
+      detectInstallOriginFromPath({
+        packageRoot: '/data/trim-npm/lib/node_modules/create-clis',
+        env: { NPM_CONFIG_PREFIX: '   ', npm_config_prefix: '/data/trim-npm' },
+        pathExists: noFiles,
+      }),
+    ).toMatchObject({ kind: 'global', pm: 'npm' });
   });
 
   test('动态实查全局根目录兜底: 自定义 pnpm/npm 全局目录即便含 package.json 也不误判成项目依赖', () => {
