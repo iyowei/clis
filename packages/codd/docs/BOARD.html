@@ -2337,7 +2337,7 @@
                     font-weight="700"
                     fill="#fff"
                   >
-                    WT 50%
+                    WT 0.5G
                   </text>
                   <rect
                     x="63"
@@ -2452,11 +2452,15 @@
               </div>
               <div class="row">
                 <span>最大入站连接</span>
-                <b>(RAM-WT)×80 (下限100)</b>
+                <b>clamp((RAM-WT)×80, 100, 5000)</b>
+              </div>
+              <div class="row">
+                <span>expectedAppConnections</span>
+                <b>1.25× 上浮<small>≤130/GB 安全顶</small></b>
               </div>
               <div class="row">
                 <span>oplog / 停机窗口</span>
-                <b>盘×3%~8% / max(30s,8s/G)</b>
+                <b>盘×2%~8% / clamp(8s/G, 30s, 300s)</b>
               </div>
               <div class="row">
                 <span>文件句柄 ulimit (nofile)</span>
@@ -2464,7 +2468,7 @@
               </div>
               <div class="row">
                 <span>块压缩 + 协议压缩</span>
-                <b>写重 snappy / 余 zstd + wire</b>
+                <b>写重或&lt;2C snappy / 余 zstd + wire</b>
               </div>
               <div class="row">
                 <span>K8s 内存防驱逐</span>
@@ -2533,14 +2537,13 @@
 podman --version \
   &amp;&amp; podman-compose --version \
   &amp;&amp; make --version \
-  &amp;&amp; openssl version \
   &amp;&amp; podman info &gt;/dev/null
 
 # 2) 按平台安装缺失工具 + 检测目标端口空闲 (默认 27117, 自定义时改 PORT)
 PORT=27117
 # --- Linux ---
-# sudo apt install -y podman podman-compose make openssl
-# sudo dnf install -y podman podman-compose make openssl
+# sudo apt install -y podman podman-compose make
+# sudo dnf install -y podman podman-compose make
 ss -lntp | grep ":${PORT}\b" || echo "${PORT} 空闲"
 
 # --- macOS (非交互 SSH 需 /opt/homebrew/bin 入 ~/.zshenv) ---
@@ -4131,14 +4134,21 @@ podman volume export &lt;旧key&gt; \
                 <span>· 写不进备份 / 地址占用</span>
               </div>
               <p class="p">
-                macOS 仅 <code>/Users</code>, <code>/private</code>,
-                <code>/var/folders</code> 挂载进 VM (Linux 无此限制);
-                多实例复用同端口 (默认 <code>27117</code>) 会地址冲突。
+                <code>BACKUP_DIR</code> 采用系统目录黑名单 (放行
+                <code>/Users</code>, <code>/Volumes</code>,
+                <code>/private</code>, <code>/opt</code> 等任意数据路径, 拦截
+                <code>/etc</code>, <code>/System</code> 等系统目录); macOS
+                若选用非 Podman VM 默认挂载目录需确认已通过
+                <code>podman machine</code> 挂载进 VM; 多实例复用同端口 (默认
+                <code>27117</code>) 会地址冲突。
               </p>
               <div class="err">
-                统一将 <code>BACKUP_DIR</code> 建在
-                <code>~/srv/backups/</code> 并 <code>mkdir -p</code>;
-                同机多业务优先用 <code>MONGO_EXTRA_APPS</code> 分库, 独立实例传
+                推荐将 <code>BACKUP_DIR</code> 建在
+                <code>~/srv/backups/</code> 或已挂载进 VM 的外置数据卷 (<code
+                  >make check-env</code
+                >
+                自动 <code>mkdir -p</code>); 同机多业务优先用
+                <code>MONGO_EXTRA_APPS</code> 分库, 独立实例传
                 <code>ENV=.env.other</code> 换
                 <code>MONGO_HOST_PORT</code> 与指纹
               </div>
@@ -4422,7 +4432,7 @@ podman volume export &lt;旧key&gt; \
           font-size="11"
           fill="var(--warn-ink)"
         >
-          卷外留存 · macOS 需建在 /Users 下
+          卷外留存 · 避开系统核心目录
         </text>
 
         <!-- Center net -->

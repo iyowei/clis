@@ -79,20 +79,24 @@ console.log('Credentials (0600):', result.credentialsFile);
 
 ## Public API surface
 
-| Export                                                                              | Purpose                                                                                                                         |
-| ----------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
-| `generateBundle(options)`                                                           | End-to-end orchestrator: validate manifest, derive sizing, lock state/credentials, render Podman or Kubernetes (Helm) bundle(s) |
-| `validateManifest(manifest)`                                                        | Strict whitelist & DNS-1123 validator (rejects unknown fields, path traversal, and Shell/YAML/XML injection)                    |
-| `computeSizing(hardware)`                                                           | Deterministic formula engine deriving WiredTiger cache, connection ceiling, oplog, zstd/snappy compression, and `ulimit`        |
-| `recommendSafePort(rng?)` / `digitalRoot(n)`                                        | Recommend a 5-digit safe port (`10002-29997`) whose digital root is `3 / 6 / 9`, excluding common scan and system port ranges   |
-| `renderTemplate(name, raw, vars)`                                                   | Strict `{{TOKEN}}` template renderer rejecting missing keys or leftover braces                                                  |
-| `parseSshInput(raw)` / `resolveServerBackupDir(...)` / `resolveServerStackDir(...)` | SSH command sanitizer and idempotent fingerprint-scoped path builders                                                           |
-| `loadOrUpdateState(...)` / `prepareStateDir(...)`                                   | Idempotent `.codd-state/` credential & fingerprint state machine                                                                |
-| `resolveTemplateRoot(...)` / `copyTemplateFile(...)` / `readTemplateFile(...)`      | Bundled template asset locator (transparently restores carrier names such as `_dockerignore` / `env.tmpl` / `_helmignore`)      |
-| `assertBunEngineCompatible(range, current)`                                         | Pure helper to explicitly check Bun version compatibility against a target semver floor                                         |
-| `ConfigError` / `SizingError` / `TemplateRenderError`                               | Structured domain errors                                                                                                        |
+| Export                                                                              | Purpose                                                                                                                                                                                 |
+| ----------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `generateBundle(options)`                                                           | End-to-end orchestrator: validate manifest, derive sizing, lock state/credentials, render Podman or Kubernetes (Helm) bundle(s)                                                         |
+| `validateManifest(manifest)`                                                        | Strict whitelist & DNS-1123 validator (rejects unknown fields, path traversal, and Shell/YAML/XML injection)                                                                            |
+| `computeSizing(hardware)`                                                           | Deterministic formula engine deriving WiredTiger cache, connection ceiling, oplog, zstd/snappy compression, and `ulimit`                                                                |
+| `recommendSafePort(rng?)` / `digitalRoot(n)`                                        | Recommend a 5-digit safe port (`10002-29997`) whose digital root is `3 / 6 / 9`, excluding common scan and system port ranges                                                           |
+| `renderTemplate(name, raw, vars)`                                                   | Strict `{{TOKEN}}` template renderer rejecting missing keys or leftover braces                                                                                                          |
+| `parseSshInput(raw)` / `resolveServerBackupDir(...)` / `resolveServerStackDir(...)` | SSH command sanitizer and idempotent fingerprint-scoped path builders                                                                                                                   |
+| `loadOrUpdateState(...)` / `prepareStateDir(...)`                                   | Idempotent `.codd-state/` credential & fingerprint state machine                                                                                                                        |
+| `resolveTemplateRoot(...)` / `copyTemplateFile(...)` / `readTemplateFile(...)`      | Bundled template asset locator (honors `overrideDir` > `CODD_TEMPLATE_DIR` > `assets/template/`, and transparently restores carrier names `_dockerignore` / `env.tmpl` / `_helmignore`) |
+| `assertBunEngineCompatible(range, current)`                                         | Pure helper to explicitly check Bun version compatibility against a target semver range (`>=`, `^`, `~`, or bare floor treated as `>=`)                                                 |
+| `ConfigError` / `SizingError` / `TemplateRenderError`                               | Structured domain errors                                                                                                                                                                |
 
 > Fine-grained helpers and validation constants (`HARDWARE_BOUNDS`, `withStateLock`, `randomAlnumSecret`, `validateAppInput`, etc.) are exported from the same root entry; see the bundled `dist/index.d.ts` for the complete typed signature list.
+
+## Environment variables
+
+- `CODD_TEMPLATE_DIR`: Optional absolute or relative directory overriding the bundled `assets/template/` root when `generateBundle({ templateDir })` / `resolveTemplateRoot(overrideDir)` is not explicitly passed.
 
 ## Development
 

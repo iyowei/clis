@@ -56,7 +56,7 @@ export const verifyRelease = (
   }
   io.err(`发布前置校验未通过: ${verdict.reason}`);
   io.err(
-    '  处置: 工作树不干净请先提交或 stash 后重新执行 bun run build; 发行面不符请核对 PACK_FILES_BASE 与模板资产清单。',
+    '  处置: 工作树不干净请先提交或 stash 后, 在包目录内重新执行 bun run build (或根仓执行 bun run build -- --force 跳过缓存刷新清单); 发行面不符请核对 PACK_FILES_BASE 与模板资产清单。',
   );
   return 1;
 };

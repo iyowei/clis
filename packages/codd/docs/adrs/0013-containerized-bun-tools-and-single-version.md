@@ -31,7 +31,7 @@ MongoDB 部署伴随初始化 (`init.js`)、逻辑备份 (`backup.ts`)、恢复�
 2. **工具镜像以同版本 `mongo` 为底并拷入 Bun**: [Dockerfile](../../template/podman/Dockerfile) 从 `${BUN_IMAGE}` 拷入 `/usr/local/bin/bun`, 基础镜像复用 `${MONGO_IMAGE}`, 宿主机零额外客户端依赖。
 3. **镜像版本坐标单点管控**: 生成器与 `.env` 中的 `MONGO_IMAGE_NAME` / `MONGO_IMAGE_TAG` (默认 `9.0.8`) 作为唯一版本源同步驱动主容器、初始化容器与工具容器。
 
-理由: 让目标服务器仅依赖 `podman`、`podman-compose`、`make` 与 `openssl`, 同时保障复杂备份演练逻辑享有静态类型约束且与主库同版本演进。
+理由: 让目标服务器仅依赖 `podman`、`podman-compose` 与 `make` (修订校准: 宿主机无需预装 `openssl`, 密钥与口令已在本地生成或于容器内派生), 同时保障复杂备份演练逻辑享有静态类型约束且与主库同版本演进。
 
 ## 后果与权衡取舍 (Consequences & Trade-offs)
 
@@ -53,5 +53,5 @@ MongoDB 部署伴随初始化 (`init.js`)、逻辑备份 (`backup.ts`)、恢复�
 
 **关联引用**
 
-- 包级入口见[包文档](../README.md); 全局索引见 [ADR 索引](../../../../docs/adrs/README.md)。
+- 主包文档与产品 ADR 索引见 [codd 包文档](../README.md); 仓级工程 ADR 索引见 [仓级 ADR 索引](../../../../docs/adrs/README.md)。
 - 编排模板见 [Dockerfile](../../template/podman/Dockerfile)、[podman-compose.yml.tmpl](../../template/podman/podman-compose.yml.tmpl) 与 [Makefile.tmpl](../../template/podman/Makefile.tmpl)。

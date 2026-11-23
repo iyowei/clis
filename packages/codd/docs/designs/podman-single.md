@@ -20,7 +20,7 @@
 SSH 登录到**目标服务器**执行以下检查:
 
 ```shell
-podman --version && podman-compose --version && make --version && openssl version && podman info >/dev/null
+podman --version && podman-compose --version && make --version && podman info >/dev/null
 ```
 
 未自定义 `port` / `hostPort` 时默认监听 `27117`; 若自定义了端口, 请将下方命令中的 `PORT=27117` 改为你的实际端口号:
@@ -28,8 +28,8 @@ podman --version && podman-compose --version && make --version && openssl versio
 - **Linux** (MongoDB 9.0 采用 Google per-CPU TCMalloc, 开启 THP `always` + `defer+madvise` 可清零启动告警并降低内存页分配延迟):
 
   ```shell
-  # Debian / Ubuntu:  sudo apt update && sudo apt install -y podman podman-compose make openssl
-  # RHEL / Fedora:    sudo dnf install -y podman podman-compose make openssl
+  # Debian / Ubuntu:  sudo apt update && sudo apt install -y podman podman-compose make
+  # RHEL / Fedora:    sudo dnf install -y podman podman-compose make
   PORT=27117  # 未自定义时默认为 27117; 若自定义了端口请改为实际端口号
   ss -lntp | grep ":${PORT}\b" || echo "${PORT} 空闲"
   ```

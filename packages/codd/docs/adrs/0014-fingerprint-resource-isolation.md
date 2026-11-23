@@ -53,5 +53,5 @@
 
 **关联引用**
 
-- 包级入口见[包文档](../README.md); 全局索引见 [ADR 索引](../../../../docs/adrs/README.md)。
+- 主包文档与产品 ADR 索引见 [codd 包文档](../README.md); 仓级工程 ADR 索引见 [仓级 ADR 索引](../../../../docs/adrs/README.md)。
 - 详见 [生成器与科学公式详解](../designs/generator-and-formulas.md) 与 [通用运维与灾备手册](../designs/operations-and-recovery.md)。

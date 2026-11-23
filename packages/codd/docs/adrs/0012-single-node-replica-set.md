@@ -50,5 +50,5 @@
 
 **关联引用**
 
-- 包级入口见[包文档](../README.md); 全局索引见 [ADR 索引](../../../../docs/adrs/README.md)。
+- 主包文档与产品 ADR 索引见 [codd 包文档](../README.md); 仓级工程 ADR 索引见 [仓级 ADR 索引](../../../../docs/adrs/README.md)。
 - 部署与运维见 [Podman 单副本分册](../designs/podman-single.md) 与 [通用运维与灾备手册](../designs/operations-and-recovery.md)。

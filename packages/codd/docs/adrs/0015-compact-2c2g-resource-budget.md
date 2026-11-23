@@ -23,9 +23,9 @@
 ## 决策与理由 (Decision & Why)
 
 1. **在 [formulas.ts](../../src/formulas.ts) 沉淀自适应硬件与负载公式**:
-   - **WiredTiger 缓存 (`WT_CACHE_GB`)**: 按 `workload` 差异化推导——`balanced` 遵循官方 `0.5 x (RAM - 1G)`, `write-heavy` 收紧至 `0.45 x (RAM - 1G)` 为脏页刷盘与 OS Page Cache 留余量, `read-heavy` 在 `>8G` 大机提升至 `0.55 x (RAM - 1G)` 放大热索引命中; K8s 强制 `requests.memory == limits.memory` 防节点内存压力下优先驱逐数据库;
+   - **WiredTiger 缓存 (`WT_CACHE_GB`)**: 按 `workload` 差异化推导: `balanced` 遵循官方 `0.5 x (RAM - 1G)`, `write-heavy` 收紧至 `0.45 x (RAM - 1G)` 为脏页刷盘与 OS Page Cache 留余量, `read-heavy` 在 `>8G` 大机提升至 `0.55 x (RAM - 1G)` 放大热索引命中; K8s 强制 `requests.memory == limits.memory` 防节点内存压力下优先驱逐数据库;
    - **连接上限、句柄与优雅停机**: 非缓存富余内存按 `80` 连接/GB 推导安全连接数 (`100..5000`); `nofile` 保底 `65536` (满足官方 `>=64000` 零告警要求并对齐 `2^16`; `nproc` 保留推算参考值不硬写以兼容 rootless Podman); 停机窗口按 `clamp(memoryGb x 8, 30, 300)s` 伸缩; 备份并发按 `clamp(floor(cpuCores / 2), 1, 8)` 缩放;
-   - **全链路压缩与零双写慢日志**: `write-heavy` 优先低 CPU 开销 `snappy`, `balanced`/`read-heavy` 在 `>=2` 核启用 `zstd` 块压缩, 统一开启 `journalCompressor: snappy`、`prefixCompression: true` 与网络协议压缩 `snappy,zstd,zlib`; `operationProfiling.mode` 默认设为 `off` (慢操作仍由 `slowOpThresholdMs` 写入标准日志, 避免 `system.profile` 写放大).
+   - **全链路压缩与零双写慢日志**: `write-heavy` 优先低 CPU 开销 `snappy`, `balanced`/`read-heavy` 在 `>=2` 核启用 `zstd` 块压缩, 统一开启 `journalCompressor: snappy`、`prefixCompression: true` 与网络协议压缩 `snappy,zstd,zlib`; `operationProfiling.mode` 默认设为 `off` (慢操作仍由 `slowOpThresholdMs` 写入标准日志, 避免 `system.profile` 写放大)。
 2. **零抖动探针、跨平台内核调优与容器内沙箱演练**:
    - Podman 采用 `/dev/tcp` 探针 (日志固定 `k8s-file` + `max-file=3` + `log-rotate=true`), K8s 采用内核级 `tcpSocket` 三层探针;
    - [tune-linux-host.sh](../../template/podman/tune-linux-host.sh) 与 `make tune-host` 支持在 Linux 宿主机及 macOS `podman machine` Linux 虚拟机内一键开启并持久化 THP、`vm.swappiness=1`、`vm.overcommit_memory=1`、`vm.force_cgroup_v2_swappiness=1` 与 `vm.zone_reclaim_mode=0`;

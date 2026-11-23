@@ -79,20 +79,24 @@ console.log('本机凭证文件 (0600):', result.credentialsFile);
 
 ## 公共 API 一览
 
-| 导出符号                                                                            | 用途                                                                                          |
-| ----------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------- |
-| `generateBundle(options)`                                                           | 主编排入口: 校验清单、推导公式、锁存指纹与凭证、渲染 Podman 或 Kubernetes (Helm) 自包含部署包 |
-| `validateManifest(manifest)`                                                        | 严格白名单与 DNS-1123 校验器 (拦截未知字段、路径穿越及 Shell/YAML/XML 注入)                   |
-| `computeSizing(hardware)`                                                           | 硬件与负载公式推导引擎 (计算 `WT_CACHE_GB`、最大连接数、`oplogSizeMB`、压缩算法与 `ulimit`)   |
-| `recommendSafePort(rng?)` / `digitalRoot(n)`                                        | 随机推荐数根为 `3 / 6 / 9` 的 5 位安全监听端口 (`10002-29997`), 自动排除扫描段与系统保留段    |
-| `renderTemplate(name, raw, vars)`                                                   | 严格 `{{TOKEN}}` 模板渲染器, 缺参或残留花括号立即抛 `TemplateRenderError`                     |
-| `parseSshInput(raw)` / `resolveServerBackupDir(...)` / `resolveServerStackDir(...)` | SSH 连接串净化提取器与幂等指纹路径归一化工具                                                  |
-| `loadOrUpdateState(...)` / `prepareStateDir(...)`                                   | `.codd-state/` 幂等状态机与凭证权限落盘工具                                                   |
-| `resolveTemplateRoot(...)` / `copyTemplateFile(...)` / `readTemplateFile(...)`      | 内置模板资产定位与隐藏载体名 (`_dockerignore` / `env.tmpl` / `_helmignore`) 自动还原          |
-| `assertBunEngineCompatible(range, current)`                                         | 纯校验辅助函数, 用于显式核对目标 Bun 版本下限                                                 |
-| `ConfigError` / `SizingError` / `TemplateRenderError`                               | 结构化领域错误类型                                                                            |
+| 导出符号                                                                            | 用途                                                                                                                                                    |
+| ----------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `generateBundle(options)`                                                           | 主编排入口: 校验清单、推导公式、锁存指纹与凭证、渲染 Podman 或 Kubernetes (Helm) 自包含部署包                                                           |
+| `validateManifest(manifest)`                                                        | 严格白名单与 DNS-1123 校验器 (拦截未知字段、路径穿越及 Shell/YAML/XML 注入)                                                                             |
+| `computeSizing(hardware)`                                                           | 硬件与负载公式推导引擎 (计算 `WT_CACHE_GB`、最大连接数、`oplogSizeMB`、压缩算法与 `ulimit`)                                                             |
+| `recommendSafePort(rng?)` / `digitalRoot(n)`                                        | 随机推荐数根为 `3 / 6 / 9` 的 5 位安全监听端口 (`10002-29997`), 自动排除扫描段与系统保留段                                                              |
+| `renderTemplate(name, raw, vars)`                                                   | 严格 `{{TOKEN}}` 模板渲染器, 缺参或残留花括号立即抛 `TemplateRenderError`                                                                               |
+| `parseSshInput(raw)` / `resolveServerBackupDir(...)` / `resolveServerStackDir(...)` | SSH 连接串净化提取器与幂等指纹路径归一化工具                                                                                                            |
+| `loadOrUpdateState(...)` / `prepareStateDir(...)`                                   | `.codd-state/` 幂等状态机与凭证权限落盘工具                                                                                                             |
+| `resolveTemplateRoot(...)` / `copyTemplateFile(...)` / `readTemplateFile(...)`      | 内置模板资产定位 (优先级 `overrideDir` > `CODD_TEMPLATE_DIR` > `assets/template/`) 与隐藏载体名 (`_dockerignore` / `env.tmpl` / `_helmignore`) 自动还原 |
+| `assertBunEngineCompatible(range, current)`                                         | 纯校验辅助函数, 显式核对当前 Bun 版本是否满足目标语义化版本范围 (支持 `>=` / `^` / `~` 及默认按 `>=` 处理的无前缀下限)                                  |
+| `ConfigError` / `SizingError` / `TemplateRenderError`                               | 结构化领域错误类型                                                                                                                                      |
 
 > 其余细粒度校验与辅助符号 (`HARDWARE_BOUNDS`、`withStateLock`、`randomAlnumSecret`、`validateAppInput` 等) 同样从根入口导出, 完整类型签名以随包 `dist/index.d.ts` 为准。
+
+## 环境变量
+
+- `CODD_TEMPLATE_DIR`: 未显式传入 `templateDir` / `overrideDir` 时, 用于覆盖内置 `assets/template/` 模板根目录的自定义路径。
 
 ## 开发
 
@@ -103,4 +107,4 @@ console.log('本机凭证文件 (0600):', result.credentialsFile);
 - [工程技术文档总索引](https://github.com/iyowei/clis/blob/main/docs/README.md)
 - [codd 产品文档与包级 ADR (0012–0018)](https://github.com/iyowei/clis/blob/main/packages/codd/docs/README.md)
 - [生成器与科学公式详解](https://github.com/iyowei/clis/blob/main/packages/codd/docs/designs/generator-and-formulas.md)
-- [配套命令行包 (`@iyowei/codd-cli`)](https://github.com/iyowei/clis/tree/main/packages/codd-cli)
+- [配套命令行包 (`@iyowei/codd-cli`)](https://github.com/iyowei/clis/blob/main/packages/codd-cli/README.zh-CN.md)
