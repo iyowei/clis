@@ -6,6 +6,10 @@ import { join } from 'node:path';
 
 import { collectPackageProfile, runBenchOnce } from './bench-protocol.ts';
 import {
+  type CompanionPackageState,
+  prepareCompanionSnapshots,
+} from './companion-scope.ts';
+import {
   classifyRejectedQueue,
   evaluateStopping,
   loadPackageLedger,
@@ -35,6 +39,8 @@ export interface RunState {
   profDir: string;
   baselineBenchHashes: Record<string, string>;
   baselineOutsideDigest: string;
+  companionPackages?: CompanionPackageState[];
+  baselineOutsidePairDigest?: string;
   acceptedCount: number;
   highImpactCount: number;
   runtimes: { bun: string | null; node: string | null };
@@ -206,6 +212,12 @@ export function runPrepareCommand(options: {
   mkdirSync(rDir, { recursive: true });
 
   savePackageSnapshot(options.repoRoot, pkg.dir, baselineDir);
+  const companionPackages = prepareCompanionSnapshots(
+    options.repoRoot,
+    rDir,
+    pkg.dir,
+  );
+  const scopedDirs = [pkg.dir, ...companionPackages.map((comp) => comp.pkgDir)];
   const state: RunState = {
     runId,
     pkgName: pkg.name,
@@ -216,6 +228,11 @@ export function runPrepareCommand(options: {
     profDir,
     baselineBenchHashes: computeBenchDirHashes(options.repoRoot, pkg.dir),
     baselineOutsideDigest: computeOutsideScopeDigest(options.repoRoot, pkg.dir),
+    companionPackages,
+    baselineOutsidePairDigest: computeOutsideScopeDigest(
+      options.repoRoot,
+      scopedDirs,
+    ),
     acceptedCount: ledger.accepted.length,
     highImpactCount: ledger.highImpactCount,
     runtimes,

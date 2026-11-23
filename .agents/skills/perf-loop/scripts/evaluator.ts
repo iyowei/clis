@@ -7,6 +7,11 @@ import { join } from 'node:path';
 
 import { collectNodeCpuHotspots, runInterleavedAb } from './bench-protocol.ts';
 import {
+  captureScopedCandidates,
+  restoreScopedVariant,
+  runScopedValidationGates,
+} from './companion-scope.ts';
+import {
   appendExperimentRecord,
   evaluateStopping,
   loadPackageLedger,
@@ -18,11 +23,8 @@ import {
   checkPolicyViolations,
   collectDocHints,
   computeEnvFingerprint,
-  diffSnapshotFiles,
   discoverTargetPackages,
-  restorePackageSnapshot,
-  runPackageValidationGates,
-  savePackageSnapshot,
+  shouldRebuildPackageDist,
 } from './workspace-ops.ts';
 
 function finalizeRevert(options: {
@@ -38,11 +40,20 @@ function finalizeRevert(options: {
   fp: ExperimentRecord['fingerprint'];
   reason: ExperimentRecord['failureReason'];
   detail: string;
+  rebuildIfNeeded?: boolean;
   extra?: Partial<ExperimentRecord>;
   nodeProfileHints?: string[];
 }) {
   const { state, repoRoot } = options;
-  restorePackageSnapshot(repoRoot, state.pkgDir, state.baselineDir);
+  restoreScopedVariant({
+    repoRoot,
+    pkgDir: state.pkgDir,
+    primarySnapshotDir: state.baselineDir,
+    companions: state.companionPackages,
+    variant: 'baseline',
+    rebuildIfNeeded: options.rebuildIfNeeded,
+    ignoreRebuildFailure: true,
+  });
   const record: ExperimentRecord = {
     id: createHash('sha256')
       .update(`${state.runId}:${options.proposal}`)
@@ -103,8 +114,23 @@ export function runEvaluateCommand(options: {
     throw new Error(`包参数与 runId (${state.pkgDir}) 不匹配`);
   }
 
-  savePackageSnapshot(options.repoRoot, pkg.dir, state.candidateDir);
-  const touchedFiles = diffSnapshotFiles(state.baselineDir, state.candidateDir);
+  const companions = state.companionPackages ?? [];
+  const {
+    primaryTouched,
+    companionTouchedByDir,
+    activeCompanions,
+    allTouchedFiles,
+  } = captureScopedCandidates(
+    options.repoRoot,
+    pkg.dir,
+    state.baselineDir,
+    state.candidateDir,
+    companions,
+  );
+  const touchedFiles = options.allowCrossPkg ? allTouchedFiles : primaryTouched;
+  const crossPkgActive = options.allowCrossPkg && companions.length > 0;
+  const needsDistRebuild =
+    crossPkgActive || shouldRebuildPackageDist(options.repoRoot, pkg.dir);
   const ledger = loadPackageLedger(options.repoRoot, pkg.dir);
   const fp = computeEnvFingerprint({
     repoRoot: options.repoRoot,
@@ -125,6 +151,7 @@ export function runEvaluateCommand(options: {
     expectedTier: options.expectedTier,
     touchedFiles,
     fp,
+    rebuildIfNeeded: needsDistRebuild,
   };
 
   const policyViolation = checkPolicyViolations({
@@ -133,6 +160,8 @@ export function runEvaluateCommand(options: {
     baselineBenchHashes: state.baselineBenchHashes,
     baselineOutsideDigest: state.baselineOutsideDigest,
     allowCrossPkg: options.allowCrossPkg,
+    companionPackages: companions,
+    baselineOutsidePairDigest: state.baselineOutsidePairDigest,
   });
   if (policyViolation !== null) {
     return finalizeRevert({
@@ -150,11 +179,14 @@ export function runEvaluateCommand(options: {
     });
   }
 
-  const validation = runPackageValidationGates(
-    options.repoRoot,
-    pkg.dir,
-    touchedFiles,
-  );
+  const validation = runScopedValidationGates({
+    repoRoot: options.repoRoot,
+    pkgDir: pkg.dir,
+    primaryTouched,
+    allowCrossPkg: options.allowCrossPkg,
+    companions,
+    companionTouchedByDir,
+  });
   if (!validation.ok) {
     return finalizeRevert({
       ...commonRevert,
@@ -168,6 +200,8 @@ export function runEvaluateCommand(options: {
     pkgDir: pkg.dir,
     baselineSnapshotDir: state.baselineDir,
     candidateSnapshotDir: state.candidateDir,
+    companionPackages: crossPkgActive ? activeCompanions : undefined,
+    rebuildOnSwitch: crossPkgActive && activeCompanions.length > 0,
     cycles: options.cycles,
     suite: state.suite,
     includeNode: state.runtimes.node !== null,
@@ -261,7 +295,20 @@ export function runRecoverCommand(
     throw new Error(`找不到可恢复的运行记录: ${statePath}`);
   }
   const state = JSON.parse(readFileSync(statePath, 'utf8')) as RunState;
-  restorePackageSnapshot(repoRoot, state.pkgDir, state.baselineDir);
+  const companions = state.companionPackages ?? [];
+  restoreScopedVariant({
+    repoRoot,
+    pkgDir: state.pkgDir,
+    primarySnapshotDir: state.baselineDir,
+    companions,
+    variant: 'baseline',
+    rebuildIfNeeded:
+      companions.length > 0 || shouldRebuildPackageDist(repoRoot, state.pkgDir),
+    ignoreRebuildFailure: true,
+  });
   rmSync(rDir, { recursive: true, force: true });
-  return `已安全将 ${state.pkgDir} 恢复到基线快照并清理临时目录`;
+  const scopeLabel = [state.pkgDir, ...companions.map((c) => c.pkgDir)].join(
+    ', ',
+  );
+  return `已安全将 ${scopeLabel} 恢复到基线快照并清理临时目录`;
 }

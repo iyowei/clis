@@ -5,9 +5,9 @@
 import { describe, expect, test } from 'bun:test';
 
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
+import { makeTmpRoot } from '../../../../scripts/lib/tmp-root.ts';
 import { collectNodeCpuHotspots, runInterleavedAb } from './bench-protocol.ts';
 import { parseProfileMarkdowns } from './profile-parse.ts';
 import { judgeSuiteEvaluation } from './stats.ts';
@@ -18,10 +18,7 @@ function buildRealDualRuntimeTarget(): {
   pkgDir: string;
   srcFile: string;
 } {
-  const root = join(
-    tmpdir(),
-    `perf-loop-adv-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-  );
+  const root = makeTmpRoot('perf-loop-adv-');
   const pkgDir = 'packages/target';
   mkdirSync(join(root, pkgDir, 'src'), { recursive: true });
   mkdirSync(join(root, pkgDir, 'bench'), { recursive: true });
@@ -254,11 +251,7 @@ export function countCommon(a: number[], b: number[]): number {
   });
 
   test('用例 D+F: Profile setup 噪音分离与全仓真实 ADR 下一号计算准确', () => {
-    const dir = join(
-      tmpdir(),
-      `perf-loop-prof-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-    );
-    mkdirSync(dir, { recursive: true });
+    const dir = makeTmpRoot('perf-loop-prof-');
     try {
       const cpuMd = join(dir, 'cpu.md');
       writeFileSync(

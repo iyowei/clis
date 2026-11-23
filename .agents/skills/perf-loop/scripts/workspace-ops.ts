@@ -1,18 +1,16 @@
 /**
- * 工作区操作、包发现、源码索引、文档提示、环境哈希与安全文件级快照恢复。
+ * 工作区操作、包发现、源码索引、文档提示、环境哈希与策略越界检查。
  */
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import {
-  copyFileSync,
   existsSync,
   mkdirSync,
   readFileSync,
   readdirSync,
   rmSync,
-  writeFileSync,
 } from 'node:fs';
-import { dirname, join, relative, resolve } from 'node:path';
+import { join, resolve } from 'node:path';
 
 import { makeTmpRoot } from '../../../../scripts/lib/tmp-root.ts';
 import {
@@ -21,6 +19,15 @@ import {
   resolveProductPairs,
 } from '../../../../scripts/lib/workspace.ts';
 import { collectAdrIndex } from '../../../../scripts/lint-doc-references.ts';
+import {
+  computeBenchDirHashes,
+  diffSnapshotFiles,
+  listMutablePackageFiles,
+  restorePackageSnapshot,
+  savePackageSnapshot,
+  sha256File,
+  walkRelFiles,
+} from './fs-hash.ts';
 import type {
   DiscoveredPackage,
   DocDistillationHints,
@@ -28,17 +35,15 @@ import type {
   SourceFileSummary,
 } from './types.ts';
 
-const EXCLUDED_WALK_DIRS = new Set([
-  'node_modules',
-  '.git',
-  '.turbo',
-  'dist',
-  'assets',
-  'docs',
-  'bench',
-]);
+export {
+  computeBenchDirHashes,
+  diffSnapshotFiles,
+  listMutablePackageFiles,
+  restorePackageSnapshot,
+  savePackageSnapshot,
+  sha256File,
+};
 
-const EXCLUDED_BENCH_SUBDIRS = new Set(['ledger', 'results']);
 export const BENCH_STUB_MARKER = '@perf-loop:stub';
 
 /** 确定性识别包分类 */
@@ -110,35 +115,6 @@ export function detectRuntimes(): { bun: string | null; node: string | null } {
   };
 }
 
-/** 计算文件 SHA-256 */
-export function sha256File(absPath: string): string {
-  return createHash('sha256').update(readFileSync(absPath)).digest('hex');
-}
-
-function walkRelFiles(
-  rootDir: string,
-  excludedDirs: ReadonlySet<string>,
-): string[] {
-  if (!existsSync(rootDir)) return [];
-  const files: string[] = [];
-  const visit = (dir: string): void => {
-    const entries = readdirSync(dir, { withFileTypes: true }).sort((a, b) =>
-      a.name.localeCompare(b.name),
-    );
-    for (const entry of entries) {
-      if (entry.isDirectory()) {
-        if (!excludedDirs.has(entry.name)) visit(join(dir, entry.name));
-      } else if (entry.isFile()) {
-        files.push(
-          relative(rootDir, join(dir, entry.name)).replaceAll('\\', '/'),
-        );
-      }
-    }
-  };
-  visit(rootDir);
-  return files;
-}
-
 /** 扫描目标包 src/ 产出紧凑源码结构地图 (文件 / 行数 / 导出符号) */
 export function buildPackageSourceMap(
   repoRoot: string,
@@ -166,29 +142,7 @@ export function buildPackageSourceMap(
   return out;
 }
 
-/** 列出目标包下可修改并受快照保护的源码相对路径 (跳过 bench / dist / docs 等) */
-export function listMutablePackageFiles(
-  repoRoot: string,
-  pkgDir: string,
-): string[] {
-  return walkRelFiles(join(repoRoot, pkgDir), EXCLUDED_WALK_DIRS);
-}
-
-/** 计算包级 bench 目录综合哈希 (排除 ledger 与 results) */
-export function computeBenchDirHashes(
-  repoRoot: string,
-  pkgDir: string,
-): Record<string, string> {
-  const benchRoot = join(repoRoot, pkgDir, 'bench');
-  const files = walkRelFiles(benchRoot, EXCLUDED_BENCH_SUBDIRS);
-  const out: Record<string, string> = {};
-  for (const rel of files) {
-    out[rel] = sha256File(join(benchRoot, rel));
-  }
-  return out;
-}
-
-/** 生成包当前环境指纹 (用于双队列精准解封判据) */
+/** 生成包当前环境指纹 (用于双队列精准解封判据, 含同产品配对包 src/ 哈希) */
 export function computeEnvFingerprint(options: {
   repoRoot: string;
   pkgDir: string;
@@ -201,6 +155,22 @@ export function computeEnvFingerprint(options: {
   const sourceHashes: Record<string, string> = {};
   for (const rel of srcFiles) {
     sourceHashes[`src/${rel}`] = sha256File(join(srcRoot, rel));
+  }
+
+  try {
+    const pairs = resolveProductPairs(options.repoRoot);
+    for (const pair of pairs) {
+      let compDir: string | null = null;
+      if (pair.api.dir === options.pkgDir) compDir = pair.cli.dir;
+      else if (pair.cli.dir === options.pkgDir) compDir = pair.api.dir;
+      if (compDir === null) continue;
+      const compSrc = join(options.repoRoot, compDir, 'src');
+      for (const rel of walkRelFiles(compSrc, new Set())) {
+        sourceHashes[`${compDir}/src/${rel}`] = sha256File(join(compSrc, rel));
+      }
+    }
+  } catch {
+    // 忽略非标准工作区沙箱
   }
 
   const benchHashes = computeBenchDirHashes(options.repoRoot, options.pkgDir);
@@ -220,126 +190,97 @@ export function computeEnvFingerprint(options: {
   };
 }
 
-/** 记录除目标包之外全部工作区包与 docs/ 的 git status 指纹 (防静默越界改动) */
+function isPathInsideAllowedDirs(
+  rawPart: string,
+  allowedPrefixes: readonly string[],
+  allowedExact: ReadonlySet<string>,
+): boolean {
+  const cleaned = rawPart.trim().replace(/^"(.*)"$/, '$1');
+  return (
+    allowedExact.has(cleaned) ||
+    allowedPrefixes.some((prefix) => cleaned.startsWith(prefix))
+  );
+}
+
+/** 记录除允许包作用域之外全部工作区包与 docs/ 的 git status 指纹 (防静默越界改动) */
 export function computeOutsideScopeDigest(
   repoRoot: string,
-  pkgDir: string,
+  pkgDirOrDirs: string | readonly string[],
 ): string {
   const res = spawnSync('git', ['status', '--porcelain'], {
     cwd: repoRoot,
     encoding: 'utf8',
   });
   if (res.status !== 0) return 'no-git';
-  const pkgPrefix = `${pkgDir}/`;
+  const dirs =
+    typeof pkgDirOrDirs === 'string' ? [pkgDirOrDirs] : [...pkgDirOrDirs];
+  const allowedPrefixes = dirs.map((d) => `${d.replace(/\/+$/, '')}/`);
+  const allowedExact = new Set(dirs.map((d) => d.replace(/\/+$/, '')));
+
   const lines = (res.stdout ?? '')
     .split('\n')
     .filter((line) => line.trim() !== '')
     .filter((line) => {
-      const pathPart = line.slice(3).trim();
-      return !pathPart.startsWith(pkgPrefix);
+      const pathExpr = line.slice(3).trim();
+      const parts = pathExpr.includes(' -> ')
+        ? pathExpr.split(' -> ')
+        : [pathExpr];
+      return !parts.every((p) =>
+        isPathInsideAllowedDirs(p, allowedPrefixes, allowedExact),
+      );
     })
     .sort();
   return createHash('sha256').update(lines.join('\n')).digest('hex');
 }
 
-/** 把目标包当前可变文件快照写入目标目录 */
-export function savePackageSnapshot(
+function findTamperedBenchFile(
   repoRoot: string,
   pkgDir: string,
-  snapshotDir: string,
-): string[] {
-  rmSync(snapshotDir, { recursive: true, force: true });
-  mkdirSync(snapshotDir, { recursive: true });
-  const files = listMutablePackageFiles(repoRoot, pkgDir);
-  const pkgAbs = join(repoRoot, pkgDir);
-  for (const rel of files) {
-    const src = join(pkgAbs, rel);
-    const dst = join(snapshotDir, rel);
-    mkdirSync(dirname(dst), { recursive: true });
-    copyFileSync(src, dst);
-  }
-  writeFileSync(
-    join(snapshotDir, '.snapshot-manifest.json'),
-    JSON.stringify({ pkgDir, files }, null, 2),
-  );
-  return files;
-}
-
-/** 从快照目录精确恢复目标包文件 (仅覆盖并清理多余新增文件) */
-export function restorePackageSnapshot(
-  repoRoot: string,
-  pkgDir: string,
-  snapshotDir: string,
-): void {
-  const manifestPath = join(snapshotDir, '.snapshot-manifest.json');
-  if (!existsSync(manifestPath)) {
-    throw new Error(`快照清单不存在: ${manifestPath}`);
-  }
-  const manifest = JSON.parse(readFileSync(manifestPath, 'utf8')) as {
-    files: string[];
-  };
-  const keepSet = new Set(manifest.files);
-  const pkgAbs = join(repoRoot, pkgDir);
-
-  for (const currentRel of listMutablePackageFiles(repoRoot, pkgDir)) {
-    if (!keepSet.has(currentRel)) {
-      rmSync(join(pkgAbs, currentRel), { force: true });
+  baselineHashes: Record<string, string>,
+): string | null {
+  const currBench = computeBenchDirHashes(repoRoot, pkgDir);
+  const keys = new Set([
+    ...Object.keys(baselineHashes),
+    ...Object.keys(currBench),
+  ]);
+  for (const k of keys) {
+    if (baselineHashes[k] !== currBench[k]) {
+      return `优化回合禁止修改基准文件: ${pkgDir}/bench/${k}`;
     }
   }
-  for (const rel of manifest.files) {
-    const src = join(snapshotDir, rel);
-    const dst = join(pkgAbs, rel);
-    mkdirSync(dirname(dst), { recursive: true });
-    copyFileSync(src, dst);
-  }
+  return null;
 }
 
-/** 比较基线快照与当前候选文件差异 */
-export function diffSnapshotFiles(
-  baselineDir: string,
-  candidateDir: string,
-): string[] {
-  const baseManifest = JSON.parse(
-    readFileSync(join(baselineDir, '.snapshot-manifest.json'), 'utf8'),
-  ) as { files: string[] };
-  const candManifest = JSON.parse(
-    readFileSync(join(candidateDir, '.snapshot-manifest.json'), 'utf8'),
-  ) as { files: string[] };
-  const all = new Set([...baseManifest.files, ...candManifest.files]);
-  const changed: string[] = [];
-
-  for (const rel of [...all].sort()) {
-    const basePath = join(baselineDir, rel);
-    const candPath = join(candidateDir, rel);
-    if (!existsSync(basePath) || !existsSync(candPath)) {
-      changed.push(rel);
-      continue;
-    }
-    if (sha256File(basePath) !== sha256File(candPath)) {
-      changed.push(rel);
-    }
-  }
-  return changed;
-}
-
-/** 校验 bench/ 不可篡改 + 跨包越界修改防护 (传 allowCrossPkg 时跳过跨包检查) */
+/** 校验 bench/ 不可篡改 + 单包/双包产品对作用域越界修改防护 */
 export function checkPolicyViolations(options: {
   repoRoot: string;
   pkgDir: string;
   baselineBenchHashes: Record<string, string>;
   baselineOutsideDigest: string;
   allowCrossPkg: boolean;
+  companionPackages?: ReadonlyArray<{
+    pkgDir: string;
+    baselineBenchHashes: Record<string, string>;
+  }>;
+  baselineOutsidePairDigest?: string;
 }): string | null {
-  const currBench = computeBenchDirHashes(options.repoRoot, options.pkgDir);
-  const keys = new Set([
-    ...Object.keys(options.baselineBenchHashes),
-    ...Object.keys(currBench),
-  ]);
-  for (const k of keys) {
-    if (options.baselineBenchHashes[k] !== currBench[k]) {
-      return `优化回合禁止修改基准文件: ${options.pkgDir}/bench/${k}`;
-    }
+  const primaryBenchViolation = findTamperedBenchFile(
+    options.repoRoot,
+    options.pkgDir,
+    options.baselineBenchHashes,
+  );
+  if (primaryBenchViolation !== null) return primaryBenchViolation;
+
+  const companions = options.companionPackages ?? [];
+  for (const comp of companions) {
+    const compBenchViolation = findTamperedBenchFile(
+      options.repoRoot,
+      comp.pkgDir,
+      comp.baselineBenchHashes,
+    );
+    if (compBenchViolation !== null) return compBenchViolation;
   }
+
   if (!options.allowCrossPkg) {
     const currOutside = computeOutsideScopeDigest(
       options.repoRoot,
@@ -347,6 +288,21 @@ export function checkPolicyViolations(options: {
     );
     if (currOutside !== options.baselineOutsideDigest) {
       return `检测到目标包 (${options.pkgDir}) 之外的文件被未授权改动, 如确需双包协同请显式传入 --allow-cross-pkg`;
+    }
+    return null;
+  }
+
+  if (options.baselineOutsidePairDigest !== undefined) {
+    const allowedDirs = [options.pkgDir, ...companions.map((c) => c.pkgDir)];
+    const currPairOutside = computeOutsideScopeDigest(
+      options.repoRoot,
+      allowedDirs,
+    );
+    if (currPairOutside !== options.baselineOutsidePairDigest) {
+      if (companions.length === 0) {
+        return `目标包 (${options.pkgDir}) 无同产品配对包, 禁止通过 --allow-cross-pkg 修改外部文件`;
+      }
+      return `检测到双包协同作用域 (${allowedDirs.join(', ')}) 之外的文件被未授权改动`;
     }
   }
   return null;
@@ -365,7 +321,6 @@ export function collectDocHints(
   }
   const nextGlobalAdrNumber = String(maxNum + 1).padStart(4, '0');
 
-  // 若目标为 CLI 薄壳包, 解析所属主包承载完整设计文档
   let docOwnerDir = pkgDir;
   try {
     const pairs = resolveProductPairs(repoRoot);
@@ -399,14 +354,70 @@ export function collectDocHints(
   };
 }
 
-/** 跑静态类型检查、oxlint 与目标包测试 (隔离 HOME, 与 CI 一致) */
+/** 预建隔离家目录内的标准配置子目录 (对齐 scripts/ci.ts, Windows 上 SHGetKnownFolderPath 校验 AppData\Roaming 存在) */
+export function prepareIsolatedHome(home: string): void {
+  for (const sub of [
+    '.config/turborepo',
+    '.config/vercel',
+    'AppData/Roaming',
+    'AppData/Local',
+  ]) {
+    mkdirSync(join(home, ...sub.split('/')), { recursive: true });
+  }
+}
+
+/** 构造隔离 HOME / XDG / AppData / Turbo / Vercel 环境变量映射 (对齐 scripts/ci.ts) */
+export function buildIsolatedHomeEnv(
+  home: string,
+  baseEnv: NodeJS.ProcessEnv = process.env,
+): NodeJS.ProcessEnv {
+  const configDir = join(home, '.config');
+  return {
+    ...baseEnv,
+    HOME: home,
+    USERPROFILE: home,
+    XDG_CONFIG_HOME: configDir,
+    APPDATA: join(home, 'AppData', 'Roaming'),
+    LOCALAPPDATA: join(home, 'AppData', 'Local'),
+    TURBO_CONFIG_DIR_PATH: join(configDir, 'turborepo'),
+    VERCEL_CONFIG_DIR_PATH: join(configDir, 'vercel'),
+  };
+}
+
+/** 判断目标包是否声明了 scripts.build 且已存在 dist/ 目录 (避免包内测试读取陈旧构建产物) */
+export function shouldRebuildPackageDist(
+  repoRoot: string,
+  pkgDir: string,
+): boolean {
+  const pkgAbs = join(repoRoot, pkgDir);
+  if (!existsSync(join(pkgAbs, 'dist'))) return false;
+  const manifestPath = join(pkgAbs, 'package.json');
+  if (!existsSync(manifestPath)) return false;
+  try {
+    const { scripts } = JSON.parse(readFileSync(manifestPath, 'utf8')) as {
+      scripts?: Record<string, unknown>;
+    };
+    return typeof scripts?.build === 'string' && scripts.build.trim() !== '';
+  } catch {
+    return false;
+  }
+}
+
+function formatCmdOutput(res: {
+  stdout: string | null;
+  stderr: string | null;
+}): string {
+  return `${res.stdout ?? ''}\n${res.stderr ?? ''}`.trim();
+}
+
+/** 跑静态类型检查、oxlint、(必要时) 包级 build 与目标包测试 (隔离 HOME, 与 CI 一致) */
 export function runPackageValidationGates(
   repoRoot: string,
   pkgDir: string,
   changedRelFiles: readonly string[],
+  options?: { skipBuild?: boolean },
 ): { ok: boolean; stage: string; output: string } {
   const pkgAbs = join(repoRoot, pkgDir);
-
   const typeRes = spawnSync('bun', ['check'], {
     cwd: pkgAbs,
     encoding: 'utf8',
@@ -415,54 +426,64 @@ export function runPackageValidationGates(
     return {
       ok: false,
       stage: 'typecheck',
-      output: `${typeRes.stdout ?? ''}\n${typeRes.stderr ?? ''}`.trim(),
+      output: formatCmdOutput(typeRes),
     };
   }
 
-  if (changedRelFiles.length > 0) {
-    const absChanged = changedRelFiles
-      .map((rel) => join(pkgAbs, rel))
-      .filter((abs) => existsSync(abs));
-    if (absChanged.length > 0) {
-      const lintRes = spawnSync(
-        'bun',
-        [
-          'x',
-          '--no-install',
-          'oxlint',
-          '--no-error-on-unmatched-pattern',
-          ...absChanged,
-        ],
-        { cwd: repoRoot, encoding: 'utf8' },
-      );
-      if (lintRes.status !== 0) {
-        return {
-          ok: false,
-          stage: 'oxlint',
-          output: `${lintRes.stdout ?? ''}\n${lintRes.stderr ?? ''}`.trim(),
-        };
-      }
+  const absChanged = changedRelFiles
+    .map((rel) => join(pkgAbs, rel))
+    .filter((abs) => existsSync(abs));
+  if (absChanged.length > 0) {
+    const lintRes = spawnSync(
+      'bun',
+      [
+        'x',
+        '--no-install',
+        'oxlint',
+        '--no-error-on-unmatched-pattern',
+        ...absChanged,
+      ],
+      { cwd: repoRoot, encoding: 'utf8' },
+    );
+    if (lintRes.status !== 0) {
+      return { ok: false, stage: 'oxlint', output: formatCmdOutput(lintRes) };
     }
   }
 
   const isolatedHome = makeTmpRoot('perf-loop-home-');
   try {
+    prepareIsolatedHome(isolatedHome);
+    const isolatedEnv = buildIsolatedHomeEnv(isolatedHome);
+    if (
+      options?.skipBuild !== true &&
+      shouldRebuildPackageDist(repoRoot, pkgDir)
+    ) {
+      const buildRes = spawnSync('bun', ['run', 'build'], {
+        cwd: pkgAbs,
+        encoding: 'utf8',
+        env: isolatedEnv,
+        timeout: 60000,
+      });
+      if (buildRes.status !== 0) {
+        return { ok: false, stage: 'build', output: formatCmdOutput(buildRes) };
+      }
+    }
     const testRes = spawnSync('bun', ['test'], {
       cwd: pkgAbs,
       encoding: 'utf8',
-      env: { ...process.env, HOME: isolatedHome, USERPROFILE: isolatedHome },
+      env: isolatedEnv,
     });
     if (testRes.status !== 0) {
-      return {
-        ok: false,
-        stage: 'test',
-        output: `${testRes.stdout ?? ''}\n${testRes.stderr ?? ''}`.trim(),
-      };
+      return { ok: false, stage: 'test', output: formatCmdOutput(testRes) };
     }
   } finally {
-    rmSync(isolatedHome, { recursive: true, force: true });
+    rmSync(isolatedHome, {
+      recursive: true,
+      force: true,
+      maxRetries: 5,
+      retryDelay: 100,
+    });
   }
-
   return { ok: true, stage: 'all', output: '' };
 }
 

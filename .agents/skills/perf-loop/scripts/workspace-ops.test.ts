@@ -6,28 +6,30 @@ import {
   mkdirSync,
   readFileSync,
   rmSync,
+  symlinkSync,
   writeFileSync,
 } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 
+import { makeTmpRoot } from '../../../../scripts/lib/tmp-root.ts';
 import { initBenchForPackage } from './init-bench.ts';
 import {
+  buildIsolatedHomeEnv,
   buildPackageSourceMap,
   checkPolicyViolations,
   computeBenchDirHashes,
   computeOutsideScopeDigest,
   diffSnapshotFiles,
   discoverTargetPackages,
+  prepareIsolatedHome,
   restorePackageSnapshot,
+  runPackageValidationGates,
   savePackageSnapshot,
+  shouldRebuildPackageDist,
 } from './workspace-ops.ts';
 
 function makeTempRepo(): string {
-  const root = join(
-    tmpdir(),
-    `perf-loop-test-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-  );
+  const root = makeTmpRoot('perf-loop-test-');
   mkdirSync(join(root, 'packages', 'demo', 'src'), { recursive: true });
   mkdirSync(join(root, 'packages', 'other', 'src'), { recursive: true });
   writeFileSync(
@@ -166,6 +168,83 @@ describe('workspace-ops 快照隔离、stub 拦截与源码地图', () => {
           allowCrossPkg: false,
         }),
       ).not.toBeNull();
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test('prepareIsolatedHome / buildIsolatedHomeEnv 对齐 CI 隔离目录, 且单包已存在 dist/ 时验证前自动重跑 build', () => {
+    const root = makeTempRepo();
+    const fakeHome = join(root, '.isolated-home');
+    try {
+      prepareIsolatedHome(fakeHome);
+      expect(existsSync(join(fakeHome, '.config', 'turborepo'))).toBe(true);
+      expect(existsSync(join(fakeHome, '.config', 'vercel'))).toBe(true);
+      expect(existsSync(join(fakeHome, 'AppData', 'Roaming'))).toBe(true);
+      expect(existsSync(join(fakeHome, 'AppData', 'Local'))).toBe(true);
+
+      const env = buildIsolatedHomeEnv(fakeHome, {});
+      expect(env.HOME).toBe(fakeHome);
+      expect(env.USERPROFILE).toBe(fakeHome);
+      expect(env.XDG_CONFIG_HOME).toBe(join(fakeHome, '.config'));
+      expect(env.APPDATA).toBe(join(fakeHome, 'AppData', 'Roaming'));
+      expect(env.LOCALAPPDATA).toBe(join(fakeHome, 'AppData', 'Local'));
+      expect(env.TURBO_CONFIG_DIR_PATH).toBe(
+        join(fakeHome, '.config', 'turborepo'),
+      );
+      expect(env.VERCEL_CONFIG_DIR_PATH).toBe(
+        join(fakeHome, '.config', 'vercel'),
+      );
+
+      const hostRepo = resolve(import.meta.dir, '..', '..', '..', '..');
+      symlinkSync(join(hostRepo, 'node_modules'), join(root, 'node_modules'));
+      const demoDir = join(root, 'packages', 'demo');
+      writeFileSync(
+        join(demoDir, 'package.json'),
+        JSON.stringify({
+          name: '@test/demo',
+          type: 'module',
+          scripts: {
+            build:
+              'bun build src/index.ts --target=node --outfile=dist/index.js',
+            check: 'bun --version',
+            test: 'bun test',
+          },
+        }),
+      );
+      writeFileSync(
+        join(demoDir, 'src', 'index.ts'),
+        'export function runFast(n: number): number { return n * 10; }\n',
+      );
+      writeFileSync(
+        join(demoDir, 'src', 'smoke.test.ts'),
+        `import { expect, test } from 'bun:test';
+import { runFast } from '../dist/index.js';
+import { existsSync } from 'node:fs';
+import { join } from 'node:path';
+test('fresh dist + isolated home', () => {
+  expect(runFast(3)).toBe(30);
+  expect(existsSync(join(process.env.APPDATA!, '..'))).toBe(true);
+  expect(process.env.TURBO_CONFIG_DIR_PATH).toContain('turborepo');
+});
+`,
+      );
+
+      // 未建 dist/ 前 shouldRebuildPackageDist 为 false
+      expect(shouldRebuildPackageDist(root, 'packages/demo')).toBe(false);
+
+      // 预置陈旧 dist/ 产物 (返回旧值 n * 1), 验证 runPackageValidationGates 会先 build 刷新 dist/
+      mkdirSync(join(demoDir, 'dist'), { recursive: true });
+      writeFileSync(
+        join(demoDir, 'dist', 'index.js'),
+        'export function runFast(n) { return n; }\n',
+      );
+      expect(shouldRebuildPackageDist(root, 'packages/demo')).toBe(true);
+
+      const gateRes = runPackageValidationGates(root, 'packages/demo', [
+        'src/index.ts',
+      ]);
+      expect(gateRes.ok, gateRes.output).toBe(true);
     } finally {
       rmSync(root, { recursive: true, force: true });
     }

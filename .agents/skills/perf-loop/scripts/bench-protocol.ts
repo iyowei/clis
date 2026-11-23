@@ -6,6 +6,10 @@ import { existsSync, mkdirSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 
 import {
+  type CompanionPackageState,
+  restoreScopedVariant,
+} from './companion-scope.ts';
+import {
   parseNodeCpuProfileDir,
   parseProfileMarkdowns,
 } from './profile-parse.ts';
@@ -16,7 +20,6 @@ import {
   type ProfileDigest,
   type RuntimeKind,
 } from './types.ts';
-import { restorePackageSnapshot } from './workspace-ops.ts';
 
 /** 校验并解析包 bench --json 的标准输出 (取末行有效 JSON) */
 export function parseBenchJsonOutput(
@@ -205,11 +208,21 @@ function sampleVariant(options: {
   repoRoot: string;
   pkgDir: string;
   snapshotDir: string;
+  variant: 'baseline' | 'candidate';
+  companionPackages?: readonly CompanionPackageState[];
+  rebuildOnSwitch?: boolean;
   suite: BenchSuiteKind;
   includeNode: boolean;
   caseFilter?: string;
 }): { bunReport: BenchJsonReport; nodeReport: BenchJsonReport | null } {
-  restorePackageSnapshot(options.repoRoot, options.pkgDir, options.snapshotDir);
+  restoreScopedVariant({
+    repoRoot: options.repoRoot,
+    pkgDir: options.pkgDir,
+    primarySnapshotDir: options.snapshotDir,
+    companions: options.companionPackages,
+    variant: options.variant,
+    rebuildIfNeeded: options.rebuildOnSwitch,
+  });
   const bunReport = runBenchOnce({
     repoRoot: options.repoRoot,
     pkgDir: options.pkgDir,
@@ -235,6 +248,8 @@ function runAbCycle(
     pkgDir: string;
     baselineSnapshotDir: string;
     candidateSnapshotDir: string;
+    companionPackages?: readonly CompanionPackageState[];
+    rebuildOnSwitch?: boolean;
     suite: BenchSuiteKind;
     includeNode: boolean;
     caseFilter?: string;
@@ -256,6 +271,9 @@ function runAbCycle(
       repoRoot: options.repoRoot,
       pkgDir: options.pkgDir,
       snapshotDir,
+      variant,
+      companionPackages: options.companionPackages,
+      rebuildOnSwitch: options.rebuildOnSwitch,
       suite: options.suite,
       includeNode: options.includeNode,
       caseFilter: options.caseFilter,
@@ -275,6 +293,8 @@ export function runInterleavedAb(options: {
   pkgDir: string;
   baselineSnapshotDir: string;
   candidateSnapshotDir: string;
+  companionPackages?: readonly CompanionPackageState[];
+  rebuildOnSwitch?: boolean;
   cycles: number;
   suite: BenchSuiteKind;
   includeNode: boolean;
@@ -288,20 +308,27 @@ export function runInterleavedAb(options: {
   };
 
   const restoreCandidate = (): void => {
-    restorePackageSnapshot(
-      options.repoRoot,
-      options.pkgDir,
-      options.candidateSnapshotDir,
-    );
+    restoreScopedVariant({
+      repoRoot: options.repoRoot,
+      pkgDir: options.pkgDir,
+      primarySnapshotDir: options.candidateSnapshotDir,
+      companions: options.companionPackages,
+      variant: 'candidate',
+      rebuildIfNeeded: options.rebuildOnSwitch,
+    });
   };
 
   const onSignal = (): void => {
     try {
-      restorePackageSnapshot(
-        options.repoRoot,
-        options.pkgDir,
-        options.baselineSnapshotDir,
-      );
+      restoreScopedVariant({
+        repoRoot: options.repoRoot,
+        pkgDir: options.pkgDir,
+        primarySnapshotDir: options.baselineSnapshotDir,
+        companions: options.companionPackages,
+        variant: 'baseline',
+        rebuildIfNeeded: options.rebuildOnSwitch,
+        ignoreRebuildFailure: true,
+      });
     } finally {
       process.exit(130);
     }
