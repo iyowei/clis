@@ -6,12 +6,15 @@ import { describe, expect, test } from 'bun:test';
 import { parseGlobalDirFromBunfig, stripTomlComment } from './config-parse.ts';
 import {
   DEFAULT_REGISTRY,
+  type ProbeGlobalRootsOptions,
+  type ResolveRegistryAuthInput,
+  type UpgradePlanExecutor,
   fetchLatestVersion,
   parseRegistryFromBunfig,
   parseRegistryFromNpmrc,
   resolveRegistry,
   resolveRegistryAuthToken,
-} from './registry.ts';
+} from './index.ts';
 
 describe('~/.npmrc 与 ~/.bunfig.toml 解析', () => {
   test('~/.npmrc 优先匹配 scoped registry, 否则取全局 registry', () => {
@@ -72,6 +75,44 @@ describe('~/.npmrc 与 ~/.bunfig.toml 解析', () => {
         readText,
       }),
     ).toBe('https://env.example.com');
+
+    // NPM_CONFIG_REGISTRY 为空串或纯空白时自动回退到小写 npm_config_registry
+    expect(
+      resolveRegistry({
+        packageName: 'create-clis',
+        pm: 'npm',
+        env: {
+          NPM_CONFIG_REGISTRY: '',
+          npm_config_registry: 'https://lower-env.example.com/',
+        },
+        homeDir: '/home/u',
+        readText,
+      }),
+    ).toBe('https://lower-env.example.com');
+    expect(
+      resolveRegistry({
+        packageName: 'create-clis',
+        pm: 'npm',
+        env: {
+          NPM_CONFIG_REGISTRY: '   ',
+          npm_config_registry: 'https://lower-trim.example.com/',
+        },
+        homeDir: '/home/u',
+        readText,
+      }),
+    ).toBe('https://lower-trim.example.com');
+
+    // 验证公开入口 index.ts 完整导出扩展类型与鉴权解析函数
+    const _typeCheck: [
+      ProbeGlobalRootsOptions,
+      UpgradePlanExecutor,
+      ResolveRegistryAuthInput,
+    ] = [
+      { homeDir: '/home/u' },
+      () => ({ status: 0 }),
+      { packageName: 'create-clis', registry: DEFAULT_REGISTRY },
+    ];
+    expect(_typeCheck.length).toBe(3);
 
     expect(
       resolveRegistry({

@@ -35,6 +35,7 @@ export {
   type BuildUpgradePlanInput,
   type CommandSpec,
   type PmInvocation,
+  type ProbeGlobalRootsOptions,
   type SpawnLike,
   type UpgradePlanOutcome,
   buildIsolatedEnv,
@@ -72,12 +73,14 @@ export {
   type FetchLike,
   type FetchVersionInput,
   type FetchVersionResult,
+  type ResolveRegistryAuthInput,
   type ResolveRegistryInput,
   fetchLatestVersion,
   normalizeRegistryUrl,
   parseRegistryFromBunfig,
   parseRegistryFromNpmrc,
   resolveRegistry,
+  resolveRegistryAuthToken,
 } from './registry.ts';
 export {
   type ParsedSemver,
@@ -92,6 +95,7 @@ export {
   type PackageMeta,
   type SelfUpdateRunOptions,
   type UpdateIO,
+  type UpgradePlanExecutor,
   readPackageMeta,
   runSelfUpdate,
 } from './update.ts';
