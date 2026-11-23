@@ -8,13 +8,16 @@
 
 本仓每个包都恰好属于下面三类之一 (全部由 `package.json` 确定性字段推导, 无人工维护分类表):
 
-| 类别           | 判定依据 (确定性字段)                                  | 发布              | 例子                                                                              |
-| -------------- | ------------------------------------------------------ | ----------------- | --------------------------------------------------------------------------------- |
-| **CLI 工具**   | `package.json` 有 `bin` 字段                           | 非 private 发 npm | `create-clis` / `@iyowei/codd-cli` / `@iyowei/sweep-cli` (待首发 `private: true`) |
-| **公开库**     | 没有 `bin`, 且非 `"private": true`                     | 发 npm            | `@iyowei/codd` / `@iyowei/sweep` (待首发 `private: true`)                         |
-| **仓内私有库** | 没有 `bin`, 且自身 `package.json` 标 `"private": true` | 不发 npm          | `@iyowei/cli-updater` (及未来待首发新包)                                          |
+| 类别           | 判定依据 (确定性字段)                                                                       | 发布              | 例子                                                                              |
+| -------------- | ------------------------------------------------------------------------------------------- | ----------------- | --------------------------------------------------------------------------------- |
+| **CLI 工具**   | `package.json` 有 `bin` 字段                                                                | 非 private 发 npm | `create-clis` / `@iyowei/codd-cli` / `@iyowei/sweep-cli` (待首发 `private: true`) |
+| **公开库**     | 没有 `bin`, 且非 `"private": true` (或暂标 `private: true` 且无 `"clisRole": "shared-lib"`) | 发 npm            | `@iyowei/codd` / `@iyowei/sweep` (待首发 `private: true`)                         |
+| **仓内私有库** | 没有 `bin`, 自身标 `"private": true` 且显式声明 `"clisRole": "shared-lib"`                  | 不发 npm          | `@iyowei/cli-updater`                                                             |
 
-> **待首发隔离边界**: 任何准备未来发往 npm 但尚未首发的包 (无论是带 `bin` 的 CLI 还是不带 `bin` 的 API 主包) 均通过 npm 原生字段 `"private": true` 隔离于 `multi-semantic-release` (`ignorePrivate` 默认开启) 与 `scripts/npm-trust-guard.ts` 之外; 首发时移除 `"private": true` 并按[开发指南](../development.md)「发布」章完成起步发布、Trusted Publisher 登记与自动链首发 (勿给起步版本补 tag)。
+> **待首发隔离与共享私库消歧边界**:
+>
+> 1. 任何准备未来发往 npm 但尚未首发的包 (无论是带 `bin` 的 CLI 还是不带 `bin` 的 API 主包) 均通过 npm 原生字段 `"private": true` 隔离于 `multi-semantic-release` (`ignorePrivate` 默认开启) 与 `scripts/npm-trust-guard.ts` 之外; 首发时移除 `"private": true` 并按[开发指南](../development.md)「发布」章完成起步发布、Trusted Publisher 登记与自动链首发 (勿给起步版本补 tag)。
+> 2. 永不对外发布的**仓内共享私有库**除 `"private": true` 外, 必须在自身 `package.json` 显式声明 `"clisRole": "shared-lib"`: `scripts/lib/workspace.ts` (`resolveProductPairs`)、`scripts/lint-dependency-direction.ts` 与 `scripts/transcription/api-harness.ts` 据此将其与「暂标 `private: true` 且被配对 CLI 依赖的待首发产品 API 主包」精确区分 (即使共享私库当前仅被 1 个 CLI 引用亦不会误判为产品主包)。
 
 ## 默认双包工具范式 (ADR 0010 / ADR 0019)
 
