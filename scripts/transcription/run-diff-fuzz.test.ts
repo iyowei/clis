@@ -4,8 +4,10 @@
  */
 import { afterEach, describe, expect, test } from 'bun:test';
 
+import { spawnSync } from 'node:child_process';
 import { existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 import { makeTmpRoot } from '../lib/tmp-root.ts';
 import {
@@ -16,7 +18,12 @@ import {
   createPrng,
   generateFuzzArgs,
 } from './fuzz-generators.ts';
-import { parseFuzzArgs, runDiffFuzzCli } from './run-diff-fuzz.ts';
+import { parseArgs as parseConformanceArgs } from './run-conformance.ts';
+import {
+  parseFuzzArgs,
+  resolveProductHarnessArgv,
+  runDiffFuzzCli,
+} from './run-diff-fuzz.ts';
 
 const createdRoots: string[] = [];
 afterEach(() => {
@@ -111,6 +118,82 @@ describe('fuzz-generators 纯函数能力', () => {
       expect(neg.options.seed).toBe(-42);
       expect(neg.options.allProducts).toBe(true);
     }
+  });
+
+  test('运行器参数互斥校验: 拒绝 --all-products 与显式单产品参数混用, 保留 fuzz:diff 合法组合', () => {
+    // 1. run-diff-fuzz: 拦截 --all-products + --targets, 放行 --all-products + --api-target
+    const badFuzz = parseFuzzArgs(['--all-products', '--targets', 'x.json']);
+    expect(badFuzz.ok).toBe(false);
+    expect(runDiffFuzzCli(['--all-products', '--targets', 'x.json'])).toBe(2);
+
+    const validDiff = parseFuzzArgs([
+      '--all-products',
+      '--api-target',
+      'node scripts/transcription/api-harness.ts',
+    ]);
+    expect(validDiff.ok).toBe(true);
+
+    // 2. run-conformance: 拦截 --all-products 与 --target / --api-target / --corpus 混用并退 2
+    expect(
+      parseConformanceArgs(['--all-products', '--target', 'bun x.ts']).ok,
+    ).toBe(false);
+    expect(
+      parseConformanceArgs(['--all-products', '--api-target', 'bun h.ts']).ok,
+    ).toBe(false);
+    expect(
+      parseConformanceArgs(['--all-products', '--corpus', 'some/dir']).ok,
+    ).toBe(false);
+
+    const conformanceEntry = join(
+      dirname(fileURLToPath(import.meta.url)),
+      'run-conformance.ts',
+    );
+    const proc = spawnSync(
+      'bun',
+      [conformanceEntry, '--all-products', '--target', 'bun x.ts'],
+      { encoding: 'utf8' },
+    );
+    expect(proc.status).toBe(2);
+  });
+
+  test('resolveProductHarnessArgv 对仓内 api-harness.ts 自动补 --product 且不污染外部或显式 argv', () => {
+    const fakeHarness = '/repo/scripts/transcription/api-harness.ts';
+    expect(
+      resolveProductHarnessArgv(
+        ['node', fakeHarness],
+        'packages/demo-api',
+        fakeHarness,
+      ),
+    ).toEqual(['node', fakeHarness, '--product', 'packages/demo-api']);
+    expect(
+      resolveProductHarnessArgv(
+        ['node', 'scripts/transcription/api-harness.ts'],
+        'packages/demo-api',
+        fakeHarness,
+      ),
+    ).toEqual([
+      'node',
+      'scripts/transcription/api-harness.ts',
+      '--product',
+      'packages/demo-api',
+    ]);
+    expect(
+      resolveProductHarnessArgv(
+        ['node', fakeHarness, '--product', 'packages/custom'],
+        'packages/demo-api',
+        fakeHarness,
+      ),
+    ).toEqual(['node', fakeHarness, '--product', 'packages/custom']);
+    expect(
+      resolveProductHarnessArgv(
+        ['/tmp/rust-api-harness'],
+        'packages/demo-api',
+        fakeHarness,
+      ),
+    ).toEqual(['/tmp/rust-api-harness']);
+    expect(resolveProductHarnessArgv(undefined, 'packages/demo-api')).toBe(
+      undefined,
+    );
   });
 
   test('canonicalJson 与 comparableOutcome 忽略对象键序差异', () => {

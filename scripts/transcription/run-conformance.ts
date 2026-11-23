@@ -104,10 +104,11 @@ const HELP_TEXT = [
   '退出码: 0 全部通过; 1 存在失败用例; 2 用法 / 语料 / 环境错误',
 ].join('\n');
 
-function parseArgs(argv: string[]): ParseOutcome {
+export function parseArgs(argv: string[]): ParseOutcome {
   let target: string | undefined;
   let apiTarget: string | undefined;
   let corpusDir = DEFAULT_CORPUS_DIR;
+  let explicitCorpus = false;
   let allProducts = false;
   let runtime: 'bun' | 'node' = 'bun';
   let filter: string | undefined;
@@ -156,8 +157,10 @@ function parseArgs(argv: string[]): ParseOutcome {
       }
       if (arg === '--target') target = value;
       else if (arg === '--api-target') apiTarget = value;
-      else if (arg === '--corpus') corpusDir = value;
-      else if (arg === '--filter') filter = value;
+      else if (arg === '--corpus') {
+        corpusDir = value;
+        explicitCorpus = true;
+      } else if (arg === '--filter') filter = value;
       else if (arg === '--exclude-tag') excludeTags.push(value);
       else if (arg === '--emit-failures') emitFailuresDir = value;
       else if (arg === '--runtime') {
@@ -201,6 +204,16 @@ function parseArgs(argv: string[]): ParseOutcome {
         keep,
         help: true,
       },
+    };
+  }
+  if (
+    allProducts &&
+    (target !== undefined || apiTarget !== undefined || explicitCorpus)
+  ) {
+    return {
+      ok: false,
+      message:
+        '--all-products 与 --target / --api-target / --corpus 互斥, 不能同时指定',
     };
   }
   if (!allProducts && (target === undefined || target.trim() === '')) {
@@ -433,11 +446,16 @@ async function main(): Promise<number> {
   return worstCode;
 }
 
-try {
-  process.exitCode = await main();
-} catch (error) {
-  process.stderr.write(
-    `验收器未预期错误: ${error instanceof Error ? (error.stack ?? error.message) : String(error)}\n`,
-  );
-  process.exitCode = 2;
+if (
+  process.argv[1] !== undefined &&
+  resolve(process.argv[1]) === fileURLToPath(import.meta.url)
+) {
+  try {
+    process.exitCode = await main();
+  } catch (error) {
+    process.stderr.write(
+      `验收器未预期错误: ${error instanceof Error ? (error.stack ?? error.message) : String(error)}\n`,
+    );
+    process.exitCode = 2;
+  }
 }

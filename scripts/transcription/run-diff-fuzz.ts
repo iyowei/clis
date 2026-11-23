@@ -348,6 +348,34 @@ function runFuzzConfigFile(
   return summaries.some((s) => s.failed > 0) ? 1 : 0;
 }
 
+/**
+ * 多产品模式下, 若 argv 调用的是仓内 `api-harness.ts` 且未显式声明 `--product`,
+ * 自动追加 `['--product', productDir]`, 使 `--all-products` 与 `--api-target` / `--reference-target` 自洽;
+ * 外部自定义 harness 或已带 `--product` 的 argv 原样保留。
+ */
+export function resolveProductHarnessArgv(
+  argv: readonly string[] | undefined,
+  productDir: string,
+  harnessPath: string = API_HARNESS_PATH,
+): readonly string[] | undefined {
+  if (argv === undefined) return undefined;
+  const hasExplicitProduct = argv.some(
+    (token) => token === '--product' || token.startsWith('--product='),
+  );
+  if (hasExplicitProduct) return argv;
+  const resolvedHarness = resolve(harnessPath);
+  const invokesBuiltinHarness = argv.some((token, index) => {
+    if (index === 0 || token.startsWith('-')) return false;
+    const normalized = token.replaceAll('\\', '/');
+    return (
+      resolve(token) === resolvedHarness ||
+      normalized === 'scripts/transcription/api-harness.ts' ||
+      normalized.endsWith('/scripts/transcription/api-harness.ts')
+    );
+  });
+  return invokesBuiltinHarness ? [...argv, '--product', productDir] : argv;
+}
+
 export function runDiffFuzzCli(argv: string[]): number {
   const parsed = parseFuzzArgs(argv);
   if (!parsed.ok) {
@@ -384,16 +412,18 @@ export function runDiffFuzzCli(argv: string[]): number {
     }
     let worst = 0;
     for (const product of products) {
-      const refArgv = refOverride ?? [
-        'bun',
-        API_HARNESS_PATH,
-        '--product',
+      const refArgv = resolveProductHarnessArgv(
+        refOverride,
         product.api.dir,
-      ];
+      ) ?? ['bun', API_HARNESS_PATH, '--product', product.api.dir];
+      const productApiArgv = resolveProductHarnessArgv(
+        apiArgv,
+        product.api.dir,
+      );
       const code = runFuzzConfigFile(
         join(REPO_ROOT, product.fuzzTargetsRel),
         refArgv,
-        apiArgv,
+        productApiArgv,
         options,
         options.emitFailuresDir !== undefined
           ? join(options.emitFailuresDir, product.id)

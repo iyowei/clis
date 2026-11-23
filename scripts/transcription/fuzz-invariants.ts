@@ -168,6 +168,7 @@ export function parseFuzzArgsWithDefaults(
     json: false,
     help: false,
   };
+  let explicitTargets = false;
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i]!;
     if (arg === '--help' || arg === '-h') {
@@ -191,8 +192,10 @@ export function parseFuzzArgsWithDefaults(
       return { ok: false, message: `参数 ${arg} 缺少取值` };
     }
     i += 1;
-    if (arg === '--targets') options.targetsPath = value;
-    else if (arg === '--reference-target') options.referenceTarget = value;
+    if (arg === '--targets') {
+      options.targetsPath = value;
+      explicitTargets = true;
+    } else if (arg === '--reference-target') options.referenceTarget = value;
     else if (arg === '--api-target') options.apiTarget = value;
     else if (arg === '--emit-failures') options.emitFailuresDir = value;
     else if (arg === '--mode') {
@@ -209,6 +212,12 @@ export function parseFuzzArgsWithDefaults(
       else if (arg === '--cases') options.casesPerTarget = n;
       else options.timeoutMs = n;
     }
+  }
+  if (!options.help && options.allProducts && explicitTargets) {
+    return {
+      ok: false,
+      message: '--all-products 与 --targets 互斥, 不能同时指定',
+    };
   }
   return { ok: true, options };
 }
