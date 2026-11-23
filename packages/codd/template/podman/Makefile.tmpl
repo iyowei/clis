@@ -42,9 +42,14 @@ check-env:
 	@printf '%s' "$(STACK_PREFIX)" | grep -Eq '^[a-z0-9-]+$$' || { echo "错误: STACK_PREFIX 只允许小写字母, 数字和连字符, 当前为 '$(STACK_PREFIX)'"; exit 1; }
 	@printf '%s' "$(FINGERPRINT)" | grep -Eq '^[a-z0-9-]+$$' || { echo "错误: FINGERPRINT 只允许小写字母, 数字和连字符, 当前为 '$(FINGERPRINT)'"; exit 1; }
 	@[ -n "$(MONGO_IMAGE_TAG)" ] || { echo "错误: 请在 $(ENV) 设置 MONGO_IMAGE_TAG"; exit 1; }
-	@case "$(BACKUP_DIR)" in /path/to/*|'') echo "错误: 请设置 BACKUP_DIR 为真实绝对路径"; exit 1 ;; /*) ;; *) echo "错误: BACKUP_DIR 必须是绝对路径, 当前为 '$(BACKUP_DIR)'"; exit 1 ;; esac
+	@bdir="$$(printf '%s' "$(BACKUP_DIR)" | sed 's:/*$$::')"; \
+	case "$$bdir" in \
+		''|/path/to|/path/to/*) echo "错误: 请设置 BACKUP_DIR 为非根真实绝对路径, 当前为 '$(BACKUP_DIR)'"; exit 1 ;; \
+		/proc|/proc/*|/sys|/sys/*|/dev|/dev/*|/boot|/boot/*|/etc|/etc/*|/private/etc|/private/etc/*|/bin|/bin/*|/sbin|/sbin/*|/lib|/lib/*|/lib64|/lib64/*|/usr/bin|/usr/bin/*|/usr/sbin|/usr/sbin/*|/usr/lib|/usr/lib/*|/usr/lib64|/usr/lib64/*|/System|/System/*|/Applications|/Applications/*) echo "错误: BACKUP_DIR 不能位于受保护的系统目录内, 当前为 '$(BACKUP_DIR)'"; exit 1 ;; \
+		/*) ;; \
+		*) echo "错误: BACKUP_DIR 必须是绝对路径, 当前为 '$(BACKUP_DIR)'"; exit 1 ;; \
+	esac
 	@if [ "$$(uname -s)" = "Darwin" ]; then \
-		case "$(BACKUP_DIR)" in /Users/*|/private/*|/var/folders/*) ;; *) echo "错误: macOS 下 BACKUP_DIR 必须位于 /Users/ 或 /private/ 下以便 Podman VM 挂载, 当前为 '$(BACKUP_DIR)'"; exit 1 ;; esac; \
 		for pl in com.codd.mongo-backup-*.plist; do \
 			[ -f "$$pl" ] || continue; \
 			log_file="$$(awk '/<key>StandardOutPath<\/key>/{getline; sub(/^.*<string>/, ""); sub(/<\/string>.*$$/, ""); print; exit}' "$$pl")"; \

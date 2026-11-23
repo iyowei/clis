@@ -67,13 +67,10 @@ describe('template/podman/lib.ts 纯函数单测', () => {
     try {
       expect(intEnv('KEEP_WEEKLY', 4, 0)).toBe(0);
       expect(() => intEnv('KEEP_DAILY', 7)).toThrow(FatalError);
-
-      process.env.KEEP_WEEKLY = '-1';
-      expect(() => intEnv('KEEP_WEEKLY', 4, 0)).toThrow(FatalError);
-
-      process.env.KEEP_WEEKLY = 'abc';
-      expect(() => intEnv('KEEP_WEEKLY', 4, 0)).toThrow(FatalError);
-
+      for (const bad of ['-1', 'abc']) {
+        process.env.KEEP_WEEKLY = bad;
+        expect(() => intEnv('KEEP_WEEKLY', 4, 0)).toThrow(FatalError);
+      }
       delete process.env.KEEP_WEEKLY;
       expect(intEnv('KEEP_WEEKLY', 4, 0)).toBe(4);
     } finally {
@@ -85,7 +82,6 @@ describe('template/podman/lib.ts 纯函数单测', () => {
     expect(validateAlnumSecret('abc123', 'PWD')).toBe('abc123');
     expect(() => validateAlnumSecret('CHANGE_ME', 'PWD')).toThrow(FatalError);
     expect(() => validateAlnumSecret('bad@1', 'PWD')).toThrow(FatalError);
-
     expect(validateDbName('shop_v2', 'DB')).toBe('shop_v2');
     expect(() => validateDbName('admin', 'DB')).toThrow(FatalError);
 
@@ -96,16 +92,15 @@ describe('template/podman/lib.ts 纯函数单测', () => {
       { db: 'logs', user: 'logsu', password: 'pwd456' },
     ]);
     expect(() => parseExtraApps('app:u:p', 'app')).toThrow(FatalError);
-
     expect(parseBackupDb('mongo-orders-20261119_033000.archive.gz')).toBe(
       'orders',
     );
     expect(parseBackupDb('random.tar.gz')).toBeNull();
-
     expect(parseRsMembersList('node1:27117,node2:27117')).toEqual([
       'node1:27117',
       'node2:27117',
     ]);
+
     const restoreRs = applyTempEnv({
       RS_MEMBERS: 'n1:27117,n2:27117,n3:27117',
       RS_NAME: 'rs0',
@@ -114,9 +109,13 @@ describe('template/podman/lib.ts 纯函数单测', () => {
       expect(buildMongoUri('bak', 'sec', 'secondaryPreferred')).toBe(
         'mongodb://bak:sec@n1:27117,n2:27117,n3:27117/?authSource=admin&replicaSet=rs0&readPreference=secondaryPreferred',
       );
+      expect(toolConfigYaml('root', 'RootPass123')).toBe(
+        'uri: mongodb://root:RootPass123@n1:27117,n2:27117,n3:27117/?authSource=admin&replicaSet=rs0\n',
+      );
     } finally {
       restoreRs();
     }
+
     const restoreSingle = applyTempEnv({
       RS_MEMBERS: '',
       MONGO_HOST: 'mongo',
@@ -134,18 +133,6 @@ describe('template/podman/lib.ts 纯函数单测', () => {
       );
     } finally {
       restoreSingle();
-    }
-
-    const restoreRsYaml = applyTempEnv({
-      RS_MEMBERS: 'node1:27117,node2:27117,node3:27117',
-      RS_NAME: 'rs0',
-    });
-    try {
-      expect(toolConfigYaml('root', 'RootPass123')).toBe(
-        'uri: mongodb://root:RootPass123@node1:27117,node2:27117,node3:27117/?authSource=admin&replicaSet=rs0\n',
-      );
-    } finally {
-      restoreRsYaml();
     }
   });
 
@@ -262,15 +249,112 @@ describe('Schema 与模板源码结构守卫', () => {
       join(tplRoot, 'podman/tune-linux-host.sh'),
       'utf8',
     );
-    expect(tuneSh).toContain(
-      '[ -f /sys/kernel/mm/transparent_hugepage/enabled ]',
+    for (const p of ['enabled', 'defrag', 'khugepaged/max_ptes_none']) {
+      expect(tuneSh).toContain(
+        `[ -f /sys/kernel/mm/transparent_hugepage/${p} ]`,
+      );
+    }
+  });
+
+  test('init-configmap.yaml 与 podman/init.js 报错不打印密码且拦截弱占位符与超长库名', () => {
+    const initCm = readFileSync(
+      join(SOURCE_TEMPLATE_ROOT, 'helm/templates/init-configmap.yaml'),
+      'utf8',
     );
-    expect(tuneSh).toContain(
-      '[ -f /sys/kernel/mm/transparent_hugepage/defrag ]',
+    const k8sSrc =
+      /const RESERVED =[\s\S]*?function parseAndValidateInitConfig\(envObj\) \{[\s\S]*?\n {4}\}/.exec(
+        initCm,
+      )?.[0] ?? '';
+    const podmanInit = readFileSync(
+      join(SOURCE_TEMPLATE_ROOT, 'podman/init.js'),
+      'utf8',
     );
-    expect(tuneSh).toContain(
-      '[ -f /sys/kernel/mm/transparent_hugepage/khugepaged/max_ptes_none ]',
+    const podmanSrc = podmanInit.slice(0, podmanInit.indexOf('if (rsRole ==='));
+    expect(k8sSrc.length > 0 && podmanSrc.length > 0).toBe(true);
+
+    type AppTuple = Array<{ db: string; user: string; pwd: string }>;
+    const evalInit = (
+      src: string,
+      envMap: Record<string, string>,
+    ): AppTuple => {
+      const logs: string[] = [];
+      const fn = new Function('process', 'print', 'quit', src);
+      return fn(
+        { env: envMap },
+        (m: string) => logs.push(m),
+        (c: number) => {
+          throw new Error(`QUIT_${c}:${logs.join('|')}`);
+        },
+      ) as AppTuple;
+    };
+    const runK8s = (e: Record<string, string>) =>
+      evalInit(
+        `${k8sSrc}\nreturn parseAndValidateInitConfig(process.env).apps;`,
+        e,
+      );
+    const runPodman = (e: Record<string, string>) =>
+      evalInit(`${podmanSrc}\nreturn appSpecs;`, e);
+
+    const db63a = 'a'.repeat(63);
+    const db63b = 'b'.repeat(63);
+    const validEnv: Record<string, string> = {
+      MONGO_INITDB_ROOT_USERNAME: 'root',
+      MONGO_INITDB_ROOT_PASSWORD: 'RootPassword123',
+      MONGO_APP_DATABASE: db63a,
+      MONGO_APP_USER: 'u1',
+      MONGO_APP_PASSWORD: 'AppPassword123',
+      MONGO_BACKUP_USER: 'backup',
+      MONGO_BACKUP_PASSWORD: 'BackupPassword123',
+      MONGO_EXTRA_APPS: `${db63b}:u2:ExtraPassword123`,
+    };
+    const expectedApps = [
+      { db: db63a, user: 'u1', pwd: 'AppPassword123' },
+      { db: db63b, user: 'u2', pwd: 'ExtraPassword123' },
+    ];
+    expect(runK8s(validEnv)).toEqual(expectedApps);
+    expect(runPodman(validEnv)).toEqual(expectedApps);
+
+    const canary = 'SuperSecretLeakCanary987654';
+    const changeMeKeys =
+      'MONGO_INITDB_ROOT_USERNAME MONGO_INITDB_ROOT_PASSWORD MONGO_APP_USER MONGO_APP_PASSWORD MONGO_BACKUP_USER MONGO_BACKUP_PASSWORD'.split(
+        ' ',
+      );
+    const badEnvPatches: Array<Record<string, string>> = [
+      ...['admin', 'local', 'config', 'a'.repeat(64)].map((d) => ({
+        MONGO_APP_DATABASE: d,
+      })),
+      ...changeMeKeys.map((k) => ({ [k]: 'CHANGE_ME' })),
+      { MONGO_BACKUP_PASSWORD: '' },
+      { MONGO_INITDB_ROOT_PASSWORD: `${canary}!` },
+      { MONGO_EXTRA_APPS: `${'b'.repeat(64)}:u2:${canary}` },
+      { MONGO_EXTRA_APPS: `orders:u2:${canary}:extraColon` },
+      { MONGO_EXTRA_APPS: `${canary}@bad:u2:${canary}` },
+      { MONGO_EXTRA_APPS: 'orders:CHANGE_ME:ValidPwd1' },
+      { MONGO_EXTRA_APPS: 'orders:u2:CHANGE_ME' },
+      { MONGO_EXTRA_APPS: `orders:u2:${canary}@bad` },
+      { MONGO_EXTRA_APPS: `${db63a}:u2:p2` },
+      { MONGO_EXTRA_APPS: 'orders:u2:p2,orders:u3:p3' },
+    ];
+    for (const patch of badEnvPatches) {
+      const merged = { ...validEnv, ...patch };
+      for (const runner of [runK8s, runPodman]) {
+        expect(() => runner(merged)).toThrow('QUIT_1');
+        try {
+          runner(merged);
+        } catch (e) {
+          expect(String(e)).not.toContain(canary);
+        }
+      }
+    }
+    expect(() => parseExtraApps(`orders:u2:${canary}:colon`, 'shop')).toThrow(
+      FatalError,
     );
+    try {
+      parseExtraApps(`orders:u2:${canary}:colon`, 'shop');
+    } catch (e) {
+      expect(String(e)).not.toContain(canary);
+    }
+    expect(() => validateDbName('d'.repeat(64), 'DB')).toThrow(FatalError);
   });
 });
 
@@ -363,29 +447,19 @@ describe('生成产物完整性、Shell 语法与可选 Helm 校验', () => {
           ['k1', k1Dir, true],
           ['k3', k3Dir, false],
         ] as const) {
-          const lint = spawnSync(
-            'helm',
-            [
-              'lint',
-              join(dir, 'chart'),
-              '-f',
-              join(dir, 'values.generated.yaml'),
-            ],
-            { encoding: 'utf8' },
-          );
+          const valArgs = [
+            join(dir, 'chart'),
+            '-f',
+            join(dir, 'values.generated.yaml'),
+          ];
+          const lint = spawnSync('helm', ['lint', ...valArgs], {
+            encoding: 'utf8',
+          });
           expect(lint.status).toBe(0);
 
-          const tpl = spawnSync(
-            'helm',
-            [
-              'template',
-              label,
-              join(dir, 'chart'),
-              '-f',
-              join(dir, 'values.generated.yaml'),
-            ],
-            { encoding: 'utf8' },
-          );
+          const tpl = spawnSync('helm', ['template', label, ...valArgs], {
+            encoding: 'utf8',
+          });
           expect(tpl.status).toBe(0);
           // init Job 绝不能贴 app.kubernetes.io/name: mongo, 否则 3 节点硬反亲和将因 init Pod 占节点而死锁且 Service 会误选中 init Pod
           const jobSection = tpl.stdout

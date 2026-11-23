@@ -36,13 +36,72 @@ data:
     # 2) 用纯 Node/mongosh JS 执行幂等初始化、多成员配置与按库最小权限建号
     cat <<'EOF' > /tmp/k8s-init.js
     const env = process.env;
+    const RESERVED = new Set(['admin', 'local', 'config']);
+    const ALNUM_RE = /^[A-Za-z0-9]+$/;
+    const DB_RE = /^[A-Za-z0-9_-]+$/;
+
+    function fail(msg) {
+      print(`错误: ${msg}`);
+      quit(1);
+    }
+
+    function checkAlnum(val, label) {
+      if (!val || !ALNUM_RE.test(val) || val === 'CHANGE_ME') {
+        fail(`${label} 必须为非空字母数字字符串, 且不能为 CHANGE_ME`);
+      }
+      return val;
+    }
+
+    function checkDbName(val, label) {
+      if (!val || val.length > 63 || !DB_RE.test(val)) {
+        fail(`${label} 非法 (仅允许字母、数字、下划线与连字符, 长度 1-63)`);
+      }
+      if (RESERVED.has(val)) {
+        fail(`${label} 不能使用保留系统库名 (${val})`);
+      }
+      return val;
+    }
+
+    function parseAndValidateInitConfig(envObj) {
+      const rootUser = checkAlnum(envObj.MONGO_INITDB_ROOT_USERNAME, 'MONGO_INITDB_ROOT_USERNAME');
+      const rootPwd = checkAlnum(envObj.MONGO_INITDB_ROOT_PASSWORD, 'MONGO_INITDB_ROOT_PASSWORD');
+      const appDb = checkDbName((envObj.MONGO_APP_DATABASE || '').trim(), 'MONGO_APP_DATABASE');
+      const appUser = checkAlnum(envObj.MONGO_APP_USER, 'MONGO_APP_USER');
+      const appPwd = checkAlnum(envObj.MONGO_APP_PASSWORD, 'MONGO_APP_PASSWORD');
+      const backupUser = checkAlnum(envObj.MONGO_BACKUP_USER || 'backup', 'MONGO_BACKUP_USER');
+      const backupPwd = checkAlnum(envObj.MONGO_BACKUP_PASSWORD, 'MONGO_BACKUP_PASSWORD');
+
+      const apps = [{ db: appDb, user: appUser, pwd: appPwd }];
+      const seenDbs = new Set([appDb]);
+      const extra = envObj.MONGO_EXTRA_APPS || '';
+      let entryIdx = 0;
+      for (const raw of extra.split(',')) {
+        const item = raw.trim();
+        if (!item) continue;
+        entryIdx += 1;
+        const parts = item.split(':');
+        if (parts.length !== 3) {
+          fail(`MONGO_EXTRA_APPS 第 ${entryIdx} 项格式非法 (须为 库名:用户名:密码, 且均不含冒号)`);
+        }
+        const extraDb = checkDbName(parts[0], `MONGO_EXTRA_APPS 第 ${entryIdx} 项库名`);
+        if (seenDbs.has(extraDb)) {
+          fail(`MONGO_EXTRA_APPS 第 ${entryIdx} 项存在重复业务库名: ${extraDb}`);
+        }
+        seenDbs.add(extraDb);
+        const extraUser = checkAlnum(parts[1], `MONGO_EXTRA_APPS 第 ${entryIdx} 项 (${extraDb}) 用户名`);
+        const extraPwd = checkAlnum(parts[2], `MONGO_EXTRA_APPS 第 ${entryIdx} 项 (${extraDb}) 密码`);
+        apps.push({ db: extraDb, user: extraUser, pwd: extraPwd });
+      }
+      return { rootUser, rootPwd, backupUser, backupPwd, apps };
+    }
+
+    const initCfg = parseAndValidateInitConfig(env);
     const count = Number(env.MONGO_REPLICA_COUNT || '1');
     const prefix = env.MONGO_POD_PREFIX;
     const svc = env.MONGO_HEADLESS_SVC;
     const ns = env.MONGO_NAMESPACE;
     const port = env.MONGO_PORT || '27117';
     const rsName = env.MONGO_RS_NAME || 'rs0';
-    const RESERVED = { admin: true, local: true, config: true };
 
     const fqdn = (i) => `${prefix}-${i}.${svc}.${ns}.svc.cluster.local:${port}`;
     const members = [];
@@ -54,7 +113,7 @@ data:
       );
     }
 
-    const rootCreds = `${encodeURIComponent(env.MONGO_INITDB_ROOT_USERNAME || '')}:${encodeURIComponent(env.MONGO_INITDB_ROOT_PASSWORD || '')}`;
+    const rootCreds = `${encodeURIComponent(initCfg.rootUser)}:${encodeURIComponent(initCfg.rootPwd)}`;
     const uri = `mongodb://${rootCreds}@${fqdn(0)}/admin?authSource=admin&directConnection=true`;
     const admin = new Mongo(uri).getDB('admin');
 
@@ -96,8 +155,7 @@ data:
       sleep(1000);
     }
     if (!ready) {
-      print('错误: 等待 PRIMARY 超时');
-      quit(1);
+      fail('等待 PRIMARY 超时');
     }
 
     const conn = new Mongo(primaryUri);
@@ -112,27 +170,10 @@ data:
       }
     }
 
-    const apps = [{
-      db: env.MONGO_APP_DATABASE,
-      user: env.MONGO_APP_USER,
-      pwd: env.MONGO_APP_PASSWORD,
-    }];
-    const extra = env.MONGO_EXTRA_APPS || '';
-    for (const raw of extra.split(',')) {
-      const item = raw.trim();
-      if (!item) continue;
-      const parts = item.split(':');
-      if (parts.length !== 3 || RESERVED[parts[0]]) {
-        print(`非法 MONGO_EXTRA_APPS 条目: ${item}`);
-        quit(1);
-      }
-      apps.push({ db: parts[0], user: parts[1], pwd: parts[2] });
-    }
-
-    for (const a of apps) {
+    for (const a of initCfg.apps) {
       upsertUser(a.db, a.user, a.pwd, [{ role: 'readWrite', db: a.db }]);
     }
-    upsertUser('admin', env.MONGO_BACKUP_USER || 'backup', env.MONGO_BACKUP_PASSWORD, [{ role: 'backup', db: 'admin' }]);
+    upsertUser('admin', initCfg.backupUser, initCfg.backupPwd, [{ role: 'backup', db: 'admin' }]);
     print('Kubernetes MongoDB 初始化完成');
     EOF
 

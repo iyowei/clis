@@ -4,6 +4,11 @@
  */
 import { describe, expect, test } from 'bun:test';
 
+import { spawnSync } from 'node:child_process';
+import { readFileSync } from 'node:fs';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
 import {
   ConfigError,
   type DeployManifest,
@@ -15,6 +20,7 @@ import {
   renderTemplate,
   resolveServerBackupDir,
   validateManifest,
+  validateSafeAbsPath,
 } from './index.ts';
 
 const baseSingleManifest = (): DeployManifest => ({
@@ -26,12 +32,7 @@ const baseSingleManifest = (): DeployManifest => ({
 
 describe('硬件资源与数据库参数公式推导', () => {
   test('2C2G / 4C8G / 8C16G 三档规格精确推导缓存、连接数、oplog 与 ulimit', () => {
-    const s2 = computeSizing({
-      cpuCores: 2,
-      memoryGb: 2,
-      diskGb: 32,
-      workload: 'balanced',
-    });
+    const s2 = computeSizing({ cpuCores: 2, memoryGb: 2, diskGb: 32 });
     expect(s2.wtCacheGb).toBe(0.5);
     expect(s2.memoryLimitPodman).toBe('2g');
     expect(s2.memoryReservationPodman).toBe('1g');
@@ -45,12 +46,8 @@ describe('硬件资源与数据库参数公式推导', () => {
     expect(s2.stopGracePeriodSec).toBe(30);
     expect(s2.backupConcurrency).toBe(1);
 
-    const s4 = computeSizing({
-      cpuCores: 4,
-      memoryGb: 8,
-      diskGb: 200,
-      workload: 'write-heavy',
-    });
+    const hw4 = { cpuCores: 4, memoryGb: 8, diskGb: 200 };
+    const s4 = computeSizing({ ...hw4, workload: 'write-heavy' });
     expect(s4.wtCacheGb).toBe(3);
     expect(s4.blockCompressor).toBe('snappy');
     expect(s4.memoryReservationPodman).toBe('4g');
@@ -62,45 +59,43 @@ describe('硬件资源与数据库参数公式推导', () => {
     expect(s4.backupConcurrency).toBe(2);
     expect(s4.logMaxSize).toBe('100m');
 
-    const s8 = computeSizing({
-      cpuCores: 8,
-      memoryGb: 16,
-      diskGb: 250,
-      workload: 'balanced',
-    });
+    const hw8 = { cpuCores: 8, memoryGb: 16, diskGb: 250 };
+    const s8 = computeSizing(hw8);
     expect(s8.wtCacheGb).toBe(7.5);
     expect(s8.blockCompressor).toBe('zstd');
     expect(s8.stopGracePeriodSec).toBe(128);
     expect(s8.backupConcurrency).toBe(4);
 
-    const s8Read = computeSizing({
-      cpuCores: 8,
-      memoryGb: 16,
-      diskGb: 250,
-      workload: 'read-heavy',
-    });
-    expect(s8Read.wtCacheGb).toBe(8.25);
-    expect(s8Read.blockCompressor).toBe('zstd');
+    const s8Read = computeSizing({ ...hw8, workload: 'read-heavy' });
+    expect([s8Read.wtCacheGb, s8Read.blockCompressor]).toEqual([8.25, 'zstd']);
 
-    const s1Write = computeSizing({
-      cpuCores: 1,
-      memoryGb: 1,
-      diskGb: 32,
-      workload: 'write-heavy',
-    });
+    const hw1 = { cpuCores: 1, memoryGb: 1, diskGb: 32 };
+    const s1Write = computeSizing({ ...hw1, workload: 'write-heavy' });
     expect(s1Write.wtCacheGb).toBe(0.25);
     expect(s1Write.blockCompressor).toBe('snappy');
     expect(s1Write.warnings.some((w) => w.includes('make drill'))).toBe(true);
   });
 
-  test('expectedAppConnections 受内存安全上限封顶并在超限时告警', () => {
-    const ok = computeSizing({
-      cpuCores: 4,
-      memoryGb: 8,
-      diskGb: 100,
-      expectedAppConnections: 320,
-    });
-    expect(ok.maxIncomingConnections).toBe(400);
+  test('expectedAppConnections 受内存安全上限封顶并在超限时告警, 且 steps[2].formula 算术自洽', () => {
+    const hw4c8g = { cpuCores: 4, memoryGb: 8, diskGb: 100 };
+    const base = computeSizing(hw4c8g);
+    expect([base.maxIncomingConnections, base.steps[2]?.formula]).toEqual([
+      350,
+      'clamp(floor50((8 - 3.5) x 80), 100, 5000)',
+    ]);
+
+    const belowBase = computeSizing({ ...hw4c8g, expectedAppConnections: 200 });
+    expect([
+      belowBase.maxIncomingConnections,
+      belowBase.steps[2]?.formula,
+    ]).toEqual([350, 'clamp(floor50((8 - 3.5) x 80), 100, 5000)']);
+
+    const ok = computeSizing({ ...hw4c8g, expectedAppConnections: 320 });
+    expect([
+      ok.maxIncomingConnections,
+      ok.steps[2]?.value,
+      ok.steps[2]?.formula,
+    ]).toEqual([400, '400 个', 'ceil50(320 x 1.25)']);
     expect(ok.warnings.length).toBe(0);
 
     const high = computeSizing({
@@ -109,6 +104,11 @@ describe('硬件资源与数据库参数公式推导', () => {
       diskGb: 32,
       expectedAppConnections: 500,
     });
+    expect([
+      high.maxIncomingConnections,
+      high.steps[2]?.value,
+      high.steps[2]?.formula,
+    ]).toEqual([150, '150 个', 'clamp(floor50((2 - 0.5) x 130), 100, 5000)']);
     expect(high.warnings.length).toBe(1);
     expect(high.warnings[0]).toContain('预期连接数');
   });
@@ -176,6 +176,9 @@ describe('清单安全校验与注入拦截', () => {
       k8s: { namespace: 'data' },
     };
 
+    const base = baseSingleManifest();
+    const badSvc = 'LoadBalancer' as unknown as 'ClusterIP';
+    const badAff = 'none' as unknown as 'hard';
     const badManifests: DeployManifest[] = [
       { ...baseK8s, k8s: { namespace: 'data"; rm -rf /' } },
       { ...baseK8s, k8s: { releaseName: '$(id)' } },
@@ -183,52 +186,29 @@ describe('清单安全校验与注入拦截', () => {
       { ...baseK8s, k8s: { existingSecret: 'sec;id' } },
       { ...baseK8s, k8s: { nodePort: 29999 } },
       { ...baseK8s, k8s: { nodePort: 32768 } },
-      {
-        ...baseK8s,
-        k8s: { serviceType: 'LoadBalancer' as unknown as 'ClusterIP' },
-      },
-      {
-        ...baseK8s,
-        k8s: { podAntiAffinity: 'none' as unknown as 'hard' },
-      },
+      { ...baseK8s, k8s: { serviceType: badSvc } },
+      { ...baseK8s, k8s: { podAntiAffinity: badAff } },
       { ...baseK8s, auth: { existingSecret: 'bad`id`' } },
-      { ...baseSingleManifest(), imageName: 'mongo;id' },
-      { ...baseSingleManifest(), imageTag: '9.0.8\nrestart: always' },
-      { ...baseSingleManifest(), bunImage: 'oven/bun:1 $(id)' },
-      { ...baseSingleManifest(), tz: 'Asia/Shanghai;id' },
-      { ...baseSingleManifest(), rsName: 'rs0"bad' },
-      { ...baseSingleManifest(), keepDaily: 0 },
-      { ...baseSingleManifest(), keepWeekly: -1 },
+      { ...base, imageName: 'mongo;id' },
+      { ...base, imageTag: '9.0.8\nrestart: always' },
+      { ...base, bunImage: 'oven/bun:1 $(id)' },
+      { ...base, tz: 'Asia/Shanghai;id' },
+      { ...base, rsName: 'rs0"bad' },
+      { ...base, keepDaily: 0 },
+      { ...base, keepWeekly: -1 },
+      { ...base, multiNetAlias: 'true' as unknown as boolean },
+      { ...base, nodes: [{ os: 'linux', backupDir: '/home/ops/../etc' }] },
+      { ...base, nodes: [{ os: 'linux', backupDir: '/home/ops/bak;rm' }] },
       {
-        ...baseSingleManifest(),
-        multiNetAlias: 'true' as unknown as boolean,
-      },
-      {
-        ...baseSingleManifest(),
-        nodes: [{ os: 'linux', backupDir: '/home/ops/../etc' }],
-      },
-      {
-        ...baseSingleManifest(),
-        nodes: [{ os: 'linux', backupDir: '/home/ops/bak;rm' }],
-      },
-      {
-        ...baseSingleManifest(),
+        ...base,
         nodes: [
-          {
-            os: 'linux',
-            backupDir: '/home/ops/bak',
-            stackDir: '/home/ops/../../etc',
-          },
+          { os: 'linux', backupDir: '/opt/b', stackDir: '/home/ops/../../etc' },
         ],
       },
       {
-        ...baseSingleManifest(),
+        ...base,
         nodes: [
-          {
-            os: 'linux',
-            backupDir: '/home/ops/bak',
-            podmanBin: '/opt/bin/podman;id',
-          },
+          { os: 'linux', backupDir: '/opt/b', podmanBin: '/opt/bin/podman;id' },
         ],
       },
     ];
@@ -248,37 +228,108 @@ describe('清单安全校验与注入拦截', () => {
   });
 });
 
+describe('系统核心目录黑名单与 Makefile 路径门禁', () => {
+  test('宽松放行外挂卷与数据路径且不误杀前缀超集, 精确拦截系统核心目录与占位路径', () => {
+    const allowed = [
+      '/Users/ops/srv/backups /Volumes/BackupDisk/mongo /opt/backups /var/folders/xx/bak',
+      '/private/var/mongo-bak /tmp/mongo-bak /srv/mongo/backups /data/mongo /mnt/nas/mongo',
+      '/media/usb/mongo /home/ops/backups /root/backups /usr/local/var/backups',
+      '/devdata/bak /library/bak /procdump/bak /systemic/bak /ApplicationsData/bak',
+    ].flatMap((s) => s.split(' '));
+    for (const p of allowed) {
+      expect(validateSafeAbsPath(p, 'macos'), `macos allow ${p}`).toBeNull();
+      expect(validateSafeAbsPath(p, 'linux'), `linux allow ${p}`).toBeNull();
+      expect(() =>
+        validateManifest({
+          ...baseSingleManifest(),
+          nodes: [{ os: 'macos', backupDir: p, stackDir: p }],
+        }),
+      ).not.toThrow();
+    }
+
+    const forbiddenCommon = [
+      '/ /etc /etc/ /etc/bak /private/etc /private/etc/hosts /proc /proc/1 /sys /sys/fs',
+      '/dev /dev/shm /boot /boot/grub /bin/sh /sbin/init /lib/x /lib64/x',
+      '/usr/bin/bak /usr/sbin/x /usr/lib/x /usr/lib64/x /path/to /path/to/bak',
+    ].flatMap((s) => s.split(' '));
+    for (const bad of forbiddenCommon) {
+      expect(validateSafeAbsPath(bad, 'linux'), bad).not.toBeNull();
+      expect(validateSafeAbsPath(bad, 'macos'), bad).not.toBeNull();
+      for (const node of [
+        { os: 'linux' as const, backupDir: bad },
+        { os: 'linux' as const, backupDir: '/opt/backups', stackDir: bad },
+      ]) {
+        expect(() =>
+          validateManifest({ ...baseSingleManifest(), nodes: [node] }),
+        ).toThrow(ConfigError);
+      }
+    }
+
+    const forbiddenMac =
+      '/System /System/ /System/Volumes/x /Applications /Applications/x'.split(
+        ' ',
+      );
+    for (const badMac of forbiddenMac) {
+      expect(validateSafeAbsPath(badMac, 'macos'), badMac).not.toBeNull();
+      for (const node of [
+        { os: 'macos' as const, backupDir: badMac },
+        {
+          os: 'macos' as const,
+          backupDir: '/Volumes/BackupDisk/mongo',
+          stackDir: badMac,
+        },
+      ]) {
+        expect(() =>
+          validateManifest({ ...baseSingleManifest(), nodes: [node] }),
+        ).toThrow(ConfigError);
+      }
+    }
+
+    if (process.platform !== 'win32') {
+      const tmplDir = dirname(fileURLToPath(import.meta.url));
+      const makeTmpl = readFileSync(
+        resolve(tmplDir, '../template/podman/Makefile.tmpl'),
+        'utf8',
+      );
+      const snippet = /\t@bdir="[\s\S]*?^\tesac$/m.exec(makeTmpl)?.[0] ?? '';
+      expect(snippet.length).toBeGreaterThan(0);
+      const script = snippet
+        .replace(/^\t@?/gm, '')
+        .replaceAll('$(BACKUP_DIR)', '$$TEST_BACKUP_DIR')
+        .replaceAll('$$', '$');
+      const envRun = (d: string) =>
+        spawnSync('sh', ['-c', script], {
+          env: { ...process.env, TEST_BACKUP_DIR: d },
+        }).status;
+      for (const d of '/Volumes/BackupDisk/mongo /opt/backups /var/folders/xx/bak /devdata/bak /library/bak'.split(
+        ' ',
+      )) {
+        expect(envRun(d), d).toBe(0);
+      }
+      const badMake =
+        '/ /// relative/bak /path/to/bak /etc/bak /etc/ /proc/1 /dev/shm /usr/bin/bak /System/Volumes/x /Applications/x';
+      for (const d of ['', ...badMake.split(' ')]) {
+        expect(envRun(d), d).toBe(1);
+      }
+    }
+  });
+});
+
 describe('零冲突指纹路径、模板渲染与 SSH 解析', () => {
   test('幂等归一化服务器备份路径并嵌入 12 位唯一指纹', () => {
     const fp = 'a1b2c3d4e5f6';
+    const root = '/Users/ops/srv/backups';
+    const expected = `${root}/mongo-hola-${fp}`;
+    expect(resolveServerBackupDir(root, 'mongo', 'hola', fp)).toBe(expected);
     expect(
-      resolveServerBackupDir('/Users/ops/srv/backups', 'mongo', 'hola', fp),
-    ).toBe('/Users/ops/srv/backups/mongo-hola-a1b2c3d4e5f6');
+      resolveServerBackupDir(`${root}/mongo-hola`, 'mongo', 'hola', fp),
+    ).toBe(expected);
+    expect(resolveServerBackupDir(`${expected}/`, 'mongo', 'hola', fp)).toBe(
+      expected,
+    );
     expect(
-      resolveServerBackupDir(
-        '/Users/ops/srv/backups/mongo-hola',
-        'mongo',
-        'hola',
-        fp,
-      ),
-    ).toBe('/Users/ops/srv/backups/mongo-hola-a1b2c3d4e5f6');
-    expect(
-      resolveServerBackupDir(
-        '/Users/ops/srv/backups/mongo-hola-a1b2c3d4e5f6/',
-        'mongo',
-        'hola',
-        fp,
-      ),
-    ).toBe('/Users/ops/srv/backups/mongo-hola-a1b2c3d4e5f6');
-    expect(
-      resolveServerBackupDir(
-        '/home/ops/srv/backups/mongo-ha',
-        'mongo',
-        'ha',
-        fp,
-        'node2',
-      ),
-    ).toBe('/home/ops/srv/backups/mongo-ha-a1b2c3d4e5f6-node2');
+      resolveServerBackupDir('/home/ops/bak/mongo-ha', 'mongo', 'ha', fp, 'n2'),
+    ).toBe(`/home/ops/bak/mongo-ha-${fp}-n2`);
   });
 
   test('缺失占位或残留花括号立即抛出 TemplateRenderError', () => {
@@ -350,77 +401,45 @@ describe('零冲突指纹路径、模板渲染与 SSH 解析', () => {
   });
 
   test('错误类显式设置 name、子对象未知字段/超长库名/超长 releaseName 被拦截', () => {
-    expect(new ConfigError('x').name).toBe('ConfigError');
-    expect(new SizingError('x').name).toBe('SizingError');
-    expect(new TemplateRenderError('x').name).toBe('TemplateRenderError');
+    expect([
+      new ConfigError('x').name,
+      new SizingError('x').name,
+      new TemplateRenderError('x').name,
+    ]).toEqual(['ConfigError', 'SizingError', 'TemplateRenderError']);
 
-    expect(() =>
-      validateManifest({
-        ...baseSingleManifest(),
-        hardware: {
-          cpuCores: 2,
-          memoryGb: 2,
-          diskGb: 32,
-          extraField: 1,
-        } as unknown as DeployManifest['hardware'],
-      }),
-    ).toThrow(ConfigError);
-
-    expect(() =>
-      validateManifest({
-        ...baseSingleManifest(),
-        hardware: 'bad' as unknown as DeployManifest['hardware'],
-      }),
-    ).toThrow(ConfigError);
-
-    expect(() =>
-      validateManifest({
-        ...baseSingleManifest(),
-        apps: [
-          {
-            db: 'app',
-            user: 'appu',
-            unknownKey: true,
-          } as unknown as DeployManifest['apps'][number],
-        ],
-      }),
-    ).toThrow(ConfigError);
-
-    expect(() =>
-      validateManifest({
-        ...baseSingleManifest(),
-        apps: [{ db: 'a'.repeat(64), user: 'appu' }],
-      }),
-    ).toThrow(ConfigError);
-
-    expect(() =>
-      validateManifest({
-        ...baseSingleManifest(),
+    const badPatches: Array<Record<string, unknown>> = [
+      { $schema: 123 },
+      { hardware: {} },
+      { hardware: { cpuCores: 0, memoryGb: 2, diskGb: 32 } },
+      { hardware: { cpuCores: 2, memoryGb: 2, diskGb: 32, extraField: 1 } },
+      { hardware: 'bad' },
+      { apps: [{ db: 'app', user: 'appu', unknownKey: true }] },
+      { apps: [{ db: 'a'.repeat(64), user: 'appu' }] },
+      {
         nodes: [
-          {
-            os: 'linux',
-            backupDir: '/home/ops/bak',
-            bindIP: '10.0.0.1',
-          } as unknown as NonNullable<DeployManifest['nodes']>[number],
+          { os: 'linux', backupDir: '/home/ops/bak', bindIP: '10.0.0.1' },
         ],
-      }),
-    ).toThrow(ConfigError);
+      },
+    ];
+    for (const patch of badPatches) {
+      expect(() =>
+        validateManifest({
+          ...baseSingleManifest(),
+          ...patch,
+        } as DeployManifest),
+      ).toThrow(ConfigError);
+    }
 
+    const k8sBase = {
+      mode: 'k8s-single' as const,
+      name: 'app',
+      apps: [{ db: 'app', user: 'appu' }],
+    };
     expect(() =>
-      validateManifest({
-        mode: 'k8s-single',
-        name: 'app',
-        apps: [{ db: 'app', user: 'appu' }],
-        k8s: { releaseName: 'a'.repeat(51) },
-      }),
+      validateManifest({ ...k8sBase, k8s: { releaseName: 'a'.repeat(51) } }),
     ).toThrow(ConfigError);
     expect(() =>
-      validateManifest({
-        mode: 'k8s-single',
-        name: 'app',
-        apps: [{ db: 'app', user: 'appu' }],
-        k8s: { releaseName: 'a'.repeat(50) },
-      }),
+      validateManifest({ ...k8sBase, k8s: { releaseName: 'a'.repeat(50) } }),
     ).not.toThrow();
   });
 

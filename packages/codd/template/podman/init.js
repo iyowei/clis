@@ -27,8 +27,8 @@ const checkAlnum = (v, label) => {
 const alnum = (name) => checkAlnum(need(name), name);
 
 const checkDbName = (v, label) => {
-  if (!/^[A-Za-z0-9_-]+$/.test(v)) {
-    fail(`${label} 只允许字母, 数字, 下划线, 连字符`);
+  if (!v || v.length > 63 || !/^[A-Za-z0-9_-]+$/.test(v)) {
+    fail(`${label} 只允许字母, 数字, 下划线, 连字符, 且长度须为 1-63`);
   }
   if (RESERVED_DBS[v]) {
     fail(`${label} 不能使用保留系统库名 ${v}`);
@@ -50,20 +50,30 @@ const parseAppSpecs = () => {
   const extra = env.MONGO_EXTRA_APPS;
   if (!extra || !extra.trim()) return specs;
 
+  let entryIdx = 0;
   for (const rawEntry of extra.split(',')) {
     const entry = rawEntry.trim();
     if (!entry) continue;
+    entryIdx += 1;
     const parts = entry.split(':');
     if (parts.length !== 3) {
-      fail(`MONGO_EXTRA_APPS 条目格式必须为 库名:用户名:密码, 当前为 ${entry}`);
+      fail(
+        `MONGO_EXTRA_APPS 第 ${entryIdx} 项格式必须为 库名:用户名:密码 (且均不含冒号)`,
+      );
     }
-    const db = checkDbName(parts[0], `MONGO_EXTRA_APPS 库名(${parts[0]})`);
+    const db = checkDbName(parts[0], `MONGO_EXTRA_APPS 第 ${entryIdx} 项库名`);
     if (seen[db]) {
       fail(`MONGO_EXTRA_APPS 存在重复业务库名: ${db}`);
     }
     seen[db] = true;
-    const user = checkAlnum(parts[1], `MONGO_EXTRA_APPS 用户名(${db})`);
-    const pwd = checkAlnum(parts[2], `MONGO_EXTRA_APPS 密码(${db})`);
+    const user = checkAlnum(
+      parts[1],
+      `MONGO_EXTRA_APPS 第 ${entryIdx} 项 (${db}) 用户名`,
+    );
+    const pwd = checkAlnum(
+      parts[2],
+      `MONGO_EXTRA_APPS 第 ${entryIdx} 项 (${db}) 密码`,
+    );
     specs.push({ db, user, pwd });
   }
   return specs;

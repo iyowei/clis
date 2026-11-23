@@ -63,27 +63,40 @@
         "expectedAppConnections": {
           "type": "integer",
           "minimum": 1,
-          "description": "[选填] 业务应用预期总并发连接数。不填默认仅按非缓存内存预算推导 (clamp(floor50((RAM - WT) * 80), 100, 5000)); 填入后会按 1.25x 上浮目标上限, 超出当前内存安全天花板时降回上限并告警。"
+          "maximum": 9007199254740991,
+          "description": "[选填] 业务应用预期总并发连接数。不填默认仅按非缓存内存预算推导 (clamp(floor50((RAM - WT) * 80), 100, 5000)); 填入后会按 ceil50(expected * 1.25) 上浮目标上限, 超出 130 连接/GB 硬内存安全天花板时降回上限并告警。"
         }
       }
     },
     "imageName": {
       "type": "string",
+      "minLength": 1,
+      "maxLength": 255,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._/:@-]{0,254}$",
+      "not": { "pattern": "\\.\\." },
       "default": "mongo",
-      "description": "[选填] MongoDB 镜像仓库名。不填默认使用 \"mongo\"。"
+      "description": "[选填] MongoDB 镜像仓库名 (禁含 '..' 与空白/Shell 元字符)。不填默认使用 \"mongo\"。"
     },
     "imageTag": {
       "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^[A-Za-z0-9_][A-Za-z0-9._-]{0,127}$",
       "default": "9.0.8",
       "description": "[选填] MongoDB 镜像版本标签。不填默认使用 \"9.0.8\" (主库, mongo-init 与 mongo-tools 统一沿用同一版本)。"
     },
     "bunImage": {
       "type": "string",
+      "minLength": 1,
+      "maxLength": 255,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._/:@-]{0,254}$",
+      "not": { "pattern": "\\.\\." },
       "default": "oven/bun:1.4.5-slim",
-      "description": "[选填] 构建 mongo-tools 运维容器所提取 Bun 二进制的基础镜像。不填默认使用 \"oven/bun:1.4.5-slim\"。"
+      "description": "[选填] 构建 mongo-tools 运维容器所提取 Bun 二进制的基础镜像 (禁含 '..' 与空白/Shell 元字符)。不填默认使用 \"oven/bun:1.4.5-slim\"。"
     },
     "tz": {
       "type": "string",
+      "pattern": "^[A-Za-z0-9_+-]+(?:/[A-Za-z0-9_+-]+){0,2}$",
       "default": "Asia/Shanghai",
       "description": "[选填] 容器运行时区 (TZ)。不填默认使用 \"Asia/Shanghai\"。"
     },
@@ -102,7 +115,9 @@
     },
     "rsName": {
       "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,62}$",
       "minLength": 1,
+      "maxLength": 63,
       "default": "rs0",
       "description": "[选填] MongoDB 副本集名称。不填默认使用 \"rs0\"。"
     },
@@ -120,28 +135,33 @@
     "keepDaily": {
       "type": "integer",
       "minimum": 1,
+      "maximum": 9007199254740991,
       "default": 7,
       "description": "[选填] 按每个业务库独立保留的每日逻辑备份份数。不填默认保留 7 份。"
     },
     "keepWeekly": {
       "type": "integer",
       "minimum": 0,
+      "maximum": 9007199254740991,
       "default": 4,
       "description": "[选填] 按每个业务库独立保留的周日长期归档份数 (weekly 子目录)。不填默认保留 4 份。"
     },
     "backupMinFreeMb": {
       "type": "integer",
       "minimum": 0,
+      "maximum": 9007199254740991,
       "description": "[选填] 备份前目标挂载盘须保留的最低可用空间下限 (MB, 设 0 关闭前置检查)。不填按数据盘容量自动推导 (1024-10240 MB), 并额外叠加同库上次归档体积 1.5 倍安全余量, 防备份打满磁盘。"
     },
     "backupMaxTotalMb": {
       "type": "integer",
       "minimum": 0,
+      "maximum": 9007199254740991,
       "description": "[选填] 实例备份目录 (含 weekly/) 的总物理容量硬上限 (MB, 设 0 仅按份数裁剪)。不填按数据盘容量自动推导 (4096-524288 MB), 超限时按最旧优先淘汰旧归档但每库至少死守最新 1 份。"
     },
     "apps": {
       "type": "array",
       "minItems": 1,
+      "uniqueItems": true,
       "description": "[必填] 业务数据库与最小权限 readWrite 账号列表 (至少填 1 项, 第 1 项为主库, 其余自动拆入 extraApps)。",
       "items": {
         "type": "object",
@@ -153,6 +173,7 @@
             "pattern": "^[A-Za-z0-9_-]+$",
             "minLength": 1,
             "maxLength": 63,
+            "not": { "enum": ["admin", "local", "config"] },
             "description": "[必填] 业务数据库名 (禁止 admin, local, config, 长度 <= 63)。"
           },
           "user": {
@@ -197,19 +218,30 @@
         },
         "keyFile": {
           "type": "string",
-          "pattern": "^[A-Za-z0-9+/=]+$",
-          "minLength": 16,
-          "maxLength": 1024,
-          "description": "[选填] 副本集内部认证 keyFile (16-1024 位单行 base64)。不填则自动随机 756B base64 并锁存 (single 模式留空且由主容器首次启动自动生入密钥卷, replica-set / k8s 自动跨节点统一分发)。"
+          "anyOf": [
+            { "const": "" },
+            {
+              "minLength": 16,
+              "maxLength": 1024,
+              "pattern": "^[A-Za-z0-9+/=]+$"
+            }
+          ],
+          "description": "[选填] 副本集内部认证 keyFile (允许空串 \"\" 交由生成器/状态锁自动管理, 或显式指定 16-1024 位单行 base64)。不填或留空则自动随机 756B base64 并锁存 (single 模式首次启动自动生入密钥卷, replica-set / k8s 自动跨节点统一分发)。"
         },
         "existingSecret": {
           "type": "string",
-          "description": "[选填, 仅 k8s-* 生效] 复用既有 Kubernetes Secret 名。不填时先回落查 k8s.existingSecret, 都未填默认使用 \"<releaseName>-auth\"。"
+          "maxLength": 253,
+          "anyOf": [
+            { "const": "" },
+            { "pattern": "^[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?$" }
+          ],
+          "description": "[选填, 仅 k8s-* 生效] 复用既有 Kubernetes Secret 名 (允许空串 \"\" 或 <= 253 字符合规 DNS-1123 子域名)。当 k8s.existingSecret 未填时回落采用本字段, 均未填默认使用 \"<releaseName>-auth\"。"
         }
       }
     },
     "nodes": {
       "type": "array",
+      "uniqueItems": true,
       "description": "[条件必填] single 模式必填恰好 1 项, replica-set 模式必填恰好 3 项 (第 1 项为引导主节点); k8s-single / k8s-rs 模式选填且会被完全忽略 (建议不填)。",
       "items": {
         "type": "object",
@@ -224,11 +256,12 @@
           "os": {
             "type": "string",
             "enum": ["linux", "macos"],
-            "description": "[必填] 目标宿主机系统。选 macos 时额外强制校验 backupDir 须位于 /Users/ 或 /private/, 并附带生成唯一指纹 LaunchAgent .plist。"
+            "description": "[必填] 目标宿主机系统。选 macos 时除通用系统核心目录黑名单外额外拦截 /System 与 /Applications, 并附带生成唯一指纹 LaunchAgent .plist。"
           },
           "bindIp": {
             "type": "string",
-            "description": "[条件必填] replica-set 必填私网或 WireGuard IPv4 (严禁 127.0.0.1 / 0.0.0.0, 不填报错); single 选填, 不填默认回环绑定 \"127.0.0.1\" (云公网主机推荐保持 127.0.0.1 并用 Compass 内置 Proxy/SSH 隧道免命令连接; 若是家里路由器后的内网主机需在局域网或 WireGuard 下让本地代码与 Compass 免隧道直连, 可填 \"0.0.0.0\")。"
+            "pattern": "^(?:(?:25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])\\.){3}(?:25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])$",
+            "description": "[条件必填] 合法 IPv4 地址。replica-set 必填私网或 WireGuard IPv4 (严禁 127.0.0.1 / 0.0.0.0, 不填报错); single 选填, 不填默认回环绑定 \"127.0.0.1\" (云公网主机推荐保持 127.0.0.1 并用 Compass 内置 Proxy/SSH 隧道免命令连接; 若是家里路由器后的内网主机需在局域网或 WireGuard 下让本地代码与 Compass 免隧道直连, 可填 \"0.0.0.0\")。"
           },
           "host": {
             "type": "string",
@@ -237,23 +270,63 @@
           },
           "sshTarget": {
             "type": "string",
-            "pattern": "^[^;|`$&()<>'\"\\\\\\r\\n]+$",
-            "description": "[选填] SSH 目标地址、~/.ssh/config 主机别名或完整 ssh 命令 (如 \"root@192.168.1.10\", \"myserver\", \"ssh myserver\", \"ssh -p 2222 ops@10.0.0.2\")。生成器会自动提取目标主机与端口并过滤掉多余前缀或隧道参数。不填不影响产物生成, 仅收尾提示里的 rsync 目标改用本地路径形式 \"~/srv/stacks/<dirName>/\"。"
+            "anyOf": [
+              { "const": "" },
+              {
+                "pattern": "^[^;|`$&()<>'\"\\\\\\r\\n]+$",
+                "not": { "pattern": "^\\s+$" }
+              }
+            ],
+            "description": "[选填] SSH 目标地址、~/.ssh/config 主机别名或完整 ssh 命令 (如 \"root@192.168.1.10\", \"myserver\", \"ssh myserver\", \"ssh -p 2222 ops@10.0.0.2\", 允许空串 \"\" 但禁止纯空白串)。生成器会自动提取目标主机与端口并过滤掉多余前缀或隧道参数。不填或留空不影响产物生成, 仅收尾提示里的 rsync 目标改用本地路径形式 \"~/srv/stacks/<dirName>/\"。"
           },
           "backupDir": {
             "type": "string",
-            "pattern": "^/",
-            "description": "[必填] 目标服务器上的备份根目录或路径 (真实绝对路径, 无默认值, 禁含 CHANGE_ME; macOS 必须位于 /Users/ 或 /private/ 下)。生成器会自动幂等追加带唯一指纹的子目录 (如 /Users/ops/srv/backups/mongo-app-<fingerprint>), 并在服务器 make check-env 时自动以 0700 权限创建, 彻底杜绝同机同名冲突。"
+            "pattern": "^/[A-Za-z0-9._@+-]+(?:/[A-Za-z0-9._@+-]+)*/?$",
+            "not": {
+              "anyOf": [
+                { "pattern": "(?:^|/)\\.\\.(?:/|$)" },
+                { "pattern": "CHANGE_ME" },
+                {
+                  "pattern": "^/(?:proc|sys|dev|boot|etc|private/etc|bin|sbin|lib|lib64|usr/bin|usr/sbin|usr/lib|usr/lib64|path/to)(?:/|$)"
+                }
+              ]
+            },
+            "description": "[必填] 目标服务器上的备份根目录或路径 (安全绝对路径, 无默认值, 禁含 '..'、CHANGE_ME 与系统核心目录黑名单如 /proc, /sys, /dev, /etc, /usr/bin 及 macOS 的 /System, /Applications; 宽松放行 /Users, /Volumes, /private, /opt, /var, /home 等任意数据路径)。生成器会自动幂等追加带唯一指纹的子目录 (如 /Users/ops/srv/backups/mongo-app-<fingerprint>), 并在服务器 make check-env 时自动以 0700 权限创建, 彻底杜绝同机同名冲突。"
           },
           "stackDir": {
             "type": "string",
-            "pattern": "^/",
-            "description": "[选填, 仅 os=macos 生效] .plist WorkingDirectory 部署绝对路径。不填则从 backupDir 的 /Users/<用户> 自动推导带指纹的 \"/Users/<用户>/srv/stacks/<dirName>\", 幂等防撞名。"
+            "pattern": "^/[A-Za-z0-9._@+-]+(?:/[A-Za-z0-9._@+-]+)*/?$",
+            "not": {
+              "anyOf": [
+                { "pattern": "(?:^|/)\\.\\.(?:/|$)" },
+                { "pattern": "CHANGE_ME" },
+                {
+                  "pattern": "^/(?:proc|sys|dev|boot|etc|private/etc|bin|sbin|lib|lib64|usr/bin|usr/sbin|usr/lib|usr/lib64|path/to)(?:/|$)"
+                }
+              ]
+            },
+            "description": "[选填] 目标服务器上的部署栈目录绝对路径 (遵循同款安全绝对路径、禁 '..' / CHANGE_ME 与系统核心目录黑名单规则)。Linux 与 macOS 均用于幂等推导远程部署栈目录 remoteStackDir (拼装上传与启动指引, 不填默认 \"~/srv/stacks/<dirName>\"); macOS 额外写入 LaunchAgent .plist WorkingDirectory (不填时从 backupDir 的 /Users/<用户> 推导 \"/Users/<用户>/srv/stacks/<dirName>\")。"
           },
           "podmanBin": {
             "type": "string",
+            "pattern": "^(?:[A-Za-z0-9._-]+|/[A-Za-z0-9._@+-]+(?:/[A-Za-z0-9._@+-]+)*)$",
+            "not": { "pattern": "(?:^|/)\\.\\.(?:/|$)" },
             "default": "/opt/homebrew/bin/podman",
-            "description": "[选填, 仅 os=macos 生效] LaunchAgent .plist 注入 PATH 所优先检索的 podman 绝对路径。不填默认使用 \"/opt/homebrew/bin/podman\"。"
+            "description": "[选填, 仅 os=macos 生效] LaunchAgent .plist 注入 PATH 所优先检索的 podman 命令名或安全绝对路径 (禁含 '..' 与 Shell 元字符)。不填默认使用 \"/opt/homebrew/bin/podman\"。"
+          }
+        },
+        "if": {
+          "properties": { "os": { "const": "macos" } },
+          "required": ["os"]
+        },
+        "then": {
+          "properties": {
+            "backupDir": {
+              "not": { "pattern": "^/(?:System|Applications)(?:/|$)" }
+            },
+            "stackDir": {
+              "not": { "pattern": "^/(?:System|Applications)(?:/|$)" }
+            }
           }
         }
       }
@@ -265,8 +338,11 @@
       "properties": {
         "namespace": {
           "type": "string",
+          "pattern": "^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$",
+          "minLength": 1,
+          "maxLength": 63,
           "default": "data",
-          "description": "[选填] 目标 Kubernetes Namespace。不填默认 \"data\"。"
+          "description": "[选填] 目标 Kubernetes Namespace (合规 DNS-1123 标签, <= 63 字符)。不填默认 \"data\"。"
         },
         "releaseName": {
           "type": "string",
@@ -277,7 +353,13 @@
         },
         "storageClass": {
           "type": "string",
-          "description": "[选填] StatefulSet PVC 使用的 StorageClass。不填默认空字符串 \"\" (使用集群默认 StorageClass)。"
+          "maxLength": 253,
+          "anyOf": [
+            { "const": "" },
+            { "pattern": "^[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?$" }
+          ],
+          "default": "",
+          "description": "[选填] StatefulSet PVC 使用的 StorageClass (允许空串 \"\" 或 <= 253 字符合规 DNS-1123 子域名)。不填默认空字符串 \"\" (使用集群默认 StorageClass)。"
         },
         "serviceType": {
           "type": "string",
@@ -299,28 +381,63 @@
         },
         "existingSecret": {
           "type": "string",
-          "description": "[选填] 既有 Secret 名称。不填先回落取 auth.existingSecret, 均未填时默认使用 \"<releaseName>-auth\"。"
+          "maxLength": 253,
+          "anyOf": [
+            { "const": "" },
+            { "pattern": "^[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?$" }
+          ],
+          "description": "[选填] 既有 Secret 名称 (允许空串 \"\" 或 <= 253 字符合规 DNS-1123 子域名)。不填先回落取 auth.existingSecret, 均未填时默认使用 \"<releaseName>-auth\"。"
         }
       }
     }
   },
   "allOf": [
     {
-      "if": { "properties": { "mode": { "const": "single" } } },
+      "if": {
+        "properties": { "mode": { "const": "single" } },
+        "required": ["mode"]
+      },
       "then": {
         "required": ["nodes"],
         "properties": { "nodes": { "minItems": 1, "maxItems": 1 } }
       }
     },
     {
-      "if": { "properties": { "mode": { "const": "replica-set" } } },
+      "if": {
+        "properties": { "mode": { "const": "replica-set" } },
+        "required": ["mode"]
+      },
       "then": {
         "required": ["nodes"],
         "properties": {
           "nodes": {
             "minItems": 3,
             "maxItems": 3,
-            "items": { "required": ["os", "backupDir", "bindIp"] }
+            "items": {
+              "required": ["os", "backupDir", "bindIp"],
+              "properties": {
+                "bindIp": {
+                  "not": { "enum": ["127.0.0.1", "0.0.0.0"] }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": { "networkMode": { "const": "host" } },
+        "required": ["networkMode"]
+      },
+      "then": {
+        "properties": {
+          "nodes": {
+            "items": {
+              "properties": {
+                "os": { "not": { "const": "macos" } }
+              }
+            }
           }
         }
       }

@@ -13,6 +13,7 @@ import {
   type NodeOs,
 } from './types.ts';
 import {
+  validateHardwareSection,
   validateK8sSection,
   validatePodmanNodesSection,
 } from './validate-sections.ts';
@@ -49,13 +50,6 @@ const ALLOWED_KEYS = new Set([
   'nodes',
   'k8s',
 ]);
-const ALLOWED_HARDWARE_KEYS = new Set([
-  'cpuCores',
-  'memoryGb',
-  'diskGb',
-  'workload',
-  'expectedAppConnections',
-]);
 const ALLOWED_APP_KEYS = new Set(['db', 'user', 'password']);
 const ALLOWED_AUTH_KEYS = new Set([
   'rootUsername',
@@ -81,6 +75,7 @@ const IMAGE_REF_RE = /^[A-Za-z0-9][A-Za-z0-9._/:@-]{0,254}$/;
 const IMAGE_TAG_RE = /^[A-Za-z0-9_][A-Za-z0-9._-]{0,127}$/;
 const TZ_RE = /^[A-Za-z0-9_+-]+(?:\/[A-Za-z0-9_+-]+){0,2}$/;
 const RS_NAME_RE = /^[A-Za-z0-9][A-Za-z0-9_-]{0,62}$/;
+const BASE64_KEYFILE_RE = /^[A-Za-z0-9+/=]+$/;
 
 const isPlainObject = (val: unknown): val is Record<string, unknown> =>
   val !== null && typeof val === 'object' && !Array.isArray(val);
@@ -173,7 +168,44 @@ const checkK8sResourceName = (val: unknown, label: string): void => {
   }
 };
 
-/** 细粒度校验安全绝对路径 (供 CLI 向导与清单校验共用) */
+/** 系统危险目录、伪文件系统与示例占位路径黑名单 (按精确路径段边界匹配, 宽松放行任意数据目录) */
+const COMMON_FORBIDDEN_ABS_PREFIXES: readonly string[] = [
+  '/proc',
+  '/sys',
+  '/dev',
+  '/boot',
+  '/etc',
+  '/private/etc',
+  '/bin',
+  '/sbin',
+  '/lib',
+  '/lib64',
+  '/usr/bin',
+  '/usr/sbin',
+  '/usr/lib',
+  '/usr/lib64',
+  '/path/to',
+];
+
+/** macOS 只读系统核心卷与应用程序目录黑名单 */
+const MACOS_FORBIDDEN_ABS_PREFIXES: readonly string[] = [
+  '/System',
+  '/Applications',
+];
+
+const findForbiddenAbsPrefix = (
+  normalized: string,
+  prefixes: readonly string[],
+): string | null => {
+  for (const prefix of prefixes) {
+    if (normalized === prefix || normalized.startsWith(`${prefix}/`)) {
+      return prefix;
+    }
+  }
+  return null;
+};
+
+/** 细粒度校验安全绝对路径 (供 CLI 向导与清单校验共用: 采用系统核心目录黑名单, 宽松放行用户与外挂数据目录) */
 export const validateSafeAbsPath = (
   val: unknown,
   nodeOs?: NodeOs,
@@ -186,12 +218,25 @@ export const validateSafeAbsPath = (
   ) {
     return "必须是安全的绝对路径 (以 / 开头, 不含 '..'、空格、引号或 Shell 元字符, 且不含 CHANGE_ME)";
   }
-  if (
-    nodeOs === 'macos' &&
-    !val.startsWith('/Users/') &&
-    !val.startsWith('/private/')
-  ) {
-    return 'macOS 节点路径必须位于 /Users/ 或 /private/ 下以便 Podman VM 挂载';
+  const normalized = val.replace(/\/+$/, '');
+  const commonHit = findForbiddenAbsPrefix(
+    normalized,
+    COMMON_FORBIDDEN_ABS_PREFIXES,
+  );
+  if (commonHit === '/path/to') {
+    return "不能使用示例占位路径 '/path/to', 请填写真实服务器绝对路径";
+  }
+  if (commonHit !== null) {
+    return `不能使用受保护的系统核心目录 '${commonHit}', 请改用数据目录 (如 /Users/...、/Volumes/...、/home/...、/opt/... 或 /var/...)`;
+  }
+  if (nodeOs === 'macos') {
+    const macHit = findForbiddenAbsPrefix(
+      normalized,
+      MACOS_FORBIDDEN_ABS_PREFIXES,
+    );
+    if (macHit !== null) {
+      return `macOS 节点路径不能位于系统核心目录 '${macHit}' 下, 请改用 /Users/...、/Volumes/... 或 /opt/... 等数据目录`;
+    }
   }
   return null;
 };
@@ -350,12 +395,16 @@ const validateAppsAndAuth = (
   for (const key of authAlnumKeys) {
     if (auth[key] !== undefined) checkAlnum(auth[key], `auth.${key}`);
   }
-  if (auth.keyFile !== undefined && auth.keyFile !== '') {
+  if (auth.keyFile !== undefined) {
     if (typeof auth.keyFile !== 'string') {
       throw new ConfigError('auth.keyFile 必须是字符串');
     }
-    const kf = auth.keyFile.trim();
-    if (!/^[A-Za-z0-9+/=]+$/.test(kf) || kf.length < 16 || kf.length > 1024) {
+    if (
+      auth.keyFile !== '' &&
+      (!BASE64_KEYFILE_RE.test(auth.keyFile) ||
+        auth.keyFile.length < 16 ||
+        auth.keyFile.length > 1024)
+    ) {
       throw new ConfigError('auth.keyFile 须为 16-1024 位单行 base64 字符串');
     }
   }
@@ -398,6 +447,9 @@ export const validateManifest = (manifest: DeployManifest): string[] => {
     );
   }
   checkAllowedKeys(rawObj, ALLOWED_KEYS, 'deploy.json');
+  if (rawObj.$schema !== undefined && typeof rawObj.$schema !== 'string') {
+    throw new ConfigError('$schema 必须为字符串');
+  }
 
   if (typeof manifest.mode !== 'string' || !VALID_MODES.has(manifest.mode)) {
     throw new ConfigError(`不支持的 mode: ${String(manifest.mode)}`);
@@ -406,12 +458,7 @@ export const validateManifest = (manifest: DeployManifest): string[] => {
   if (manifest.stackPrefix !== undefined) {
     checkDnsLabel(manifest.stackPrefix, 'stackPrefix', 32);
   }
-  if (manifest.hardware !== undefined) {
-    if (!isPlainObject(manifest.hardware)) {
-      throw new ConfigError('hardware 必须是 JSON 对象');
-    }
-    checkAllowedKeys(manifest.hardware, ALLOWED_HARDWARE_KEYS, 'hardware');
-  }
+  validateHardwareSection(manifest.hardware);
   validateScalarFields(manifest);
 
   const networkMode: NetworkMode = manifest.networkMode ?? 'bridge';
@@ -450,7 +497,11 @@ export const validateManifest = (manifest: DeployManifest): string[] => {
     validateNodeBindIp,
   };
   validateK8sSection(manifest.k8s, sectionValidators);
-  if (manifest.mode === 'single' || manifest.mode === 'replica-set') {
+  if (
+    manifest.mode === 'single' ||
+    manifest.mode === 'replica-set' ||
+    manifest.nodes !== undefined
+  ) {
     validatePodmanNodesSection({
       nodes: manifest.nodes,
       mode: manifest.mode,

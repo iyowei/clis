@@ -122,11 +122,11 @@ const validateHardwareBounds = (hw: HardwareSpec): WorkloadType => {
   }
   if (
     hw.expectedAppConnections !== undefined &&
-    (!Number.isInteger(hw.expectedAppConnections) ||
+    (!Number.isSafeInteger(hw.expectedAppConnections) ||
       hw.expectedAppConnections < 1)
   ) {
     throw new SizingError(
-      `hardware.expectedAppConnections 须为 >= 1 的整数 (当前填了 ${String(hw.expectedAppConnections)})`,
+      `hardware.expectedAppConnections 须为 >= 1 的安全整数 (当前填了 ${String(hw.expectedAppConnections)})`,
     );
   }
   const workload: WorkloadType = hw.workload ?? 'balanced';
@@ -179,30 +179,43 @@ const formatCompressorPlainReason = (
     : '单核 CPU 采用轻量 snappy 压缩, 省空间且不卡 CPU';
 };
 
+interface MaxConnectionsResolution {
+  maxIncomingConnections: number;
+  formula: string;
+}
+
 const resolveMaxConnections = (
   memGb: number,
   wtCacheGb: number,
   expectedAppConnections: number | undefined,
   warnings: string[],
-): number => {
+): MaxConnectionsResolution => {
   const nonCacheGb = Math.max(0.5, memGb - wtCacheGb);
   const baseMaxConns = clamp(floor50(nonCacheGb * 80), 100, 5000);
+  const baseFormula = `clamp(floor50((${memGb} - ${wtCacheGb}) x 80), 100, 5000)`;
   const hardRamSafeCeiling = clamp(floor50(nonCacheGb * 130), 100, 5000);
+  const ceilingFormula = `clamp(floor50((${memGb} - ${wtCacheGb}) x 130), 100, 5000)`;
 
   if (expectedAppConnections === undefined) {
-    return baseMaxConns;
+    return { maxIncomingConnections: baseMaxConns, formula: baseFormula };
   }
   const needed = ceil50(expectedAppConnections * 1.25);
   if (needed <= baseMaxConns) {
-    return baseMaxConns;
+    return { maxIncomingConnections: baseMaxConns, formula: baseFormula };
   }
   if (needed <= hardRamSafeCeiling) {
-    return needed;
+    return {
+      maxIncomingConnections: needed,
+      formula: `ceil50(${expectedAppConnections} x 1.25)`,
+    };
   }
   warnings.push(
     `预期连接数 ${expectedAppConnections} 超出当前 ${memGb}G 内存的承受上限: 已自动保护性限制为 ${hardRamSafeCeiling} 个连接, 如需更高并发请调大 memoryGb 或收紧后端连接池 maxPoolSize`,
   );
-  return hardRamSafeCeiling;
+  return {
+    maxIncomingConnections: hardRamSafeCeiling,
+    formula: ceilingFormula,
+  };
 };
 
 /**
@@ -250,19 +263,15 @@ export const computeSizing = (hw: HardwareSpec): ComputedSizing => {
   // - balanced / read-heavy (<=8G): 遵循官方标准 0.5 x (RAM - 1G)
   const wtRatio = resolveWtRatio(workload, memGb);
   const wtCacheGb = Math.max(0.25, roundQuarter(wtRatio * (memGb - 1)));
-  if (wtCacheGb >= memGb * 0.7) {
-    warnings.push(
-      `WT_CACHE_GB (${wtCacheGb}G) 占总内存 >= 70%, 会挤压连接栈与聚合排序内存`,
-    );
-  }
 
-  // 3) 最大入站连接: 非缓存富余内存按每 GB 承载 80 个安全连接, 保底 100, 上限 5000
-  const maxIncomingConnections = resolveMaxConnections(
-    memGb,
-    wtCacheGb,
-    hw.expectedAppConnections,
-    warnings,
-  );
+  // 3) 最大入站连接: 非缓存富余内存按每 GB 承载 80 个安全连接 (expectedAppConnections 触发 1.25x 上浮或 130/GB 硬顶), 保底 100, 上限 5000
+  const { maxIncomingConnections, formula: maxConnsFormula } =
+    resolveMaxConnections(
+      memGb,
+      wtCacheGb,
+      hw.expectedAppConnections,
+      warnings,
+    );
 
   // 4) oplogSizeMB: 磁盘容量 * 负载系数, 保底 990MB (WiredTiger 官方下限), 封顶 51200MB (50GB)
   const ratio = OPLOG_DISK_RATIO[workload];
@@ -314,7 +323,7 @@ export const computeSizing = (hw: HardwareSpec): ComputedSizing => {
       key: 'maxIncomingConnections',
       label: '最大同时连接数',
       value: `${maxIncomingConnections} 个`,
-      formula: `clamp(floor50((${memGb} - ${wtCacheGb}) x 80), 100, 5000)`,
+      formula: maxConnsFormula,
       plainReason: '按剩余内存折算的安全并发上限, 避免连接过多拖垮数据库',
     },
     {

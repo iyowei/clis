@@ -46,8 +46,10 @@ export const needAlnum = (name: string): string =>
   validateAlnumSecret(need(name), name);
 
 export const validateDbName = (v: string, label: string): string => {
-  if (!/^[A-Za-z0-9_-]+$/.test(v)) {
-    throw new FatalError(`${label} 只允许字母, 数字, 下划线, 连字符`);
+  if (!v || v.length > 63 || !/^[A-Za-z0-9_-]+$/.test(v)) {
+    throw new FatalError(
+      `${label} 只允许字母, 数字, 下划线, 连字符, 且长度须为 1-63`,
+    );
   }
   if (RESERVED_DBS.has(v)) {
     throw new FatalError(`${label} 不能使用保留系统库名 ${v}`);
@@ -67,17 +69,19 @@ export const parseExtraApps = (
   const seen = new Set([primaryDb]);
   const specs: AppDbSpec[] = [];
 
+  let entryIdx = 0;
   for (const entry of raw.split(',')) {
     const trimmed = entry.trim();
     if (!trimmed) continue;
+    entryIdx += 1;
     const parts = trimmed.split(':');
     if (parts.length !== 3) {
       throw new FatalError(
-        `MONGO_EXTRA_APPS 条目格式必须为 库名:用户名:密码, 当前为 ${trimmed}`,
+        `MONGO_EXTRA_APPS 第 ${entryIdx} 项格式必须为 库名:用户名:密码 (且均不含冒号)`,
       );
     }
     const [rawDb, rawUser, rawPwd] = parts as [string, string, string];
-    const db = validateDbName(rawDb, `MONGO_EXTRA_APPS 库名(${rawDb})`);
+    const db = validateDbName(rawDb, `MONGO_EXTRA_APPS 第 ${entryIdx} 项库名`);
     if (seen.has(db)) {
       throw new FatalError(`MONGO_EXTRA_APPS 存在重复业务库名: ${db}`);
     }
