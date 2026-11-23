@@ -37,7 +37,7 @@ bun install
 
 The hooks check code on the way in (pre-commit: a project-wide `bun check`, plus `bun fmt` and oxlint over the staged files) and re-run the full checks before a push (pre-push runs `bun scripts/ci.ts`, the single source of the gate list). Where lefthook is not installed, the hook chain falls back to a pinned version fetched through bunx. Configuration: [lefthook.yml](lefthook.yml).
 
-Manage custom ignore entries in `.gitignorerc.json` and regenerate `.gitignore` via `fgi` rather than editing `.gitignore` directly.
+`.gitignore` ships with a compact starter baseline aligned with `.gitignorerc.json`. When adding custom ignore entries, record them in the `custom` array of `.gitignorerc.json` and either regenerate `.gitignore` via fast-gitignore (`fgi`) or mirror the entry in `.gitignore`.
 
 ## Common commands
 
@@ -80,7 +80,7 @@ The [development guide](docs/development.md) covers environment setup, the commi
 
 ## Documentation
 
-Engineering docs live under `docs/`; the index is [docs/README.md](docs/README.md). New documents must be registered in the index they belong to (the README under `adrs/` or `designs/`, or the top-level index for everything else); orphan documents are not accepted. If a change alters behavior or a documented contract, update the matching document in the same pull request.
+Engineering docs follow a two-tier layout (see [docs/README.md](docs/README.md)): repository-wide governance and scaffolding docs live under `docs/`, while each tool's product designs, protocols, and ADRs live under its main package `packages/<pkg>/docs/`. Register new documents in their corresponding index (`docs/README.md`, `docs/designs/README.md`, `docs/adrs/README.md`, or `packages/<pkg>/docs/README.md`); orphan documents are not accepted. If a change alters behavior or a documented contract, update the matching document in the same pull request.
 
 ## Questions
 

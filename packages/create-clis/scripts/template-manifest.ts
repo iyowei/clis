@@ -189,7 +189,10 @@ export const TEMPLATE_MANIFEST: readonly ManifestEntry[] = [
     'packages/sweep/package.json',
     '换中性示例 API 包清单骨架 (version 0.0.0)',
   ),
-  rst('packages/sweep/tsconfig.json', '换只含 src 的示例包 tsconfig 骨架'),
+  rst(
+    'packages/sweep/tsconfig.json',
+    '换只含 src 与 scripts 的示例包 tsconfig 骨架 (隔离本仓 bench)',
+  ),
   rst(
     'packages/sweep/tsconfig.build.json',
     '本仓 API 包排除 sweep 内部模块 (fixtures/runtime/scan-*); 换干净中性排除表骨架',
@@ -217,7 +220,10 @@ export const TEMPLATE_MANIFEST: readonly ManifestEntry[] = [
     '换最小示例 CLI 包中文 README 骨架',
   ),
   rst('packages/sweep-cli/CHANGELOG.md', '换占位 CHANGELOG 骨架'),
-  rst('packages/sweep-cli/src/', '换最小 greet CLI 薄壳骨架'),
+  rst(
+    'packages/sweep-cli/src/',
+    '换最小 greet CLI 薄壳与通用启动器自证单测骨架',
+  ),
 
   // exclude: 本仓私有包、领域内容与历史记录 (packages/* 自动派生构建期禁词)
   excl('.agents/', '本仓 AI 工作流 Skill 与确定性性能引擎; 不进脚手架模板'),

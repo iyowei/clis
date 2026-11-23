@@ -1,7 +1,7 @@
 # {{NAME}}
 
 [![CI]({{REPO_URL}}/actions/workflows/ci.yml/badge.svg)]({{REPO_URL}}/actions/workflows/ci.yml)
-[![Release]({{REPO_URL}}/actions/workflows/release.yml/badge.svg)]({{REPO_URL}}/actions/workflows/release.yml)
+[![CI & Release]({{REPO_URL}}/actions/workflows/release.yml/badge.svg)]({{REPO_URL}}/actions/workflows/release.yml)
 
 **English** | [中文](README.zh-CN.md)
 

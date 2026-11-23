@@ -37,7 +37,7 @@ bun install
 
 钩子在入口把关 (pre-commit: 全项目 `bun check` 类型检查 + `bun fmt` / oxlint 扫暂存文件), 推送前再跑一遍全量检查 (pre-push 跑 `bun scripts/ci.ts`, 步骤清单的单一来源)。机器上没有 lefthook 时, 钩子链经 bunx 取 pin 版兜底。配置见 [lefthook.yml](lefthook.yml)。
 
-仓库的 `.gitignore` 由 `.gitignorerc.json` 维护, 新增规则请写入 `.gitignorerc.json` 的 `custom` 数组并重跑 `fgi`, 不要直接手改 `.gitignore`。
+仓库初始自带精简版 `.gitignore` 基线 (与 `.gitignorerc.json` 对齐); 新增忽略规则请同步记入 `.gitignorerc.json` 的 `custom` 数组, 已安装 fast-gitignore (`fgi`) 时重跑 `fgi` 生成完整版, 未安装时同步更新 `.gitignore`。
 
 ## 常用命令
 
@@ -80,7 +80,7 @@ bun run ci
 
 ## 文档
 
-工程技术文档在 `docs/` 下, 索引是 [docs/README.md](docs/README.md)。新增文档必须登记到它所属的索引 (`adrs/`、`designs/` 下的登记到各自 README, 其余登记到总索引); 不接受索引之外的孤岛文档。改动行为或已登记契约时, 同一个 PR 里把对应文档一并更新。
+工程技术文档采用极简两级结构 (见 [docs/README.md](docs/README.md)): 仓库级治理与脚手架文档在根 `docs/` 下, 各产品的整体设计、协议与 ADR 内聚在对应主包 `packages/<pkg>/docs/` 下。新增文档必须登记到所属索引 (`docs/README.md`、`docs/designs/README.md`、`docs/adrs/README.md` 或 `packages/<pkg>/docs/README.md`); 不接受孤岛文档。改动一旦影响行为或已登记契约, 在同一个 pull request 里把对应文档一并更新。
 
 ## 提问
 
