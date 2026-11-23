@@ -255,12 +255,11 @@ export function scanResolvedBundle(
   });
 
   const totalRawHotspotCount = rawHotspots.length;
-  const numberedHotspots = rawHotspots
-    .slice(0, maxHotspots)
-    .map((item, idx) => ({
-      ...item,
-      id: `H${String(idx + 1).padStart(2, '0')}`,
-    }));
+  const allNumberedHotspots = rawHotspots.map((item, idx) => ({
+    ...item,
+    id: `H${String(idx + 1).padStart(2, '0')}`,
+  }));
+  const numberedHotspots = allNumberedHotspots.slice(0, maxHotspots);
 
   const activeDocs = bundle.documents.filter((d) => !d.excludedFromHotspotScan);
   const docLines = activeDocs.reduce((sum, d) => sum + d.lineCount, 0);
@@ -303,10 +302,10 @@ export function scanResolvedBundle(
       docLines > 0 ? Number((implScriptLines / docLines).toFixed(2)) : 0,
   };
 
-  const unbackedHotspots = numberedHotspots.filter(
+  const unbackedHotspots = allNumberedHotspots.filter(
     (h) => !h.likelyBackedByScript && !h.delegatedOrNegated,
   );
-  const backedHotspots = numberedHotspots.filter(
+  const backedHotspots = allNumberedHotspots.filter(
     (h) => h.likelyBackedByScript || h.delegatedOrNegated,
   );
   const skillKind = classifySkillKind(bundle, footprint, hasDomainScriptCall);
@@ -315,7 +314,7 @@ export function scanResolvedBundle(
     footprint,
     unbackedHotspots,
     backedHotspots,
-    numberedHotspots.length,
+    totalRawHotspotCount,
   );
 
   const summaryForJudge: AuditSummaryForJudge = {

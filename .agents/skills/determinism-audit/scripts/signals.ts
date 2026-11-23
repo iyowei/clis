@@ -193,6 +193,37 @@ function splitHeadingBlockIntoChunks(
   return out;
 }
 
+interface FenceState {
+  char: '`' | '~';
+  len: number;
+}
+
+function stepFenceState(
+  rawLine: string,
+  current: FenceState | null,
+): { next: FenceState | null; isDelimiter: boolean } {
+  if (current === null) {
+    const open = rawLine.match(/^\s*(`{3,}|~{3,})(.*)$/);
+    if (open === null) return { next: null, isDelimiter: false };
+    const marker = open[1]!;
+    const info = open[2] ?? '';
+    const ch = marker[0] as '`' | '~';
+    if (ch === '`' && info.includes('`')) {
+      return { next: null, isDelimiter: false };
+    }
+    return { next: { char: ch, len: marker.length }, isDelimiter: true };
+  }
+  const close = rawLine.match(/^\s*(`{3,}|~{3,})\s*$/);
+  if (
+    close !== null &&
+    close[1]![0] === current.char &&
+    close[1]!.length >= current.len
+  ) {
+    return { next: null, isDelimiter: true };
+  }
+  return { next: current, isDelimiter: false };
+}
+
 export function splitMarkdownIntoChunks(content: string): MarkdownChunk[] {
   const lines = content.split('\n');
   const startIdx = findFrontmatterEnd(lines);
@@ -205,17 +236,18 @@ export function splitMarkdownIntoChunks(content: string): MarkdownChunk[] {
   let currentSection = '(导言 / 顶层正文)';
   let currentTopSection = '(导言 / 顶层正文)';
   let currentEntries: TaggedLine[] = [];
-  let inFence = false;
+  let fenceState: FenceState | null = null;
   const headingStack: Array<{ level: number; title: string }> = [];
 
   for (let i = startIdx; i < lines.length; i += 1) {
     const raw = lines[i]!;
-    const trimmed = raw.trim();
-    if (/^(?:```|~~~)/.test(trimmed)) {
-      inFence = !inFence;
+    const fenceStep = stepFenceState(raw, fenceState);
+    fenceState = fenceStep.next;
+    if (fenceStep.isDelimiter) {
       currentEntries.push({ lineNo: i + 1, text: raw, inFence: true });
       continue;
     }
+    const inFence = fenceState !== null;
     const headingMatch = inFence ? null : raw.match(/^(#{1,4})\s+(.+?)\s*$/);
     if (headingMatch !== null) {
       if (currentEntries.length > 0) {

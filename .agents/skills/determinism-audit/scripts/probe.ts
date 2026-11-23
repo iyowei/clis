@@ -120,12 +120,15 @@ function printUsage(): void {
 }
 
 function writeArchiveReport(report: ProbeReport): string {
-  const archiveDir = join(homedir(), 'tmp', 'determinism-audit');
+  const home = process.env.HOME ?? process.env.USERPROFILE ?? homedir();
+  const archiveDir = join(home, 'tmp', 'determinism-audit');
   mkdirSync(archiveDir, { recursive: true });
   const safeName = report.skillName.replace(/[^a-zA-Z0-9._-]/g, '_');
+  const displayPath = `~/tmp/determinism-audit/${safeName}.probe.json`;
+  report.archivePath = displayPath;
   const archiveFile = join(archiveDir, `${safeName}.probe.json`);
   writeFileSync(archiveFile, `${JSON.stringify(report, null, 2)}\n`);
-  return `~/tmp/determinism-audit/${safeName}.probe.json`;
+  return displayPath;
 }
 
 function kindPriority(kind: SkillKind): number {

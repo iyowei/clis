@@ -1,46 +1,17 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "title": "DeterminismAuditProbeReport",
-  "type": "object",
-  "required": [
-    "schemaVersion",
-    "targetInput",
-    "skillName",
-    "resolvedEntryPath",
-    "symlinkChain",
-    "isThinDispatcher",
-    "skillKind",
-    "forwardedAgents",
-    "linkedSkills",
-    "excludedSkills",
-    "linkedRules",
-    "architectureShape",
-    "engineeringFootprint",
-    "documents",
-    "inventory",
-    "executedCommandRefs",
-    "candidateHotspots",
-    "unresolvedTargets",
-    "summaryForJudge"
+  "title": "DeterminismAuditOutputContract",
+  "description": "JSON Schema validating `probe.ts probe` (`ProbeReport`) and `probe.ts list` (`SkillListReport`) stdout and archived JSON outputs.",
+  "oneOf": [
+    { "$ref": "#/$defs/ProbeReport" },
+    { "$ref": "#/$defs/SkillListReport" }
   ],
-  "properties": {
-    "schemaVersion": { "type": "integer", "const": 2 },
-    "targetInput": { "type": "string", "minLength": 1 },
-    "skillName": { "type": "string", "minLength": 1 },
-    "resolvedEntryPath": { "type": "string", "minLength": 1 },
-    "symlinkChain": { "type": "array", "items": { "type": "string" } },
-    "isThinDispatcher": { "type": "boolean" },
-    "skillKind": {
+  "$defs": {
+    "SkillKind": {
       "type": "string",
       "enum": ["workflow", "dispatcher", "reference-kb"]
     },
-    "forwardedAgents": { "type": "array", "items": { "type": "string" } },
-    "linkedSkills": { "type": "array", "items": { "type": "string" } },
-    "excludedSkills": { "type": "array", "items": { "type": "string" } },
-    "linkedRules": { "type": "array", "items": { "type": "string" } },
-    "dotaiRoot": { "type": "string" },
-    "archivePath": { "type": "string" },
-    "architectureShape": {
+    "ArchitectureShape": {
       "type": "string",
       "enum": [
         "script-backed-loop",
@@ -50,8 +21,37 @@
         "unresolved-dispatcher"
       ]
     },
-    "engineeringFootprint": {
+    "SignalCategory": {
+      "type": "string",
+      "enum": [
+        "FULL_REPO_SCAN",
+        "AST_OR_DEPENDENCY_GRAPH",
+        "EXACT_DIFF_OR_MATCHING",
+        "FORMAT_OR_SCHEMA_VALIDATION",
+        "STATE_MACHINE_OR_ROLLBACK",
+        "STATISTICAL_OR_BENCHMARK",
+        "PURE_SHELL_OR_ENV_PROBE"
+      ]
+    },
+    "DocumentRole": {
+      "type": "string",
+      "enum": [
+        "skill-entry",
+        "skill-source",
+        "skill-compiled-mirror",
+        "reference",
+        "forwarded-agent",
+        "resource-doc",
+        "linked-rule"
+      ]
+    },
+    "AssetOrigin": {
+      "type": "string",
+      "enum": ["skill", "forwarded-resource", "external-ref", "shared-infra"]
+    },
+    "EngineeringFootprint": {
       "type": "object",
+      "additionalProperties": false,
       "required": [
         "docCount",
         "docLines",
@@ -66,17 +66,80 @@
         "hasMachineReadableContract",
         "hasTestSuite",
         "scriptToDocLineRatio"
-      ]
-    },
-    "documents": {
-      "type": "array",
-      "items": {
-        "type": "object",
-        "required": ["path", "role", "lineCount", "byteCount", "hasFrontmatter"]
+      ],
+      "properties": {
+        "docCount": { "type": "integer", "minimum": 0 },
+        "docLines": { "type": "integer", "minimum": 0 },
+        "docBytes": { "type": "integer", "minimum": 0 },
+        "implScriptCount": { "type": "integer", "minimum": 0 },
+        "implScriptLines": { "type": "integer", "minimum": 0 },
+        "sharedInfraScriptCount": { "type": "integer", "minimum": 0 },
+        "testFileCount": { "type": "integer", "minimum": 0 },
+        "schemaFileCount": { "type": "integer", "minimum": 0 },
+        "hasDeterministicRunner": { "type": "boolean" },
+        "hasVerificationGate": { "type": "boolean" },
+        "hasMachineReadableContract": { "type": "boolean" },
+        "hasTestSuite": { "type": "boolean" },
+        "scriptToDocLineRatio": { "type": "number", "minimum": 0 }
       }
     },
-    "inventory": {
+    "ResolvedDocument": {
       "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "role", "lineCount", "byteCount", "hasFrontmatter"],
+      "properties": {
+        "path": { "type": "string", "minLength": 1 },
+        "role": { "$ref": "#/$defs/DocumentRole" },
+        "lineCount": { "type": "integer", "minimum": 0 },
+        "byteCount": { "type": "integer", "minimum": 0 },
+        "hasFrontmatter": { "type": "boolean" },
+        "dispatchTarget": { "type": "string" },
+        "disallowedTools": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "designDocs": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "excludedFromHotspotScan": { "type": "boolean" }
+      }
+    },
+    "ScriptAsset": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "lines", "bytes", "ext", "origin"],
+      "properties": {
+        "path": { "type": "string", "minLength": 1 },
+        "lines": { "type": "integer", "minimum": 0 },
+        "bytes": { "type": "integer", "minimum": 0 },
+        "ext": { "type": "string" },
+        "origin": { "$ref": "#/$defs/AssetOrigin" }
+      }
+    },
+    "TestAsset": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "lines", "origin"],
+      "properties": {
+        "path": { "type": "string", "minLength": 1 },
+        "lines": { "type": "integer", "minimum": 0 },
+        "origin": { "$ref": "#/$defs/AssetOrigin" }
+      }
+    },
+    "SchemaAsset": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "bytes", "origin"],
+      "properties": {
+        "path": { "type": "string", "minLength": 1 },
+        "bytes": { "type": "integer", "minimum": 0 },
+        "origin": { "$ref": "#/$defs/AssetOrigin" }
+      }
+    },
+    "ScriptInventory": {
+      "type": "object",
+      "additionalProperties": false,
       "required": [
         "implScripts",
         "sharedInfraScripts",
@@ -84,52 +147,256 @@
         "schemaFiles",
         "sidecarConfigFiles",
         "docOnlyFiles"
-      ]
-    },
-    "executedCommandRefs": {
-      "type": "array",
-      "items": {
-        "type": "object",
-        "required": ["file", "line", "command", "kind"]
+      ],
+      "properties": {
+        "implScripts": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/ScriptAsset" }
+        },
+        "sharedInfraScripts": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/ScriptAsset" }
+        },
+        "testFiles": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/TestAsset" }
+        },
+        "schemaFiles": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/SchemaAsset" }
+        },
+        "sidecarConfigFiles": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "docOnlyFiles": { "type": "integer", "minimum": 0 }
       }
     },
-    "candidateHotspots": {
-      "type": "array",
-      "items": {
-        "type": "object",
-        "required": [
-          "id",
-          "file",
-          "docRole",
-          "section",
-          "lineStart",
-          "lineEnd",
-          "categories",
-          "matchedTerms",
-          "score",
-          "likelyBackedByScript",
-          "delegatedOrNegated",
-          "nearbyScripts",
-          "excerpt"
-        ]
-      }
-    },
-    "unresolvedTargets": {
-      "type": "array",
-      "items": {
-        "type": "object",
-        "required": ["kind", "reference", "sourceFile", "line", "searchedPaths"]
-      }
-    },
-    "summaryForJudge": {
+    "CommandCallSite": {
       "type": "object",
+      "additionalProperties": false,
+      "required": ["file", "line", "command", "kind"],
+      "properties": {
+        "file": { "type": "string", "minLength": 1 },
+        "line": { "type": "integer", "minimum": 1 },
+        "command": { "type": "string", "minLength": 1 },
+        "kind": {
+          "type": "string",
+          "enum": [
+            "local-script",
+            "external-script",
+            "cli-tool",
+            "git-or-shell"
+          ]
+        }
+      }
+    },
+    "CandidateHotspot": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "file",
+        "docRole",
+        "section",
+        "lineStart",
+        "lineEnd",
+        "categories",
+        "matchedTerms",
+        "score",
+        "likelyBackedByScript",
+        "delegatedOrNegated",
+        "nearbyScripts",
+        "excerpt"
+      ],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "file": { "type": "string", "minLength": 1 },
+        "docRole": { "$ref": "#/$defs/DocumentRole" },
+        "section": { "type": "string", "minLength": 1 },
+        "lineStart": { "type": "integer", "minimum": 1 },
+        "lineEnd": { "type": "integer", "minimum": 1 },
+        "categories": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/SignalCategory" }
+        },
+        "matchedTerms": { "type": "array", "items": { "type": "string" } },
+        "score": { "type": "number", "minimum": 1 },
+        "likelyBackedByScript": { "type": "boolean" },
+        "delegatedOrNegated": { "type": "boolean" },
+        "nearbyScripts": { "type": "array", "items": { "type": "string" } },
+        "excerpt": { "type": "string" }
+      }
+    },
+    "UnresolvedTarget": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "reference", "sourceFile", "line", "searchedPaths"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": [
+            "agent",
+            "resource-dir",
+            "linked-file",
+            "rule",
+            "skill-source"
+          ]
+        },
+        "reference": { "type": "string", "minLength": 1 },
+        "sourceFile": { "type": "string", "minLength": 1 },
+        "line": { "type": "integer", "minimum": 1 },
+        "searchedPaths": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "HotspotPointer": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "location", "section", "score", "categories"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "location": { "type": "string", "minLength": 1 },
+        "section": { "type": "string", "minLength": 1 },
+        "score": { "type": "number", "minimum": 1 },
+        "categories": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/SignalCategory" }
+        }
+      }
+    },
+    "AuditSummaryForJudge": {
+      "type": "object",
+      "additionalProperties": false,
       "required": [
         "totalRawHotspotCount",
         "unbackedHotspotCount",
         "backedHotspotCount",
         "topUnbackedHotspots",
         "auditFocusHints"
-      ]
+      ],
+      "properties": {
+        "totalRawHotspotCount": { "type": "integer", "minimum": 0 },
+        "unbackedHotspotCount": { "type": "integer", "minimum": 0 },
+        "backedHotspotCount": { "type": "integer", "minimum": 0 },
+        "topUnbackedHotspots": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/HotspotPointer" }
+        },
+        "auditFocusHints": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "ProbeReport": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "targetInput",
+        "skillName",
+        "resolvedEntryPath",
+        "symlinkChain",
+        "isThinDispatcher",
+        "skillKind",
+        "forwardedAgents",
+        "linkedSkills",
+        "excludedSkills",
+        "linkedRules",
+        "architectureShape",
+        "engineeringFootprint",
+        "documents",
+        "inventory",
+        "executedCommandRefs",
+        "candidateHotspots",
+        "unresolvedTargets",
+        "summaryForJudge"
+      ],
+      "properties": {
+        "schemaVersion": { "type": "integer", "const": 2 },
+        "targetInput": { "type": "string", "minLength": 1 },
+        "skillName": { "type": "string", "minLength": 1 },
+        "resolvedEntryPath": { "type": "string", "minLength": 1 },
+        "symlinkChain": { "type": "array", "items": { "type": "string" } },
+        "isThinDispatcher": { "type": "boolean" },
+        "skillKind": { "$ref": "#/$defs/SkillKind" },
+        "forwardedAgents": { "type": "array", "items": { "type": "string" } },
+        "linkedSkills": { "type": "array", "items": { "type": "string" } },
+        "excludedSkills": { "type": "array", "items": { "type": "string" } },
+        "linkedRules": { "type": "array", "items": { "type": "string" } },
+        "dotaiRoot": { "type": "string" },
+        "archivePath": { "type": "string" },
+        "architectureShape": { "$ref": "#/$defs/ArchitectureShape" },
+        "engineeringFootprint": { "$ref": "#/$defs/EngineeringFootprint" },
+        "documents": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/ResolvedDocument" }
+        },
+        "inventory": { "$ref": "#/$defs/ScriptInventory" },
+        "executedCommandRefs": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/CommandCallSite" }
+        },
+        "candidateHotspots": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/CandidateHotspot" }
+        },
+        "unresolvedTargets": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/UnresolvedTarget" }
+        },
+        "summaryForJudge": { "$ref": "#/$defs/AuditSummaryForJudge" }
+      }
+    },
+    "SkillListItem": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "source",
+        "entryPath",
+        "isSymlink",
+        "isThinDispatcher",
+        "skillKind",
+        "architectureShape",
+        "docLines",
+        "implScriptCount",
+        "testFileCount",
+        "schemaFileCount",
+        "unbackedHotspotCount",
+        "totalRawHotspotCount",
+        "unresolvedCount"
+      ],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "source": {
+          "type": "string",
+          "enum": ["workspace", "global-agents", "global-claude", "builtin"]
+        },
+        "entryPath": { "type": "string", "minLength": 1 },
+        "isSymlink": { "type": "boolean" },
+        "isThinDispatcher": { "type": "boolean" },
+        "skillKind": { "$ref": "#/$defs/SkillKind" },
+        "architectureShape": { "$ref": "#/$defs/ArchitectureShape" },
+        "docLines": { "type": "integer", "minimum": 0 },
+        "implScriptCount": { "type": "integer", "minimum": 0 },
+        "testFileCount": { "type": "integer", "minimum": 0 },
+        "schemaFileCount": { "type": "integer", "minimum": 0 },
+        "unbackedHotspotCount": { "type": "integer", "minimum": 0 },
+        "totalRawHotspotCount": { "type": "integer", "minimum": 0 },
+        "unresolvedCount": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "SkillListReport": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schemaVersion", "totalSkills", "skills"],
+      "properties": {
+        "schemaVersion": { "type": "integer", "const": 2 },
+        "dotaiRoot": { "type": "string" },
+        "totalSkills": { "type": "integer", "minimum": 0 },
+        "skills": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/SkillListItem" }
+        }
+      }
     }
   }
 }

@@ -13,6 +13,7 @@ import {
   extname,
   isAbsolute,
   join,
+  parse,
   resolve,
 } from 'node:path';
 
@@ -30,12 +31,51 @@ export interface DiscoveredSkillEntry {
   isSymlink: boolean;
 }
 
-function findHighestSymlinkPrefix(targetPath: string): string | undefined {
+/** 跨平台逐级提取路径前缀 (兼容 POSIX `/`、Windows 盘符根 `C:\` 与 UNC `\\server\share`) */
+export function splitPathPrefixes(targetPath: string): string[] {
+  const winDrive = targetPath.match(/^([A-Za-z]:)[\\/](.*)$/);
+  if (winDrive !== null) {
+    const root = `${winDrive[1]!}\\`;
+    const rest = winDrive[2]!.split(/[\\/]+/).filter(Boolean);
+    const prefixes: string[] = [];
+    let acc = root;
+    for (let i = 0; i < rest.length; i += 1) {
+      acc = i === 0 ? `${root}${rest[i]!}` : `${acc}\\${rest[i]!}`;
+      prefixes.push(acc);
+    }
+    return prefixes;
+  }
+
+  const unc = targetPath.match(
+    /^[\\/]{2}([^\\/]+)[\\/]([^\\/]+)(?:[\\/](.*))?$/,
+  );
+  if (unc !== null) {
+    const root = `\\\\${unc[1]!}\\${unc[2]!}`;
+    const rest = (unc[3] ?? '').split(/[\\/]+/).filter(Boolean);
+    const prefixes: string[] = [];
+    let acc = root;
+    for (const seg of rest) {
+      acc = `${acc}\\${seg}`;
+      prefixes.push(acc);
+    }
+    return prefixes;
+  }
+
   const normalized = resolve(targetPath);
-  const parts = normalized.split('/');
-  let prefix = '';
-  for (let i = 1; i < parts.length; i += 1) {
-    prefix = `${prefix}/${parts[i]!}`;
+  const parsed = parse(normalized);
+  const relBody = normalized.slice(parsed.root.length);
+  const segments = relBody.split(/[\\/]+/).filter(Boolean);
+  const prefixes: string[] = [];
+  let current = parsed.root;
+  for (const seg of segments) {
+    current = join(current, seg);
+    prefixes.push(current);
+  }
+  return prefixes;
+}
+
+function findHighestSymlinkPrefix(targetPath: string): string | undefined {
+  for (const prefix of splitPathPrefixes(targetPath)) {
     try {
       if (lstatSync(prefix).isSymbolicLink()) return prefix;
     } catch {
@@ -50,7 +90,7 @@ export function traceSymlinkChain(entryPath: string): {
   chain: string[];
 } {
   const chain: string[] = [entryPath];
-  let current = entryPath;
+  let current = resolve(entryPath);
 
   for (let hop = 0; hop < 16; hop += 1) {
     const linkNode = findHighestSymlinkPrefix(current);
@@ -60,11 +100,11 @@ export function traceSymlinkChain(entryPath: string): {
       const nextBase = isAbsolute(linkTarget)
         ? linkTarget
         : resolve(dirname(linkNode), linkTarget);
-      const suffix = current.slice(linkNode.length);
-      const nextPath = `${nextBase}${suffix}`;
+      const suffix = current.slice(linkNode.length).replace(/^[\\/]+/, '');
+      const nextPath = suffix.length > 0 ? join(nextBase, suffix) : nextBase;
       if (nextPath === current) break;
       current = nextPath;
-      chain.push(current);
+      if (chain[chain.length - 1] !== current) chain.push(current);
     } catch {
       break;
     }
@@ -138,30 +178,79 @@ export function getSearchRoots(cwd: string, dotaiRoot?: string) {
   return roots;
 }
 
+function resolveRootItemEntry(
+  rootDir: string,
+  mode: 'dir' | 'flat-md',
+  entryName: string,
+): { name: string; entryPath: string; isSymlink: boolean } | undefined {
+  if (entryName.startsWith('.')) return undefined;
+  const itemPath = join(rootDir, entryName);
+  if (mode === 'flat-md' && entryName.endsWith('.md')) {
+    if (entryName.toLowerCase() === 'readme.md') return undefined;
+    if (!existsSync(itemPath) || !statSync(itemPath).isFile()) return undefined;
+    return {
+      name: basename(entryName, '.md'),
+      entryPath: itemPath,
+      isSymlink: lstatSync(itemPath).isSymbolicLink(),
+    };
+  }
+  const entryPath = join(itemPath, 'SKILL.md');
+  if (!existsSync(entryPath)) return undefined;
+  return {
+    name: entryName,
+    entryPath,
+    isSymlink:
+      lstatSync(itemPath).isSymbolicLink() ||
+      lstatSync(entryPath).isSymbolicLink(),
+  };
+}
+
+function hasCompiledMirrorSeen(
+  dotaiRoot: string | undefined,
+  skillName: string,
+  seen: ReadonlySet<string>,
+): boolean {
+  if (dotaiRoot === undefined) return false;
+  const compiledMd = join(
+    dotaiRoot,
+    'targets',
+    'codex',
+    'skills',
+    skillName,
+    'SKILL.md',
+  );
+  if (!existsSync(compiledMd)) return false;
+  return seen.has(realpathSync(compiledMd));
+}
+
 export function listAllInstalledSkills(options: ResolveOptions): {
   dotaiRoot?: string;
   entries: DiscoveredSkillEntry[];
 } {
   const dotaiRoot = detectDotaiRoot([options.cwd], options);
-  const roots = getSearchRoots(options.cwd, undefined);
+  const roots = getSearchRoots(options.cwd, dotaiRoot);
   const seen = new Set<string>();
   const entries: DiscoveredSkillEntry[] = [];
 
   for (const root of roots) {
     if (!existsSync(root.dir)) continue;
     for (const dirent of readdirSync(root.dir, { withFileTypes: true })) {
-      if (dirent.name.startsWith('.')) continue;
-      const itemPath = join(root.dir, dirent.name);
-      const entryPath = join(itemPath, 'SKILL.md');
-      if (!existsSync(entryPath)) continue;
-      const canonical = realpathSync(entryPath);
+      const item = resolveRootItemEntry(root.dir, root.mode, dirent.name);
+      if (item === undefined) continue;
+      const canonical = realpathSync(item.entryPath);
       if (seen.has(canonical)) continue;
+      if (
+        root.mode === 'flat-md' &&
+        hasCompiledMirrorSeen(dotaiRoot, item.name, seen)
+      ) {
+        continue;
+      }
       seen.add(canonical);
       entries.push({
-        name: dirent.name,
+        name: item.name,
         source: root.source,
-        entryPath,
-        isSymlink: lstatSync(itemPath).isSymbolicLink(),
+        entryPath: item.entryPath,
+        isSymlink: item.isSymlink,
       });
     }
   }
@@ -262,7 +351,9 @@ export function resolveExternalScript(
 ): string | undefined {
   if (isAbsolute(ref)) {
     if (dotaiRoot !== undefined) {
-      const m = ref.match(/\/targets\/[^/]+\/resources\/([^/]+)\/(.+)$/);
+      const m = ref
+        .replaceAll('\\', '/')
+        .match(/\/targets\/[^/]+\/resources\/([^/]+)\/(.+)$/);
       if (m?.[1] !== undefined && m[2] !== undefined) {
         const srcVer = join(dotaiRoot, 'src', 'resources', m[1], m[2]);
         if (existsSync(srcVer)) return realpathSync(srcVer);
@@ -284,7 +375,8 @@ export function attachCompanionTestsAndSchemas(
   const dir = dirname(scriptAbsPath);
   const stem = basename(scriptAbsPath, extname(scriptAbsPath));
   const isDedicatedShared =
-    basename(dir) === '_shared' || dir.includes('/_runner/');
+    basename(dir) === '_shared' ||
+    dir.replaceAll('\\', '/').includes('/_runner/');
   if (isDedicatedShared && !walkedSubdirs.has(dir)) {
     walkedSubdirs.add(dir);
     walkSkillDirectory(dir, 'external-ref', cwd, collector);
