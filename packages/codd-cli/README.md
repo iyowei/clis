@@ -114,9 +114,16 @@ codd update
 
 ## Exit codes
 
-- `0`: Completed successfully (including `--help`, `--version`, `init`, and `--dry-run`).
-- `1`: Argument error, manifest validation error, corrupted state file, or I/O error.
+- `0`: Completed successfully (including `--help`, `--version`, `init`, `--dry-run`, and `update` when up-to-date, `--check`, or upgraded).
+- `1`: Argument error, manifest validation error, `update` failure, corrupted state file, or I/O error.
 - `130`: Interactive wizard cancelled by the user (`Ctrl+C` or closed stdin).
+
+## Environment variables
+
+- `CODD_THEME`: Set `light` or `dark` to explicitly select the terminal color theme (falls back to `COLORFGBG`, defaulting to `dark`).
+- `NO_COLOR` / `TERM=dumb`: Disable ANSI color escape sequences (`stdout` and `stderr` also independently fall back to plain text when redirected to non-TTY streams).
+- `CODD_TEMPLATE_DIR`: Optional directory overriding the bundled `assets/template/` root.
+- `NPM_CONFIG_REGISTRY`: Custom npm registry URL used by `codd update` when `--registry` is not passed.
 
 ## Generated artifacts
 

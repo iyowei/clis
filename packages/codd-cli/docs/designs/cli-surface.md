@@ -25,11 +25,13 @@ codd -h, --help                输出帮助说明
 
 ### 参数解析规则 (`src/args.ts`)
 
+- `update` 首位透传与帮助兼容: `argv[0] === 'update'` 时将其后参数原样透传给 `@iyowei/cli-updater` 独立解析 (`--check` / `--force` / `--pm <name>` / `--registry <url>` / `--verbose` / `-h, --help`); 非首位出现 `update` 时, 若 `--` 前携带 `-h` / `--help` (如 `codd --help update`) 友好返回 `help: true` 并退出码 `0`, 否则报错提示 `codd update [--check | --force | --pm <name> | --registry <url> | --verbose]` 并退出码 `1`。
+- `init` (`--init-schema`) 互斥规则: 仅用于导出 Schema 与参考清单, 禁止与 `wizard` (`-i` / `--wizard`)、清单路径、`--dry-run`、`--out`、`--rotate` / `--rotate-all`、`--new-fingerprint` 同时使用 (携带 `-h` / `--help` 或 `-V` / `--version` 时优先输出帮助/版本)。
 - `-c` / `--config` 与 `-o` / `--out` 必须携带非空且不以 `-` 开头的取值; 缺值或紧跟另一旗标 (如 `codd -c --dry-run`) 立即报错并退出码 `1`。
 - `--config=` 与 `--out=` 若等号后为空串同样报错拒绝。
 - 遇到 `--` 后进入纯位置参数模式, 其后以 `-` 开头的 token 不再按旗标解析。
 - 仅允许指定一份清单文件: 重复提供多个位置参数或同时用 `-c` 和位置参数均判错拒绝。
-- 若无参数、无 `./deploy.json` 且标准输入输出均为 TTY, 自动进入 `codd wizard`; 非 TTY 环境缺 `./deploy.json` 时明确报错并提示执行 `codd init` 或指定路径。
+- 未指定清单路径参数、`./deploy.json` 不存在且 `stdin` / `stdout` 均为 TTY 时自动进入向导 (`codd wizard`); 非 TTY 环境缺 `./deploy.json` 时明确报错并提示执行 `codd init` 或指定路径。
 
 ## 4 步交互式向导 (`src/wizard.ts` & `src/ui/`)
 
@@ -39,24 +41,31 @@ codd -h, --help                输出帮助说明
 2. **硬件与负载**: 选用预设 (`2c2g` / `4c8g` / `8c16g`) 或自定义 CPU/内存/磁盘与负载特征 (`balanced` / `write-heavy` / `read-heavy`), 立即调用 `computeSizing()` 渲染参数配比卡片。
 3. **业务库与最小权限账号**: 以 `db:user` 逗号分隔格式录入业务库, 禁止系统保留库 (`admin` / `local` / `config`) 与重复库名。
 4. **目标位置与落盘**:
-   - Podman 拓扑收集节点操作系统 (`linux` / `macos`)、绑定 IP、安全绝对备份目录 (禁止 `..` 与 Shell 元字符, macOS 强制 `/Users/` 或 `/private/`) 与可选 SSH 目标;
+   - Podman 拓扑收集节点操作系统 (`linux` / `macos`)、绑定 IP、安全绝对备份目录 (禁止 `..` 与 Shell 元字符, 采用系统核心目录黑名单拦截 `/proc`、`/sys`、`/dev`、`/etc`、`/usr/bin` 及 macOS `/System`、`/Applications` 等, 放行 `/Users`、`/Volumes`、`/opt`、`/var` 等任意数据路径) 与可选 SSH 目标;
    - K8s 拓扑收集合规 DNS 标签 Namespace 与可选 StorageClass。
    - **预览与覆写保护**: `--dry-run` 下明确提示跳过保存清单而不提问; 非 `--dry-run` 保存清单前自动递归创建父目录, 目标文件已存在时增加覆写二次确认 (默认不覆盖)。
 
 ### 终端交互与降级纪律
 
 - **宽字符与零宽字符**: `charWidth` 对 CJK / Emoji 计 2 列, 对 `\p{Mn}` 组合标记、变体选择符与零宽控制符计 0 列; `widgets` 在落框前统一按 `\r?\n` 拆行, 杜绝多行值撑裂圆角框。
-- **色彩降级**: `Apple_Terminal` (仅 256 色) 不走 24-bit TrueColor; 设 `NO_COLOR`、非 TTY 或 `TERM=dumb` 时降级为纯文本无 ANSI 转义。
+- **色彩主题与双流降级**: 支持 `CODD_THEME=light|dark` 显式切换浅色/深色主题 (未设时参考 `COLORFGBG`, 默认深色); `Apple_Terminal` (仅 256 色) 不走 24-bit TrueColor; `stdout` 与 `stderr` 独立判定 `isTTY` (`hasColor` / `hasStderrColor`), `printAlert('err', ...)` 在 `stderr` 重定向为非 TTY 时严格降级为无 ANSI 纯文本; 设 `NO_COLOR`、对应流非 TTY 或 `TERM=dumb` 时均输出零 ANSI 纯文本。
 - **信号与异常清理**: Raw mode 全程监听 `stdin` 的 `end`/`close` 与 `stdout` 的 `resize`, 任一退出/取消 (`Ctrl+C`) 路径均立即关闭 raw mode、恢复默认光标并抛出 `PromptCancelledError` 交上层统一收口返回退出码 `130`, 严禁底层静默挂起或裸调 `process.exit`。
 - **非交互单选/确认**: 输入无效值 (如非数字序号) 报错重问, 不静默回退默认项。
 
 ## 退出码
 
-| 退出码 | 含义                                                                          |
-| ------ | ----------------------------------------------------------------------------- |
-| `0`    | 成功完成 (`--help`、`--version`、`init`、`--dry-run`、正常生成部署包)         |
-| `1`    | 任一错误 (参数解析错误、清单校验/注入拦截、状态文件损坏、模板缺失或 I/O 失败) |
-| `130`  | 交互向导被用户取消 (`Ctrl+C` 或 stdin 提前关闭)                               |
+| 退出码 | 含义                                                                                          |
+| ------ | --------------------------------------------------------------------------------------------- |
+| `0`    | 成功完成 (`--help`、`--version`、`init`、`--dry-run`、`update` 检查/升级完成、正常生成部署包) |
+| `1`    | 任一错误 (参数解析错误、清单校验/注入拦截、`update` 失败、状态文件损坏、模板缺失或 I/O 失败)  |
+| `130`  | 交互向导被用户取消 (`Ctrl+C` 或 stdin 提前关闭)                                               |
+
+## 环境变量
+
+- `CODD_THEME`: 显式指定 `light` 或 `dark` 切换浅色/深色终端配色主题 (未设置时自动参考 `COLORFGBG`, 默认深色)。
+- `NO_COLOR` / `TERM=dumb`: 禁用终端 ANSI 颜色转义 (`stdout` 与 `stderr` 同时各自独立判定 `isTTY`, 重定向至非 TTY 流时严格降级为纯文本)。
+- `CODD_TEMPLATE_DIR`: 覆盖内置 `assets/template/` 模板根目录的自定义路径。
+- `NPM_CONFIG_REGISTRY`: `codd update` 在未传 `--registry` 时优先采用的 npm 注册表地址 (兼容小写 `npm_config_registry`)。
 
 ## `.codd-state/` 状态与凭证契约
 

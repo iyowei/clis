@@ -114,9 +114,16 @@ codd update
 
 ## 退出码
 
-- `0`: 成功完成 (含 `--help`、`--version`、`init`、`--dry-run`)。
-- `1`: 参数错误、清单校验失败、状态文件损坏或磁盘读写失败。
+- `0`: 成功完成 (含 `--help`、`--version`、`init`、`--dry-run` 及 `update` 检查/升级完成)。
+- `1`: 参数错误、清单校验失败、`update` 失败、状态文件损坏或磁盘读写失败。
 - `130`: 交互式向导被用户取消 (`Ctrl+C` 或输入流提前关闭)。
+
+## 环境变量
+
+- `CODD_THEME`: 显式指定 `light` 或 `dark` 切换浅色/深色终端配色主题 (未设置时自动读取 `COLORFGBG`, 默认深色)。
+- `NO_COLOR` / `TERM=dumb`: 禁用终端 ANSI 颜色转义 (`stdout` 与 `stderr` 同时各自独立判定 `isTTY`, 重定向至非 TTY 流时严格降级为纯文本)。
+- `CODD_TEMPLATE_DIR`: 覆盖内置 `assets/template/` 模板根目录的自定义路径。
+- `NPM_CONFIG_REGISTRY`: `codd update` 在未传 `--registry` 时优先采用的 npm 注册表地址。
 
 ## 生成物
 
@@ -132,4 +139,4 @@ codd update
 - [命令面与交互契约](https://github.com/iyowei/clis/blob/main/packages/codd-cli/docs/designs/cli-surface.md)
 - [工程技术文档总索引](https://github.com/iyowei/clis/blob/main/docs/README.md)
 - [codd 产品文档入口](https://github.com/iyowei/clis/blob/main/packages/codd/docs/README.md)
-- [可编程 API 包 (`@iyowei/codd`)](https://github.com/iyowei/clis/tree/main/packages/codd)
+- [可编程 API 包 (`@iyowei/codd`)](https://github.com/iyowei/clis/blob/main/packages/codd/README.zh-CN.md)

@@ -244,8 +244,8 @@ export const collectPodmanNodes = async (
       summaryLabel: `${defName} 备份根目录`,
       hint:
         nodeOs === 'macos'
-          ? `填【目标 Mac 服务器】上的路径 (必须在 /Users/ 或 /private/ 下)。按 Tab 可修改默认路径; 自动加上 /mongo-${name}-<指纹> 防重名`
-          : `填【目标 Linux 服务器】上的绝对路径。按 Tab 可修改默认路径; 自动加上 /mongo-${name}-<指纹> 防重名`,
+          ? `填【目标 Mac 服务器】上的绝对路径 (如 /Users/... 或外挂盘 /Volumes/..., 避开 /System、/etc 等系统目录)。按 Tab 可修改默认路径; 自动加上 /mongo-${name}-<指纹> 防重名`
+          : `填【目标 Linux 服务器】上的绝对路径 (避开 /proc、/etc、/usr/bin 等系统目录)。按 Tab 可修改默认路径; 自动加上 /mongo-${name}-<指纹> 防重名`,
       defaultVal: defBackup,
       validate: (v) => validateSafeAbsPath(v, nodeOs),
     });
