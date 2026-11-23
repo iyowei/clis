@@ -190,7 +190,7 @@
 
 **B10. 删除复核与目标同源拼写 (入口形态违约或归属不明的目标一律不删)**
 
-- 依据: `src/delete.ts` 的 `TrustRoot` (配置拼写与 realpath 归一在类型上强制配对) 与 `toTrustRoots`, `src/delete-review.ts` 的 `resolveTargetRootSync` (入口形态硬拒绝尾分隔符 / `.` / `..` / 非 `node_modules` 末段 + `insideAnyRoot` 归属判定); 测试 `src/delete.contract.test.ts` 与 `src/delete.result-shape.test.ts`。
+- 依据: `src/delete.ts` 的 `TrustRoot` (配置拼写与 realpath 归一在类型上强制配对) 与 `toTrustRoots`, `src/delete-review.ts` 的 `resolveTargetRootSync` (入口形态硬拒绝尾分隔符 / `.` / `..`, 末段校验缺省要求恰为 `node_modules`, 泛化多预设/自定义规则模式 `allowGeneralTargets: true` 下经 `hasSafeTargetLeaf` 校验安全末段并硬拒空串 / `.` / `..` / `.git` / `*` / 文件系统根, 再叠加 `insideAnyRoot` 归属判定); 测试 `src/delete.contract.test.ts` 与 `src/delete.result-shape.test.ts`。
 
 ## C. 防注入与伪造
 
@@ -445,7 +445,7 @@
 
 **F13. 配置损坏或非法结构拒绝且报错具体: 非法 JSON / 显式空 `roots: []` / 预设含 `enabled` / 未知预设键 / 非法规则 `match` / 旧版 v1 需迁移, 报错含路径与精确错误码, 退 1**
 
-- 依据: 契约 BC-19; ADR 0022; `src/config.ts` / `src/config-validate.ts` / `src/rules.ts`; 语料 `config-corrupt-json` / `config-corrupt-shape-roots-missing` / `config-shape-item-type`。
+- 依据: 契约 BC-19; ADR 0022; `src/config.ts` / `src/config-validate.ts` / `src/rules.ts`; 语料 `config-corrupt-json` / `config-corrupt-shape-roots-empty` / `config-shape-item-type`。
 - 边界: 字段「缺省」与「写错」严格区分: `roots` 省略取家目录而显式 `[]` 硬拒; `exclude` 省略用 32 项护栏而显式 `[]` 接管。
 
 **F14. 名单输入健壮: 扫描恒定跳过的 `.git` 写进任何名单都静默剔除、永不制造假未命中告警**

@@ -114,7 +114,7 @@ export interface ScanOptions {
   rules?: readonly CustomRule[];
   /** 家目录 (用于保护 `~/.gradle` 等全局缓存); 缺省 `os.homedir()`, `null` 关闭 */
   home?: string | null;
-  /** 用户是否显式指定了 `exclude` (区分默认护栏与显式排除 `.gradle`) */
+  /** 用户是否显式指定了 `exclude` (缺省 `false`; 置 `true` 且 `exclude` 含 `.gradle` 时阻断项目级 `.gradle` 放行) */
   excludeExplicit?: boolean;
   /** `olderThanDays` 判定时间基准 (毫秒, 缺省 `Date.now()`, 测试可注入) */
   nowMs?: number;
@@ -458,7 +458,7 @@ export interface RemovalResult {
   removed: string[];
   /** 实际移入系统回收站成功的目标 (保输入顺序, ADR 0023) */
   trashed: string[];
-  /** rm 报 ENOENT 且复核确认目标本体已不存在; 目标已达成, 计成功侧 (保输入顺序) */
+  /** rm 或 moveToTrash 报 ENOENT 且 lstat 复核确认目标本体已不存在; 目标已达成, 计成功侧 (保输入顺序) */
   missing: string[];
   /** 删除/回收站失败与复核未完成的目标及原因 (保输入顺序); 回收站失败与复核失败均未触动原文件 (`partialRisk: false`) */
   failed: TargetFailure[];
@@ -752,11 +752,36 @@ export function loadResolvedConfig(
 export function mergeNames(configNames: string[], cliNames: string[]): string[];
 
 // 内置预设注册表 (src/presets.ts) 与自定义规则 (src/rules.ts)
+export interface PresetConfig {
+  /** 动作覆盖; 缺省取预设默认动作 ('delete') */
+  action?: CleanupAction;
+  /** 局部排除: 仅在全局安全护栏之上进一步收紧 */
+  exclude?: string[];
+  /** 局部包含: 非空时仅匹配路径祖先链命中该名单的目标 */
+  include?: string[];
+}
+export type PresetsMap = Partial<Record<PresetName, PresetConfig>>;
+export interface PresetMatchContext {
+  readonly name: string;
+  readonly kind: EntryKind;
+  readonly parentDir: string;
+  readonly targetPath: string;
+  readonly siblingFiles: ReadonlySet<string>;
+  readonly realHome: string | null;
+  readonly style?: PathStyle;
+}
+export interface PresetSpec {
+  readonly name: PresetName;
+  readonly label: string;
+  readonly defaultAction: CleanupAction;
+  readonly kinds: readonly EntryKind[];
+  matchesName(name: string, kind: EntryKind): boolean;
+  verifyAnchor(ctx: PresetMatchContext): Promise<boolean>;
+}
 export const PRESET_NAMES: readonly PresetName[];
 export const BUILTIN_PRESETS: readonly PresetSpec[];
 export const PRESET_BY_NAME: Readonly<Record<PresetName, PresetSpec>>;
 export const OS_JUNK_FILES: ReadonlySet<string>;
-export type PresetsMap = Partial<Record<PresetName, PresetConfig>>;
 export function createDefaultPresets(): PresetsMap;
 export function isPresetName(value: string): value is PresetName;
 export function resolvePresetAction(
@@ -768,10 +793,34 @@ export function matchesAnyActivePresetLeaf(
   presets: PresetsMap,
 ): boolean;
 
+export interface CustomRuleInput {
+  name: string;
+  kind: RuleKind;
+  match: string;
+  action?: CleanupAction;
+  olderThanDays?: number;
+  exclude?: string[];
+  include?: string[];
+}
+export interface CustomRule {
+  name: string;
+  kind: RuleKind;
+  match: string;
+  action: CleanupAction;
+  olderThanDays?: number;
+  exclude?: string[];
+  include?: string[];
+}
+export interface CompiledRule {
+  readonly rule: CustomRule;
+  readonly matchesName: (name: string) => boolean;
+  readonly exclude: ReadonlySet<string>;
+  readonly include: ReadonlySet<string>;
+}
 export const MS_PER_DAY: number;
 export function validateRuleMatch(match: string): string | null;
 export function compileNameMatcher(pattern: string): (name: string) => boolean;
-export function compileRules(rules: readonly CustomRule[]): CompiledRule[];
+export function compileRules(rules: readonly CustomRuleInput[]): CompiledRule[];
 export function ruleMatchesKind(ruleKind: RuleKind, kind: EntryKind): boolean;
 export function isOlderThanDays(
   mtimeMs: number,
@@ -785,6 +834,44 @@ export function matchesAnyRuleLeaf(
 
 // 无损配置迁移 (src/migrate.ts, ADR 0022 / ADR 0024): 写前必建 config.json.YYYYMMDD_HHMMSS.modified 备份, v1 仅映射 node 预设
 export const NEW_PRESET_HINTS: readonly PresetName[];
+export interface DetectMigrationOptions {
+  platform?: string;
+  homedir?: string;
+  env?: Record<string, string | undefined>;
+}
+export interface ApplyMigrationOptions {
+  now?: () => Date;
+}
+export type MigrationDetection =
+  | { state: 'none' }
+  | {
+      state: 'migratable';
+      sourcePath: string;
+      targetPath: string;
+      fromLegacyPath: boolean;
+      rawSource: string;
+      lossless: true;
+      stored: StoredConfigV2;
+      config: Config;
+      excludeExplicit: boolean;
+    }
+  | {
+      state: 'unsupported';
+      sourcePath: string;
+      targetPath: string;
+      fromLegacyPath: boolean;
+      reason: string;
+    };
+export interface MigrationApplied {
+  sourcePath: string;
+  targetPath: string;
+  backupPath: string;
+  fromLegacyPath: boolean;
+  stored: StoredConfigV2;
+  config: Config;
+  excludeExplicit: boolean;
+  newAvailablePresets: readonly PresetName[];
+}
 export function formatBackupTimestamp(date?: Date): string;
 export function buildMigrationBackupPath(
   sourcePath: string,
@@ -837,7 +924,7 @@ export function sanitizeOutputLine(text: string): string;
 ```
 
 > 为什么这三个进 API 包而不是留 CLI 包: (1) 场景 1 与场景 6 的示例代码明确要从 API 包拿 `formatBytes`; (2) OF-14 已声明「输出面净化是全输出面共用的唯一实现, 各输出面不得另写一份」, 拆包后内嵌方 (场景 3 / 6) 若拿不到它, 只能各写一份, 那条契约当场失效; (3) 三者都是纯函数、零 IO、零打印, 不破坏库的静默契约。
-> `render()` / `RenderOptions` / `bannerLine` / `neutralLine` / `paint` / `BAR_BLOCK` / `shortenHome` 全部留在 CLI 包: 它们是**这一套 CLI 的视觉规范**, 不是通用数据表达。
+> `render()` / `RenderOptions` / `bannerLine` / `neutralLine` / `paint` / `BAR_BLOCK` / `shortenHome` / `inferPathStyle` 全部留在 CLI 包: 它们是**这一套 CLI 的视觉规范**, 不是通用数据表达。
 
 ### 2.7 编排层
 
@@ -863,7 +950,7 @@ export interface SweepOptions {
   presets?: PresetsMap;
   /** 自定义清理规则列表; 缺省 [] */
   rules?: readonly CustomRule[];
-  /** 用户是否显式指定了 `exclude` (用于区分默认护栏与用户显式排除 `.gradle`) */
+  /** 用户是否显式指定了 `exclude` (缺省 `false`, 与 `ScanOptions.excludeExplicit` 同源) */
   excludeExplicit?: boolean;
   /** `olderThanDays` 判定时间基准 (毫秒, 测试注入用) */
   nowMs?: number;
@@ -979,7 +1066,7 @@ export interface SweepEntry {
   skipNote?: string;
 }
 
-/** 编排层报出的体积口径 (新增): 本次调用的单值口径; 无任何可测目标时缺省 */
+/** 只读面的完整产物 (顶层 basis: 存在扫描命中条目 entries.length > 0 时给出本次请求的体积口径; 单条未测出体积时其 entry.basis 为 undefined; 无任何条目时缺省) */
 export interface SweepPlan {
   /** 生效的根 (原样回显) */
   roots: string[];
@@ -988,7 +1075,7 @@ export interface SweepPlan {
   include: string[];
   /** 本计划所用的安全策略 */
   policy: SweepPolicy;
-  /** 本次体积口径 (与逐条 entry.basis 同源同值; 无目标时缺省) */
+  /** 存在扫描命中条目 (`entries.length > 0`) 时给出本次请求的体积口径; 单条未测出体积时其 `entry.basis` 为 `undefined`; 无任何条目时缺省 */
   basis?: SizeBasis;
   /** 逐目标领域条目: 保扫描的 target 升序; 测量时已不存在的目标 (BC-13) 不产生条目 */
   entries: SweepEntry[];
@@ -1271,34 +1358,34 @@ export type SweepErrorCode =
 
 **安全闸拒绝 (GuardCode)**: 逐条对应实读的 `validateTargets` 分支, 判定顺序与中文文案均不动; realpath 失败按 errno 分三类:
 
-| code                               | 现状文案 (message 逐字保留)                                                       | details                                           |
-| ---------------------------------- | --------------------------------------------------------------------------------- | ------------------------------------------------- |
-| `GUARD_LEAF_NOT_NODE_MODULES`      | 路径末段不是 node_modules                                                         | —                                                 |
-| `GUARD_INVALID_LEAF` (新增)        | 泛化模式下末段非法 (空段 / 尾斜杠 / `.` / `..` / `.git` / `*` / 未命中白名单)     | —                                                 |
-| `GUARD_TARGET_MISSING` (新增)      | realpath 失败 (目标不存在或不可读)                                                | `{ errno: 'ENOENT' }`                             |
-| `GUARD_TARGET_UNREADABLE` (新增)   | realpath 失败 (目标不存在或不可读)                                                | `{ errno: 'EACCES' \| 'EPERM' }`                  |
-| `GUARD_REALPATH_FAILED` (语义收窄) | realpath 失败 (目标不存在或不可读)                                                | `{ errno }` = 其余 errno (ELOOP / ENOTDIR / 未知) |
-| `GUARD_ROOT_ANCHOR_SYMLINK`        | 根锚点被换位为符号链接 (根: X; 符号链接: Y), 请把配置根改为不含符号链接的真实路径 | `{ root, symlink }`                               |
-| `GUARD_FILESYSTEM_ROOT_BODY`       | 目标是文件系统根本体                                                              | —                                                 |
-| `GUARD_HOME_BODY`                  | 目标是 home 本体                                                                  | —                                                 |
-| `GUARD_REAL_LEAF_NOT_NODE_MODULES` | realpath 后的末段不是 node_modules                                                | —                                                 |
-| `GUARD_OUTSIDE_ROOTS`              | realpath 后不在任何 root 之下                                                     | —                                                 |
-| `GUARD_DUPLICATE_TARGET`           | 重复目标 (realpath 去重)                                                          | —                                                 |
+| code                               | 现状文案 (message 逐字保留)                                                                          | details                                           |
+| ---------------------------------- | ---------------------------------------------------------------------------------------------------- | ------------------------------------------------- |
+| `GUARD_LEAF_NOT_NODE_MODULES`      | 路径末段不是 node_modules                                                                            | 无                                                |
+| `GUARD_INVALID_LEAF` (新增)        | `路径末段不合法或不在本次允许清理目标范围内` / `realpath 后的末段不合法或不在本次允许清理目标范围内` | 无                                                |
+| `GUARD_TARGET_MISSING` (新增)      | realpath 失败 (目标不存在或不可读)                                                                   | `{ errno: 'ENOENT' }`                             |
+| `GUARD_TARGET_UNREADABLE` (新增)   | realpath 失败 (目标不存在或不可读)                                                                   | `{ errno: 'EACCES' \| 'EPERM' }`                  |
+| `GUARD_REALPATH_FAILED` (语义收窄) | realpath 失败 (目标不存在或不可读)                                                                   | `{ errno }` = 其余 errno (ELOOP / ENOTDIR / 未知) |
+| `GUARD_ROOT_ANCHOR_SYMLINK`        | 根锚点被换位为符号链接 (根: X; 符号链接: Y), 请把配置根改为不含符号链接的真实路径                    | `{ root, symlink }`                               |
+| `GUARD_FILESYSTEM_ROOT_BODY`       | 目标是文件系统根本体                                                                                 | 无                                                |
+| `GUARD_HOME_BODY`                  | 目标是 home 本体                                                                                     | 无                                                |
+| `GUARD_REAL_LEAF_NOT_NODE_MODULES` | realpath 后的末段不是 node_modules                                                                   | 无                                                |
+| `GUARD_OUTSIDE_ROOTS`              | realpath 后不在任何 root 之下                                                                        | 无                                                |
+| `GUARD_DUPLICATE_TARGET`           | 重复目标 (realpath 去重)                                                                             | 无                                                |
 
 > 三个码共用同一句中文 `message` (现状文案逐字保留, 黑盒语料与 CLI 打印因此零变化), 机器分流只走 `code` 与 `details.errno`。拆分的判定依据是**处置方向**: `GUARD_TARGET_MISSING` 是唯一可被 `staleTargets: 'missing'` 容忍的一类 (目标已达成); 另两类必须维持整批拒绝。
 
 **删除失败与中止 (RemoveFailureCode / AbortCode)**
 
-| code                        | 现状文案 (message 逐字保留)                                                                                 | partialRisk |
-| --------------------------- | ----------------------------------------------------------------------------------------------------------- | ----------- |
-| `REMOVE_FAILED`             | `<errno>: <人话> (目标: …; 注意: 目录内容可能已被部分或全部删除, 请复查)`                                   | true        |
-| `REMOVE_ENOENT_SURVIVOR`    | `ENOENT: 删除中途失败 (复核确认目标仍存在 / 目标是否仍存在未能核验) (…)`                                    | true        |
-| `TRASH_FAILED` (新增)       | `移入回收站失败 (<原因>) (目标: …; 已保留原文件, 未执行永久删除)` (ADR 0023 绝不降级 `fs.rm`)               | false       |
-| `REVIEW_UNVERIFIED`         | `安全复核未完成 (<码: 人话>) (目标: …; 组件: …; 未执行删除)`                                                | false       |
-| `REVIEW_COMPONENT_VANISHED` | `安全复核未完成 (ENOENT: 路径组件消失) (…; 请复查目标是否仍存在; 未执行删除; 若目标确已不存在, 可忽略此条)` | false       |
-| `REVIEW_NOT_UNDER_ANY_ROOT` | `安全复核失败 (目标不在任何 roots 之下): <target>` (aborted)                                                | 不适用      |
-| `REVIEW_HEAD_SYMLINK`       | `安全复核失败 (根被替换为符号链接): <configured>` (aborted)                                                 | 不适用      |
-| `REVIEW_COMPONENT_REPLACED` | `安全复核失败 (路径组件被替换): <path>` (aborted)                                                           | 不适用      |
+| code                        | 现状文案 (message 逐字保留)                                                                                                                                                                                                                                                   | partialRisk |
+| --------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------- |
+| `REMOVE_FAILED`             | `<errno>: <人话> (目标: …; 注意: 目录内容可能已被部分或全部删除, 请复查)`                                                                                                                                                                                                     | true        |
+| `REMOVE_ENOENT_SURVIVOR`    | `ENOENT: 删除中途失败 (复核确认目标仍存在 / 目标是否仍存在未能核验) (…)`                                                                                                                                                                                                      | true        |
+| `TRASH_FAILED` (新增)       | `移入回收站失败 (<原因>) (目标: …; 已保留原文件, 未执行永久删除)` (ADR 0023 绝不降级 `fs.rm`)                                                                                                                                                                                 | false       |
+| `REVIEW_UNVERIFIED`         | `安全复核未完成 (<码: 人话>) (目标: …; 组件: …; 未执行删除)`                                                                                                                                                                                                                  | false       |
+| `REVIEW_COMPONENT_VANISHED` | `安全复核未完成 (ENOENT: 路径组件消失) (…; 请复查目标是否仍存在; 未执行删除; 若目标确已不存在, 可忽略此条)`                                                                                                                                                                   | false       |
+| `REVIEW_NOT_UNDER_ANY_ROOT` | `安全复核失败 (目标不在任何 roots 之下): <target>` / `安全复核失败 (目标路径不得含尾分隔符): <target>` / `安全复核失败 (目标路径不得含相对段 . 或 ..): <target>` / `安全复核失败 (路径末段不合法): <target>` / `安全复核失败 (路径末段不是 node_modules): <target>` (aborted) | 不适用      |
+| `REVIEW_HEAD_SYMLINK`       | `安全复核失败 (根被替换为符号链接): <configured>` / `安全复核失败 (根被替换为符号链接): <path> (根: <configured>)` (aborted)                                                                                                                                                  | 不适用      |
+| `REVIEW_COMPONENT_REPLACED` | `安全复核失败 (路径组件被替换): <path>` (aborted)                                                                                                                                                                                                                             | 不适用      |
 
 > `partialRisk` 是 EC-05 半完成语义的机器化: 为 true 的条目意味着「删过, 内容可能残缺」, 调用方据此决定是否提示人工复查; 为 false 意味着「未执行删除」。
 
@@ -1456,8 +1543,8 @@ export function isSweepErrorCode<Code extends SweepErrorCode>(
 
 | code                      | details 形状            | 备注                                                                                                                                                           |
 | ------------------------- | ----------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `CONFIG_READ_FAILED`      | `{ path, errno? }`      | —                                                                                                                                                              |
-| `CONFIG_CORRUPT_JSON`     | `{ path }`              | —                                                                                                                                                              |
+| `CONFIG_READ_FAILED`      | `{ path, errno? }`      | 无                                                                                                                                                             |
+| `CONFIG_CORRUPT_JSON`     | `{ path }`              | 无                                                                                                                                                             |
 | `CONFIG_CORRUPT_SHAPE`    | `{ path, field }`       | `field` 指出首个不符的字段名                                                                                                                                   |
 | `CONFIG_ABSENT`           | `{ path, source }`      | 只有显式来源 (flag / env) 会抛; 平台默认缺席走 `state: 'absent'`                                                                                               |
 | `CONFIG_NEEDS_MIGRATION`  | `{ path, version }`     | 旧版 v1 或 `version < 2` 配置由 `loadConfig` 抛出, 引导走 `detectMigration` / `applyMigration`                                                                 |
@@ -1521,8 +1608,8 @@ export type SweepProgressEvent =
 
 - **取消的落点**: `signal` 在 `ScanOptions` / `MeasureOptions` / `ValidateOptions` / `RemovalOptions` / `RemoveBatchOptions` / `SweepPlanOptions` (含 `SweepRunOptions`) 六处都可传, 检查方式统一为「条目 / 任务边界查 `signal.aborted`, 为真则抛 `SweepError('CANCELLED')`」。
 - **删除阶段的硬纪律 (设计, 安全底线)**: 取消**只在条目之间生效**。单条 `fs.rm` 不可中断, 强行中断只会制造新的半删状态 (EC-05 已登记的残余面), 所以库不试图在单条删除中途响应取消。取消发生时:
-  - 删除阶段抛 `SweepError`, `details = { phase: 'remove', partial: RemovalResult }`, 其中 `partial` 是**全部已派发条目**中已产生结果的 `removed` / `missing` / `failed` (删除为有界并发执行: 取消检出后停止派发新条目, 在飞条目跑完并计入);
-  - 未处理的条目既不入 `removed` 也不入 `failed` (它们从未被尝试), 调用方靠 `partial` 自己判断「哪些没动」。
+  - 删除阶段抛 `SweepError`, `details = { phase: 'remove', partial: RemovalResult }`, 其中 `partial` 是**全部已派发条目**中已产生结果的 `removed` / `trashed` / `missing` / `failed` 四桶结果 (删除为有界并发执行: 取消检出后停止派发新条目, 在飞条目跑完并计入);
+  - 未处理的条目不进入 `partial` 的任何结果桶 (它们从未被尝试), 调用方靠 `partial` 自己判断「哪些没动」。
 - **其余阶段的取消**: 抛 `SweepError('CANCELLED')`, `details.phase` 标注阶段 (**取值域为 `SweepPhase` 全集**, 回答 G8; 只处理 `'remove'` 分支会漏掉扫描 / 阶段的取消); **不返回部分结果** (半截的扫描结果与半截的体积表都足以误导判断, 而调用方若需要边跑边攒, 进度回调就是那条通道)。
 - **不可用的取消窗口 (登记)**: 取消信号在 `du` 子进程运行期间无法中断该子进程 (库不杀子进程, 杀进程会带来临时文件与信号语义的额外风险); 检查点落在批量调用前后。
 
@@ -1547,19 +1634,19 @@ export type SweepProgressEvent =
 
 域类型的字段定义散见于 §2.2 至 §2.7 的签名块 (每处的注释即其契约), 此处只列**面向**与稳定性:
 
-| 类型                                                                                                                | 面向         | 稳定性                             |
-| ------------------------------------------------------------------------------------------------------------------- | ------------ | ---------------------------------- |
-| `ScanHit` / `ScanResult` / `Scanner` / `NameMatch`                                                                  | 扫描结果     | 冻结                               |
-| `SizeEntry` / `SizeResult` / `Sizer` / `SizeBasis` / `UnmeasuredEntry`                                              | 体积结果     | 冻结                               |
-| `Classification` / `TargetKind`                                                                                     | 类别判定     | 冻结 (取值集与 `classify.ts` 同源) |
-| `RejectedTarget` / `ValidationResult` / `PathMapping` / `RejectionDetails`                                          | 安全闸       | 冻结                               |
-| `TrustRoot` / `TargetFailure` / `AbortedBatch` / `RemovalResult` / `TrashOutcome`                                   | 删除与回收站 | 冻结                               |
-| `PresetSpec` / `PresetConfig` / `PresetsMap` / `CustomRule` / `CompiledRule` / `HitSource`                          | 预设与规则   | 冻结                               |
-| `CrossDeviceEntry` / `CrossDeviceKind`                                                                              | 设备边界     | 冻结                               |
-| `SkipReason` / `SkippedTarget` / `SkipBook` / `SkipCandidate`                                                       | 跳过集册     | 冻结                               |
-| `SweepEntry` / `SweepPlan` / `SweepReport` / `EntryOutcome` / `SweepDrift` / `SweepSummary` / `SweepRunStatus`      | 编排结果     | 冻结                               |
-| `SweepWarning` / 各组 code 类型                                                                                     | 诊断         | code 冻结, message 可演化          |
-| `Config` / `StoredConfigV2` / `LoadConfigResult` / `ResolvedConfigPath` / `MigrationDetection` / `MigrationApplied` | 配置与迁移   | 冻结                               |
+| 类型                                                                                                                                  | 面向         | 稳定性                             |
+| ------------------------------------------------------------------------------------------------------------------------------------- | ------------ | ---------------------------------- |
+| `ScanHit` / `ScanResult` / `Scanner` / `NameMatch`                                                                                    | 扫描结果     | 冻结                               |
+| `SizeEntry` / `SizeResult` / `Sizer` / `SizeBasis` / `UnmeasuredEntry`                                                                | 体积结果     | 冻结                               |
+| `Classification` / `TargetKind`                                                                                                       | 类别判定     | 冻结 (取值集与 `classify.ts` 同源) |
+| `RejectedTarget` / `ValidationResult` / `PathMapping` / `RejectionDetails`                                                            | 安全闸       | 冻结                               |
+| `TrustRoot` / `TargetFailure` / `AbortedBatch` / `RemovalResult` / `TrashOutcome`                                                     | 删除与回收站 | 冻结                               |
+| `PresetSpec` / `PresetConfig` / `PresetMatchContext` / `PresetsMap` / `CustomRule` / `CustomRuleInput` / `CompiledRule` / `HitSource` | 预设与规则   | 冻结                               |
+| `CrossDeviceEntry` / `CrossDeviceKind`                                                                                                | 设备边界     | 冻结                               |
+| `SkipReason` / `SkippedTarget` / `SkipBook` / `SkipCandidate`                                                                         | 跳过集册     | 冻结                               |
+| `SweepEntry` / `SweepPlan` / `SweepReport` / `EntryOutcome` / `SweepDrift` / `SweepSummary` / `SweepRunStatus`                        | 编排结果     | 冻结                               |
+| `SweepWarning` / 各组 code 类型                                                                                                       | 诊断         | code 冻结, message 可演化          |
+| `Config` / `StoredConfigV2` / `LoadConfigResult` / `ResolvedConfigPath` / `MigrationDetection` / `MigrationApplied`                   | 配置与迁移   | 冻结                               |
 
 三条可序列化承诺 (设计, 供场景 1 / 2 / 4 依赖):
 
@@ -1623,7 +1710,7 @@ export type SweepProgressEvent =
 ### 7.4 扫描结果的根归属
 
 - **现状 (实读)**: `ScanHit` 只有 `project` 与 `target`; 多根场景下结果按根分组只能自己算 (场景 2 的 `roots` 分组、场景 4 的按根审计)。
-- **设计 (改动)**: `ScanHit.root: string` (扫描根的原拼写)。取值规则: 各根串行推进 (实读 `scan-parallel.ts` 根循环), 命中以 realpath 去重、先到者胜, 故归属取**输入顺序中首个遍历到该命中的根**, 结果确定可复现。
+- **设计 (改动)**: `ScanHit.root: string` (扫描根的原拼写)。取值规则: 互不嵌套的独立根共享并发池推进、按 realpath 同步判重先到者胜 (独立根无物理重叠), 仅存在父子嵌套关系的多根退回按输入顺序串行推进 (实读 `scan-parallel.ts`), 确保重叠目标恒归属**输入顺序中首个遍历到该命中的根**, 结果确定可复现。
 - **兼容性**: 新增字段; 现有消费点不受影响。
 
 ### 7.5 安全策略参数与陈旧目标容忍

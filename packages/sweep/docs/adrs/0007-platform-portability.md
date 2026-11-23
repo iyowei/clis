@@ -62,4 +62,4 @@
 - 双运行时与入口基线见 [ADR 0006](../../../../docs/adrs/0006-dual-runtime-bun-first.md); npm 分发入口与编译产物见 [ADR 0009](../../../../docs/adrs/0009-npm-distribution-form.md)。
 - 视觉规范见 [命令面与输出](../../../sweep-cli/docs/designs/cli-surface.md); 配置定位的落点见 [配置与初始化](../designs/config-and-initialization.md)。
 
-> **修订指引 (2026-09-30)**: 本文 `bin/sweep-nm*` 与 `size-du.ts` 等路径还是单包时代的坐标: 启动器现在在 CLI 包 `packages/sweep-node-modules-cli/bin/` 下, `size-du.ts` 等模块在 API 包 `packages/sweep-node-modules/src/` 下 (见 [ADR 0010](../../../../docs/adrs/0010-dual-package-monorepo.md))。
+> **修订指引 (2026-09-30, 2026-11-20 更新现行路径)**: 本文 `bin/sweep-nm*` 与 `size-du.ts` 等路径还是单包时代的坐标; 经双包拆分 ([ADR 0010](../../../../docs/adrs/0010-dual-package-monorepo.md), 曾用目录 `packages/sweep-node-modules{,-cli}`) 与通用清理器统名 ([ADR 0021](0021-sweep-general-cleaner-evolution.md)) 后, 现行启动器 (`bin/sweep*`) 在 CLI 包 `packages/sweep-cli/bin/` 下, `size-du.ts` 等模块在 API 包 `packages/sweep/src/` 下。

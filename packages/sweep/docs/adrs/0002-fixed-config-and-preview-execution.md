@@ -5,7 +5,7 @@
 > **决策者**: 沈委
 > **标签**: [工程]
 > **影响范围**: [全项目]
-> **修订 (2026-11-20)**: 决策第 1 条中的配置文件路径与 v1 字段结构已由 [ADR 0022](0022-config-v2-presets-and-rules.md) 升级为配置 v2 (`~/.config/sweep/config.json`, 含 `presets` 锚定与 `rules` 自定义规则); 「默认预览、`--yes` 执行」核心执行模型延续有效, 原文保留以存史。
+> **修订 (2026-11-20)**: 工具清理范围已由 [ADR 0021](0021-sweep-general-cleaner-evolution.md) 从单一 `node_modules` 演进为多技术栈通用工作区清理器, 决策第 1 条中的配置文件路径与 v1 字段结构已由 [ADR 0022](0022-config-v2-presets-and-rules.md) 升级为配置 v2 (`~/.config/sweep/config.json`, 含 `presets` 锚定与 `rules` 自定义规则); 「默认预览、`--yes` 执行」核心执行模型延续有效, 原文保留以存史。
 
 ## 上下文与问题 (Context & Problem)
 

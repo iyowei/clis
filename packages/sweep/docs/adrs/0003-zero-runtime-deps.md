@@ -8,6 +8,7 @@
 > **修订 (2026-09-23)**: 本 ADR 初稿包含 bun 专属的运行时范围与安装形态表述, 这部分已由 [ADR 0006](../../../../docs/adrs/0006-dual-runtime-bun-first.md) 修订为双运行时与启动器形态; 本 ADR 的范围收窄到依赖与构建策略, 运行时的事一律以 ADR 0006 为准。
 > **修订 (2026-09-23)**: 决策第 2 条的「零构建」已被 [ADR 0009](../../../../docs/adrs/0009-npm-distribution-form.md) 局部取代: 开发时仍然零构建, 只有 npm 发布形态会产出编译产物; 本 ADR 的零运行时依赖策略不受影响。
 > **修订 (2026-09-27)**: 决策第 3 条的 devDependencies 列举已修订: 钩子工具 lefthook 从依赖列表里移出 (不列依赖的理由与取用方式见文末补记); 本 ADR 的零运行时依赖策略不受影响。
+> **修订 (2026-11-20)**: 零第三方运行时依赖边界已由 [ADR 0023](0023-zero-dep-cross-platform-trash.md) 扩展至三端系统回收站 (`trash`) 通道 (纯内置模块与系统原生能力调用, 零外部包、零预编译二进制), 并在 [ADR 0021](0021-sweep-general-cleaner-evolution.md) 的多技术栈双包演进中完整延续。
 
 ## 上下文与问题 (Context & Problem)
 
@@ -53,7 +54,7 @@
 1. 静态核验: 扫描 `src` / `bench` / `scripts` 下所有 import 来源 (也就是 tsconfig include 的全部范围), 只允许 `bun:` / `node:` 前缀和相对路径, 出现第三方包名就算违规;
 2. 双运行时直接跑: `bun src/cli.ts` 与 `node src/cli.ts` 输出一致 (验证办法与 [ADR 0006](../../../../docs/adrs/0006-dual-runtime-bun-first.md) 相同)。
 
-> **修订指引 (2026-09-30)**: 本节的路径还是单包时代写的; 拆成双包后, 源码在 `packages/sweep-node-modules{,-cli}/src`, 直接跑的入口是 `bun packages/sweep-node-modules-cli/src/cli.ts` (见 [ADR 0010](../../../../docs/adrs/0010-dual-package-monorepo.md))。
+> **修订指引 (2026-09-30, 2026-11-20 更新现行路径)**: 本节的路径还是单包时代写的; 经双包拆分 ([ADR 0010](../../../../docs/adrs/0010-dual-package-monorepo.md), 曾用目录 `packages/sweep-node-modules{,-cli}`) 与通用清理器统名 ([ADR 0021](0021-sweep-general-cleaner-evolution.md)) 后, 现行源码在 `packages/sweep{,-cli}/src`, 直接跑的入口是 `bun packages/sweep-cli/src/cli.ts`。
 
 **关联引用**
 
