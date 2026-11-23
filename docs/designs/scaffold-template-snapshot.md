@@ -12,12 +12,12 @@
 
 快照**只取清单里列出的文件**, 不整个仓库照搬。清单里的文件分四类处置:
 
-| 类       | 内容                                                                                                                                                                      | 处置                                                                                                      |
-| -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
-| 直接快照 | 纯通用配置文件 (editorconfig / gitattributes / nvmrc / npmrc / prettierrc / releaserc) / workflows / 通用脚本 (ci / install-git-hooks / safe-install / 闸门族) / 行为准则 | 原样进模板                                                                                                |
-| 泛化替换 | 含项目名的骨架文件 (逐条登记在构建清单的 generalize 条目里, 见 `packages/create-clis/scripts/template-manifest.ts`; 数量随清单走, 不在此写死)                             | 按词汇表替换后进模板                                                                                      |
-| 重置     | 含本仓多产品排除项的根配置 (oxlint / prettierignore / gitignorerc / gitignore / bunfig / turbo / tsconfig / lint-doc-shared) / 根与包 README / docs 骨架 / 示例包源码     | 换成干净的模板化骨架 (无私有产品路径与区域镜像污染, docs 按[文档分层协议](docs-layering.md)生成) 再进模板 |
-| 排除     | 领域与私有内容: 各非骨架包 (`codd` / `codd-cli` / `create-clis` / `cli-updater`)、现有产品源码测试、conformance 语料与领域文档、历史 ADR                                  | 不进模板 (增强档的**机制**文件保留, **内容**由新项目自填)                                                 |
+| 类       | 内容                                                                                                                                                                                                                                                                            | 处置                                                                                                 |
+| -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| 直接快照 | 纯通用配置文件 (editorconfig / gitattributes / nvmrc / npmrc / prettierrc / releaserc / lefthook) / workflows / 无原项目词面的通用脚本与转写基建 (`ci` / `install-git-hooks` / `safe-install` / `lint-dependency-direction` / `lint-stray-backups` / `docs/transcription/*` 等) | 原样进模板                                                                                           |
+| 泛化替换 | 含原项目复合词面的骨架文件 (如 `CODE_OF_CONDUCT.md`、`LICENSE`、`lint-doc-examples`、`lint-doc-references`、`npm-trust-guard`、启动器与发布自证脚本等, 逐条登记在 `packages/create-clis/scripts/template-manifest.ts` 的 `generalize` 条目里; 数量随清单走, 不在此写死)         | 按词汇表替换后进模板                                                                                 |
+| 重置     | 含本仓多产品排除项的根配置 (oxlint / prettierignore / gitignorerc / gitignore / bunfig / turbo / tsconfig / lint-doc-shared) / 根与包 README / docs 骨架 / 示例双包源码与最小增强档协议语料骨架 (`packages/<name>/docs/protocol/`)                                              | 换成干净的模板化骨架 (无私有产品路径与区域镜像污染, 使包含 `full` 在内的三档生成物开箱全绿) 再进模板 |
+| 排除     | 领域与私有内容: 各非骨架包 (`codd` / `codd-cli` / `create-clis` / `cli-updater`)、仓内 AI 技能 (`.agents/`)、`.mailmap`、`bun.lock`、本仓产品专属设计与基准及历史 ADR                                                                                                           | 不进模板                                                                                             |
 
 这份清单 (`packages/create-clis/scripts/template-manifest.ts`) 是这套机制唯一需要登记的地方: 本仓新增骨架文件时, 判断它的分类, 往清单加一行就行。
 
@@ -37,7 +37,7 @@
 
 1. 清单内每个文件都成功产出, 并透传源文件/骨架原有权限位 (保持 `bin/` 启动器 `+x`);
 2. 泛化后模板内**不再出现原项目词汇** (无歧义复合形态, 见 `packages/create-clis/src/render.ts`);
-3. **排除包路径与区域镜像零泄漏**: 自动从清单中全部 `exclude` 的 `packages/<pkg>/` 派生路径禁词 (如 `packages/codd`、`packages/codd-cli`、`packages/create-clis`) 并加上 `registry.npmmirror.com`, 仅对业务产品包 (`leakScope !== 'infra'`) 额外派生裸短名边界禁词 (共享基础设施库如 `cli-updater` 记为 `infra` 以避免误杀英文常用词), 任一产出文件内容或路径命中即构建失败。
+3. **排除包路径与区域镜像零泄漏**: 自动从清单中全部 `exclude` 的 `packages/<pkg>/` 派生路径禁词 (如 `packages/codd`、`packages/codd-cli`、`packages/create-clis`、`packages/cli-updater`) 并加上 `registry.npmmirror.com`、`sweep-lab`、`docs/sweep/`, 仅对业务产品包 (`leakScope !== 'infra'`) 额外派生裸短名边界禁词 (共享基础设施库如 `cli-updater` 记为 `infra` 以避免误杀英文常用词), 任一产出文件内容或路径命中即构建失败。
 
 ## 生成器怎么用模板
 

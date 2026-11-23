@@ -36,7 +36,7 @@
 
 ## 裁剪点约定
 
-有独立载体的装备, 裁剪 = 删除它的文件 (增强档含 `scripts/transcription/`、`docs/transcription/` 与 `packages/{{NAME}}/docs/`) + 删除它在 `ci.ts` 里的步骤声明 (含已空壳的分组与 CLI 旗标分支) + 删除它在根 `package.json` 里的脚本挂载 (`conformance` / `fuzz` / `fuzz:diff`) + 删除它在 `.github/workflows/ci.yml` 里的对应 job (`conformance` job 仅定义于 `.github/workflows/ci.yml`, `release.yml` 经 `workflow_call` 复用 `ci.yml`; 裁剪该处即可避免 PR 与发布双路径白跑 macOS runner) + 同步摘除 `docs/README.md` 的「转写协议」章节与 PR 模板中的 conformance checklist 行。
+有独立载体的装备, 裁剪 = 删除它的文件 (增强档含 `scripts/transcription/`、`docs/transcription/` 与 `packages/{{NAME}}/docs/`) + 删除它在 `ci.ts` 里的步骤声明 (含已空壳的分组与 CLI 旗标分支) + 删除它在根 `package.json` 里的脚本挂载 (`conformance` / `fuzz` / `fuzz:diff`) + 删除它在 `.github/workflows/ci.yml` 里的对应 job (`conformance` job 仅定义于 `.github/workflows/ci.yml`, `release.yml` 经 `workflow_call` 复用 `ci.yml`; 裁剪该处即可避免 PR 与发布双路径白跑 macOS runner) + 同步摘除生成物模板 `docs/README.md` 的「转写协议」章节与 PR 模板中的 conformance checklist 行。
 
 标准档中**依赖方向闸门 (`scripts/lint-dependency-direction.ts` + `lint:deps`) 与技术债登记册 (`docs/designs/tech-debt.md`)** 均已具备独立裁剪载体 (`core` 档完整摘除, `standard` 默认档保留); 其余两套结构性装备为形状选择 / 豁免 (不落文件删除):
 
@@ -45,17 +45,18 @@
 
 ## 档位选择
 
-- 生成新项目时, 生成器问一遍、当场选定 (见[生成器契约](scaffold-contract.md));
+- 生成新项目时默认采用 `standard` 标准档 (交互模式聚焦收集五个基础身份变量, 不额外提问档位; 需 `core` 或 `full` 档时经 `--tier <core|standard|full>` 显式指定, 见[生成器契约](scaffold-contract.md));
 - 生成后升降档: 按「裁剪点约定」人工增删 (升档 = 从本仓搬入该档的文件并接上挂载点; 降档 = 按裁剪点反向操作);
 - 档位不写进任何配置文件 (没有 `tier` 字段): 它只是生成那一刻的装箱单, 不是一个需要长期保存的字段, 免得同一件事得在两个地方同步。
 
 ## 修订记录
 
-| 日期       | 修订                                                                                                                                                                                |
-| ---------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 2026-09-30 | 初稿: 三档清单、裁剪点约定 (含单源化前提) 与档位策略                                                                                                                                |
-| 2026-10-01 | 发布闭环补发布凭据预检装备; 裁剪点约定的单源化前提随落地更新为既成                                                                                                                  |
-| 2026-10-01 | 裁剪点约定补结构性装备的形状选择 / 豁免口径                                                                                                                                         |
-| 2026-10-01 | 裁剪点约定补根 package.json 脚本挂载面 (conformance 悬空脚本修复随动)                                                                                                               |
-| 2026-11-20 | 裁剪点约定同步: `conformance` job 仅定义于 `.github/workflows/ci.yml` (`release.yml` 经 `workflow_call` 复用), 补齐 `ci.ts` 空壳分组与 `--conformance` 分支同步摘除口径             |
-| 2026-11-22 | 增强档与裁剪点同步: 纳入 `docs/transcription/`、`packages/<api>/docs/protocol/`、`lint:mutants`、`fuzz` / `fuzz:diff`、`conformance:portable` 与 `docs/README.md` / PR 模板联动摘除 |
+| 日期       | 修订                                                                                                                                                                                          |
+| ---------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 2026-09-30 | 初稿: 三档清单、裁剪点约定 (含单源化前提) 与档位策略                                                                                                                                          |
+| 2026-10-01 | 发布闭环补发布凭据预检装备; 裁剪点约定的单源化前提随落地更新为既成                                                                                                                            |
+| 2026-10-01 | 裁剪点约定补结构性装备的形状选择 / 豁免口径                                                                                                                                                   |
+| 2026-10-01 | 裁剪点约定补根 package.json 脚本挂载面 (conformance 悬空脚本修复随动)                                                                                                                         |
+| 2026-11-20 | 裁剪点约定同步: `conformance` job 仅定义于 `.github/workflows/ci.yml` (`release.yml` 经 `workflow_call` 复用), 补齐 `ci.ts` 空壳分组与 `--conformance` 分支同步摘除口径                       |
+| 2026-11-22 | 增强档与裁剪点同步: 纳入 `docs/transcription/`、`packages/<api>/docs/protocol/`、`lint:mutants`、`fuzz` / `fuzz:diff`、`conformance:portable` 与生成物模板 `docs/README.md` / PR 模板联动摘除 |
+| 2026-11-22 | 档位选择口径对齐实现与 `scaffold-contract.md`: 默认采用 `standard` 档 (交互模式仅收集五项身份变量, 其余档位经 `--tier` 显式指定)                                                              |
