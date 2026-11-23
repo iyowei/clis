@@ -4,7 +4,7 @@
  * 一律经本入口调用, 不再各自枚举。
  *
  * 分组:
- * - `--verify`         验证组 (ubuntu 权威全量): build -> typecheck -> test -> 7 道只读 lint 并行;
+ * - `--verify`         验证组 (ubuntu 权威全量): build -> typecheck -> test -> 只读闸门并行 (+ 可移植验收);
  * - `--verify-windows` Windows OS 兼容组: build -> 限并发 test:windows -> test:scripts;
  * - `--conformance`    验收组 (语料为 macOS 口径): build -> conformance (bun + node 双 target);
  * - (无旗标)           全链 = 验证组 + 验收组 (重复步骤去重);
@@ -62,7 +62,10 @@ const STEPS: Readonly<Record<string, Step>> = {
   },
   'test:scripts': {
     command: 'bun',
-    args: ['test', 'scripts/'],
+    args: () =>
+      fs.existsSync('.agents/skills')
+        ? ['test', 'scripts/', './.agents/skills/']
+        : ['test', 'scripts/'],
     isolatedHome: true,
     env: WINDOWS_TEST_ENV,
   },
@@ -303,7 +306,7 @@ async function runParallelBatch(names: readonly string[]): Promise<void> {
  * ```text
  * Input:  names = ['build', 'typecheck', 'test', 'lint', 'format-check', 'lint:refs', ...]
  * 步骤 1: 逐项扫描, 非 parallel 步骤直接串行 runStep (其中 test 挂载临时隔离 HOME)
- * 步骤 2: 遇到连续 parallel 步骤 (lint .. lint:backups 共 7 道), 聚合成 batch 并发 spawnParallelStep
+ * 步骤 2: 遇到连续 parallel 步骤 (lint .. lint:backups), 聚合成 batch 并发 spawnParallelStep
  * 步骤 3: 按原声明顺序整块回放各步 stdout/stderr, 首个非零退出码终止进程
  * Output: 全绿返回 void; 任一步失败以该步退出码退出
  * ```
