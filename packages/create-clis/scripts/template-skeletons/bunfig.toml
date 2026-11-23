@@ -7,4 +7,4 @@ frozenLockfile = false
 linker = "hoisted"
 
 [test]
-pathIgnorePatterns = ["scripts/transcription/mutants/**"]
+pathIgnorePatterns = ["**/dist/**", "scripts/transcription/mutants/**"]

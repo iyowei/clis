@@ -1,11 +1,23 @@
-# Generated baseline; manage custom entries in .gitignorerc.json and re-run `fgi` when updating.
+# Starter baseline aligned with .gitignorerc.json; run `fgi` (fast-gitignore) to expand full topic templates, or mirror custom entries in both files.
 node_modules/
 dist/
 coverage/
 .turbo/
+*.tsbuildinfo
+*.tgz
+*.log
+.env
+.env.*.local
+.env.local
 .DS_Store
 Thumbs.db
-*.log
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+!.vscode/*.code-snippets
 package-lock.json
 *.modified
 *.deleted
+scripts/transcription/mutants/gen-*/

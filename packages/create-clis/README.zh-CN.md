@@ -83,7 +83,7 @@ npm create clis -- my-tool --tier core
 
 - **core**: 双包工程骨架 (工具 + 库)、基础测试与发布闭环 (集合里每个仓库都默认全带的那一层);
 - **standard** (默认): 在 `core` 之上加标准档治理装备: 依赖方向闸门 (`lint:deps` 及其单测) 与技术债登记册 (`docs/designs/tech-debt.md`);
-- **full**: 再加增强档装备: 转写契约套件 (行为契约 + 金样本语料 + 确定性验收器 + 变异自证) 与它的台账对账闸门 (`lint:coverage`)。机制随模板, 内容要自填: `packages/<name>/docs/protocol/` 下的契约 / 覆盖表 / 语料填上之前, `bun run ci` 会在 `lint:coverage` 与 `conformance:bun` / `conformance:node` 上红 (`typecheck` 保持全绿), full 档开箱不是全绿 (core 与 standard 是)。
+- **full**: 再加增强档装备: 转写契约套件 (`scripts/transcription/`, 确定性验收器 + 变异自证 `lint:mutants` + 差分模糊测试 `fuzz` / `fuzz:diff`)、跨语言转写基建文档 (`docs/transcription/`) 与覆盖台账闸门 (`lint:coverage`)。`packages/<name>/docs/protocol/` 已预置最小 greet 示例契约、覆盖表、金样本语料、变异体与模糊测试目标, 与 `core` / `standard` 一样开箱 `bun run ci` 与 `bun run fuzz:diff` 全绿; 替换业务代码时同步更新该协议目录即可。
 
 生成物恒为双包集合仓形态 (工具 + 库): 生成器不产出单包仓, 要单包的话生成后自行裁剪。档位只是生成那一刻的装箱单: 它不写进任何配置文件, 之后升降档是手工的按件增删 (裁剪规则见 [capability-tiers.md](https://github.com/iyowei/clis/blob/main/docs/designs/capability-tiers.md))。
 
@@ -111,7 +111,7 @@ npm create clis -- my-tool --tier core
 
 - `bun run build`: 一次产出两份东西: 模板资产 (`assets/template/`, 由骨架清单从本仓构建) 与可执行产物 (`dist/`, 含启动器对账用的清单);
 - `bun run verify:release`: 发布前置校验: 干净检出、产物出自本提交、清单自洽、`dist/create-clis.js` 单文件 `256 KiB` 体积上限门禁、以及发行面包内文件与白名单相符;
-- `bun run heavy-smoke`: 重量级冒烟: 对已校验的不可变包执行 `npm pack` 并在独立隔离目录以 `npm install --omit=dev` 装包, 通过装好的入口验收双场景 — 场景 A 生成默认 `standard` 档完整项目并跑通其全套 `bun run ci`, 场景 B 生成带 `--scope` 的 `core` 档项目并校验裁剪结构与中性构建脚本。
+- `bun run heavy-smoke`: 重量级冒烟: 对已校验的不可变包执行 `npm pack` 并在独立隔离目录以 `npm install --omit=dev` 装包, 通过装好的入口验收三场景: 场景 A 生成默认 `standard` 档完整项目并跑通其全套 `bun run ci`, 场景 B 生成带 `--scope` 的 `core` 档项目并校验裁剪结构与中性构建脚本, 场景 C 生成 `full` 档项目并跑通其全套 `bun run ci` 与 `bun run fuzz:diff`。
 
 `prepublishOnly` 按序串起三者, 发布出去的版本因此自带一份证明: 它生成的项目是绿的。设计与契约文档 (生成器包设计 / 契约 / 档位 / 快照机制) 都在 [docs/designs/](https://github.com/iyowei/clis/tree/main/docs/designs) 下。
 

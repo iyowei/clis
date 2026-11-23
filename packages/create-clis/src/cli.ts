@@ -41,12 +41,12 @@ function buildHooks(options: CliOptions): GenerateHooks {
 }
 
 /**
- * next steps 文案: 进入目录 → 装依赖 (仅未装时) → (full 档) 自填语料提示 → ci 验证 → 从
+ * next steps 文案: 进入目录 → 装依赖 (仅未装时) → ci 验证 → (full 档协议同步提示) → 从
  * 文档总索引读起。
  * 落点取生成物的 `docs/README.md` (实存的总索引): 本仓的定位文档 (collection-positioning.md)
  * 是 exclude 面, 生成物里没有它, 指过去用户读不到。
- * full 档提示的原因: 转写契约套件随模板只带机制, 契约与语料是 exclude 面的自填内容, 填好前
- * 生成物 `bun run ci` 的 conformance 相关步骤必红; 不点破的话, 「验证全绿」这句就是误导。
+ * full 档已内置最小 greet 协议、覆盖表、金样本语料、变异体与模糊测试目标, 开箱跑 `bun run ci`
+ * 与 `bun run fuzz:diff` 100% 全绿; 提示用户在替换业务代码时同步更新协议目录即可。
  */
 function nextSteps(
   targetDir: string,
@@ -56,15 +56,15 @@ function nextSteps(
 ): string {
   const lines = ['', '下一步:', `  cd ${targetDir}`];
   if (!installed) lines.push('  bun install         # 安装依赖');
+  lines.push('  bun run ci          # 验证全绿');
   if (tier === 'full') {
     lines.push(
-      `  # full 档: 转写契约套件只带机制, 契约与语料需自填 (packages/${projectName}/docs/protocol/);`,
+      '  # full 档已内置最小 greet 协议与语料, 开箱 bun run ci 与 bun run fuzz:diff 全绿;',
     );
     lines.push(
-      '  # 填好前 bun run ci 的 lint:coverage 与 conformance 步骤会红',
+      `  # 替换业务代码时同步更新 packages/${projectName}/docs/protocol/ 即可`,
     );
   }
-  lines.push('  bun run ci          # 验证全绿');
   lines.push('  然后从 docs/README.md (文档总索引) 读起, 开始改造。');
   return lines.join('\n');
 }

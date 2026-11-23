@@ -10,5 +10,11 @@
     "Vim",
     "Archives"
   ],
-  "custom": ["package-lock.json", "*.modified", "*.deleted", ".turbo/"]
+  "custom": [
+    "package-lock.json",
+    "*.modified",
+    "*.deleted",
+    "scripts/transcription/mutants/gen-*/",
+    ".turbo/"
+  ]
 }

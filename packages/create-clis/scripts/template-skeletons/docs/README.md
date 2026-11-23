@@ -22,7 +22,7 @@
 
 **跨语言转写契约与验证套件**
 [转写纪律与套件索引](transcription/README.md)
-跨语言复刻共用纪律、对抗审阅清单与双面契约验证说明; 示例包的行为契约见 [behavior-contract.md](../packages/{{NAME}}/docs/protocol/behavior-contract.md)。
+跨语言复刻共用纪律、对抗审阅清单与双面契约验证说明; 示例包的行为契约与覆盖台账见 [behavior-contract.md](../packages/{{NAME}}/docs/protocol/behavior-contract.md) 与 [coverage.md](../packages/{{NAME}}/docs/protocol/conformance/coverage.md)。
 
 ## 开发
 
