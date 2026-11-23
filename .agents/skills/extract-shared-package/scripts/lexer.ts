@@ -146,7 +146,7 @@ function scanTemplateSegment(
   source: string,
   startPos: number,
   startLine: number,
-): { nextPos: number; line: number; enteredExpr: boolean } {
+): { text: string; nextPos: number; line: number; enteredExpr: boolean } {
   let i = startPos;
   let line = startLine;
   while (i < source.length) {
@@ -157,15 +157,30 @@ function scanTemplateSegment(
       continue;
     }
     if (ch === '`') {
-      return { nextPos: i + 1, line, enteredExpr: false };
+      return {
+        text: source.slice(startPos, i),
+        nextPos: i + 1,
+        line,
+        enteredExpr: false,
+      };
     }
     if (ch === '$' && source[i + 1] === '{') {
-      return { nextPos: i + 2, line, enteredExpr: true };
+      return {
+        text: source.slice(startPos, i),
+        nextPos: i + 2,
+        line,
+        enteredExpr: true,
+      };
     }
     if (ch === '\n') line += 1;
     i += 1;
   }
-  return { nextPos: i, line, enteredExpr: false };
+  return {
+    text: source.slice(startPos, i),
+    nextPos: i,
+    line,
+    enteredExpr: false,
+  };
 }
 
 function scanQuotedString(
@@ -213,7 +228,11 @@ const MULTI_OPS = new Set([
 ]);
 
 /** 确定性词法扫描器 */
-export function tokenizeSource(source: string): ScannedToken[] {
+export function tokenizeSource(
+  source: string,
+  options?: { preserveTemplateText?: boolean },
+): ScannedToken[] {
+  const preserveTpl = options?.preserveTemplateText === true;
   const tokens: ScannedToken[] = [];
   const tplDepths: number[] = [];
   let braceDepth = 0;
@@ -267,7 +286,11 @@ export function tokenizeSource(source: string): ScannedToken[] {
     }
     if (ch === '`') {
       const seg = scanTemplateSegment(source, i + 1, line);
-      tokens.push({ kind: 'string', value: '<tpl>', line });
+      tokens.push({
+        kind: 'string',
+        value: preserveTpl ? seg.text : '<tpl>',
+        line,
+      });
       line = seg.line;
       i = seg.nextPos;
       if (seg.enteredExpr) {
@@ -286,6 +309,9 @@ export function tokenizeSource(source: string): ScannedToken[] {
       tplDepths.pop();
       tokens.push({ kind: 'punct', value: '}', line });
       const seg = scanTemplateSegment(source, i + 1, line);
+      if (preserveTpl) {
+        tokens.push({ kind: 'string', value: seg.text, line });
+      }
       line = seg.line;
       i = seg.nextPos;
       if (seg.enteredExpr) {

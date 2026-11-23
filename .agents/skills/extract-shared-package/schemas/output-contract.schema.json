@@ -1,64 +1,553 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "extract-shared-package Output Contract",
-  "description": "Standard JSON Schema validating scan stdout envelope and summary output JSON structures.",
-  "type": "object",
-  "properties": {
+  "description": "Standard JSON Schema validating stdout JSON structures emitted by `extract-loop.ts scan` (default summary envelope and `--full` envelope) and `extract-loop.ts summary`.",
+  "oneOf": [
+    { "$ref": "#/$defs/scanEnvelope" },
+    { "$ref": "#/$defs/scanFullEnvelope" },
+    { "$ref": "#/$defs/summaryOutput" }
+  ],
+  "$defs": {
+    "packageLayer": {
+      "type": "string",
+      "enum": ["cli", "api", "shared-lib"]
+    },
+    "sideEffectTag": {
+      "type": "string",
+      "enum": ["pure", "fs", "process", "tty", "env", "network"]
+    },
+    "watchSync": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["added", "cleared", "activeWatches"],
+      "properties": {
+        "added": { "type": "integer", "minimum": 0 },
+        "cleared": { "type": "integer", "minimum": 0 },
+        "activeWatches": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "scanStats": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "totalPackages",
+        "totalFiles",
+        "totalSymbols",
+        "activeClusters",
+        "suppressedClusters",
+        "migrationResidueCount",
+        "degeneratedLibCount",
+        "coolingDownLibCount",
+        "reabsorbableLibCount"
+      ],
+      "properties": {
+        "totalPackages": { "type": "integer", "minimum": 0 },
+        "totalFiles": { "type": "integer", "minimum": 0 },
+        "totalSymbols": { "type": "integer", "minimum": 0 },
+        "activeClusters": { "type": "integer", "minimum": 0 },
+        "suppressedClusters": { "type": "integer", "minimum": 0 },
+        "migrationResidueCount": { "type": "integer", "minimum": 0 },
+        "degeneratedLibCount": { "type": "integer", "minimum": 0 },
+        "coolingDownLibCount": { "type": "integer", "minimum": 0 },
+        "reabsorbableLibCount": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "layerDomainCounts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["cli", "api", "shared-lib"],
+      "properties": {
+        "cli": { "type": "integer", "minimum": 0 },
+        "api": { "type": "integer", "minimum": 0 },
+        "shared-lib": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "packageNode": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "dir",
+        "language",
+        "kind",
+        "layer",
+        "domainId",
+        "isPrivate",
+        "hasBin",
+        "internalDeps",
+        "externalDeps"
+      ],
+      "properties": {
+        "name": { "type": "string" },
+        "dir": { "type": "string" },
+        "language": { "type": "string", "enum": ["ts-bun", "rust-cargo"] },
+        "kind": {
+          "type": "string",
+          "enum": ["cli", "public-lib", "private-lib"]
+        },
+        "layer": { "$ref": "#/$defs/packageLayer" },
+        "domainId": { "type": "string" },
+        "isPrivate": { "type": "boolean" },
+        "hasBin": { "type": "boolean" },
+        "isPublicTierLib": { "type": "boolean" },
+        "internalDeps": { "type": "array", "items": { "type": "string" } },
+        "runtimeInternalDeps": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "externalDeps": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "graphSummary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["packages", "layerDomainCounts", "existingViolations"],
+      "properties": {
+        "packages": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/packageNode" }
+        },
+        "layerDomainCounts": { "$ref": "#/$defs/layerDomainCounts" },
+        "existingViolations": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "workspaceGraph": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "repoRoot",
+        "packages",
+        "edges",
+        "layerDomainCounts",
+        "existingViolations"
+      ],
+      "properties": {
+        "repoRoot": { "type": "string" },
+        "packages": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/packageNode" }
+        },
+        "edges": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["from", "to"],
+            "properties": {
+              "from": { "type": "string" },
+              "to": { "type": "string" }
+            }
+          }
+        },
+        "layerDomainCounts": { "$ref": "#/$defs/layerDomainCounts" },
+        "existingViolations": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "nextAction": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "reason"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": [
+            "stop",
+            "fix-graph-violations",
+            "reabsorb",
+            "cleanup-unused",
+            "cleanup-residue",
+            "extract-or-triage"
+          ]
+        },
+        "targetPkgName": { "type": "string" },
+        "targetDir": { "type": "string" },
+        "targetFingerprint": { "type": "string" },
+        "suggestedCommand": { "type": "string" },
+        "reason": { "type": "string" }
+      }
+    },
+    "convergence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "shouldStop",
+        "reason",
+        "activeRoundsExecuted",
+        "maxRoundsAllowed"
+      ],
+      "properties": {
+        "shouldStop": { "type": "boolean" },
+        "reason": { "type": "string" },
+        "activeRoundsExecuted": { "type": "integer", "minimum": 0 },
+        "maxRoundsAllowed": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "rustReadinessProfile": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "score",
+        "grade",
+        "hazards",
+        "ioBoundaryMixed",
+        "recommendation"
+      ],
+      "properties": {
+        "score": { "type": "number" },
+        "grade": { "type": "string", "enum": ["high", "medium", "low"] },
+        "hazards": { "type": "array", "items": { "type": "string" } },
+        "ioBoundaryMixed": { "type": "boolean" },
+        "recommendation": { "type": "string" }
+      }
+    },
+    "fileProfile": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "pkgName",
+        "pkgDir",
+        "domainId",
+        "layer",
+        "file",
+        "isInfra",
+        "sloc",
+        "builtins",
+        "externalDeps",
+        "relativeImports",
+        "internalClosureCount",
+        "symbolCount",
+        "exportedSymbolCount",
+        "fileShingles",
+        "fileNormalizedDigest",
+        "sideEffects",
+        "cutCost",
+        "rustReadiness"
+      ],
+      "properties": {
+        "pkgName": { "type": "string" },
+        "pkgDir": { "type": "string" },
+        "domainId": { "type": "string" },
+        "layer": { "$ref": "#/$defs/packageLayer" },
+        "file": { "type": "string" },
+        "isInfra": { "type": "boolean" },
+        "sloc": { "type": "integer", "minimum": 0 },
+        "builtins": { "type": "array", "items": { "type": "string" } },
+        "externalDeps": { "type": "array", "items": { "type": "string" } },
+        "relativeImports": { "type": "array", "items": { "type": "string" } },
+        "internalClosureCount": { "type": "integer", "minimum": 0 },
+        "symbolCount": { "type": "integer", "minimum": 0 },
+        "exportedSymbolCount": { "type": "integer", "minimum": 0 },
+        "fileShingles": { "type": "array", "items": { "type": "string" } },
+        "fileNormalizedDigest": { "type": "string" },
+        "sideEffects": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/sideEffectTag" }
+        },
+        "cutCost": { "type": "number" },
+        "rustReadiness": { "$ref": "#/$defs/rustReadinessProfile" }
+      }
+    },
+    "clusterMember": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "pkgName",
+        "pkgDir",
+        "domainId",
+        "layer",
+        "file",
+        "isInfra",
+        "symbolName",
+        "startLine",
+        "endLine",
+        "sloc",
+        "rawDigest",
+        "cutCost",
+        "rustReadinessScore",
+        "sideEffects",
+        "builtins"
+      ],
+      "properties": {
+        "pkgName": { "type": "string" },
+        "pkgDir": { "type": "string" },
+        "domainId": { "type": "string" },
+        "layer": { "$ref": "#/$defs/packageLayer" },
+        "file": { "type": "string" },
+        "isInfra": { "type": "boolean" },
+        "symbolName": { "type": "string" },
+        "startLine": { "type": "integer" },
+        "endLine": { "type": "integer" },
+        "sloc": { "type": "integer" },
+        "rawDigest": { "type": "string" },
+        "cutCost": { "type": "number" },
+        "rustReadinessScore": { "type": "number" },
+        "sideEffects": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/sideEffectTag" }
+        },
+        "builtins": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "similarityCluster": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "fingerprint",
+        "kind",
+        "similarity",
+        "priorityScore",
+        "isInfraOnly",
+        "distinctPackageCount",
+        "distinctDomainCount",
+        "sharedLayers",
+        "commonBuiltins",
+        "members",
+        "suppressed"
+      ],
+      "properties": {
+        "fingerprint": { "type": "string" },
+        "kind": {
+          "type": "string",
+          "enum": [
+            "exact-clone",
+            "structural-clone",
+            "file-structural-clone",
+            "capability-cluster",
+            "filename-aligned",
+            "migration-residue"
+          ]
+        },
+        "similarity": { "type": "number" },
+        "priorityScore": { "type": "number" },
+        "isInfraOnly": { "type": "boolean" },
+        "distinctPackageCount": { "type": "integer" },
+        "distinctDomainCount": { "type": "integer" },
+        "sharedLayers": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/packageLayer" }
+        },
+        "commonBuiltins": { "type": "array", "items": { "type": "string" } },
+        "members": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/clusterMember" }
+        },
+        "suppressed": { "type": "boolean" },
+        "suppressReason": { "type": "string" }
+      }
+    },
+    "degeneratedLibFinding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "fingerprint",
+        "pkgName",
+        "pkgDir",
+        "kind",
+        "directConsumers",
+        "transitiveConsumerDomains",
+        "transitiveBusinessConsumers",
+        "sloc",
+        "fileCount",
+        "status",
+        "suppressed",
+        "reason"
+      ],
+      "properties": {
+        "fingerprint": { "type": "string" },
+        "pkgName": { "type": "string" },
+        "pkgDir": { "type": "string" },
+        "kind": { "type": "string", "enum": ["private-lib", "public-lib"] },
+        "directConsumers": { "type": "array", "items": { "type": "string" } },
+        "transitiveConsumerDomains": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "transitiveBusinessConsumers": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "sloc": { "type": "integer" },
+        "fileCount": { "type": "integer" },
+        "status": {
+          "type": "string",
+          "enum": [
+            "cooling-down",
+            "reabsorb-candidate",
+            "dead-unused",
+            "orphaned-public-lib"
+          ]
+        },
+        "firstObservedAt": { "type": "string" },
+        "elapsedDays": { "type": "number" },
+        "cooldownDays": { "type": "number" },
+        "remainingDays": { "type": "number" },
+        "suppressed": { "type": "boolean" },
+        "suppressReason": { "type": "string" },
+        "reason": { "type": "string" }
+      }
+    },
+    "scanReport": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "scannedAt",
+        "repoRoot",
+        "graph",
+        "stats",
+        "clusters",
+        "migrationResidues",
+        "degeneratedLibs",
+        "suppressed",
+        "files",
+        "nextAction",
+        "convergence"
+      ],
+      "properties": {
+        "schemaVersion": { "type": "integer" },
+        "scannedAt": { "type": "string" },
+        "repoRoot": { "type": "string" },
+        "graph": { "$ref": "#/$defs/workspaceGraph" },
+        "stats": { "$ref": "#/$defs/scanStats" },
+        "clusters": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/similarityCluster" }
+        },
+        "migrationResidues": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/similarityCluster" }
+        },
+        "degeneratedLibs": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/degeneratedLibFinding" }
+        },
+        "suppressed": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/similarityCluster" }
+        },
+        "files": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/fileProfile" }
+        },
+        "nextAction": { "$ref": "#/$defs/nextAction" },
+        "convergence": { "$ref": "#/$defs/convergence" }
+      }
+    },
     "scanEnvelope": {
       "type": "object",
+      "additionalProperties": false,
       "required": [
+        "savedTo",
+        "watchSync",
+        "scannedAt",
         "stats",
+        "graph",
         "nextAction",
         "convergence",
         "degeneratedLibs",
-        "topClusters"
+        "migrationResidues",
+        "topClusters",
+        "suppressedCount"
       ],
       "properties": {
         "savedTo": { "type": "string" },
+        "watchSync": { "$ref": "#/$defs/watchSync" },
         "scannedAt": { "type": "string" },
-        "stats": {
-          "type": "object",
-          "required": [
-            "totalPackages",
-            "totalFiles",
-            "totalSymbols",
-            "activeClusters",
-            "migrationResidueCount",
-            "degeneratedLibCount",
-            "coolingDownLibCount",
-            "reabsorbableLibCount"
-          ]
+        "stats": { "$ref": "#/$defs/scanStats" },
+        "graph": { "$ref": "#/$defs/graphSummary" },
+        "nextAction": { "$ref": "#/$defs/nextAction" },
+        "convergence": { "$ref": "#/$defs/convergence" },
+        "degeneratedLibs": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/degeneratedLibFinding" }
         },
-        "nextAction": {
-          "type": "object",
-          "required": ["kind", "reason"],
-          "properties": {
-            "kind": {
-              "enum": [
-                "stop",
-                "fix-graph-violations",
-                "reabsorb",
-                "cleanup-unused",
-                "cleanup-residue",
-                "extract-or-triage"
-              ]
-            },
-            "suggestedCommand": { "type": "string" }
-          }
+        "migrationResidues": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/similarityCluster" }
         },
-        "convergence": {
-          "type": "object",
-          "required": [
-            "shouldStop",
-            "reason",
-            "activeRoundsExecuted",
-            "maxRoundsAllowed"
-          ]
-        }
+        "topClusters": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/similarityCluster" }
+        },
+        "suppressedCount": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "scanFullEnvelope": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["savedTo", "watchSync", "report"],
+      "properties": {
+        "savedTo": { "type": "string" },
+        "watchSync": { "$ref": "#/$defs/watchSync" },
+        "report": { "$ref": "#/$defs/scanReport" }
+      }
+    },
+    "ledgerPackageItem": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["packageName", "fingerprint", "reason", "recordedAt"],
+      "properties": {
+        "packageName": { "type": "string" },
+        "fingerprint": { "type": "string" },
+        "reason": { "type": "string" },
+        "recordedAt": { "type": "string" }
+      }
+    },
+    "rejectedOrDeferredItem": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["fingerprint", "status", "reason"],
+      "properties": {
+        "fingerprint": { "type": "string" },
+        "status": { "type": "string", "enum": ["rejected", "deferred"] },
+        "packageName": { "type": "string" },
+        "reason": { "type": "string" }
+      }
+    },
+    "coolingDownLibItem": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["pkgName", "pkgDir", "remainingDays", "consumers"],
+      "properties": {
+        "pkgName": { "type": "string" },
+        "pkgDir": { "type": "string" },
+        "remainingDays": { "type": "number" },
+        "firstObservedAt": { "type": "string" },
+        "consumers": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "orphanedPublicLibItem": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["pkgName", "pkgDir", "consumers", "reason"],
+      "properties": {
+        "pkgName": { "type": "string" },
+        "pkgDir": { "type": "string" },
+        "consumers": { "type": "array", "items": { "type": "string" } },
+        "reason": { "type": "string" }
+      }
+    },
+    "rustReadinessAlertItem": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "file",
+        "pkgName",
+        "score",
+        "ioBoundaryMixed",
+        "recommendation"
+      ],
+      "properties": {
+        "file": { "type": "string" },
+        "pkgName": { "type": "string" },
+        "score": { "type": "number" },
+        "ioBoundaryMixed": { "type": "boolean" },
+        "recommendation": { "type": "string" }
       }
     },
     "summaryOutput": {
       "type": "object",
+      "additionalProperties": false,
       "required": [
         "schemaVersion",
         "generatedAt",
@@ -73,7 +562,40 @@
         "coolingDownLibs",
         "orphanedPublicLibs",
         "rustReadinessAlerts"
-      ]
+      ],
+      "properties": {
+        "schemaVersion": { "type": "integer" },
+        "generatedAt": { "type": "string" },
+        "repoRoot": { "type": "string" },
+        "roundsExecuted": { "type": "integer", "minimum": 0 },
+        "activeRoundId": { "type": ["string", "null"] },
+        "convergence": { "$ref": "#/$defs/convergence" },
+        "nextAction": { "$ref": "#/$defs/nextAction" },
+        "extractedPackages": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/ledgerPackageItem" }
+        },
+        "reabsorbedPackages": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/ledgerPackageItem" }
+        },
+        "rejectedOrDeferred": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/rejectedOrDeferredItem" }
+        },
+        "coolingDownLibs": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/coolingDownLibItem" }
+        },
+        "orphanedPublicLibs": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/orphanedPublicLibItem" }
+        },
+        "rustReadinessAlerts": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/rustReadinessAlertItem" }
+        }
+      }
     }
   }
 }

@@ -7,7 +7,9 @@ import { join } from 'node:path';
 import { scanWorkspace } from './analyzer.ts';
 import {
   assertInsideRepo,
+  assertReabsorbCheckpointMatch,
   assertRoundCheckpointMatch,
+  assertValidCliFlags,
   collectSignatureArgs,
   formatCliUsage as formatUsage,
   getFlag,
@@ -23,6 +25,7 @@ import { evaluateEssenceProposal } from './essence-gate.ts';
 import { buildMemberDigests } from './fs-utils.ts';
 import {
   beginRoundCheckpoint,
+  loadCheckpoint,
   loadLedger,
   recordFileBackup,
   rollbackRoundCheckpoint,
@@ -108,7 +111,12 @@ function cmdCheckProposal(argv: readonly string[], repoRoot: string): void {
   const internalDeps = splitCsv(getFlag(argv, '--internal-deps'));
   const apiSignatures = collectSignatureArgs(argv);
 
-  if (!packageName || !description) {
+  if (
+    !packageName ||
+    !description ||
+    consumers.length === 0 ||
+    exportedSymbols.length === 0
+  ) {
     process.stderr.write(`${formatUsage('check-proposal')}\n`);
     process.exit(2);
   }
@@ -265,6 +273,7 @@ function cmdVerifyRound(argv: readonly string[], repoRoot: string): void {
 function cmdVerifyReabsorb(argv: readonly string[], repoRoot: string): void {
   const name = getFlag(argv, '--name');
   const rawDir = getFlag(argv, '--dir');
+  const roundId = getFlag(argv, '--round');
   const intoPath = getFlag(argv, '--into');
   const unused = hasFlag(argv, '--unused');
   if (!name || !rawDir) {
@@ -282,6 +291,13 @@ function cmdVerifyReabsorb(argv: readonly string[], repoRoot: string): void {
     intoPath !== undefined
       ? assertInsideRepo(repoRoot, intoPath, '--into')
       : undefined;
+
+  assertReabsorbCheckpointMatch(repoRoot, {
+    roundId,
+    expectedPkgName: name,
+    expectedDir: dir,
+    intoPath: safeInto,
+  });
 
   const graph = buildWorkspaceGraph(repoRoot);
   const lint = lintReabsorbedTarget(repoRoot, graph, name, dir, {
@@ -447,25 +463,27 @@ function cmdRollbackRound(argv: readonly string[], repoRoot: string): void {
   writeOut({ ok: true, ...res });
 }
 
+const COMMAND_HANDLERS: Record<
+  string,
+  (argv: readonly string[], repoRoot: string) => void
+> = {
+  scan: cmdScan,
+  summary: cmdSummary,
+  'check-proposal': cmdCheckProposal,
+  'begin-round': cmdBeginRound,
+  'backup-file': cmdBackupFile,
+  'verify-round': cmdVerifyRound,
+  'verify-reabsorb': cmdVerifyReabsorb,
+  'commit-round': cmdCommitRound,
+  reject: cmdReject,
+  'rollback-round': cmdRollbackRound,
+};
+
 function main(): void {
-  const argv = process.argv.slice(2);
-  const cmd = argv[0];
-  const rest = argv.slice(1);
+  const [cmd = '', ...rest] = process.argv.slice(2);
+  assertValidCliFlags(cmd, rest);
   const repoRoot = resolveRepoRoot(rest);
-  if (cmd === 'scan') cmdScan(rest, repoRoot);
-  else if (cmd === 'summary') cmdSummary(rest, repoRoot);
-  else if (cmd === 'check-proposal') cmdCheckProposal(rest, repoRoot);
-  else if (cmd === 'begin-round') cmdBeginRound(rest, repoRoot);
-  else if (cmd === 'backup-file') cmdBackupFile(rest, repoRoot);
-  else if (cmd === 'verify-round') cmdVerifyRound(rest, repoRoot);
-  else if (cmd === 'verify-reabsorb') cmdVerifyReabsorb(rest, repoRoot);
-  else if (cmd === 'commit-round') cmdCommitRound(rest, repoRoot);
-  else if (cmd === 'reject') cmdReject(rest, repoRoot);
-  else if (cmd === 'rollback-round') cmdRollbackRound(rest, repoRoot);
-  else {
-    process.stderr.write(`${formatUsage('')}\n`);
-    process.exit(2);
-  }
+  COMMAND_HANDLERS[cmd]!(rest, repoRoot);
 }
 
 if (import.meta.main) main();

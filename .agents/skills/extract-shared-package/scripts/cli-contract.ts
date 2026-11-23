@@ -1,5 +1,5 @@
 /**
- * CLI 命令唯一权威注册表 (驱动参数校验、usage 输出与文档一致性自动验证)。
+ * CLI 命令唯一权威注册表 (驱动参数校验、未知旗标防线、usage 输出与文档一致性自动验证)。
  */
 
 export interface CliCommandSpec {
@@ -7,6 +7,13 @@ export interface CliCommandSpec {
   optional: readonly string[];
   summary: string;
 }
+
+/** 纯布尔开关旗标集合 (其余已注册旗标均须携带非 -- 开头的参数值) */
+export const CLI_BOOLEAN_FLAGS: ReadonlySet<string> = new Set([
+  '--full',
+  '--skip-ci',
+  '--unused',
+]);
 
 export const CLI_COMMAND_SPECS: Record<string, CliCommandSpec> = {
   scan: {
@@ -48,7 +55,7 @@ export const CLI_COMMAND_SPECS: Record<string, CliCommandSpec> = {
   },
   'verify-reabsorb': {
     required: ['--name', '--dir'],
-    optional: ['--repo', '--into', '--unused', '--skip-ci'],
+    optional: ['--repo', '--round', '--into', '--unused', '--skip-ci'],
     summary: '验证退化回收零残留、独立子模块隔离与全仓 CI',
   },
   'commit-round': {

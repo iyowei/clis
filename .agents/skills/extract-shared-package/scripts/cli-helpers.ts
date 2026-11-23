@@ -1,5 +1,5 @@
 /**
- * CLI 参数严格解析、路径安全围栏、仓库根查找与多签名平衡拆分助手。
+ * CLI 参数严格解析、未知旗标防线、路径安全围栏、仓库根查找与多签名平衡拆分助手。
  */
 import { spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
@@ -7,10 +7,10 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { scanWorkspace } from './analyzer.ts';
-import { CLI_COMMAND_SPECS } from './cli-contract.ts';
+import { CLI_BOOLEAN_FLAGS, CLI_COMMAND_SPECS } from './cli-contract.ts';
 import { assertInsideRepo } from './fs-utils.ts';
 import { getLastScanPath, loadCheckpoint, loadLedger } from './ledger.ts';
-import type { ScanReport } from './types.ts';
+import type { RoundCheckpoint, ScanReport } from './types.ts';
 
 export { assertInsideRepo };
 
@@ -24,6 +24,53 @@ export function formatCliUsage(cmd: string): string {
   return `用法: ${cmd} ${req} ${opt}`.trim();
 }
 
+/** 基于 CLI_COMMAND_SPECS[cmd] 统一拦截未知 --* 旗标、多余位置参数与带值旗标漏值 */
+export function assertValidCliFlags(
+  cmd: string,
+  argv: readonly string[],
+): void {
+  const spec = CLI_COMMAND_SPECS[cmd];
+  if (spec === undefined) {
+    process.stderr.write(`${formatCliUsage('')}\n`);
+    process.exit(2);
+  }
+  const allowed = new Set([...spec.required, ...spec.optional]);
+  for (let i = 0; i < argv.length;) {
+    const token = argv[i]!;
+    if (!allowed.has(token)) {
+      const label = token.startsWith('-') ? '未知参数旗标' : '多余位置参数';
+      process.stderr.write(`${label}: ${token}\n${formatCliUsage(cmd)}\n`);
+      process.exit(2);
+    }
+    if (CLI_BOOLEAN_FLAGS.has(token)) {
+      i += 1;
+      continue;
+    }
+    const val = argv[i + 1];
+    if (val === undefined || val.startsWith('--')) {
+      process.stderr.write(
+        `参数错误: ${token} 缺少有效取值\n${formatCliUsage(cmd)}\n`,
+      );
+      process.exit(2);
+    }
+    i += 2;
+  }
+}
+
+function loadCheckpointOrExit(
+  repoRoot: string,
+  roundId: string,
+): RoundCheckpoint {
+  try {
+    return loadCheckpoint(repoRoot, roundId);
+  } catch (err) {
+    process.stderr.write(
+      `${err instanceof Error ? err.message : String(err)}\n`,
+    );
+    process.exit(1);
+  }
+}
+
 export function assertRoundCheckpointMatch(
   repoRoot: string,
   roundId: string,
@@ -33,7 +80,7 @@ export function assertRoundCheckpointMatch(
     expectedPkgName?: string;
   },
 ): 'extract' | 'reabsorb' | 'residue' {
-  const cp = loadCheckpoint(repoRoot, roundId);
+  const cp = loadCheckpointOrExit(repoRoot, roundId);
   if (cp.committed === true || cp.rolledBack === true) {
     process.stderr.write(`轮次 ${roundId} 已结束 (committed/rolledBack)\n`);
     process.exit(1);
@@ -61,6 +108,44 @@ export function assertRoundCheckpointMatch(
     process.exit(1);
   }
   return cp.mode;
+}
+
+/** 校验 verify-reabsorb 显式 --round 或活跃轮次检查点的 reabsorbInto / 目标目录一致性 */
+export function assertReabsorbCheckpointMatch(
+  repoRoot: string,
+  opts: {
+    roundId?: string;
+    expectedPkgName: string;
+    expectedDir: string;
+    intoPath?: string;
+  },
+): void {
+  let targetRoundId = opts.roundId;
+  if (targetRoundId === undefined) {
+    const ledger = loadLedger(repoRoot);
+    if (ledger.activeRoundId === undefined) return;
+    let activeCp: RoundCheckpoint;
+    try {
+      activeCp = loadCheckpoint(repoRoot, ledger.activeRoundId);
+    } catch {
+      return;
+    }
+    if (activeCp.committed === true || activeCp.rolledBack === true) return;
+    targetRoundId = ledger.activeRoundId;
+  }
+
+  assertRoundCheckpointMatch(repoRoot, targetRoundId, {
+    expectedMode: 'reabsorb',
+    expectedDir: opts.expectedDir,
+    expectedPkgName: opts.expectedPkgName,
+  });
+  const cp = loadCheckpointOrExit(repoRoot, targetRoundId);
+  if (cp.reabsorbInto !== undefined && cp.reabsorbInto !== opts.intoPath) {
+    process.stderr.write(
+      `轮次 ${targetRoundId} 记录的 reabsorbInto (${cp.reabsorbInto}) 与 --into (${opts.intoPath ?? '未传'}) 不一致\n`,
+    );
+    process.exit(1);
+  }
 }
 
 const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url));

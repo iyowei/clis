@@ -4,6 +4,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
+import { tokenizeSource } from './lexer.ts';
 import type { WorkspaceGraph } from './types.ts';
 
 const GENERIC_PACKAGE_PARTS = new Set([
@@ -16,6 +17,11 @@ const GENERIC_PACKAGE_PARTS = new Set([
   'lib',
   'app',
   'pkg',
+  'cli',
+  'clis',
+  'monorepo',
+  'workspace',
+  'workspaces',
 ]);
 
 function readJsonRecord(absPath: string): Record<string, unknown> | null {
@@ -27,7 +33,7 @@ function readJsonRecord(absPath: string): Record<string, unknown> | null {
   }
 }
 
-/** 从业务产品包标识与可选工作区根配置 `.extract-shared-package.json` 提取专有领域词 (不吞咽通用技术 keywords) */
+/** 从业务产品包标识与可选工作区根配置 `.extract-shared-package.json` 提取专有领域词 (不吞咽通用技术 keywords 与容器泛称) */
 export function deriveDomainLeakTerms(graph: WorkspaceGraph): string[] {
   const terms = new Set<string>();
   const scopeNames = new Set<string>();
@@ -40,7 +46,7 @@ export function deriveDomainLeakTerms(graph: WorkspaceGraph): string[] {
   const rootPkg = readJsonRecord(join(graph.repoRoot, 'package.json'));
   if (typeof rootPkg?.name === 'string' && rootPkg.name.length >= 4) {
     const rootLower = rootPkg.name.toLowerCase();
-    if (!scopeNames.has(rootLower)) {
+    if (!scopeNames.has(rootLower) && !GENERIC_PACKAGE_PARTS.has(rootLower)) {
       terms.add(rootLower);
     }
   }
@@ -105,4 +111,37 @@ export function findMatchedTerms(
     }
   }
   return [...hits].sort();
+}
+
+/** 复用完整 TS/JS 词法器剥离注释 (正确跨过正则字面量与模板插值, 保留全部标识符与字符串文本) */
+export function stripSourceComments(source: string): string {
+  return tokenizeSource(source, { preserveTemplateText: true })
+    .filter((tok) => tok.kind !== 'punct' && tok.kind !== 'number')
+    .map((tok) => tok.value)
+    .join(' ');
+}
+
+/** 剥除 README 中允许出现的自身包名、治理协议键及 (仅限私有共享库) 仓内消费包坐标 */
+export function stripReadmeAllowedRefs(
+  rawReadme: string,
+  graph: WorkspaceGraph,
+  pkgName: string,
+  isPrivate: boolean,
+): string {
+  const allowed = new Set<string>(['clisRole']);
+  if (pkgName !== '') allowed.add(pkgName);
+  if (isPrivate) {
+    for (const pkg of graph.packages) {
+      allowed.add(pkg.name);
+      allowed.add(pkg.dir);
+      const shortDir = pkg.dir.replace(/^packages\//, '');
+      allowed.add(`dist/${shortDir}.js`);
+    }
+  }
+  const ordered = [...allowed].sort((a, b) => b.length - a.length);
+  let text = rawReadme;
+  for (const token of ordered) {
+    text = text.replaceAll(token, ' ');
+  }
+  return text;
 }

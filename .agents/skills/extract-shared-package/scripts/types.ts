@@ -26,8 +26,12 @@ export interface WorkspacePackageNode {
   domainId: string;
   isPrivate: boolean;
   hasBin: boolean;
-  /** 内部工作区包依赖 */
+  /** 是否视同公开库层级 (public-lib 或存在同源 CLI 配对的待首发双包 API 主包) */
+  isPublicTierLib?: boolean;
+  /** 内部工作区包全部依赖 (dependencies + devDependencies + peerDependencies + optionalDependencies) */
   internalDeps: string[];
+  /** 内部工作区包运行期依赖 (dependencies + peerDependencies + optionalDependencies) */
+  runtimeInternalDeps?: string[];
   /** 外部第三方依赖 */
   externalDeps: string[];
 }

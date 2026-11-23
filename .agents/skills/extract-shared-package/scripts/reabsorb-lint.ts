@@ -10,7 +10,11 @@
 import { existsSync, readFileSync, statSync } from 'node:fs';
 import { dirname, join, normalize, relative, resolve } from 'node:path';
 
-import { deriveDomainLeakTerms, findMatchedTerms } from './domain-terms.ts';
+import {
+  deriveDomainLeakTerms,
+  findMatchedTerms,
+  stripSourceComments,
+} from './domain-terms.ts';
 import { resolveRelativeModuleTarget, walkTsFiles } from './fs-utils.ts';
 import { extractModuleSpecifiers } from './import-parser.ts';
 import { countSloc, tokenizeSource } from './lexer.ts';
@@ -212,7 +216,7 @@ function verifyModuleIsolationAndReferences(
       }
     }
 
-    const leaks = findMatchedTerms(content, domainTerms);
+    const leaks = findMatchedTerms(stripSourceComments(content), domainTerms);
     if (leaks.length > 0) {
       violations.push(
         `回收入消费包后模块 ${prodRel} 混入了业务领域词 (${leaks.join(', ')}), 违反纯净独立原则`,
