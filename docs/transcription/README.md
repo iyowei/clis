@@ -51,7 +51,7 @@
 新增一个需要支持跨语言转写的包时, **不需要**复制任何 `prompts/` 通用提示词, 只需在该包下新建 `packages/<pkg>/docs/protocol/` 并补齐 5 类包专属资产:
 
 1. `behavior-contract.md`: 编号条款 (`BC-*` / `OF-*` / `EC-*`);
-2. `conformance/corpus.schema.json` 与 `conformance/corpus/*.json`: 期望可由条款推导的金样本语料;
+2. `conformance/corpus/*.json` (及可选 `conformance/corpus.schema.json` / `conformance/api-harness-protocol.md`): 期望可由条款推导的金样本语料;
 3. `conformance/coverage.md`: 条款 × 语料覆盖矩阵与豁免登记;
-4. `conformance/fuzz-targets.json`: 需差分模糊测试的公开纯函数与不变量清单;
+4. `conformance/mutants.json` 与 `conformance/fuzz-targets.json`: 变异自证锚点表与需差分模糊测试的公开纯函数及不变量清单;
 5. (可选) `prompts/transcribe-<lang>.md`: 仅写该包特有的领域行为对照表与试跑模块组合, 开头直接继承仓级 `docs/transcription/`。

@@ -15,7 +15,7 @@
 
 1. **闸门清单单源化**: `scripts/ci.ts` 成为唯一的步骤清单 (步骤表 + 分组入口 `--verify` / `--conformance` / `--only <step>`); 两个 workflow 与 pre-push 只调用这一个入口; `package.json` 里的单项闸门脚本删除 (跑单项用 `bun scripts/ci.ts --only <step>`)。取舍: 拿 npm script 的 tab 补全换清单唯一性; 补全没了, 用 `ci.ts --help` 列出步骤名弥补;
 2. **发布闸门对称化** (已落地 2026-09-30): 判定逻辑与事实读取抽进共享库 `scripts/lib/release-verify.ts` (判定顺序统一: 检出可信 → 产物就位 → 清单对账 → 专属判定 → 面包白名单; 两包的差异用 `VerifyProfile` 参数与专属判定钩子体现), 两包各留一个适配层 (`release-artifact.ts` / `verify-release.ts` 的坐标与白名单) 与薄入口; `git-env` 也跟着下移到共享层 (`scripts/lib/git-env.ts`); 两包的发布闸门测试全部通过 (含端到端「干净检出 + 本提交产物」用例);
-3. **领域硬编码改为派生** (已落地 2026-09-30): `make-mutants` 与 `ci.ts` 的两包坐标改由共享的 workspace 解析模块 (`scripts/lib/workspace.ts`) 从根 `package.json` 的 workspaces 派生 (含单测); `tsconfig.json` 的 paths 是静态配置, 没法在运行时派生, 改包名时只需手动同步这一处 (见该模块注释); `run-conformance` 的 `--target` 本来就是必填参数, 没有默认值, 原设计说「默认 target 写死」, 实读代码后确认不成立, 无需改动;
+3. **领域硬编码改为派生** (已落地 2026-09-30): `make-mutants` 与 `ci.ts` 的两包坐标改由共享的 workspace 解析模块 (`scripts/lib/workspace.ts`) 从根 `package.json` 的 workspaces 派生 (含单测); `tsconfig.json` 的 paths 是静态配置, 没法在运行时派生, 改包名时只需手动同步这一处 (见该模块注释); `run-conformance` 的 `--target` 本来就是必填参数, 没有默认值, 原设计说「默认 target 写死」, 实读代码后确认不成立, 无需改动 (现行 `run-conformance.ts` 已演进支持 `--all-products` 免 `--target` 自动发现多产品模式);
 4. 阶段 A 完成标准: `bun run ci` 全绿 + 通用四闸门全绿, 行为零变化 (重构不引入功能改动)。
 
 ## 阶段 B: 改名与组织
@@ -34,7 +34,7 @@
 ## 阶段 C: 生成器闭环
 
 1. **重量冒烟** (已落地 2026-10-01): 生成完整项目 → 跑它的全链, 已挂到生成器包的 `prepublishOnly` (见[生成器包](scaffold-package.md)质量闭环);
-2. **第二实例验证** (已执行 2026-10-01): 以发布形态 (bin → dist 产物自证) 生成完整集合仓实例 (`iyowei/toolkit` 格局, standard 档, 落 `~/tmp/toolkit`), 载体名 / 占位符 / 复合形态三项残留扫描零命中, `bun run ci` 开箱全绿 (8 步 / 137 测试), 失败路径抽查合契约 — 模板领域无关性证据成立;
+2. **第二实例验证** (已执行 2026-10-01): 以发布形态 (bin → dist 产物自证) 生成完整集合仓实例 (`iyowei/toolkit` 格局, standard 档, 落 `~/tmp/toolkit`), 载体名 / 占位符 / 复合形态三项残留扫描零命中, `bun run ci` 开箱全绿 (8 步 / 137 测试), 失败路径抽查合契约, 模板领域无关性证据成立;
 3. **发布后核验** (已于 2026-10-01 `create-clis@1.0.0` 首发后转入常态): 常规质量闭环由 `heavy-smoke` 持续兜底。
 
 ## 验证清单 (两包发布链零受损)
