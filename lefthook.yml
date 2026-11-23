@@ -2,7 +2,7 @@
 #
 # 分层策略:
 #   pre-commit 增量门禁: bun fmt / oxlint 只扫暂存文件; type-check 例外,
-#               不传 {staged_files}, 跑全项目 typecheck (覆盖各包与根 scripts/);
+#               不传 {staged_files}, 跑全项目 typecheck (覆盖各包、根 scripts/ 与 .agents/skills);
 #               bun fmt 格式化后自动重暂存
 #   pre-push   全量门禁: rebase / merge / cherry-pick 重放提交不触发 pre-commit,
 #               push 是代码外流的唯一必经闸门, 在此全量只读兜底
@@ -13,7 +13,7 @@ assert_lefthook_installed: true
 pre-commit:
   parallel: false
   commands:
-    # TypeScript 类型检查 (全仓包 + 根 scripts/, 单源复用根 package.json typecheck)
+    # TypeScript 类型检查 (全仓包 + 根 scripts/ + .agents/skills, 单源复用根 package.json typecheck)
     type-check:
       glob: '*.{ts,tsx,mts,mjs,js,cjs}'
       run: bun run typecheck
@@ -33,7 +33,7 @@ pre-commit:
 
     # 非 JS/TS: 仅 bun fmt 格式化
     fmt-other:
-      glob: '*.{md,mdx,json,jsonc,yaml,yml}'
+      glob: '*.{md,mdx,html,css,json,jsonc,yaml,yml}'
       run: bun fmt --log-level=error --no-error-on-unmatched-pattern {staged_files}
       stage_fixed: true
 

@@ -1,9 +1,10 @@
 {
   // 用 .jsonc 而非 .json: 缓存口径需要就地注释说明。
-  // 根配置保持包级默认输入面 ($TURBO_DEFAULT$); 需要跨仓读取根级骨架源的 create-clis
-  // 通过包级 packages/create-clis/turbo.json 单独声明 inputs 超集, 避免改动某一个产品的
-  // 文档或源码击穿全仓其余包的构建缓存。
+  // 根配置保持包级默认输入面 ($TURBO_DEFAULT$), 仅把全仓共用的根 tsconfig.json 与构建/发布共享库
+  // scripts/lib/** 列入 globalDependencies; 需要跨仓读取根级骨架源的 create-clis 通过包级
+  // packages/create-clis/turbo.json 单独声明 inputs 超集, 避免改动某一个产品的文档或源码击穿全仓其余包的构建缓存。
   "$schema": "https://turbo.build/schema.json",
+  "globalDependencies": ["tsconfig.json", "scripts/lib/**"],
   "tasks": {
     "build": {
       "dependsOn": ["^build"],

@@ -13,5 +13,6 @@ packages/create-clis/assets
 packages/create-clis/scripts/template-skeletons
 packages/codd/assets
 packages/codd-cli/assets
+# packages/codd/template 仅排除含模板插值的 helm 与 *.tmpl, 其余纯 JSON/TS/JS 脚本保持受 bun fmt 统一格式化
 packages/codd/template/helm
 packages/codd/template/podman/*.tmpl

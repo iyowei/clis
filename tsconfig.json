@@ -6,7 +6,9 @@
     "module": "preserve",
     "moduleResolution": "bundler",
     // 开发态解析: monorepo 内对 API 包的引用直指单源 src (零构建), 发布态由 API 包
-    // package.json 的 exports 指向 dist; tsconfig paths 优先级高于 node_modules 解析
+    // package.json 的 exports 指向 dist; 其中 @iyowei/sweep/testing 为仅限 monorepo 内
+    // 读取 tsconfig.json 的 Bun 测试宿主使用的内部测试夹具单向映射 (不在 packages/sweep/package.json
+    // 的 exports 对外暴露)。tsconfig paths 优先级高于 node_modules 解析
     // (bun 运行时 / tsc / bun build 三处已实测), 消费方项目无本配置不受影响
     "paths": {
       "@iyowei/sweep": ["./packages/sweep/src/index.ts"],
@@ -31,8 +33,10 @@
 
     "types": ["bun"]
   },
-  // 排除派生生成物与目标项目模板空间 (同款排除见 .gitignore / .prettierignore / .oxlintrc.json / bunfig.toml)
+  // 排除派生生成物 (**/dist、mutants、assets, 同见 .gitignore) 与入库模板源码空间
+  // (template-skeletons、packages/codd/template; 工具链排除另见 .prettierignore / .oxlintrc.json / bunfig.toml)
   "exclude": [
+    "**/dist",
     "scripts/transcription/mutants",
     "packages/create-clis/assets",
     "packages/create-clis/scripts/template-skeletons",

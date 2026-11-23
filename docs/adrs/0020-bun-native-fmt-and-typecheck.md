@@ -38,7 +38,7 @@
    - 根 `package.json` 与 `create-clis` 模板骨架 `devDependencies` 移除 `prettier` 与 `@trivago/prettier-plugin-sort-imports`;
    - 保留仓库根 `.prettierrc` 与 `.prettierignore` 作为**单一事实来源**: `bun fmt` 与 `create-clis` 运行期 Prettier 共用同一份配置, 避免配置分裂导致两套工具格式化结果漂移。注 (2026-11-21 实测校准): `bun 1.4.5` 需在 `.prettierrc` 中保留 `"plugins": ["@trivago/prettier-plugin-sort-imports"]` 才会激活内置 import 排序; 为避免未安装本地 `prettier` 依赖导致 IDE 扩展报错, `.vscode/settings.json` 与 `.vscode/extensions.json` 同步移除了对 `esbenp.prettier-vscode` 的默认绑定与推荐。
 2. **纯类型检查 (`typecheck`) 切换至 `bun check`**:
-   - 根仓 (`turbo run typecheck && bun check`)、全部 6 个工作区包与 `create-clis` 模板骨架的 `typecheck` 脚本统一由 `tsc --noEmit` 切换为 `bun check`。
+   - 根仓 (`turbo run typecheck && bun check && bun check .agents/skills`, 额外挂载 `.agents/skills` 确定性技能脚本类型检查)、全部 6 个工作区包与 `create-clis` 模板骨架 (`turbo run typecheck && bun check`) 的 `typecheck` 脚本统一由 `tsc --noEmit` 切换为 `bun check`。
 3. **三处必要保留边界 (明确禁止误删)**:
    - **保留根 `devDependencies` 的 `typescript`**: 专用于 3 个库包 `scripts/build.ts` 的 `tsc -p tsconfig.build.json --emitDeclarationOnly` 生成 `.d.ts` 类型声明, 以及 `scripts/lint-doc-examples.ts` 精确解析 `TSxxxx` 诊断行;
    - **保留 `packages/create-clis/package.json` `dependencies` 的 `prettier` 与 `@trivago/prettier-plugin-sort-imports`**: 保障纯 Node 环境 (`npx create-clis`, 无 Bun) 下生成物仍可完成格式化收口, 并由 `packages/create-clis/src/cli.e2e.test.ts` 以 `bun fmt --check` 端到端锁死 Prettier 收口与 Bun `fmt` 零差异对齐;
@@ -53,7 +53,7 @@
 
 - **显著提速**: 本地实测 `bun fmt --check` 扫全仓 464 个文件仅 **54.8ms** (原 Prettier 约 2~3 秒), `bun check` 扫根项目 214 个文件仅 **98.8ms**、6 个子包各 **18~51ms**; `pre-commit` 与 CI 验证耗时大幅压缩。
 - **依赖减负**: 根仓与脚手架生成的新项目不再在 `devDependencies` 安装 `prettier` 与 `@trivago/prettier-plugin-sort-imports`, 装包体积更轻且零配置迁移成本。
-- **单一配置源闭环**: 继续使用 `.prettierrc` / `.prettierignore`, 开发者 IDE 插件、本仓 `bun fmt` 与 `create-clis` 纯 Node 运行期收口三方口径完全一致。
+- **单一配置源闭环**: 继续使用 `.prettierrc` / `.prettierignore`, 本仓 `bun fmt` 与 `create-clis` 纯 Node 运行期 Prettier 收口共用同一份配置口径, 零配置分裂。
 
 **代价与风险**
 

@@ -8,10 +8,11 @@
 frozenLockfile = false
 linker = "hoisted"
 
-# 测试发现面: 排除生成物与模板源码空间, 防其在根级 bun test 中被误跑
-# (同款排除见 .gitignore / .prettierignore / .oxlintrc.json 与 tsconfig.json)。
+# 测试发现面: 排除派生生成物 (**/dist/**、mutants、assets, 同见 .gitignore) 与入库模板源码空间
+# (template-skeletons、packages/codd/template; 工具链排除另见 .prettierignore / .oxlintrc.json 与 tsconfig.json)。
 [test]
 pathIgnorePatterns = [
+  "**/dist/**",
   "scripts/transcription/mutants/**",
   "packages/create-clis/assets/**",
   "packages/create-clis/scripts/template-skeletons/**",
