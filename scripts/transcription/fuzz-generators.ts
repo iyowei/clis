@@ -63,7 +63,7 @@ const randInt = (rng: () => number, min: number, max: number): number =>
   min + Math.floor(rng() * (max - min + 1));
 
 // ---------------------------------------------------------------------------
-// 9 类结构化对抗输入生成器 (前若干条固定高危边缘样本, 其余为确定性随机组合)
+// 结构化对抗输入生成器 (前若干条固定高危边缘样本, 其余为确定性随机组合; 枚举以 GeneratorName 为准)
 // ---------------------------------------------------------------------------
 
 const DIRTY_ATOMS = [
@@ -227,18 +227,9 @@ function genConfigPathOptions(
 }
 
 function genNameLists(rng: () => number): unknown[] {
-  const pool = [
-    '.git',
-    'dist',
-    'build',
-    'cache',
-    '.cache',
-    'Build',
-    '中文目录',
-    'a',
-    'b',
-    'temp',
-  ];
+  const pool = '.git|dist|build|cache|.cache|Build|中文目录|a|b|temp'.split(
+    '|',
+  );
   const makeList = (): string[] => {
     const len = randInt(rng, 0, 6);
     const arr: string[] = [];
@@ -304,29 +295,50 @@ function genXdgPath(rng: () => number, index: number): unknown[] {
   return [`/${parts.join('/')}`];
 }
 
+const CLASSIFY_EDGES: readonly [string, boolean, string][] = [
+  [
+    'C:\\Users\\alice\\AppData\\Local\\Temp\\work\\node_modules',
+    true,
+    'C:\\Users\\alice',
+  ],
+  [
+    'C:\\Users\\alice\\AppData\\Local\\Temp\\npm-cache\\_npx\\a\\node_modules',
+    true,
+    'C:\\Users\\alice',
+  ],
+  [
+    'C:\\Users\\alice\\AppData\\Roaming\\npm\\node_modules',
+    true,
+    'C:\\Users\\alice',
+  ],
+  ['/Users/alice/AppData/Local/Temp/work/node_modules', false, '/Users/alice'],
+];
+
+const CLASSIFY_MIDS =
+  'work|web|lib|LIB|.nvm|.BUN|.vscode|.hidden-tool|extensions|_npx|AppData|Local|Temp|Roaming|packages'.split(
+    '|',
+  );
+
 function genClassifyTarget(rng: () => number, index: number): unknown[] {
+  if (index < CLASSIFY_EDGES.length) {
+    const [target, win, home] = CLASSIFY_EDGES[index]!;
+    return [
+      target,
+      {
+        style: { $probe: win ? 'pathops.win32' : 'pathops.posix' },
+        home,
+      },
+    ];
+  }
   const win = index % 2 === 1;
   const sep = win ? '\\' : '/';
   const home = win ? 'C:\\Users\\alice' : '/Users/alice';
   const roots = win
     ? ['C:\\Users\\alice', 'D:\\work', 'C:\\ProgramData']
     : ['/Users/alice', '/opt/work', '/var/app'];
-  const mids = [
-    'work',
-    'web',
-    'lib',
-    'LIB',
-    '.nvm',
-    '.BUN',
-    '.vscode',
-    '.hidden-tool',
-    'extensions',
-    '_npx',
-    'packages',
-  ];
   const segCount = randInt(rng, 1, 4);
   const chosen: string[] = [];
-  for (let i = 0; i < segCount; i += 1) chosen.push(pick(rng, mids));
+  for (let i = 0; i < segCount; i += 1) chosen.push(pick(rng, CLASSIFY_MIDS));
   const target = `${pick(rng, roots)}${sep}${chosen.join(sep)}${sep}node_modules`;
   return [
     target,
@@ -338,26 +350,12 @@ function genClassifyTarget(rng: () => number, index: number): unknown[] {
 }
 
 function genRuleLeafMatch(rng: () => number, index: number): unknown[] {
-  const patterns = [
-    '*.log',
-    'build-*',
-    'cache_?.tmp',
-    '.DS_Store',
-    'app[1].tmp',
-    'foo+bar(1).bak',
-  ];
-  const leaves = [
-    'app.log',
-    '.log',
-    'build-debug',
-    'build-',
-    'cache_a.tmp',
-    'cache_ab.tmp',
-    '.DS_Store',
-    'app[1].tmp',
-    'foo+bar(1).bak',
-    'keep.txt',
-  ];
+  const patterns =
+    '*.log|build-*|cache_?.tmp|.DS_Store|app[1].tmp|foo+bar(1).bak'.split('|');
+  const leaves =
+    'app.log|.log|build-debug|build-|cache_a.tmp|cache_ab.tmp|.DS_Store|app[1].tmp|foo+bar(1).bak|keep.txt'.split(
+      '|',
+    );
   const pat = patterns[index % patterns.length]!;
   const leaf = index < leaves.length ? leaves[index]! : pick(rng, leaves);
   return [leaf, [{ name: 'fuzz', kind: 'any', match: pat, action: 'trash' }]];
@@ -436,6 +434,28 @@ function genInsideAnyRoot(rng: () => number, index: number): unknown[] {
   return [target, roots, { $probe: win ? 'pathops.win32' : 'pathops.posix' }];
 }
 
+type GeneratorFn = (
+  rng: () => number,
+  index: number,
+  options?: Record<string, unknown>,
+) => unknown[];
+
+const GENERATOR_MAP: Readonly<Record<GeneratorName, GeneratorFn>> = {
+  'dirty-line': genDirtyLine,
+  'indented-dirty-line': genIndentedDirtyLine,
+  'byte-size': genByteSize,
+  'rule-match': genRuleMatch,
+  'config-path-options': genConfigPathOptions,
+  'name-lists': (rng) => genNameLists(rng),
+  'v1-config-raw': genV1ConfigRaw,
+  'xdg-path': genXdgPath,
+  'classify-target': genClassifyTarget,
+  'rule-leaf-match': genRuleLeafMatch,
+  'older-than-days': genOlderThanDays,
+  'safe-target-leaf': genSafeTargetLeaf,
+  'inside-any-root': genInsideAnyRoot,
+};
+
 /** 按声明的生成器名称产出 count 组确定性对抗参数列表 */
 export function generateFuzzArgs(
   generator: GeneratorName,
@@ -444,49 +464,10 @@ export function generateFuzzArgs(
   options?: Record<string, unknown>,
 ): unknown[][] {
   const rng = createPrng(seed);
+  const fn = GENERATOR_MAP[generator];
   const list: unknown[][] = [];
   for (let index = 0; index < count; index += 1) {
-    switch (generator) {
-      case 'dirty-line':
-        list.push(genDirtyLine(rng, index));
-        break;
-      case 'indented-dirty-line':
-        list.push(genIndentedDirtyLine(rng, index));
-        break;
-      case 'byte-size':
-        list.push(genByteSize(rng, index));
-        break;
-      case 'rule-match':
-        list.push(genRuleMatch(rng, index));
-        break;
-      case 'config-path-options':
-        list.push(genConfigPathOptions(rng, index, options));
-        break;
-      case 'name-lists':
-        list.push(genNameLists(rng));
-        break;
-      case 'v1-config-raw':
-        list.push(genV1ConfigRaw(rng, index));
-        break;
-      case 'xdg-path':
-        list.push(genXdgPath(rng, index));
-        break;
-      case 'classify-target':
-        list.push(genClassifyTarget(rng, index));
-        break;
-      case 'rule-leaf-match':
-        list.push(genRuleLeafMatch(rng, index));
-        break;
-      case 'older-than-days':
-        list.push(genOlderThanDays(rng, index));
-        break;
-      case 'safe-target-leaf':
-        list.push(genSafeTargetLeaf(rng, index));
-        break;
-      case 'inside-any-root':
-        list.push(genInsideAnyRoot(rng, index));
-        break;
-    }
+    list.push(fn(rng, index, options));
   }
   return list;
 }
