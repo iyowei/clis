@@ -35,7 +35,7 @@
 
 `classifyTarget` (`packages/sweep/src/classify.ts`, 纯路径判定, 零 IO, 不区分大小写, 独立于用户配置 `exclude`) 针对 `node_modules` 类目标守住「删后能否项目级重装恢复」的边界, 三级短路判定:
 
-1. 目标上方任一级目录名命中安装树容器名 (内置排除集合 ∪ `extensions` / `_npx`);
+1. 目标上方任一级目录名命中安装树容器名 (内置排除集合 ∪ `extensions` / `_npx`; `win32` 下系统临时目录三元组 `AppData\Local\Temp` 除外, 其内部子段仍照常逐级判定);
 2. `node_modules` 的父目录名为 `lib` (版本管理器 `<版本目录>/lib/node_modules`);
 3. `node_modules` 位于家目录下的隐藏目录内 (兜住未枚举的应用私有安装树)。
 
@@ -71,7 +71,7 @@
 - **组件级安全复核 (TOCTOU 防线)**: 从 `root.real` 至目标父目录逐级 `lstat`, 任一级被替换成符号链接或非目录即**整批中止** (`REVIEW_COMPONENT_REPLACED`, 停止派发新条, 已在途并发条目跑完并如实报告, 未派发条目一条不动);
 - **4 路有界并发 (`REMOVAL_CONCURRENCY = 4`)**: 顺序派发、结果按批次索引重排保输入顺序; 多条并发同时检出中止时取批次序最前条作为 `aborted` (确定性); 取消检查仅落在条目之间, 绝不在单条 `rm` 中途打断;
 - **双动作分流与四桶结果 (`RemovalResult`)**:
-  - `action === 'trash'`: 调 `moveToTrash` → 成功归 `trashed`, 失败归 `failed` (`TRASH_FAILED`, `partialRisk: false`, 原文件不动);
+  - `action === 'trash'`: 调 `moveToTrash` → 成功归 `trashed`; 报 `ENOENT` 且经 `lstat` 复核确认目标本体已消失时同样归 `missing` (成功侧); 其余失败归 `failed` (`TRASH_FAILED`, `partialRisk: false`, 原文件不动);
   - `action === 'delete'`: 调 `fs.rm(target, { recursive: true, force: false })` → 成功归 `removed`; 抛 `ENOENT` 时不靠错误对象定论 (规避 Bun 将内部子项消失冒泡为顶层 `ENOENT` 的双运行时分叉, EC-07), 必经 `lstat` 复核目标本体: 确认已消失归 `missing` (成功侧), 仍在或复核不可达归 `failed` (`REMOVE_ENOENT_SURVIVOR`, `partialRisk: true`); 其他错误归 `failed` (`REMOVE_FAILED`, `partialRisk: true`, 附部分删除复查提示);
   - 符号链接作为删除目标时 `fs.rm` 依 `lstat` 语义仅删链接本体、不跟随。
 - 单条删除或回收站失败不中断整批, 末尾如实分桶汇总; 存在失败、整批中止、跳过或未尝试条目时 CLI 返回退出码 `1`。

@@ -61,7 +61,7 @@ export interface RemovalResult {
   removed: string[];
   /** 实际移入系统回收站成功的目标 (保输入顺序) */
   trashed: string[];
-  /** rm 报 ENOENT 且复核确认目标本体已不存在的目标; 目标已达成, 计成功侧 (保输入顺序) */
+  /** rm 报 ENOENT 或 moveToTrash 失败后经 lstat 复核确认目标本体已不存在的目标; 目标已达成, 计成功侧 (保输入顺序) */
   missing: string[];
   /** 删除/回收站失败与复核未完成 (组件消失 / 不可核验) 的目标及原因 (保输入顺序); 回收站失败与复核失败均未删原文件 */
   failed: TargetFailure[];
@@ -163,7 +163,7 @@ type RemovalSlot =
   | { kind: 'failed'; failure: TargetFailure }
   | { kind: 'aborted' };
 
-/** 执行单条移入回收站: 任何失败绝不静默降级为永久删除 (核心红线); 若目标已并发消失则同 rm 归 missing */
+/** 执行单条移入回收站: 任何失败绝不静默降级为永久删除 (核心红线); 无论子进程是否携带 ENOENT 均复核目标是否已并发消失, 已消失则同 rm 归 missing */
 async function executeTrash(
   target: string,
   trashDeps?: TrashDeps,
@@ -172,16 +172,14 @@ async function executeTrash(
   if (outcome.ok) {
     return { kind: 'trashed', target };
   }
-  if (outcome.errno === 'ENOENT') {
-    const state = await checkGone(target);
-    if (state === 'gone') return { kind: 'missing', target };
-  }
+  const state = await checkGone(target);
+  if (state === 'gone') return { kind: 'missing', target };
   return {
     kind: 'failed',
     failure: {
       target,
       code: 'TRASH_FAILED',
-      errno: outcome.errno,
+      errno: typeof outcome.errno === 'string' ? outcome.errno : undefined,
       message: outcome.message,
       partialRisk: false,
     },

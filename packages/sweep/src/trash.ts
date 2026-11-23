@@ -71,7 +71,7 @@ export interface TrashDeps {
   unlink?: typeof fsUnlink;
 }
 
-const defaultExecFile: TrashExecFn = (file, args, env) =>
+export const defaultExecFile: TrashExecFn = (file, args, env) =>
   new Promise((resolve) => {
     execFileCb(
       file,
@@ -84,15 +84,21 @@ const defaultExecFile: TrashExecFn = (file, args, env) =>
       },
       (error, stdout, stderr) => {
         if (error !== null) {
-          const code =
-            typeof (error as { code?: unknown }).code === 'number'
-              ? ((error as { code?: number }).code ?? 1)
-              : null;
+          const rawCode = (error as { code?: unknown }).code;
+          const code = typeof rawCode === 'number' ? rawCode : null;
+          const normalizedError: Error & { code?: string } = new Error(
+            error.message,
+            { cause: error },
+          );
+          normalizedError.name = error.name;
+          if (typeof rawCode === 'string') {
+            normalizedError.code = rawCode;
+          }
           resolve({
             code,
             stdout: stdout ?? '',
             stderr: stderr ?? '',
-            error: error as Error & { code?: string },
+            error: normalizedError,
           });
           return;
         }
@@ -111,7 +117,7 @@ function failTrash(
     target,
     code: 'TRASH_FAILED',
     message: `移入回收站失败 (${detail}) (目标: ${target}; 已保留原文件, 未执行永久删除)`,
-    ...(errno !== undefined ? { errno } : {}),
+    ...(typeof errno === 'string' && errno !== '' ? { errno } : {}),
   };
 }
 
@@ -147,8 +153,16 @@ export function resolveXdgTrashDir(
 /** macOS: 优先 `/usr/bin/trash -s`, 旧系统缺失时降级 `/usr/bin/osascript` 通知 Finder (argv 传参防注入) */
 async function trashMacos(
   target: string,
-  deps: Required<Pick<TrashDeps, 'existsSync' | 'execFile'>>,
+  deps: Required<Pick<TrashDeps, 'existsSync' | 'execFile' | 'lstat'>>,
 ): Promise<TrashOutcome> {
+  try {
+    await deps.lstat(target);
+  } catch (error) {
+    const rawCode = (error as { code?: unknown }).code;
+    const code = typeof rawCode === 'string' ? rawCode : undefined;
+    return failTrash(target, `目标不可访问 (${code ?? 'UNKNOWN'})`, code);
+  }
+
   if (deps.existsSync(MACOS_TRASH_BIN)) {
     const res = await deps.execFile(MACOS_TRASH_BIN, ['-s', target]);
     if (res.code === 0 && res.error === undefined) {

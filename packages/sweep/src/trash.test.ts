@@ -28,6 +28,7 @@ import {
   MACOS_TRASH_BIN,
   type TrashDeps,
   WIN32_TRASH_MAX_PATH,
+  defaultExecFile,
   encodeXdgTrashPath,
   formatTrashDeletionDate,
   moveToTrash,
@@ -76,12 +77,19 @@ describe('trash 工具纯函数', () => {
 });
 
 describe('trash macOS 桩测试 (不污染真实废纸篓)', () => {
-  test('主路径 /usr/bin/trash -s 成功与失败返回', async () => {
+  const stubFileLstat = (async () => ({
+    isDirectory: () => false,
+    isFile: () => true,
+    isSymbolicLink: () => false,
+  })) as unknown as NonNullable<TrashDeps['lstat']>;
+
+  test('主路径 /usr/bin/trash -s 成功、失败与入口 lstat ENOENT 预检', async () => {
     const calls: { file: string; args: readonly string[] }[] = [];
     const target = '/tmp/proj/node_modules';
 
     const ok = await moveToTrash(target, {
       platform: 'darwin',
+      lstat: stubFileLstat,
       existsSync: (p) => p === MACOS_TRASH_BIN,
       execFile: async (file, args) => {
         calls.push({ file, args });
@@ -93,6 +101,7 @@ describe('trash macOS 桩测试 (不污染真实废纸篓)', () => {
 
     const fail = await moveToTrash(target, {
       platform: 'darwin',
+      lstat: stubFileLstat,
       existsSync: (p) => p === MACOS_TRASH_BIN,
       execFile: async () => ({ code: 1, stdout: '', stderr: 'not permitted' }),
     });
@@ -100,6 +109,26 @@ describe('trash macOS 桩测试 (不污染真实废纸篓)', () => {
       ok: false,
       target,
       code: 'TRASH_FAILED',
+    });
+
+    // 入口 lstat 报 ENOENT 时直接返回 errno: 'ENOENT', 不派发外部子进程
+    let execInvoked = false;
+    const missingPrecheck = await moveToTrash(
+      `/nonexistent-sweep-precheck-${Date.now()}`,
+      {
+        platform: 'darwin',
+        existsSync: () => true,
+        execFile: async () => {
+          execInvoked = true;
+          return { code: 0, stdout: '', stderr: '' };
+        },
+      },
+    );
+    expect(execInvoked).toBe(false);
+    expect(missingPrecheck).toMatchObject({
+      ok: false,
+      code: 'TRASH_FAILED',
+      errno: 'ENOENT',
     });
   });
 
@@ -110,6 +139,7 @@ describe('trash macOS 桩测试 (不污染真实废纸篓)', () => {
 
     const ok = await moveToTrash(hostileTarget, {
       platform: 'darwin',
+      lstat: stubFileLstat,
       existsSync: (p) => p === MACOS_OSASCRIPT_BIN,
       execFile: async (file, args) => {
         calls.push({ file, args });
@@ -135,6 +165,7 @@ describe('trash macOS 桩测试 (不污染真实废纸篓)', () => {
 
     const bothMissing = await moveToTrash(hostileTarget, {
       platform: 'darwin',
+      lstat: stubFileLstat,
       existsSync: () => false,
     });
     expect(bothMissing).toMatchObject({
@@ -142,6 +173,17 @@ describe('trash macOS 桩测试 (不污染真实废纸篓)', () => {
       code: 'TRASH_FAILED',
       errno: 'ENOENT',
     });
+  });
+
+  test('defaultExecFile: 子进程非零数字退出码绝不污染 error.code 字符串 errno 字段', async () => {
+    const res = await defaultExecFile(process.execPath, [
+      '-e',
+      'process.stderr.write("boom\\n"); process.exit(2);',
+    ]);
+    expect(res.code).toBe(2);
+    expect(res.stderr).toContain('boom');
+    expect(res.error).toBeInstanceOf(Error);
+    expect(res.error?.code).toBeUndefined();
   });
 });
 
