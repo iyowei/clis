@@ -62,7 +62,7 @@
 2. 通过软链实跑启动器, 运行时挑选正确; PATH 里没有 bun 时回退到 Node;
 3. `bunx tsc --noEmit` (带 `erasableSyntaxOnly`) 通过。
 
-> **修订指引 (2026-09-30)**: 本文的路径是单包时代的坐标 (现在落 `packages/sweep-node-modules{,-cli}`); 决策 2 里那个适配层已经没有生产使用方了 (实测 Bun 和 Node 在 `node:` 兼容 API 上行为已经一致), `runtime.ts` 现在只剩自测在用它; 「转写验收须手动双跑」这条权衡也不再成立 (conformance 的双 target 已经进了 CI 与 pre-push)。见 [ADR 0010](0010-dual-package-monorepo.md)。
+> **修订指引 (2026-09-30 / 2026-11-20)**: 本文的路径是单包时代的坐标 (现随 [ADR 0010](0010-dual-package-monorepo.md) 与 [ADR 0021](../../packages/sweep/docs/adrs/0021-sweep-general-cleaner-evolution.md) 落 `packages/sweep{,-cli}`, 包名 `@iyowei/sweep{,-cli}`); 决策 2 里那个适配层已经没有生产使用方了 (实测 Bun 和 Node 在 `node:` 兼容 API 上行为已经一致), `runtime.ts` 现在只剩自测在用它; 「转写验收须手动双跑」这条权衡也不再成立 (conformance 的双 target 已经进了 CI 与 pre-push)。见 [ADR 0010](0010-dual-package-monorepo.md)。
 
 **关联引用**
 

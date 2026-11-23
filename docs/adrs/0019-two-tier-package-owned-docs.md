@@ -66,6 +66,8 @@
 2. `bun scripts/lint-doc-references.ts` 全绿 (覆盖相对链接、包根 README npm 外链禁令、`§` 节号就近消歧、跨级 ADR 存在性与唯一性);
 3. `bun run ci` 全链 (含双包 `codd`/`codd-cli` 与 `sweep` 转写验收) 全绿。
 
+> **修订指引 (2026-11-20)**: 原 `sweep-node-modules` 双包已随 [ADR 0021](../../packages/sweep/docs/adrs/0021-sweep-general-cleaner-evolution.md) 演进更名为 `@iyowei/sweep` (`packages/sweep/`) 与 `@iyowei/sweep-cli` (`packages/sweep-cli/`)。
+
 **关联引用**
 
 - 被取代的历史决策: [ADR 0011](0011-docs-and-adr-layering.md);

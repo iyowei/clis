@@ -85,4 +85,4 @@
 - 被局部取代的两处判断见 [ADR 0003](../../packages/sweep/docs/adrs/0003-zero-runtime-deps.md) 与 [ADR 0006](0006-dual-runtime-bun-first.md); 入口分轨的设计见 [ADR 0007](../../packages/sweep/docs/adrs/0007-platform-portability.md)。
 - 代码树与模块结构见 [设计总纲](../../packages/sweep/docs/designs/sweep-design.md); 文档命名约定见 [docs/README](../README.md)。
 
-> **修订指引 (2026-09-30)**: 本文里的包名与路径是包名翻转前的写法: CLI 发行包现为 `@iyowei/sweep-node-modules-cli` (位于 `packages/sweep-node-modules-cli/`, 含 `bin/` 与 `scripts/`); 同名包 `@iyowei/sweep-node-modules` 现在是 API 包 (见 [ADR 0010](0010-dual-package-monorepo.md))。
+> **修订指引 (2026-09-30 / 2026-11-20)**: 本文里的包名与路径是包名翻转与泛化演进前的写法: CLI 包现为 `@iyowei/sweep-cli` (位于 `packages/sweep-cli/`, 含 `bin/` 与 `scripts/`); API 主包现为 `@iyowei/sweep` (位于 `packages/sweep/`, 见 [ADR 0010](0010-dual-package-monorepo.md) 与 [ADR 0021](../../packages/sweep/docs/adrs/0021-sweep-general-cleaner-evolution.md))。
