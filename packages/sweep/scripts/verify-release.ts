@@ -166,7 +166,7 @@ export const verifyRelease = (
   }
   io.err(`发布前置校验未通过: ${verdict.reason}`);
   io.err(
-    '  处置: 工作树不干净就提交或 stash 后重新构建再发 (bun run build 会同时写产物与清单);' +
+    '  处置: 工作树不干净就提交或 stash 后, 在包目录内重新执行 bun run build (或根仓执行 bun run build -- --force 跳过缓存刷新清单) 再发;' +
       ' 发行面包内文件与白名单不符就清掉多余文件或同步 PACK_FILES_EXPECTED。',
   );
   return 1;

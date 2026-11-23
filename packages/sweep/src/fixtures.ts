@@ -1,6 +1,6 @@
 /**
  * 合成工作区夹具生成器 (内部测试与基准专用, 已从 tsconfig.build.json 排除, 不进公开 API 发行面)。
- * 上下游: 零内部业务依赖; 供 packages/sweep/src/*.test.ts 与 packages/sweep/bench/*.ts 构建确定性目录树。
+ * 上下游: 零内部业务依赖; 供 packages/sweep/src/*.test.ts、packages/sweep/bench/*.ts 与 packages/sweep-cli/src/*.test.ts (经 @iyowei/sweep/testing 子路径) 构建确定性目录树。
  * 核心红线:
  * 1. 全部建在系统临时目录, 由调用方经 `cleanup()` 自愈回收 (绝不污染仓库工作区);
  * 2. 返回的 `root` 必须取 `realpath` 归一形态: macOS 临时目录 `/var/folders/...` 含系统软链 (`/var -> /private/var`),
