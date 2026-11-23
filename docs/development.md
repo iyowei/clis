@@ -18,7 +18,7 @@ bun install
 以下命令除注明外均在仓库根执行:
 
 ```shell
-# 类型检查 (bun check; 经 turbo 编排全仓各包并校验根 scripts/, 边界见 ADR 0020)
+# 类型检查 (bun check; 经 turbo 编排全仓各包并校验根 scripts/ 与 .agents/skills/, 边界见 ADR 0020)
 bun run typecheck
 
 # 代码检查 (oxlint)
@@ -27,33 +27,33 @@ bun run lint
 # 格式化 (bun fmt; 读根 .prettierrc 与 .prettierignore)
 bun run format
 
-# 单元测试 (契约 / 鲁棒 / 压测 / 双载体 e2e / 伪终端冒烟 / 启动器冒烟 / 模板回归等; 经 turbo 编排全部工作区包 + 根 scripts/)
+# 单元测试 (契约 / 鲁棒 / 压测 / 双载体 e2e / 伪终端冒烟 / 启动器冒烟 / 模板回归等; 经 turbo 编排全部工作区包 + 根 scripts/ + .agents/skills/)
 bun run test
 
-# 直通形态: 不走 turbo, 由 bun 内置测试器从仓库根递归扫全部 *.test.ts (无缓存)
+# 直通形态: 不走 turbo (不自动触发 ^build 前置, 且默认跳过 . 开头的隐藏目录如 .agents/, 适合已构建后单测快速排障)
 bun test
 
 # 基准组 (经 turbo 调度各包 bench)
 bun run bench
 
-# 转写一致性验收 (双运行时全量 93 条, 等价于 CI 的 conformance 组)
+# 转写一致性验收 (双运行时全集语料, 条数以 corpus/*.json 为准, 等价于 CI 的 conformance 组)
 bun run ci -- --conformance
 
-# 转写一致性验收 (验任意目标语言产物; 失败时可加 --emit-failures ~/tmp/failures 导出诊断单)
-bun run conformance -- --target "bun packages/sweep-cli/src/cli.ts"
+# 转写一致性验收 (验任意外部目标语言产物时同时传 --target 与 --api-target; 失败可加 --emit-failures ~/tmp/failures)
+bun run conformance -- --target "bun packages/sweep-cli/src/cli.ts" --api-target "bun scripts/transcription/api-harness.ts"
 
-# 差分模糊测试: 本仓参考实现不变量自检 (900 组对抗输入) 与 Bun vs Node 双运行时差分比对
+# 差分模糊测试: 本仓参考实现不变量自检 (目标清单以各包 fuzz-targets.json 为准) 与 Bun vs Node 双运行时差分比对
 bun run fuzz
 bun run fuzz:diff
 
-# 本地 CI 预演 (与 GitHub Actions 的 verify + conformance 同集合: build / 类型 / 测试 / lint / 格式 / 五道治理闸门 / conformance 双 target; pre-push 钩子按同集合自动执行)
+# 本地 CI 预演 (步骤集合唯一来源见 scripts/ci.ts: 与 GitHub Actions 的 verify + conformance 同集合; pre-push 钩子按同集合自动执行)
 bun run ci
 
 # 构建全部包发布产物: 各 API 包 bundle + 类型声明 + 清单, 各 CLI 包单文件 + 清单, 以及模板资产 (assets/)
 bun run build
 
-# 发布前置闸门 (干净检出 + 产物自证 + 发行面白名单; API 包另查 d.ts specifier; 在各自包目录跑)
-cd packages/sweep-cli && bun run verify:release
+# 发布前置闸门 (干净检出 + 产物自证 + 发行面白名单; API 包另查 d.ts specifier; 须在包目录内先跑包级 build 刷新当前 HEAD 清单, 或在根仓加 -- --force 跳过 Turbo 缓存)
+cd packages/sweep-cli && bun run build && bun run verify:release
 
 # 干净重装 (清理全部工作区包的 dist / assets / .turbo 以及根 .turbo / bun.lock / node_modules 后重新 bun install; 重装后请执行 bun run build)
 bun run safe-install
@@ -75,21 +75,21 @@ OIDC 免密发布有一处仓库外依赖: npm 侧的 Trusted Publisher 登记�
 
 **README / LICENSE 类备份别落任何包目录 (`packages/*/`)**: npm 会把包根的 `README*` / `LICENSE*` 无条件收进发行包, 且没有任何配置可以排除 (ADR 0009 补记第 3 条), 落包根目录的备份会被静默发出去; 备份一律落 `~/tmp/repo_backups/` 并由 `scripts/lint-stray-backups.ts` 全树兜底。
 
-所有 CLI 包的启动器 (`bin/*.mjs` / `bin/<cmd>` / `bin/<cmd>.cmd`) 均落实三道运行期防线: ① 按 PATH 严格解析绝对路径、跳过空与相对条目 (防被扫/当前工作目录同名 `bun` 劫持, 见 [ADR 0007](../packages/sweep/docs/adrs/0007-platform-portability.md)); ② 选中 Bun 时强制附加 `--config=<pkg>/bin/bunfig.toml --no-env-file`, 隔绝工作目录坏 `bunfig.toml` (`preload` RCE / 语法报错) 与 `.env` 注入; ③ 执行 `dist/` 产物前校验 `dist/manifest.json` SHA-256 摘要。
+所有 CLI 包的启动器 (`bin/*.mjs` / `bin/<cmd>` / `bin/<cmd>.cmd`) 均落实三道运行期防线: ① `bin/*.mjs` 与 POSIX `bin/<cmd>` 按 `PATH` 严格解析绝对路径并跳过空与相对条目, Windows `bin/<cmd>.cmd` 经 `%%~$PATH:I` 仅搜 `PATH` 避免 `cmd.exe` 默认优先搜索当前工作目录 (防被扫/当前工作目录同名 `bun` 或 `node` 劫持, 见 [ADR 0007](../packages/sweep/docs/adrs/0007-platform-portability.md)); ② 选中 Bun 时强制附加 `--config=<pkg>/bin/bunfig.toml --no-env-file`, 隔绝工作目录坏 `bunfig.toml` (`preload` RCE / 语法报错) 与 `.env` 注入; ③ 执行 `dist/` 产物前校验 `dist/manifest.json` SHA-256 摘要。
 
 ## 运行时双跑
 
-`bun packages/sweep-cli/src/cli.ts` 与 `node packages/sweep-cli/src/cli.ts` 均可直接运行 (调试 `sweep` 时可通过 `SWEEP_CONFIG` 指定测试配置路径, 缺省位置 `~/.config/sweep/config.json`)。**双运行时是项目的硬约束**, 改动须在两个载体上都验证, 而两个验证通道的行为不同:
+`bun packages/sweep-cli/src/cli.ts` 可直接从源码运行, `node packages/sweep-cli/src/cli.ts` 则需先执行 `bun run build` 生成/更新 API 包 `dist/` 后运行 (调试 `sweep` 时可通过 `SWEEP_CONFIG` 指定测试配置路径, 缺省位置 `~/.config/sweep/config.json`)。**双运行时是项目的硬约束**, 改动须在两个载体上都验证, 而两个验证通道的行为不同:
 
 - **单测**已参数化: e2e 用例按 `bun` / `node` 各注册一遍, 跑一次 `bun run test` 即覆盖两侧, 且它在 pre-push 闸门内。**前提是机器上两个运行时都装了**: 缺哪一侧, 那一侧的用例会静默 skip, 整体仍显示全绿 (该 skip 是有意设计, 机制落点见 `packages/sweep-cli/src/cli.e2e.test.ts` 的 `RUNNERS` 与逐载体注册循环; 同类说明另见 `packages/sweep/src/runtime.test.ts` 文件头), 故 bun-only 机器上闸门不构成 node 侧的把关;
-- **转写验收不参数化**: `--target` 一次只收一个载体; **pre-push 与 CI 的 conformance 步均对两载体各跑一遍** (见 `scripts/ci.ts` 的双 target 循环), 无需再手动双跑; 需要手工单跑时, 对两载体各跑一遍, 都全通过才算数:
+- **转写验收不参数化**: 一次运行只绑定一个运行载体; **pre-push 与 CI 的 conformance 步均对两载体各跑一遍** (见 `scripts/ci.ts` 的 `conformance:bun` 与 `conformance:node`), 无需再手动双跑; 需要手工跑双运行时全集语料时, 用 `--all-products --runtime <bun|node>` 同步绑定 CLI 与 API 双面载体, 都全通过才算数 (若验收外部独立编译产物, 则同时显式传 `--target` 与 `--api-target`, 避免仅传 `--target "node ..."` 时 API 语料仍回退跑在默认 Bun 参考 harness 上):
 
 ```shell
-# bun 载体
-bun run conformance -- --target "bun packages/sweep-cli/src/cli.ts"
+# bun 载体 (全协议产品 CLI + API 双面)
+bun run conformance -- --all-products --runtime bun
 
 # node 载体 (需先 bun run build: node 不读 tsconfig paths, 按 exports 解析到 API 包 dist)
-bun run conformance -- --target "node packages/sweep-cli/src/cli.ts"
+bun run build && bun run conformance -- --all-products --runtime node
 ```
 
 ## 提交与推送

@@ -41,7 +41,7 @@ turbo 跨工作区各包编排构建、类型检查与测试任务。代码对 b
 bun install
 ```
 
-钩子在代码进门时把关 (pre-commit: 全项目 `bun check` 类型检查, 外加对暂存文件跑 `bun fmt` 与 oxlint), 推送前重跑一遍全量检查 (pre-push 只调用 `bun scripts/ci.ts` 这一条命令: 它是整套检查的唯一出处, 覆盖文档与仓库卫生的五道闸门, 以及双载体的转写契约套件)。机器上没有 lefthook 时, 钩子链会回退到经 bunx 取来的 pin 版。配置见 [lefthook.yml](lefthook.yml)。
+钩子在代码进门时把关 (pre-commit: 全项目 `bun check` 类型检查, 外加对暂存文件跑 `bun fmt` 与 oxlint), 推送前重跑一遍全量检查 (pre-push 只调用 `bun scripts/ci.ts` 这一条命令: 它是整套检查的唯一出处, 覆盖文档与仓库卫生的治理闸门, 以及双载体的转写契约套件)。机器上没有 lefthook 时, 钩子链会回退到经 bunx 取来的 pin 版。配置见 [lefthook.yml](lefthook.yml)。
 
 仓库的 `.gitignore` 由 fast-gitignore (`fgi`) 从 `.gitignorerc.json` 生成, 不要手改: 新增忽略规则写进这个配置的 `custom` 数组, 再在仓库根重跑 `fgi` (它会读取预设, 把 `.gitignore` 整个重新生成)。
 
@@ -50,7 +50,7 @@ bun install
 在仓库根目录执行:
 
 ```shell
-# 类型检查 (bun check, 经 turbo)
+# 类型检查 (bun check, 经 turbo 编排全仓各包并检查根 scripts/ 与 .agents/skills/)
 bun run typecheck
 
 # 代码检查 (oxlint); `bun run lint:fix` 会自动修复
@@ -59,8 +59,8 @@ bun run lint
 # 格式化 (bun fmt)
 bun run format
 
-# 单元测试: 契约 / 鲁棒性 / 双运行时 e2e / 冒烟测试
-bun test
+# 单元测试: 契约 / 鲁棒性 / 双运行时 e2e / 冒烟测试 / 根 scripts 与仓内 skills
+bun run test
 
 # 基准测试
 bun run bench
@@ -75,25 +75,27 @@ bun run build
 
 bun 与 node 上的行为必须一致: 只在其中一个上跑通的改动, 不算完成。注意两点:
 
-- `bun test` 会为每个运行时各注册一遍 e2e 用例, 但只为机器上装了的运行时注册; 缺的一侧静默跳过。想真正覆盖两侧, 就把两个运行时都装上。
-- 转写契约套件拿 CLI 输出与字节级金样本比对, 由 pre-push 钩子与 CI 自动执行, 且都在两个运行时上各跑一遍; 需要手工跑时, 对两个载体各跑一遍:
+- `bun run test` 会为每个运行时各注册一遍 e2e 用例, 但只为机器上装了的运行时注册; 缺的一侧静默跳过。想真正覆盖两侧, 就把两个运行时都装上。
+- 转写契约套件拿 CLI 与可编程 API 双面行为与金样本语料比对, 由 pre-push 钩子与 CI 自动执行, 且都在两个运行时上各跑一遍; 需要手工跑时, 对两个载体各跑一遍:
 
 ```shell
-# 在 bun 运行时上跑转写验收
-bun run conformance -- --target "bun packages/sweep-cli/src/cli.ts"
+# 在 bun 运行时上跑全协议产品的双面 (CLI + API) 转写验收
+bun run conformance -- --all-products --runtime bun
 
-# 在 node 运行时上跑转写验收
-bun run conformance -- --target "node packages/sweep-cli/src/cli.ts"
+# 在 node 运行时上跑全协议产品的双面转写验收 (需先 bun run build: node 按 exports 解析到 API 包 dist)
+bun run build && bun run conformance -- --all-products --runtime node
 ```
 
-开发中想直接试 CLI, 用任一运行时从源码直跑:
+若验收外部独立编译产物 (如跨语言重写二进制与独立 API harness), 请同时显式传入 `--target "<cli-cmd>"` 与 `--api-target "<api-harness-cmd>"`, 避免仅传 `--target` 时 API 语料仍回退跑在默认 Bun 参考 harness 上。
+
+开发中想直接试 CLI, 可在 bun 上从源码直跑, 或构建工作区产物后在 node 上运行:
 
 ```shell
-# 在 bun 上从源码运行 CLI
+# 在 bun 上直接从源码运行 CLI
 bun packages/sweep-cli/src/cli.ts
 
-# 在 node 上运行同一个文件
-node packages/sweep-cli/src/cli.ts
+# 在 node 上运行 (需先 bun run build 以确保工作区 API 包 dist/ 产物为最新)
+bun run build && node packages/sweep-cli/src/cli.ts
 ```
 
 ## 提交
