@@ -2,7 +2,7 @@
  * codd CLI 薄壳入口 (`@iyowei/codd-cli`): 编排 `args.ts`、`wizard.ts`、`ui/` 与 `@iyowei/codd`。
  * 支持交互式向导 (`codd wizard`, 且无参无 `deploy.json` 时 TTY 自动进入)、模板导出 (`codd init`)、
  * 自更新 (`codd update`) 与清单生成 (`codd [deploy.json]`)。
- * 退出码契约: `0` 成功 (含 help/version/init/dry-run), `1` 配置或运行错误, `130` 交互取消。
+ * 退出码契约: `0` 成功 (含 help/version/init/dry-run/update), `1` 配置、自更新或运行错误, `130` 交互取消。
  */
 import { existsSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
@@ -121,10 +121,10 @@ const printUsage = (): void => {
 
   printHelpSection('退出码');
   console.log(
-    `    ${palette.green('0', true)}       ${palette.muted('成功 (含 --help、--version、init、--dry-run 与正常生成)')}`,
+    `    ${palette.green('0', true)}       ${palette.muted('成功 (含 --help、--version、init、--dry-run、update 与正常生成)')}`,
   );
   console.log(
-    `    ${palette.red('1', true)}       ${palette.muted('错误 (参数错误、清单校验失败、状态文件损坏或 I/O 失败)')}`,
+    `    ${palette.red('1', true)}       ${palette.muted('错误 (参数错误、清单校验失败、update 失败、状态文件损坏或 I/O 失败)')}`,
   );
   console.log(
     `    ${palette.amber('130', true)}     ${palette.muted('取消 (交互式向导被 Ctrl+C 或输入流关闭中断)')}`,

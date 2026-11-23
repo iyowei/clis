@@ -105,12 +105,17 @@ export const parseCliArgs = (argv: string[]): CliFlags => {
     version: false,
   };
 
-  // update 子命令自带独立旗标面 (--check / --pm / --registry / --force / --help)
+  // update 子命令自带独立旗标面 (--check / --force / --pm / --registry / --verbose / --help)
   if (argv[0] === 'update') {
     flags.update = true;
     flags.updateArgs = argv.slice(1);
     return flags;
   }
+
+  const dashIdx = argv.indexOf('--');
+  const preDashArgs = dashIdx === -1 ? argv : argv.slice(0, dashIdx);
+  const hasHelpFlag =
+    preDashArgs.includes('--help') || preDashArgs.includes('-h');
 
   let afterDash = false;
   let i = 0;
@@ -128,8 +133,13 @@ export const parseCliArgs = (argv: string[]): CliFlags => {
       continue;
     }
     if (arg === 'update') {
+      if (hasHelpFlag) {
+        flags.help = true;
+        i += 1;
+        continue;
+      }
       throw new ConfigError(
-        'update 必须作为首个子命令使用 (正确用法: codd update [--check | --force])',
+        'update 必须作为首个子命令使用 (正确用法: codd update [--check | --force | --pm <name> | --registry <url> | --verbose])',
       );
     }
     if (arg === '--help' || arg === '-h') {

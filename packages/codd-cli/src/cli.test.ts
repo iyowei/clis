@@ -46,6 +46,8 @@ describe('parseCliArgs 参数解析', () => {
     expect(parseCliArgs(['init'])).toMatchObject({ initSchema: true });
     expect(parseCliArgs(['--init-schema'])).toMatchObject({ initSchema: true });
     expect(parseCliArgs(['-h'])).toMatchObject({ help: true });
+    expect(parseCliArgs(['--help', 'update'])).toMatchObject({ help: true });
+    expect(parseCliArgs(['-h', 'update'])).toMatchObject({ help: true });
     expect(parseCliArgs(['-V'])).toMatchObject({ version: true });
     expect(parseCliArgs(['-v'])).toMatchObject({ version: true });
     expect(parseCliArgs(['--version'])).toMatchObject({ version: true });
@@ -121,6 +123,9 @@ describe('parseCliArgs 参数解析', () => {
     for (const argv of badInputs) {
       expect(() => parseCliArgs(argv)).toThrow(ConfigError);
     }
+    expect(() => parseCliArgs(['--dry-run', 'update'])).toThrow(
+      'codd update [--check | --force | --pm <name> | --registry <url> | --verbose]',
+    );
   });
 });
 
@@ -151,6 +156,12 @@ describe('CLI 端到端行为 (源码直跑)', () => {
     });
     expect(updHelp.status).toBe(0);
     expect(updHelp.stdout).toContain('codd update');
+
+    const revHelpUpdate = spawnSync('bun', [cliEntry, '--help', 'update'], {
+      encoding: 'utf8',
+    });
+    expect(revHelpUpdate.status).toBe(0);
+    expect(revHelpUpdate.stdout).toContain('update');
 
     const updSrc = spawnSync(
       'bun',
