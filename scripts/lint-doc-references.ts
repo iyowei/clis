@@ -1,281 +1,353 @@
 /**
- * 文档引用闸门: 相对链接 / §章节引用 / ADR 编号与重号检测 / 包 README npm 外链防 404。
+ * 文档引用与排版闸门: 相对链接 / 本仓 GitHub 绝对链接 / HTML 相对链接 / 孤儿文档 / §章节 / ADR / 中文排版。
  * 触发方: `scripts/ci.ts` (`lint:refs` 并行只读闸门) 或手动执行。
  *
- * 两级文档模型 (ADR 0019 / docs/designs/docs-layering.md):
+ * 两级文档模型 (仓库级治理文档 + 包级产品文档按需内聚):
  * - 仓库级: `docs/` (纯工程治理、通用设计、仓级 ADR)
  * - 包级:   `packages/<pkg>/docs/` (单包及产品主包的全部设计、协议与 ADR)
  *
- * 检查面:
- * 1. 相对链接: `](路径)` 解析到仓内文件/目录须存在; 外链、纯锚点与围栏代码块跳过;
- * 2. 包 README 逃逸拦截: `packages/<pkg>/README*.md` 面向 npm 发布, 禁止逃出包根 (`../` 或
- *    仓库根 `/...`) 的相对链接, 必须改用 GitHub 绝对链接 (消除 npm 页面 404);
- * 3. §章节引用: 目标明确形态 (`x.md §N` 或别名), 同名文件按「同目录 -> 同包 -> 全仓」就近消歧;
- * 4. ADR 编号与唯一性: 扫描 `docs/adrs/` 与全部 workspace 包 `packages/<pkg>/docs/adrs/`,
- *    既拦截幽灵编号, 也拦截跨目录重号碰撞。
- *
- * 用法: bun scripts/lint-doc-references.ts
- * 退出码: 0 全绿; 1 存在断裂。
+ * 用法: bun scripts/lint-doc-references.ts (退出码: 0 全绿; 1 存在断裂或违规)
  */
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
-import { dirname, join, relative, resolve } from 'node:path';
+import { dirname, isAbsolute, join, relative, resolve } from 'node:path';
 
 import { listWorkspacePackages } from './lib/workspace.ts';
 import { REPO_ROOT, walkFiles } from './lint-doc-shared.ts';
 
-/** 一条断裂发现 */
 export interface RefFinding {
   file: string;
   line: number;
-  kind: 'link' | 'section' | 'adr';
+  kind: 'link' | 'section' | 'adr' | 'orphan' | 'typography';
   reference: string;
   message: string;
 }
 
-/** 文档别名表 (保留既有通用称谓映射; 仅在目标文件真实存在时参与解析) */
-export const DOC_ALIASES: Readonly<Record<string, string>> = {
-  '可编程 API 面': 'packages/sweep/docs/designs/api-surface.md',
-  行为契约: 'packages/sweep/docs/protocol/behavior-contract.md',
-  覆盖表: 'packages/sweep/docs/protocol/conformance/coverage.md',
-  安全防护: 'packages/sweep/docs/designs/safety-guardrails.md',
-};
-
-/** ADR 引用的行级豁免词: 文档正在明确陈述「该 ADR 不存在/已删」时不算断裂 */
-const ADR_LINE_EXEMPT_MARKERS = [
-  '不存在',
-  '未创建',
-  '待创建',
-  '历史已删',
-  '历史不存在',
-  '历史编号',
-] as const;
-
-/** §引用解析窗口: § 之前多少字符内找目标文档线索 */
-const SECTION_TARGET_WINDOW = 30;
-
-/** 走查全部 .md (共享走查的文档薄壳; 保留独立导出供测试注入临时根) */
-export function listDocFiles(root: string): string[] {
-  return walkFiles(root, ['.md']);
+type EdgeMap = Map<string, Set<string>>;
+interface LinkCtx {
+  root: string;
+  repoPrefix: string;
+  edges?: EdgeMap;
+  isHtml: boolean;
 }
 
-/** 围栏代码块内容置空 (保行数, 保行号) */
+const issue = (
+  file: string,
+  line: number,
+  kind: RefFinding['kind'],
+  reference: string,
+  message: string,
+): RefFinding => ({ file, line, kind, reference, message });
+
+/** 本仓 URL 前缀 (模板构建期经 generalize 替换为 {{REPO_URL}}, 生成新项目时替换为真实 repoUrl) */
+const REPO_URL_PREFIX = 'https://github.com/iyowei/clis';
+
+export const normalizeRepoPrefix = (url: string): string =>
+  `${url.replace(/(?:\.git)?\/+$/i, '').replace(/\.git$/i, '')}/`;
+
+export const DOC_ALIASES: Readonly<Record<string, string>> = {
+  行为契约: 'packages/sweep/docs/protocol/behavior-contract.md',
+  覆盖表: 'packages/sweep/docs/protocol/conformance/coverage.md',
+};
+
+const ADR_EXEMPT_RE = /不存在|未创建|待创建|历史已删|历史不存在|历史编号/;
+const NATURAL_DOC_RE =
+  /^(?:README(?:\.zh-CN)?|AGENTS|CLAUDE|GEMINI|CONTRIBUTING(?:\.zh-CN)?|CODE_OF_CONDUCT|SECURITY|CHANGELOG|packages\/[^/]+\/CHANGELOG|\.github\/.+)\.md$/;
+const NPM_ALWAYS_RE =
+  /^(?:package\.json|readme(?:\.[^/]+)?|license(?:\.[^/]+)?|licence(?:\.[^/]+)?|changelog(?:\.[^/]+)?|history(?:\.[^/]+)?|changes(?:\.[^/]+)?)$/i;
+const PKG_README_RE = /^packages\/[^/]+\/README(?:\.[^/]+)?\.md$/;
+const TYPO_EXEMPT_RE = /^(?:CHANGELOG|CODE_OF_CONDUCT|.*\/CHANGELOG)\.md$/;
+const SCHEME_RE = /^[a-zA-Z][a-zA-Z0-9+.-]*:/;
+const TYPO_GLOBAL_RE = /\u2014\u2014|\u2014|[\uff0c\uff1a\uff1b\uff08\uff09]/g;
+const INLINE_LINK_RE = /\]\(([^)\s]+)(?:\s+(?:"[^"]*"|'[^']*'))?\)/g;
+const REF_DEF_RE = /^\s*\[[^\]^][^\]]*\]:\s*(\S+)/;
+
+export const listDocFiles = (r: string): string[] => walkFiles(r, ['.md']);
+
+const isInRoot = (absRoot: string, target: string): boolean => {
+  const rel = relative(absRoot, target);
+  return !rel.startsWith('..') && !isAbsolute(rel);
+};
+
+/** 围栏代码块内容置空 (保行数, 按开围栏字符及长度匹配闭围栏, 闭围栏禁止带 info string) */
 export function stripFencedCode(content: string): string {
-  let fence: string | null = null;
+  let fence: { ch: string; len: number } | null = null;
   return content
     .split('\n')
     .map((line) => {
-      const m = line.match(/^\s*(`{3,}|~{3,})/);
-      if (fence === null && m) {
-        fence = m[1]![0]!;
-        return '';
+      const m = /^\s*(`{3,}|~{3,})(.*)$/.exec(line);
+      if (!fence) {
+        if (!m || (m[1]![0] === '`' && m[2]!.includes('`'))) return line;
+        fence = { ch: m[1]![0]!, len: m[1]!.length };
+      } else if (
+        m &&
+        m[1]![0] === fence.ch &&
+        m[1]!.length >= fence.len &&
+        /^\s*$/.test(m[2]!)
+      ) {
+        fence = null;
       }
-      if (fence !== null) {
-        if (m && m[1]![0] === fence) fence = null;
-        return '';
-      }
-      return line;
+      return '';
     })
     .join('\n');
 }
 
-/** 文件名 stem 到仓库相对路径的索引 */
-export function buildNameIndex(files: string[]): Map<string, string[]> {
-  const index = new Map<string, string[]>();
-  for (const file of files) {
-    const stem = file.split('/').pop()!.replace(/\.md$/, '');
-    const list = index.get(stem) ?? [];
-    list.push(file);
-    index.set(stem, list);
-  }
-  return index;
-}
+const stripHtmlComments = (s: string): string =>
+  s.replace(/<!--[\s\S]*?-->/g, (m) => m.replace(/[^\n]/g, ' '));
 
-/** 收集一个文档的节号集合 (`## N.` / `### N.M` / `#### N.M.K`) */
-export function collectSectionNumbers(content: string): Set<string> {
-  const numbers = new Set<string>();
-  for (const m of content.matchAll(/^#{2,5}\s+(\d+(?:\.\d+)*)[.、\s]/gm)) {
-    numbers.add(m[1]!);
-  }
-  return numbers;
-}
+const stripHtmlCode = (s: string): string =>
+  s.replace(
+    /<!--[\s\S]*?-->|<(?:script|style)\b[^>]*>[\s\S]*?<\/(?:script|style)>/gi,
+    (m) => m.replace(/[^\n]/g, ' '),
+  );
 
-/** 提取相对路径所属包前缀 (`packages/<pkg>/`), 非包内返回 null */
-function packagePrefixOf(relPath: string): string | null {
-  const m = relPath.match(/^(packages\/[^/]+)(?:\/|$)/);
+export const collectSectionNumbers = (content: string): Set<string> =>
+  new Set(
+    [...content.matchAll(/^#{2,5}\s+(\d+(?:\.\d+)*)[.、\s]/gm)].map(
+      (m) => m[1]!,
+    ),
+  );
+
+const pkgPrefixOf = (relPath: string): string | null => {
+  const m = /^(packages\/[^/]+)(?:\/|$)/.exec(relPath);
   return m ? `${m[1]!}/` : null;
-}
+};
 
-/** 是否属于可发 npm 的包根 README (`packages/<pkg>/README.md` 或 `README.*.md`) */
-function isPackageRootReadme(relPath: string): boolean {
-  return /^packages\/[^/]+\/README(?:\.[^/]+)?\.md$/.test(relPath);
-}
-
-/** npm 强制收录于包根的文件名形态 (与 package.json files 白名单互补) */
-const NPM_ALWAYS_INCLUDED_RE =
-  /^(?:package\.json|readme(?:\.[^/]+)?|license(?:\.[^/]+)?|licence(?:\.[^/]+)?|changelog(?:\.[^/]+)?|history(?:\.[^/]+)?|changes(?:\.[^/]+)?)$/i;
-
-/** 读取包 package.json 的 files 白名单; 未声明 files 字段或读取失败返回 null (视为默认全含) */
-function readPackageFilesWhitelist(pkgRootAbs: string): string[] | null {
+function readPkgWhitelist(pkgRootAbs: string): string[] | null {
   const manifestPath = join(pkgRootAbs, 'package.json');
   if (!existsSync(manifestPath)) return null;
   try {
-    const parsed = JSON.parse(readFileSync(manifestPath, 'utf8')) as {
+    const { files } = JSON.parse(readFileSync(manifestPath, 'utf8')) as {
       files?: unknown;
     };
-    if (!Array.isArray(parsed.files)) return null;
-    return parsed.files
-      .filter((item): item is string => typeof item === 'string')
-      .map((item) => item.replace(/^\.\//, '').replace(/\/+$/, ''))
-      .filter((item) => item !== '' && !item.startsWith('!'));
+    if (!Array.isArray(files)) return null;
+    return files
+      .filter((x): x is string => typeof x === 'string')
+      .map((x) => x.replace(/^\.\//, '').replace(/\/+$/, ''))
+      .filter((x) => x !== '' && !x.startsWith('!'));
   } catch {
     return null;
   }
 }
 
-/** 判定包内相对路径是否会随 npm 发布 (命中 npm 强制项或 package.json files 白名单) */
-function isPublishedInPackage(
-  relFromPkg: string,
-  filesWhitelist: readonly string[] | null,
+function isPublishedInPkg(
+  rel: string,
+  whitelist: readonly string[] | null,
 ): boolean {
-  const normalized = relFromPkg.replace(/^\.\//, '').replace(/\/+$/, '');
-  if (normalized === '' || NPM_ALWAYS_INCLUDED_RE.test(normalized)) {
+  const norm = rel.replace(/^\.\//, '').replace(/\/+$/, '');
+  if (norm === '' || NPM_ALWAYS_RE.test(norm) || whitelist === null)
     return true;
-  }
-  if (filesWhitelist === null) return true;
-  return filesWhitelist.some((entry) => {
-    if (entry.includes('*')) {
-      const pattern = entry
-        .replace(/[.+^${}()|[\]\\]/g, '\\$&')
-        .replace(/\*/g, '[^/]*');
-      return new RegExp(`^${pattern}(?:/|$)`).test(normalized);
-    }
-    return normalized === entry || normalized.startsWith(`${entry}/`);
+  return whitelist.some((entry) => {
+    if (!entry.includes('*'))
+      return norm === entry || norm.startsWith(`${entry}/`);
+    const pat = entry
+      .replace(/[.+^${}()|[\]\\]/g, '\\$&')
+      .replace(/\*/g, '[^/]*');
+    return new RegExp(`^${pat}(?:/|$)`).test(norm);
   });
 }
 
-/** 校验一个文件里的相对链接 (存在性 + 包根 README 禁止逃逸或指向未随 npm 发布的相对路径) */
-export function findLinkIssues(
-  lines: string[],
+function decodeSafe(raw: string): string {
+  try {
+    return decodeURIComponent(raw);
+  } catch {
+    return raw;
+  }
+}
+
+function addEdge(ctx: LinkCtx, source: string, abs: string): void {
+  if (!ctx.edges) return;
+  const rel = relative(ctx.root, resolve(abs)).replaceAll('\\', '/');
+  if (rel === '' || rel.startsWith('..') || isAbsolute(rel)) return;
+  const set = ctx.edges.get(source) ?? new Set<string>();
+  set.add(rel).add(`${rel}/README.md`);
+  ctx.edges.set(source, set);
+}
+
+function checkPkgReadmeTarget(
   file: string,
+  decoded: string,
+  target: string,
   root: string,
-): RefFinding[] {
+): string | null {
+  const pkgPrefix = PKG_README_RE.test(file) ? pkgPrefixOf(file) : null;
+  if (pkgPrefix === null) return null;
+  const pkgRootAbs = resolve(root, pkgPrefix.slice(0, -1));
+  const relPkg = relative(pkgRootAbs, target).replaceAll('\\', '/');
+  if (decoded.startsWith('/') || relPkg.startsWith('..')) {
+    return '包根 README 禁止逃出包根的相对链接 (请用 GitHub URL)';
+  }
+  return isPublishedInPkg(relPkg, readPkgWhitelist(pkgRootAbs))
+    ? null
+    : '包根 README 指向未纳入 package.json files 的包内路径';
+}
+
+function resolveGhTarget(rest: string, root: string): string | null {
+  const bt = /^(?:blob|tree)\/(?:main|HEAD)\/([^#?\s]+)/.exec(rest);
+  if (bt) return resolve(root, decodeSafe(bt[1]!).replace(/\/+$/, '') || '.');
+  const wf = /^actions\/workflows\/([^#?\s]+)/.exec(rest);
+  if (!wf) return null;
+  const sub = decodeSafe(wf[1]!)
+    .replace(/\/badge\.svg$/i, '')
+    .replace(/\/+$/, '');
+  return resolve(root, '.github', 'workflows', sub);
+}
+
+function checkHref(
+  raw: string,
+  lineNo: number,
+  file: string,
+  ctx: LinkCtx,
+): RefFinding | null {
+  if (raw.startsWith(ctx.repoPrefix)) {
+    const gh = resolveGhTarget(raw.slice(ctx.repoPrefix.length), ctx.root);
+    if (gh !== null) {
+      if (!isInRoot(ctx.root, gh) || !existsSync(gh)) {
+        return issue(file, lineNo, 'link', raw, '本仓 GitHub 链接目标不存在');
+      }
+      addEdge(ctx, file, gh);
+      return null;
+    }
+  }
+  if (raw.startsWith('#') || raw.startsWith('<') || raw.startsWith('//'))
+    return null;
+  if (raw.includes('://') || (SCHEME_RE.test(raw) && !raw.startsWith('.')))
+    return null;
+  const [beforeHash, anchor] = raw.split('#');
+  const decoded = decodeSafe((beforeHash ?? '').split('?')[0]!);
+  if (decoded === '' || decoded.startsWith('//')) return null;
+
+  const target = decoded.startsWith('/')
+    ? join(ctx.root, decoded)
+    : resolve(ctx.root, dirname(file), decoded);
+  const valid = isInRoot(ctx.root, target) && existsSync(target);
+  if (valid) addEdge(ctx, file, target);
+
+  if (!ctx.isHtml) {
+    const pkgErr = checkPkgReadmeTarget(file, decoded, target, ctx.root);
+    if (pkgErr !== null) return issue(file, lineNo, 'link', raw, pkgErr);
+  }
+  if (!valid) {
+    const msg = ctx.isHtml
+      ? 'HTML 相对链接目标不存在'
+      : `相对链接目标不存在${anchor === undefined ? '' : ' (锚点部分未单独校验)'}`;
+    return issue(file, lineNo, 'link', raw, msg);
+  }
+  return null;
+}
+
+function scanRepoLinks(
+  root: string,
+  docFiles: readonly string[],
+  edges: EdgeMap,
+  repoUrl: string,
+): { findings: RefFinding[]; docLines: Map<string, string[]> } {
+  const absRoot = resolve(root);
+  const repoPrefix = normalizeRepoPrefix(repoUrl);
+  const mdCtx: LinkCtx = { root: absRoot, repoPrefix, edges, isHtml: false };
+  const htmlCtx: LinkCtx = { root: absRoot, repoPrefix, edges, isHtml: true };
+  const docLines = new Map<string, string[]>();
   const findings: RefFinding[] = [];
-  const dir = dirname(file);
-  const pkgPrefix = isPackageRootReadme(file) ? packagePrefixOf(file) : null;
-  const pkgRootAbs =
-    pkgPrefix === null ? null : resolve(root, pkgPrefix.slice(0, -1));
-  const pkgFiles =
-    pkgRootAbs === null ? null : readPackageFilesWhitelist(pkgRootAbs);
+  for (const file of docFiles) {
+    const rawText = readFileSync(join(root, file), 'utf8');
+    const lines = stripHtmlComments(stripFencedCode(rawText)).split('\n');
+    docLines.set(file, lines);
+    for (const [idx, line] of lines.entries()) {
+      const clean = line.replace(/(`+)[^\n]*?\1/g, '');
+      const hrefs = [...clean.matchAll(INLINE_LINK_RE)].map((m) => m[1]!);
+      const refDef = REF_DEF_RE.exec(clean);
+      if (refDef) hrefs.push(refDef[1]!);
+      for (const raw of hrefs) {
+        const hit = checkHref(raw, idx + 1, file, mdCtx);
+        if (hit) findings.push(hit);
+      }
+    }
+  }
+  for (const html of walkFiles(root, ['.html'])) {
+    const text = stripHtmlCode(readFileSync(join(root, html), 'utf8'));
+    for (const [idx, line] of text.split('\n').entries()) {
+      for (const m of line.matchAll(/\bhref\s*=\s*(?:"([^"]*)"|'([^']*)')/gi)) {
+        const raw = (m[1] ?? m[2] ?? '').trim();
+        const hit = raw === '' ? null : checkHref(raw, idx + 1, html, htmlCtx);
+        if (hit) findings.push(hit);
+      }
+    }
+  }
+  return { findings, docLines };
+}
 
-  for (const [index, line] of lines.entries()) {
-    for (const m of line.matchAll(/\]\(([^)\s]+)\)/g)) {
-      const raw = m[1]!;
-      if (raw.startsWith('#') || raw.includes('://') || raw.startsWith('<')) {
-        continue;
+/** 孤儿 .md 文档有向图 BFS 可达性检查 (从自然根入口出发; 仅完整仓库结构存在 docs/README.md 时生效) */
+export function findOrphanDocIssues(
+  root: string,
+  docFiles: readonly string[] = listDocFiles(root),
+  precomputed?: ReadonlyMap<string, ReadonlySet<string>>,
+  repoUrl = REPO_URL_PREFIX,
+): RefFinding[] {
+  if (!existsSync(join(resolve(root), 'docs', 'README.md'))) return [];
+  let edges = precomputed;
+  if (!edges) {
+    const built: EdgeMap = new Map();
+    scanRepoLinks(root, docFiles, built, repoUrl);
+    edges = built;
+  }
+  const queue = docFiles.filter((f) => NATURAL_DOC_RE.test(f));
+  const visited = new Set<string>(queue);
+  for (let i = 0; i < queue.length; i += 1) {
+    for (const next of edges.get(queue[i]!) ?? []) {
+      if (!visited.has(next)) {
+        visited.add(next);
+        queue.push(next);
       }
-      if (/^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(raw) && !raw.startsWith('.')) {
-        continue;
-      }
-      const [pathPart, anchor] = raw.split('#');
-      if (!pathPart) continue;
-      let decoded = pathPart;
-      try {
-        decoded = decodeURIComponent(pathPart);
-      } catch {
-        // 非标准编码按原样解析
-      }
-      if (decoded.startsWith('//')) continue;
+    }
+  }
+  const msg = '孤儿文档 (从根导航入口不可达, 请登记到所属索引)';
+  return docFiles
+    .filter((f) => !visited.has(f))
+    .map((f) => issue(f, 1, 'orphan', f, msg));
+}
 
-      if (pkgRootAbs !== null) {
-        const targetAbs = decoded.startsWith('/')
-          ? join(root, decoded)
-          : resolve(root, dir, decoded);
-        const relFromPkg = relative(pkgRootAbs, targetAbs).replaceAll(
-          '\\',
-          '/',
-        );
-        if (
-          decoded.startsWith('/') ||
-          relFromPkg.startsWith('..') ||
-          relFromPkg === '..'
-        ) {
-          findings.push({
-            file,
-            line: index + 1,
-            kind: 'link',
-            reference: raw,
-            message:
-              '包根 README 禁止指向包目录之外的相对链接 (发布到 npm 后会 404, 请改用 GitHub 绝对 URL)',
-          });
-          continue;
-        }
-        if (!isPublishedInPackage(relFromPkg, pkgFiles)) {
-          findings.push({
-            file,
-            line: index + 1,
-            kind: 'link',
-            reference: raw,
-            message:
-              '包根 README 指向未纳入 package.json files 的包内相对路径 (发布到 npm 后会 404, 请改用 GitHub 绝对 URL)',
-          });
-          continue;
-        }
-      }
-
-      const target = decoded.startsWith('/')
-        ? join(root, decoded)
-        : resolve(root, dir, decoded);
-      if (!existsSync(target)) {
-        findings.push({
-          file,
-          line: index + 1,
-          kind: 'link',
-          reference: raw,
-          message: `相对链接目标不存在${anchor === undefined ? '' : ' (锚点部分未单独校验)'}`,
-        });
-      }
+/** 中文非代码行字符级排版守卫 (双破折号与全角标点无条件拦截, 单字符 — 仅同行含汉字时拦截) */
+export function findTypographyIssues(
+  lines: readonly string[],
+  file: string,
+): RefFinding[] {
+  if (TYPO_EXEMPT_RE.test(file)) return [];
+  const msg = '中文文档禁用破折号与全角逗号/冒号/分号/括号, 请改用半角标点';
+  const findings: RefFinding[] = [];
+  for (const [idx, rawLine] of lines.entries()) {
+    const cleaned = rawLine
+      .replace(/(`+)[^\n]*?\1/g, '')
+      .replace(/\]\([^)]*\)/g, ']()')
+      .replace(/<https?:\/\/[^>]+>/gi, '');
+    if (/^\s*\|?[\s:|-]+\|\s*$/.test(cleaned)) continue;
+    const hasHan = /[\u4e00-\u9fff]/.test(cleaned);
+    for (const hit of cleaned.matchAll(TYPO_GLOBAL_RE)) {
+      if (hit[0] === '\u2014' && !hasHan) continue;
+      findings.push(issue(file, idx + 1, 'typography', hit[0], msg));
     }
   }
   return findings;
 }
 
-/**
- * 解析 § 引用的目标文档: 在 § 前 30 字符窗口内提取 `*.md` (按「同目录 -> 同包 -> 全仓首项」消歧),
- * 无文件名线索时回退 DOC_ALIASES 别名映射。
- *
- * ### 数据流转示例
- * ```text
- * Input:  line = "见 behavior-contract.md §3.2", dir = "packages/sweep/docs/designs"
- * 步骤 1: 截取 § 前 30 字符窗口 -> 命中 "behavior-contract.md"
- * 步骤 2: 查 nameIndex['behavior-contract'] -> 优先同目录, 其次同包前缀 packages/sweep/, 最后首项
- * Output: "packages/sweep/docs/protocol/behavior-contract.md" (未命中则回退别名或 null)
- * ```
- */
 export function resolveSectionTarget(
   line: string,
   refIndex: number,
   dir: string,
   nameIndex: Map<string, string[]>,
 ): string | null {
-  const before = line.slice(
-    Math.max(0, refIndex - SECTION_TARGET_WINDOW),
-    refIndex,
-  );
-  const names: string[] = [];
-  for (const m of before.matchAll(/[^A-Za-z0-9._-]([A-Za-z0-9_-]+\.md)/g)) {
-    names.push(m[1]!);
-  }
-  const pkgPrefix = packagePrefixOf(dir);
+  const before = line.slice(Math.max(0, refIndex - 30), refIndex);
+  const names = [
+    ...before.matchAll(/[^A-Za-z0-9._-]([A-Za-z0-9_-]+\.md)/g),
+  ].map((m) => m[1]!);
+  const pkgPrefix = pkgPrefixOf(dir);
   for (const name of names.reverse()) {
-    const candidates = nameIndex.get(name.replace(/\.md$/, ''));
-    if (candidates && candidates.length > 0) {
-      const sameDir = candidates.find((c) => dirname(c) === dir);
+    const list = nameIndex.get(name.replace(/\.md$/, ''));
+    if (list && list.length > 0) {
+      const sameDir = list.find((c) => dirname(c) === dir);
       if (sameDir !== undefined) return sameDir;
-      if (pkgPrefix !== null) {
-        const samePkg = candidates.find((c) => c.startsWith(pkgPrefix));
-        if (samePkg !== undefined) return samePkg;
-      }
-      return candidates[0]!;
+      const samePkg = pkgPrefix
+        ? list.find((c) => c.startsWith(pkgPrefix))
+        : undefined;
+      return samePkg ?? list[0]!;
     }
   }
   for (const [alias, target] of Object.entries(DOC_ALIASES)) {
@@ -284,193 +356,109 @@ export function resolveSectionTarget(
   return null;
 }
 
-/** 校验一个文件里的 §章节引用 */
-export function findSectionIssues(
-  lines: string[],
-  file: string,
-  root: string,
-  nameIndex: Map<string, string[]>,
-  sectionsCache: Map<string, Set<string>>,
-): RefFinding[] {
-  const findings: RefFinding[] = [];
-  const dir = dirname(file);
-  const sectionsOf = (rel: string): Set<string> | null => {
-    const cached = sectionsCache.get(rel);
-    if (cached) return cached;
-    const abs = join(root, rel);
-    if (!existsSync(abs)) return null;
-    const numbers = collectSectionNumbers(readFileSync(abs, 'utf8'));
-    sectionsCache.set(rel, numbers);
-    return numbers;
-  };
-  for (const [index, line] of lines.entries()) {
-    for (const m of line.matchAll(/§(\d+(?:\.\d+)*)/g)) {
-      const number = m[1]!;
-      const target = resolveSectionTarget(line, m.index, dir, nameIndex);
-      if (target === null) continue;
-      const sections = sectionsOf(target);
-      if (sections === null) continue;
-      const hit = [...sections].some(
-        (n) => n === number || n.startsWith(number + '.'),
-      );
-      if (!hit) {
-        findings.push({
-          file,
-          line: index + 1,
-          kind: 'section',
-          reference: `§${number}`,
-          message: `目标文档 ${target} 的标题编号里没有 §${number}`,
-        });
-      }
-    }
-  }
-  return findings;
-}
-
-/** 收集仓内全部 ADR 目录 (仓级 docs/adrs + workspace 包级 packages/<pkg>/docs/adrs) */
-function collectAdrDirs(root: string): string[] {
-  const dirs = [join(root, 'docs', 'adrs')];
-  const seen = new Set<string>(dirs);
-  if (existsSync(join(root, 'package.json'))) {
-    try {
-      for (const pkg of listWorkspacePackages(root)) {
-        const candidate = join(root, pkg.dir, 'docs', 'adrs');
-        if (!seen.has(candidate)) {
-          seen.add(candidate);
-          dirs.push(candidate);
-        }
-      }
-    } catch {
-      // 迷你根无 workspaces 时走下方兜底扫描
-    }
-  }
-  const packagesDir = join(root, 'packages');
-  if (existsSync(packagesDir)) {
-    for (const entry of readdirSync(packagesDir, { withFileTypes: true })) {
-      if (!entry.isDirectory()) continue;
-      const candidate = join(packagesDir, entry.name, 'docs', 'adrs');
-      if (!seen.has(candidate)) {
-        seen.add(candidate);
-        dirs.push(candidate);
-      }
-    }
-  }
-  return dirs;
-}
-
-/** 收集仓内全部 ADR 编号到相对文件路径数组的映射 (用于存在性校验与重号碰撞检测) */
 export function collectAdrIndex(root: string): Map<string, string[]> {
+  const dirs = new Set<string>([join(root, 'docs', 'adrs')]);
+  try {
+    for (const pkg of listWorkspacePackages(root)) {
+      dirs.add(join(root, pkg.dir, 'docs', 'adrs'));
+    }
+  } catch {
+    // 迷你根无 workspaces 时走下方目录扫描
+  }
+  const pkgsDir = join(root, 'packages');
+  for (const e of existsSync(pkgsDir)
+    ? readdirSync(pkgsDir, { withFileTypes: true })
+    : []) {
+    if (e.isDirectory()) dirs.add(join(pkgsDir, e.name, 'docs', 'adrs'));
+  }
   const index = new Map<string, string[]>();
-  for (const dir of collectAdrDirs(root)) {
-    if (!existsSync(dir)) continue;
-    for (const name of readdirSync(dir).sort()) {
-      const m = name.match(/^(\d{4})-/);
+  for (const dir of dirs) {
+    for (const name of existsSync(dir) ? readdirSync(dir).sort() : []) {
+      const m = /^(\d{4})-/.exec(name);
       if (!m) continue;
-      const num = m[1]!;
       const rel = relative(root, join(dir, name)).replaceAll('\\', '/');
-      const list = index.get(num) ?? [];
+      const list = index.get(m[1]!) ?? [];
       list.push(rel);
-      index.set(num, list);
+      index.set(m[1]!, list);
     }
   }
   return index;
 }
 
-/** 收集仓内真实存在的 ADR 编号集合 */
-export function collectAdrNumbers(root: string): Set<string> {
-  return new Set(collectAdrIndex(root).keys());
-}
+export const collectAdrNumbers = (root: string): Set<string> =>
+  new Set(collectAdrIndex(root).keys());
 
-/** 校验全仓 ADR 编号是否存在跨目录重号碰撞 */
-export function findDuplicateAdrIssues(
-  adrIndex: Map<string, string[]>,
+export function findAllIssues(
+  root: string = REPO_ROOT,
+  repoUrl = REPO_URL_PREFIX,
 ): RefFinding[] {
-  const findings: RefFinding[] = [];
-  for (const [num, files] of adrIndex.entries()) {
-    if (files.length <= 1) continue;
-    findings.push({
-      file: files[1]!,
-      line: 1,
-      kind: 'adr',
-      reference: `ADR ${num}`,
-      message: `ADR 编号重号碰撞: ${files.join(' 与 ')}`,
-    });
+  const files = listDocFiles(root);
+  const nameIndex = new Map<string, string[]>();
+  for (const file of files) {
+    const stem = file.split('/').pop()!.replace(/\.md$/, '');
+    const list = nameIndex.get(stem) ?? [];
+    list.push(file);
+    nameIndex.set(stem, list);
   }
-  return findings;
-}
-
-/** 校验一个文件里的 ADR 编号引用 */
-export function findAdrIssues(
-  lines: string[],
-  file: string,
-  adrNumbers: Set<string>,
-): RefFinding[] {
-  const findings: RefFinding[] = [];
-  for (const [index, line] of lines.entries()) {
-    if (ADR_LINE_EXEMPT_MARKERS.some((marker) => line.includes(marker))) {
-      continue;
+  const adrIndex = collectAdrIndex(root);
+  const adrNums = new Set(adrIndex.keys());
+  const sectionsCache = new Map<string, Set<string>>();
+  const edges: EdgeMap = new Map();
+  const { findings, docLines } = scanRepoLinks(root, files, edges, repoUrl);
+  for (const [num, fs] of adrIndex) {
+    if (fs.length > 1) {
+      const msg = `ADR 编号重号碰撞: ${fs.join(' 与 ')}`;
+      findings.unshift(issue(fs[1]!, 1, 'adr', `ADR ${num}`, msg));
     }
-    for (const m of line.matchAll(/ADR[ -]?(\d{3,4})/g)) {
-      const number = String(Number(m[1])).padStart(4, '0');
-      if (!adrNumbers.has(number)) {
-        findings.push({
-          file,
-          line: index + 1,
-          kind: 'adr',
-          reference: `ADR ${number}`,
-          message: '仓级或包级 docs/adrs 下没有对应编号的 ADR 文件',
-        });
+  }
+  const adrMsg = '仓级或包级 docs/adrs 下没有对应编号的 ADR 文件';
+  for (const [file, lines] of docLines) {
+    const dir = dirname(file);
+    for (const [idx, line] of lines.entries()) {
+      for (const m of line.matchAll(/§(\d+(?:\.\d+)*)/g)) {
+        const num = m[1]!;
+        const target = resolveSectionTarget(line, m.index, dir, nameIndex);
+        if (!target) continue;
+        let secs = sectionsCache.get(target);
+        if (!secs && existsSync(join(root, target))) {
+          secs = collectSectionNumbers(
+            readFileSync(join(root, target), 'utf8'),
+          );
+          sectionsCache.set(target, secs);
+        }
+        if (
+          secs &&
+          ![...secs].some((n) => n === num || n.startsWith(`${num}.`))
+        ) {
+          const msg = `目标文档 ${target} 的标题编号里没有 §${num}`;
+          findings.push(issue(file, idx + 1, 'section', `§${num}`, msg));
+        }
+      }
+      if (ADR_EXEMPT_RE.test(line)) continue;
+      for (const m of line.matchAll(/ADR[ -]?(\d{3,4})/g)) {
+        const num = String(Number(m[1])).padStart(4, '0');
+        if (!adrNums.has(num))
+          findings.push(issue(file, idx + 1, 'adr', `ADR ${num}`, adrMsg));
       }
     }
+    findings.push(...findTypographyIssues(lines, file));
   }
+  findings.push(...findOrphanDocIssues(root, files, edges, repoUrl));
   return findings;
 }
 
-/**
- * 全仓扫描引用 (导出供测试用临时根), 返回全部断裂。
- *
- * ### 数据流转示例
- * ```text
- * Input:  root = 仓库根
- * 步骤 1: listDocFiles -> 建立文件名索引 nameIndex 与两级 ADR 编号索引 adrIndex
- * 步骤 2: 先跑 findDuplicateAdrIssues 拦截跨目录 ADR 重号碰撞
- * 步骤 3: 逐文件 stripFencedCode (保行号) -> 并行采集 link / section / adr 三类断裂
- * Output: RefFinding[] (空数组 = 全绿)
- * ```
- */
-export function findAllIssues(root: string = REPO_ROOT): RefFinding[] {
-  const files = listDocFiles(root);
-  const nameIndex = buildNameIndex(files);
-  const adrIndex = collectAdrIndex(root);
-  const adrNumbers = new Set(adrIndex.keys());
-  const sectionsCache = new Map<string, Set<string>>();
-  const findings: RefFinding[] = [...findDuplicateAdrIssues(adrIndex)];
-  for (const file of files) {
-    const lines = stripFencedCode(readFileSync(join(root, file), 'utf8')).split(
-      '\n',
-    );
-    findings.push(
-      ...findLinkIssues(lines, file, root),
-      ...findSectionIssues(lines, file, root, nameIndex, sectionsCache),
-      ...findAdrIssues(lines, file, adrNumbers),
-    );
-  }
-  return findings;
-}
-
-/** 主流程: 打印全部断裂并以退出码收口 */
 function main(): void {
   const findings = findAllIssues();
   if (findings.length === 0) {
     process.stdout.write(
-      '文档引用闸门全绿 ✓ (相对链接 / 包 README npm 外链 / §章节 / ADR 唯一性)\n',
+      '文档引用闸门全绿 ✓ (链接 / HTML / 孤儿文档 / §章节 / ADR / 中文排版)\n',
     );
     return;
   }
-  process.stderr.write(`文档引用闸门检出 ${findings.length} 处断裂:\n`);
-  for (const finding of findings) {
+  process.stderr.write(`文档引用闸门检出 ${findings.length} 处问题:\n`);
+  for (const f of findings) {
     process.stderr.write(
-      `  ${finding.file}:${finding.line}  [${finding.kind}] ${finding.reference}  ${finding.message}\n`,
+      `  ${f.file}:${f.line}  [${f.kind}] ${f.reference}  ${f.message}\n`,
     );
   }
   process.exitCode = 1;
