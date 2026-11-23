@@ -4,14 +4,19 @@
  * - 遵循 Apple System Colors (macOS Sequoia Dark / Light 自适应 sRGB 与 256 色回退, 支持 `CODD_THEME`/`COLORFGBG`)
  * - 表面涂装 (`paintSurface`) 与 DECSCUSR 细竖线光标 (`\x1b[6 q`) 退出自动复位
  */
-import { stdin, stdout } from 'node:process';
+import { stderr, stdin, stdout } from 'node:process';
 
 export const SUMMARY_LABEL_COL = 16;
 
-export const hasColor = (): boolean =>
-  Boolean(stdout.isTTY) &&
+const hasStreamColor = (stream: { isTTY?: boolean }): boolean =>
+  Boolean(stream.isTTY) &&
   !process.env.NO_COLOR &&
   process.env.TERM?.toLowerCase() !== 'dumb';
+
+export const hasColor = (stream: { isTTY?: boolean } = stdout): boolean =>
+  hasStreamColor(stream);
+
+export const hasStderrColor = (): boolean => hasStreamColor(stderr);
 
 export const isInteractive = (): boolean =>
   Boolean(stdin.isTTY && stdout.isTTY) &&
@@ -97,8 +102,9 @@ export const fg = (
   [rgb, c256]: [string, string],
   text: string,
   bold = false,
+  colorEnabled = hasColor(),
 ): string => {
-  if (!hasColor()) return text;
+  if (!colorEnabled) return text;
   const b = bold ? '1;' : '';
   return isTrueColor()
     ? `\x1b[${b}38;2;${rgb}m${text}\x1b[0m`

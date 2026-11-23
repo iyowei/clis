@@ -16,6 +16,7 @@ export {
   getBoxWidth,
   getTermCols,
   hasColor,
+  hasStderrColor,
   hideCursor,
   isInteractive,
   isTrueColor,

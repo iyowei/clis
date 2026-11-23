@@ -9,9 +9,13 @@ import type { FormulaStep } from '@iyowei/codd';
 
 import {
   SUMMARY_LABEL_COL,
+  currentTheme,
   displayWidth,
+  fg,
   getBoxWidth,
   getTermCols,
+  hasColor,
+  hasStderrColor,
   padEndDisplay,
   palette,
   stripAnsi,
@@ -304,25 +308,35 @@ export const printSummaryCard = (
   }
 };
 
-const alertGlyph = (kind: 'ok' | 'warn' | 'err'): string => {
-  if (kind === 'ok') return palette.green('✓', true);
-  if (kind === 'warn') return palette.amber('!', true);
-  return palette.red('✕', true);
+const alertGlyph = (
+  kind: 'ok' | 'warn' | 'err',
+  colorEnabled: boolean,
+): string => {
+  if (kind === 'ok') return fg(currentTheme().green, '✓', true, colorEnabled);
+  if (kind === 'warn')
+    return fg(currentTheme().orange, '!', true, colorEnabled);
+  return fg(currentTheme().red, '✕', true, colorEnabled);
 };
 
-const alertStyle = (kind: 'ok' | 'warn' | 'err'): ((t: string) => string) => {
-  if (kind === 'err') return (t: string) => palette.red(t);
-  if (kind === 'warn') return (t: string) => palette.amber(t);
-  return palette.primary;
+const alertStyle = (
+  kind: 'ok' | 'warn' | 'err',
+  colorEnabled: boolean,
+): ((t: string) => string) => {
+  if (kind === 'err')
+    return (t: string) => fg(currentTheme().red, t, false, colorEnabled);
+  if (kind === 'warn')
+    return (t: string) => fg(currentTheme().orange, t, false, colorEnabled);
+  return (t: string) => fg(currentTheme().labelPrimary, t, false, colorEnabled);
 };
 
-/** 打印带状态图标的单/多行提示 (`err` 写 `stderr`, `ok`/`warn` 写 `stdout`) */
+/** 打印带状态图标的单/多行提示 (`err` 写 `stderr`, `ok`/`warn` 写 `stdout`, 按目标流独立判定 `isTTY`) */
 export const printAlert = (kind: 'ok' | 'warn' | 'err', msg: string): void => {
   const w = Math.max(12, getBoxWidth() - 6);
   const wrapped = wrapMultiline(msg, w);
-  const glyph = alertGlyph(kind);
-  const styleFn = alertStyle(kind);
   const target = kind === 'err' ? stderr : stdout;
+  const colorEnabled = kind === 'err' ? hasStderrColor() : hasColor();
+  const glyph = alertGlyph(kind, colorEnabled);
+  const styleFn = alertStyle(kind, colorEnabled);
   target.write(`    ${glyph}  ${styleFn(wrapped[0] ?? '')}\n`);
   for (let i = 1; i < wrapped.length; i += 1) {
     target.write(`       ${styleFn(wrapped[i]!)}\n`);

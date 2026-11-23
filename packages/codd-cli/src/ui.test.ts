@@ -19,9 +19,12 @@ import {
   formatKVLines,
   formatSummaryCardLines,
   getBoxWidth,
+  hasColor,
+  hasStderrColor,
   isPromptCancelledError,
   isTrueColor,
   padEndDisplay,
+  printAlert,
   stripAnsi,
   tokenizeKeyStream,
   truncateDisplay,
@@ -156,6 +159,83 @@ describe('ansi 宽度、颜色降级与折行算法', () => {
     withEnv({ CODD_THEME: 'light', COLORFGBG: '15;0' }, () => {
       expect(detectLightTerminal()).toBe(true);
     });
+  });
+
+  test('hasStderrColor 与 printAlert 按目标流独立判定 isTTY, stderr 非 TTY 时严格输出无 ANSI 纯文本', () => {
+    const outTtyDesc = Object.getOwnPropertyDescriptor(process.stdout, 'isTTY');
+    const errTtyDesc = Object.getOwnPropertyDescriptor(process.stderr, 'isTTY');
+    const origErrWrite = process.stderr.write;
+    const origOutWrite = process.stdout.write;
+    const errChunks: string[] = [];
+    const outChunks: string[] = [];
+
+    const restoreDescriptor = (
+      target: object,
+      key: 'isTTY',
+      desc: PropertyDescriptor | undefined,
+    ): void => {
+      if (desc) Object.defineProperty(target, key, desc);
+      else delete (target as { isTTY?: boolean })[key];
+    };
+
+    try {
+      Object.defineProperty(process.stdout, 'isTTY', {
+        value: true,
+        configurable: true,
+      });
+      Object.defineProperty(process.stderr, 'isTTY', {
+        value: false,
+        configurable: true,
+      });
+      process.stderr.write = ((chunk: string | Uint8Array): boolean => {
+        errChunks.push(
+          typeof chunk === 'string'
+            ? chunk
+            : Buffer.from(chunk).toString('utf8'),
+        );
+        return true;
+      }) as typeof process.stderr.write;
+      process.stdout.write = ((chunk: string | Uint8Array): boolean => {
+        outChunks.push(
+          typeof chunk === 'string'
+            ? chunk
+            : Buffer.from(chunk).toString('utf8'),
+        );
+        return true;
+      }) as typeof process.stdout.write;
+
+      withEnv({ NO_COLOR: undefined, TERM: 'xterm-256color' }, () => {
+        expect(hasColor()).toBe(true);
+        expect(hasStderrColor()).toBe(false);
+
+        printAlert('err', '配置校验未通过\n请检查备份目录');
+        printAlert('ok', '导出成功');
+
+        const errText = errChunks.join('');
+        const outText = outChunks.join('');
+        expect(errText).toContain('✕  配置校验未通过');
+        expect(errText).toContain('请检查备份目录');
+        expect(errText).toBe(stripAnsi(errText));
+        expect(errText.includes('\x1b')).toBe(false);
+        expect(outText.includes('\x1b[')).toBe(true);
+      });
+
+      errChunks.length = 0;
+      Object.defineProperty(process.stderr, 'isTTY', {
+        value: true,
+        configurable: true,
+      });
+      withEnv({ NO_COLOR: '1', TERM: 'xterm-256color' }, () => {
+        expect(hasStderrColor()).toBe(false);
+        printAlert('err', '禁用颜色错误');
+        expect(errChunks.join('').includes('\x1b')).toBe(false);
+      });
+    } finally {
+      process.stderr.write = origErrWrite;
+      process.stdout.write = origOutWrite;
+      restoreDescriptor(process.stdout, 'isTTY', outTtyDesc);
+      restoreDescriptor(process.stderr, 'isTTY', errTtyDesc);
+    }
   });
 
   test('tokenizeKeyStream 识别 SS3 方向键、带中间字节 CSI、Alt 双字节与 CRLF', () => {
