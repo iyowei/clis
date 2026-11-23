@@ -23,7 +23,7 @@
  * 收集器以 onProgress 并入该次调用的末个参数 (末参为对象则合并其中并覆盖既有 onProgress,
  * 否则追加 { onProgress })。
  *
- * 路径策略: 本文件经 resolveApiEntry() 基于仓根 (`../..`) 扫描 workspaces (无根 package.json 时
+ * 路径策略: 本文件经 resolveApiPackage() 基于仓根 (`../..`) 扫描 workspaces (无根 package.json 时
  * 默认 `packages/*`), 定位带 `docs/protocol` 锚点且被 CLI 包依赖的 API 包 `src/index.ts` 动态导入;
  * mutant 副本按同相对结构复制本文件即自动指向副本源码 (见 make-mutants.ts)。bun 与 node
  * (>= 22.18 类型剥离) 均可直跑。

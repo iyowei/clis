@@ -283,7 +283,7 @@ export function runVerifyReleaseCli(
   }
   io.err(`发布前置校验未通过: ${verdict.reason}`);
   io.err(
-    '  处置: 工作树不干净就提交或 stash 后重新构建再发 (bun run build 会同时写产物与清单);' +
+    '  处置: 工作树不干净或提交失配请先提交/stash, 再在该包目录内执行 bun run build (或根仓执行 bun run build -- --force 跳过缓存刷新清单) 后重试;' +
       ' 发行面包内文件与白名单不符就清掉包根的多余文件 (如备份移出仓库), 或同步白名单常量。',
   );
   return 1;

@@ -1,5 +1,5 @@
 /**
- * 转写契约套件 · 语料层 (覆盖 cli + api 双面, 当前全集 93 条 = 61 CLI + 32 API, 以目录实有 .json 为准)。
+ * 转写契约套件 · 语料层 (覆盖 cli + api 双面, 条数以语料目录实有 .json 为准)。
  *
  * 职责: 语料字段类型 (与 packages/sweep/docs/protocol/conformance/corpus.schema.json 对应) + $FIXTURE 变量替换
  * 契约 + 目录加载。字段语义以 schema 为准; 手写校验 (schema 的物化子集) 在 validate.ts, 只为尽早

@@ -27,7 +27,8 @@ export const SKIP_DIRS: ReadonlySet<string> = new Set([
 /**
  * 走查跳过路径 (仓库相对目录, POSIX 斜杠, 以 `/` 收尾):
  * 模板空间与派生资产目录内的链接/示例面向生成后的目标环境, 不属于本仓文档面。
- * 同款排除见 .gitignore / .prettierignore / .oxlintrc.json / tsconfig.json / bunfig.toml。
+ * 其中派生资产目录 (`assets/`) 同见 `.gitignore`; 入库模板源码目录 (`template-skeletons/`、`packages/codd/template/`)
+ * 随仓版本化入库, 工具链排除另见 `.prettierignore` / `.oxlintrc.json` / `tsconfig.json` / `bunfig.toml`。
  */
 export const SKIP_PATHS: readonly string[] = [
   'packages/create-clis/assets/',

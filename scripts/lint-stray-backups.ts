@@ -3,7 +3,7 @@
  * 触发方: `scripts/ci.ts` (`lint:backups` 并行只读闸门) 或手动执行。
  *
  * 动机与判据: 备份文件被 .gitignore 忽略、git status 看不见, 落入包目录还会借 npm pack 的
- * README* 强制收录规则混进发行物 (ADR 0009 补记); 本闸门全树扫描除 SKIP_DIRS 外的所有位置
+ * README* / LICENSE* 强制收录规则混进发行物; 本闸门全树扫描除 SKIP_DIRS 外的所有位置
  * (含模板源码目录), 出现 .modified / .deleted 即红灯拦截。
  *
  * 用法: bun scripts/lint-stray-backups.ts

@@ -201,11 +201,11 @@ function splitMarkdownRow(line: string): string[] {
  *
  * ### 数据流转示例
  * ```text
- * Input:  contractText = "| BC-18 | 无配置非 TTY 报错退 1 | ADR 0024 | CLI 黑盒 |"
+ * Input:  contractText = "| BC-18 | 无配置非 TTY 报错退 1 | 契约 §2 | CLI 黑盒 |"
  *         specRefs = ['BC-18', 'OF-14']
  * Step 1: 逐行匹配以 `| <编号> |` 开头的表格行, 切分单元格
  * Step 2: 仅收集命中 specRefs 的条款正文与权威出处
- * Output: Map { 'BC-18' => '无配置非 TTY 报错退 1 (出处: ADR 0024)' }
+ * Output: Map { 'BC-18' => '无配置非 TTY 报错退 1 (出处: 契约 §2)' }
  * ```
  */
 export function extractSpecClauses(
