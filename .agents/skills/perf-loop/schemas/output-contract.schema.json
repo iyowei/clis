@@ -1,0 +1,598 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "perf-loop Output Contract",
+  "description": "Standard JSON Schema validating stdout JSON structures emitted by `loop.ts` across `status`, `next`, `init-bench`, `prepare`, `evaluate`, and `recover` subcommands.",
+  "oneOf": [
+    { "$ref": "#/$defs/statusOutput" },
+    { "$ref": "#/$defs/nextOutput" },
+    { "$ref": "#/$defs/initBenchOutput" },
+    { "$ref": "#/$defs/prepareActiveOutput" },
+    { "$ref": "#/$defs/prepareStoppedOutput" },
+    { "$ref": "#/$defs/evaluateKeepOutput" },
+    { "$ref": "#/$defs/evaluateRevertOutput" },
+    { "$ref": "#/$defs/recoverOutput" }
+  ],
+  "$defs": {
+    "perfDimension": {
+      "type": "string",
+      "enum": ["arch", "impl", "gc", "interp", "io"]
+    },
+    "priorityTier": {
+      "type": "string",
+      "enum": ["P0", "P1", "P2"]
+    },
+    "failureReason": {
+      "type": "string",
+      "enum": [
+        "NO_GAIN",
+        "REGRESSION",
+        "CORRECTNESS_FAIL",
+        "CROSS_RUNTIME_REGRESSION",
+        "NOISE_INCONCLUSIVE",
+        "POLICY_VIOLATION"
+      ]
+    },
+    "failureReasonOrNull": {
+      "type": ["string", "null"],
+      "enum": [
+        "NO_GAIN",
+        "REGRESSION",
+        "CORRECTNESS_FAIL",
+        "CROSS_RUNTIME_REGRESSION",
+        "NOISE_INCONCLUSIVE",
+        "POLICY_VIOLATION",
+        null
+      ]
+    },
+    "runtimes": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["bun", "node"],
+      "properties": {
+        "bun": { "type": ["string", "null"] },
+        "node": { "type": ["string", "null"] }
+      }
+    },
+    "nextRecommendation": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "INIT_BENCH applies only when bench/run.ts does not exist; COMPLETE_BENCH_STUB applies when bench/run.ts exists with @perf-loop:stub or lacks --json protocol support.",
+      "required": ["action", "target", "reason"],
+      "properties": {
+        "action": {
+          "type": "string",
+          "enum": [
+            "OPTIMIZE",
+            "INIT_BENCH",
+            "COMPLETE_BENCH_STUB",
+            "ALL_CONVERGED"
+          ]
+        },
+        "target": { "type": ["string", "null"] },
+        "reason": { "type": "string" }
+      }
+    },
+    "stoppingEvaluation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "decision",
+        "totalExperiments",
+        "windowSize",
+        "keptInWindow",
+        "highImpactInWindow",
+        "consecutiveReverts",
+        "consecutiveWithoutHighImpact",
+        "reason"
+      ],
+      "properties": {
+        "decision": {
+          "type": "string",
+          "enum": [
+            "CONTINUE",
+            "PIVOT_REQUIRED",
+            "STOP_DIMINISHING_RETURNS",
+            "STOP_STREAK_EXHAUSTED"
+          ]
+        },
+        "totalExperiments": { "type": "integer", "minimum": 0 },
+        "windowSize": { "type": "integer", "minimum": 0 },
+        "keptInWindow": { "type": "integer", "minimum": 0 },
+        "highImpactInWindow": { "type": "integer", "minimum": 0 },
+        "consecutiveReverts": { "type": "integer", "minimum": 0 },
+        "consecutiveWithoutHighImpact": { "type": "integer", "minimum": 0 },
+        "reason": { "type": "string" }
+      }
+    },
+    "discoveredPackage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "dir",
+        "kind",
+        "hasBenchScript",
+        "hasBenchEntry",
+        "supportsJsonBench",
+        "isStubBench"
+      ],
+      "properties": {
+        "name": { "type": "string" },
+        "dir": { "type": "string" },
+        "kind": {
+          "type": "string",
+          "enum": ["cli", "public-lib", "private-lib"]
+        },
+        "hasBenchScript": { "type": "boolean" },
+        "hasBenchEntry": { "type": "boolean" },
+        "supportsJsonBench": { "type": "boolean" },
+        "isStubBench": { "type": "boolean" }
+      }
+    },
+    "packageSummary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "dir",
+        "kind",
+        "hasBenchScript",
+        "hasBenchEntry",
+        "supportsJsonBench",
+        "isStubBench",
+        "ready",
+        "acceptedCount",
+        "highImpactCount",
+        "rejectedCount",
+        "lockedCount",
+        "reeligibleCount",
+        "stopping"
+      ],
+      "properties": {
+        "name": { "type": "string" },
+        "dir": { "type": "string" },
+        "kind": {
+          "type": "string",
+          "enum": ["cli", "public-lib", "private-lib"]
+        },
+        "hasBenchScript": { "type": "boolean" },
+        "hasBenchEntry": { "type": "boolean" },
+        "supportsJsonBench": { "type": "boolean" },
+        "isStubBench": { "type": "boolean" },
+        "ready": { "type": "boolean" },
+        "acceptedCount": { "type": "integer", "minimum": 0 },
+        "highImpactCount": { "type": "integer", "minimum": 0 },
+        "rejectedCount": { "type": "integer", "minimum": 0 },
+        "lockedCount": { "type": "integer", "minimum": 0 },
+        "reeligibleCount": { "type": "integer", "minimum": 0 },
+        "stopping": { "$ref": "#/$defs/stoppingEvaluation" }
+      }
+    },
+    "profileDigest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "targetHotFunctions",
+        "setupHotFunctions",
+        "heapTopTypes",
+        "cpuRatio",
+        "userCpuShare",
+        "ioDominatedHint"
+      ],
+      "properties": {
+        "targetHotFunctions": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "setupHotFunctions": { "type": "array", "items": { "type": "string" } },
+        "heapTopTypes": { "type": "array", "items": { "type": "string" } },
+        "cpuRatio": { "type": ["number", "null"] },
+        "userCpuShare": { "type": ["number", "null"] },
+        "ioDominatedHint": { "type": "boolean" }
+      }
+    },
+    "docHints": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "nextGlobalAdrNumber",
+        "pkgDesignsDir",
+        "existingDesigns",
+        "pkgAdrsDir",
+        "pkgDocsReadme",
+        "repoDesignsDir"
+      ],
+      "properties": {
+        "nextGlobalAdrNumber": { "type": "string" },
+        "pkgDesignsDir": { "type": ["string", "null"] },
+        "existingDesigns": { "type": "array", "items": { "type": "string" } },
+        "pkgAdrsDir": { "type": ["string", "null"] },
+        "pkgDocsReadme": { "type": ["string", "null"] },
+        "repoDesignsDir": { "type": "string" }
+      }
+    },
+    "benchCaseSample": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "iterations",
+        "samplesMs",
+        "minMs",
+        "medianMs",
+        "p95Ms"
+      ],
+      "properties": {
+        "name": { "type": "string" },
+        "role": { "type": "string", "enum": ["primary", "reference"] },
+        "iterations": { "type": "integer", "minimum": 1 },
+        "samplesMs": { "type": "array", "items": { "type": "number" } },
+        "minMs": { "type": "number" },
+        "medianMs": { "type": "number" },
+        "p95Ms": { "type": "number" },
+        "heapDeltaMB": { "type": "number" },
+        "peakRssMB": { "type": "number" },
+        "cpuUserMs": { "type": "number" },
+        "cpuSysMs": { "type": "number" },
+        "size": { "type": "number" },
+        "unit": { "type": "string" },
+        "digest": { "type": "string" }
+      }
+    },
+    "sourceFileSummary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["file", "lines", "exports"],
+      "properties": {
+        "file": { "type": "string" },
+        "lines": { "type": "integer", "minimum": 0 },
+        "exports": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "recentAcceptedItem": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "dimension",
+        "measuredTier",
+        "overallGainPct",
+        "proposal"
+      ],
+      "properties": {
+        "id": { "type": "string" },
+        "dimension": { "$ref": "#/$defs/perfDimension" },
+        "measuredTier": {
+          "type": ["string", "null"],
+          "enum": ["P0", "P1", "P2", null]
+        },
+        "overallGainPct": { "type": "number" },
+        "proposal": { "type": "string" }
+      }
+    },
+    "reeligibleProposalItem": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "proposal",
+        "dimension",
+        "previousFailure",
+        "reopenReasons"
+      ],
+      "properties": {
+        "id": { "type": "string" },
+        "proposal": { "type": "string" },
+        "dimension": { "$ref": "#/$defs/perfDimension" },
+        "previousFailure": { "$ref": "#/$defs/failureReasonOrNull" },
+        "reopenReasons": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "lockedProposalItem": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "proposal", "failureReason"],
+      "properties": {
+        "id": { "type": "string" },
+        "proposal": { "type": "string" },
+        "failureReason": { "$ref": "#/$defs/failureReasonOrNull" }
+      }
+    },
+    "caseDeltaSummary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "caseName",
+        "role",
+        "runtime",
+        "baselineMedianMs",
+        "candidateMedianMs",
+        "gainPct",
+        "pValue",
+        "statisticallySignificant",
+        "baselinePeakRssMB",
+        "candidatePeakRssMB",
+        "rssGainPct",
+        "cpuRatio",
+        "digestMatch"
+      ],
+      "properties": {
+        "caseName": { "type": "string" },
+        "role": { "type": "string", "enum": ["primary", "reference"] },
+        "runtime": { "type": "string", "enum": ["bun", "node"] },
+        "baselineMedianMs": { "type": "number" },
+        "candidateMedianMs": { "type": "number" },
+        "gainPct": { "type": "number" },
+        "pValue": { "type": "number" },
+        "statisticallySignificant": { "type": "boolean" },
+        "baselinePeakRssMB": { "type": ["number", "null"] },
+        "candidatePeakRssMB": { "type": ["number", "null"] },
+        "rssGainPct": { "type": ["number", "null"] },
+        "cpuRatio": { "type": ["number", "null"] },
+        "digestMatch": { "type": "boolean" }
+      }
+    },
+    "envFingerprint": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "sourceHashes",
+        "benchHash",
+        "runtimeVersions",
+        "acceptedCountAtAttempt"
+      ],
+      "properties": {
+        "sourceHashes": {
+          "type": "object",
+          "additionalProperties": { "type": "string" }
+        },
+        "benchHash": { "type": "string" },
+        "runtimeVersions": { "$ref": "#/$defs/runtimes" },
+        "acceptedCountAtAttempt": { "type": "integer", "minimum": 0 },
+        "highImpactAcceptedCountAtAttempt": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "keepRecord": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "ts",
+        "package",
+        "proposal",
+        "rationale",
+        "dimension",
+        "expectedTier",
+        "verdict",
+        "measuredTier",
+        "failureReason",
+        "touchedFiles",
+        "metrics",
+        "overallGainPct",
+        "overallRssGainPct",
+        "nodeRegressionPct",
+        "fingerprint",
+        "docActionRequired",
+        "docNotes"
+      ],
+      "properties": {
+        "id": { "type": "string" },
+        "ts": { "type": "number" },
+        "package": { "type": "string" },
+        "proposal": { "type": "string" },
+        "rationale": { "type": "string" },
+        "dimension": { "$ref": "#/$defs/perfDimension" },
+        "expectedTier": { "$ref": "#/$defs/priorityTier" },
+        "verdict": { "type": "string", "const": "KEEP" },
+        "measuredTier": { "$ref": "#/$defs/priorityTier" },
+        "failureReason": { "type": "null" },
+        "touchedFiles": { "type": "array", "items": { "type": "string" } },
+        "metrics": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/caseDeltaSummary" }
+        },
+        "overallGainPct": { "type": "number" },
+        "overallRssGainPct": { "type": ["number", "null"] },
+        "nodeRegressionPct": { "type": ["number", "null"] },
+        "fingerprint": { "$ref": "#/$defs/envFingerprint" },
+        "docActionRequired": { "type": "boolean" },
+        "docNotes": { "type": ["string", "null"] }
+      }
+    },
+    "revertRecord": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "ts",
+        "package",
+        "proposal",
+        "rationale",
+        "dimension",
+        "expectedTier",
+        "verdict",
+        "measuredTier",
+        "failureReason",
+        "touchedFiles",
+        "metrics",
+        "overallGainPct",
+        "overallRssGainPct",
+        "nodeRegressionPct",
+        "fingerprint",
+        "docActionRequired",
+        "docNotes"
+      ],
+      "properties": {
+        "id": { "type": "string" },
+        "ts": { "type": "number" },
+        "package": { "type": "string" },
+        "proposal": { "type": "string" },
+        "rationale": { "type": "string" },
+        "dimension": { "$ref": "#/$defs/perfDimension" },
+        "expectedTier": { "$ref": "#/$defs/priorityTier" },
+        "verdict": { "type": "string", "const": "REVERT" },
+        "measuredTier": { "type": "null" },
+        "failureReason": { "$ref": "#/$defs/failureReason" },
+        "touchedFiles": { "type": "array", "items": { "type": "string" } },
+        "metrics": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/caseDeltaSummary" }
+        },
+        "overallGainPct": { "type": "number" },
+        "overallRssGainPct": { "type": ["number", "null"] },
+        "nodeRegressionPct": { "type": ["number", "null"] },
+        "fingerprint": { "$ref": "#/$defs/envFingerprint" },
+        "docActionRequired": { "type": "boolean" },
+        "docNotes": { "type": ["string", "null"] }
+      }
+    },
+    "experimentRecord": {
+      "oneOf": [
+        { "$ref": "#/$defs/keepRecord" },
+        { "$ref": "#/$defs/revertRecord" }
+      ]
+    },
+    "statusOutput": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["runtimes", "next", "packages"],
+      "properties": {
+        "runtimes": { "$ref": "#/$defs/runtimes" },
+        "next": { "$ref": "#/$defs/nextRecommendation" },
+        "packages": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/packageSummary" }
+        }
+      }
+    },
+    "nextOutput": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["next", "runtimes"],
+      "properties": {
+        "next": { "$ref": "#/$defs/nextRecommendation" },
+        "runtimes": { "$ref": "#/$defs/runtimes" }
+      }
+    },
+    "initBenchOutput": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "pkgName",
+        "pkgDir",
+        "createdFiles",
+        "updatedFiles",
+        "manifestWarning"
+      ],
+      "properties": {
+        "pkgName": { "type": "string" },
+        "pkgDir": { "type": "string" },
+        "createdFiles": { "type": "array", "items": { "type": "string" } },
+        "updatedFiles": { "type": "array", "items": { "type": "string" } },
+        "manifestWarning": { "type": ["string", "null"] }
+      }
+    },
+    "prepareActiveOutput": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "runId",
+        "package",
+        "runtimes",
+        "stopping",
+        "baselineCases",
+        "profile",
+        "sourceMap",
+        "recentAccepted",
+        "reeligibleProposals",
+        "lockedProposals"
+      ],
+      "properties": {
+        "runId": { "type": "string" },
+        "package": { "$ref": "#/$defs/discoveredPackage" },
+        "runtimes": { "$ref": "#/$defs/runtimes" },
+        "stopping": { "$ref": "#/$defs/stoppingEvaluation" },
+        "baselineCases": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/benchCaseSample" }
+        },
+        "profile": { "$ref": "#/$defs/profileDigest" },
+        "sourceMap": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/sourceFileSummary" }
+        },
+        "recentAccepted": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/recentAcceptedItem" }
+        },
+        "reeligibleProposals": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/reeligibleProposalItem" }
+        },
+        "lockedProposals": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/lockedProposalItem" }
+        }
+      }
+    },
+    "prepareStoppedOutput": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "package",
+        "stopping",
+        "acceptedCount",
+        "rejectedCount",
+        "message"
+      ],
+      "properties": {
+        "package": { "$ref": "#/$defs/discoveredPackage" },
+        "stopping": { "$ref": "#/$defs/stoppingEvaluation" },
+        "acceptedCount": { "type": "integer", "minimum": 0 },
+        "rejectedCount": { "type": "integer", "minimum": 0 },
+        "message": { "type": "string" }
+      }
+    },
+    "evaluateKeepOutput": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["record", "ledgerFile", "stopping", "detail"],
+      "properties": {
+        "record": { "$ref": "#/$defs/keepRecord" },
+        "ledgerFile": { "type": "string" },
+        "stopping": { "$ref": "#/$defs/stoppingEvaluation" },
+        "detail": { "type": "string" },
+        "docHints": { "$ref": "#/$defs/docHints" }
+      }
+    },
+    "evaluateRevertOutput": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "record",
+        "ledgerFile",
+        "stopping",
+        "detail",
+        "nodeProfileHints"
+      ],
+      "properties": {
+        "record": { "$ref": "#/$defs/revertRecord" },
+        "ledgerFile": { "type": "string" },
+        "stopping": { "$ref": "#/$defs/stoppingEvaluation" },
+        "detail": { "type": "string" },
+        "nodeProfileHints": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "recoverOutput": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["ok", "action", "runId", "message"],
+      "properties": {
+        "ok": { "type": "boolean", "const": true },
+        "action": { "type": "string", "const": "recover" },
+        "runId": { "type": "string", "minLength": 1 },
+        "message": { "type": "string", "minLength": 1 }
+      }
+    }
+  }
+}

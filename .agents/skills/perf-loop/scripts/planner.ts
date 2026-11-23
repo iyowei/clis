@@ -123,12 +123,18 @@ export function pickNextTarget(
     };
   }
 
-  const stubOne = sorted.find((s) => s.isStubBench);
-  if (stubOne !== undefined) {
+  const incompleteExisting = sorted.find((s) => s.hasBenchEntry && !s.ready);
+  if (incompleteExisting !== undefined) {
+    let reason = `${incompleteExisting.dir}/package.json 缺少 scripts.bench 声明, 须先补齐基准脚本入口`;
+    if (incompleteExisting.isStubBench) {
+      reason = `${incompleteExisting.dir}/bench/run.ts 仍含 @perf-loop:stub 占位标记, 须先填充真实业务负载`;
+    } else if (!incompleteExisting.supportsJsonBench) {
+      reason = `${incompleteExisting.dir}/bench/run.ts 已存在但缺少 --json 协议输出, 须按基准规范补齐 --json 支持`;
+    }
     return {
       action: 'COMPLETE_BENCH_STUB',
-      target: stubOne.name,
-      reason: `${stubOne.dir}/bench/run.ts 仍含 @perf-loop:stub 占位标记, 须先填充真实业务负载`,
+      target: incompleteExisting.name,
+      reason,
     };
   }
 
@@ -136,7 +142,7 @@ export function pickNextTarget(
   return {
     action: 'INIT_BENCH',
     target: nextUnready.name,
-    reason: `${nextUnready.name} (${nextUnready.dir}) 缺少标准化 bench, 应先运行 init-bench 建设基准探针`,
+    reason: `${nextUnready.name} (${nextUnready.dir}) 缺少 bench/run.ts, 应先运行 init-bench 建设基准探针`,
   };
 }
 

@@ -10,7 +10,7 @@ description: >-
 
 # 确定性性能闭环调优 (perf-loop)
 
-本 Skill 将性能优化拆为「确定性脚本裁判 + 认知探索调优」两层: 所有基准对比、统计显著性校验、双运行时保护、历史失败指纹解封、20 提案滑动窗口收敛核算与工作区快照回退, 均由 [loop.ts](scripts/loop.ts) 在百毫秒内完成; 你只负责以高野心挖掘系统极限、读最新源码与剖析摘要、写合规代码以及当场提炼 `P0`/`P1` 文档。
+本 Skill 将性能优化拆为「确定性脚本裁判 + 认知探索调优」两层: 所有基准对比、统计显著性校验、双运行时保护、历史失败指纹解封、20 提案滑动窗口收敛核算与工作区快照回退, 均由 [loop.ts](scripts/loop.ts) 在百毫秒内完成 (输出结构定义见 [output-contract.schema.json](schemas/output-contract.schema.json)); 你只负责以高野心挖掘系统极限、读最新源码与剖析摘要、写合规代码以及当场提炼 `P0`/`P1` 文档。
 
 ## 规范前置阅读 (按需加载)
 
@@ -31,9 +31,10 @@ bun .agents/skills/perf-loop/scripts/loop.ts next
 
 按脚本返回的 `next.action` 处理:
 
-1. **`INIT_BENCH`**: 目标包缺少 `bench/run.ts`, 禁止空转, 立即运行 `init-bench --pkg <pkg>` 建立骨架;
-2. **`COMPLETE_BENCH_STUB`**: `bench/run.ts` 仍含 `@perf-loop:stub` 标记, 须先依 [bench-harness-spec.md](references/bench-harness-spec.md) 替换为真实业务热点负载、标定 `role` (`primary` / `reference`)、删掉 `@perf-loop:stub` 并双端实测通过后才可进优化循环;
-3. **`OPTIMIZE`**: 进入第 1 步。
+1. **`INIT_BENCH`**: 目标包尚无 `bench/run.ts`, 禁止空转, 立即运行 `init-bench --pkg <pkg>` 建立骨架;
+2. **`COMPLETE_BENCH_STUB`**: `bench/run.ts` 已存在但仍含 `@perf-loop:stub` 标记或缺少 `--json` 协议输出 (或 `package.json` 缺 `scripts.bench`), 切勿运行 `init-bench`, 须先依 [bench-harness-spec.md](references/bench-harness-spec.md) 补齐真实业务热点负载与 `--json` 协议输出、标定 `role` (`primary` / `reference`)、删掉 `@perf-loop:stub` 并双端实测通过后才可进优化循环;
+3. **`OPTIMIZE`**: 进入第 1 步;
+4. **`ALL_CONVERGED`**: 全部目标包已达收敛判据, 直接进入第 5 步终局收口。
 
 ### 第 1 步: 冻结基线与采集现场 (`prepare`)
 
@@ -43,7 +44,7 @@ bun .agents/skills/perf-loop/scripts/loop.ts next
 bun .agents/skills/perf-loop/scripts/loop.ts prepare --pkg <pkg> --suite quick
 ```
 
-认真检查返回 JSON 中的 5 个信号:
+认真检查返回 JSON 中的 4 个信号:
 
 1. **`stopping.decision`**: 为 `STOP_DIMINISHING_RETURNS` 或 `STOP_STREAK_EXHAUSTED` 时停止当前包并运行 `next` 切下一包; 为 `PIVOT_REQUIRED` 时本轮**严禁**微调代码或 GC 细节, 必须做架构/数据流/算法级跃迁 (`P0`)。
 2. **`profile.ioDominatedHint` 与 `targetHotFunctions`**: `targetHotFunctions` 已过滤 `bench/` 与 `fixtures` 搭建噪音; `ioDominatedHint: true` 说明瓶颈在系统调用 (`readdir`/`lstat`/子进程等待), 优先改 `arch` 与 `io` 批处理/并发水位。
@@ -74,7 +75,7 @@ bun .agents/skills/perf-loop/scripts/loop.ts recover --run <runId>
 
 ### 第 4 步: 留存后当场融合沉淀文档
 
-若 `evaluate` 返回 `verdict: "KEEP"` 且 `record.docActionRequired: true` (`P0` / `P1`):
+若 `evaluate` 返回 `record.verdict: "KEEP"` 且 `record.docActionRequired: true` (`P0` / `P1`):
 
 - 直接读取结果中随附的 `docHints` (`nextGlobalAdrNumber`、`existingDesigns`、`pkgDesignsDir`), 依 [docs-distillation-guide.md](references/docs-distillation-guide.md) **当场融合更新**对应 `docs/` 后跑通文档门禁再继续下一轮:
 
