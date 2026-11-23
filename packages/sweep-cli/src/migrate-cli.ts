@@ -5,6 +5,7 @@
  * 落盘后仅渲染结构化摘要或 `[info]` 日志 (严禁输出原始 JSON 全文); 非无损返回 `error` 由调用方退 1。
  */
 import { lstat } from 'node:fs/promises';
+import { posix, win32 } from 'node:path';
 
 import {
   type Config,
@@ -17,7 +18,12 @@ import {
 
 import { renderConfigSummary } from './config-summary.ts';
 import { type InitIO, createReadlineIO } from './init-io.ts';
-import { bannerLine, neutralLine, shortenHome } from './render.ts';
+import {
+  bannerLine,
+  inferPathStyle,
+  neutralLine,
+  shortenHome,
+} from './render.ts';
 
 export type MigrationFlowResult =
   | { state: 'none' }
@@ -85,6 +91,8 @@ export async function runMigrationFlow(
     notice,
   } = options;
 
+  const style = inferPathStyle(home || resolved.path, platform);
+
   const detected = await detectMigration(resolved, {
     homedir: home,
     platform,
@@ -114,7 +122,7 @@ export async function runMigrationFlow(
     print(
       neutralLine(
         exists
-          ? `当前配置已是最新版 v2, 无需迁移 (${sanitizeLine(shortenHome(resolved.path, home))})`
+          ? `当前配置已是最新版 v2, 无需迁移 (${sanitizeLine(shortenHome(resolved.path, home, style))})`
           : '未发现旧版配置, 无需迁移 (可运行 sweep init 或 sweep init --default 生成配置)',
         colors.stdout,
       ),
@@ -141,27 +149,33 @@ export async function runMigrationFlow(
       if (detected.fromLegacyPath) {
         io.print(
           neutralLine(
-            `迁移来源: ${sanitizeLine(shortenHome(detected.sourcePath, home))}`,
+            `迁移来源: ${sanitizeLine(shortenHome(detected.sourcePath, home, style))}`,
             colors.stdout,
           ),
         );
         io.print(
           neutralLine(
-            `目标路径: ${sanitizeLine(shortenHome(detected.targetPath, home))}`,
+            `目标路径: ${sanitizeLine(shortenHome(detected.targetPath, home, style))}`,
             colors.stdout,
           ),
         );
       } else {
         io.print(
           neutralLine(
-            `配置路径: ${sanitizeLine(shortenHome(detected.targetPath, home))}`,
+            `配置路径: ${sanitizeLine(shortenHome(detected.targetPath, home, style))}`,
             colors.stdout,
           ),
         );
       }
+      const rawBase =
+        detected.sourcePath.includes('\\') ||
+        /^[A-Za-z]:/.test(detected.sourcePath)
+          ? win32.basename(detected.sourcePath)
+          : posix.basename(detected.sourcePath);
+      const backupBase = sanitizeLine(rawBase || 'config.json');
       io.print(
         neutralLine(
-          '写前备份: 将在源配置目录自动创建 config.json.YYYYMMDD_HHMMSS.modified',
+          `写前备份: 将在源配置目录自动创建 ${backupBase}.YYYYMMDD_HHMMSS.modified`,
           colors.stdout,
         ),
       );
@@ -220,7 +234,7 @@ export async function runMigrationFlow(
     for (const line of summaryLines) print(line);
   } else {
     notice(
-      `[info] 已自动无损迁移配置到 v2 (${shortenHome(applied.targetPath, home)}); 原配置已备份至 ${shortenHome(applied.backupPath, home)}`,
+      `[info] 已自动无损迁移配置到 v2 (${shortenHome(applied.targetPath, home, style)}); 原配置已备份至 ${shortenHome(applied.backupPath, home, style)}`,
     );
     notice(
       `[info] 新增可用预设: ${applied.newAvailablePresets.join(' · ')} (未自动激活, 可手动编辑配置按需启用)`,

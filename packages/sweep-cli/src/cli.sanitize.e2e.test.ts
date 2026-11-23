@@ -23,11 +23,13 @@ import { RUNNER_AVAILABILITY, runCli } from './cli.e2e.fixtures.ts';
 /** 含控制字节的目录名在 win32 上无法创建, 该面用例只在 posix 跑 (用例自身的宿主约束, 非被测行为) */
 const POSIX = process.platform !== 'win32';
 
+const realpathNative = realpathSync.native ?? realpathSync;
+
 /**
- * 临时工作区根: 取 realpath 形态 —— 子进程的 cwd 由内核给出规范路径, 不先规范化则逐字断言对不上
- * (macOS 的 tmpdir 穿在 /var 符号链接下)。
+ * 临时工作区根: 取 realpath.native 形态 —— 子进程的 cwd 由内核给出规范路径, 不先规范化则逐字断言对不上
+ * (macOS 的 tmpdir 穿在 /var 符号链接下, Windows 的 tmpdir 常以 8.3 短路径返回)。
  */
-const SANDBOX = realpathSync(mkdtempSync(join(tmpdir(), 'sweep-sanitize-')));
+const SANDBOX = realpathNative(mkdtempSync(join(tmpdir(), 'sweep-sanitize-')));
 
 afterAll(() => {
   rmSync(SANDBOX, { recursive: true, force: true });

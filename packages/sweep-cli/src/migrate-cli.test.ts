@@ -29,9 +29,11 @@ import { runMigrationFlow } from './migrate-cli.ts';
 
 const tempDirs: string[] = [];
 
-/** 临时沙箱 (取 realpath 归一形态: 绕过 macOS /var 符号链接以测真实备份与写入) */
+const realpathNative = realpathSync.native ?? realpathSync;
+
+/** 临时沙箱 (取 realpath.native 归一形态: 绕过 macOS /var 软链并展开 Windows 8.3 短路径) */
 function makeSandbox(): string {
-  const dir = realpathSync(mkdtempSync(join(tmpdir(), 'sweep-migrate-cli-')));
+  const dir = realpathNative(mkdtempSync(join(tmpdir(), 'sweep-migrate-cli-')));
   tempDirs.push(dir);
   return dir;
 }
@@ -85,15 +87,17 @@ const FIXED_DATE = new Date(2026, 10, 20, 18, 30, 45);
 describe('runMigrationFlow · TTY 确认与取消流程', () => {
   test('旧路径 v1 + TTY 确认: 展示来源/目标/备份/等价承诺 → 备份落地 + 结构化摘要 (零原始 JSON)', async () => {
     const home = makeSandbox();
+    const env =
+      process.platform === 'win32'
+        ? { APPDATA: join(home, 'AppData', 'Roaming') }
+        : {};
     const resolved = resolveConfigPath({
       homedir: home,
-      platform: 'darwin',
-      env: {},
+      env,
     });
     const legacy = resolveLegacyConfigPath({
       homedir: home,
-      platform: 'darwin',
-      env: {},
+      env,
     });
     const v1Text = `${JSON.stringify({ roots: [home], exclude: ['vendor'] }, null, 2)}\n`;
     mkdirSync(dirname(legacy), { recursive: true });
@@ -108,7 +112,6 @@ describe('runMigrationFlow · TTY 确认与取消流程', () => {
       interactive: true,
       colors: { stdout: false, stderr: false },
       home,
-      platform: 'darwin',
       ...col,
       createIO: ioStub.createIO,
       now: () => FIXED_DATE,
@@ -146,7 +149,10 @@ describe('runMigrationFlow · TTY 确认与取消流程', () => {
     expect(output).toContain('原配置已备份:');
     expect(output).toContain('新增可用预设:');
     expect(output).toContain('快捷指令:');
-    expect(output).toContain('open -e');
+    let expectedEditorCmd = '${EDITOR:-vi}';
+    if (process.platform === 'darwin') expectedEditorCmd = 'open -e';
+    else if (process.platform === 'win32') expectedEditorCmd = 'notepad';
+    expect(output).toContain(expectedEditorCmd);
     expect(output).not.toContain('"version":');
     expect(output).not.toContain('"presets":');
     expect(ioStub.confirms).toEqual([
@@ -157,15 +163,17 @@ describe('runMigrationFlow · TTY 确认与取消流程', () => {
 
   test('TTY 取消: 原文件不动、不生成备份、不写目标路径、返回 cancelled', async () => {
     const home = makeSandbox();
+    const env =
+      process.platform === 'win32'
+        ? { APPDATA: join(home, 'AppData', 'Roaming') }
+        : {};
     const resolved = resolveConfigPath({
       homedir: home,
-      platform: 'linux',
-      env: {},
+      env,
     });
     const legacy = resolveLegacyConfigPath({
       homedir: home,
-      platform: 'linux',
-      env: {},
+      env,
     });
     const v1Text = `${JSON.stringify({ roots: [home] })}\n`;
     mkdirSync(dirname(legacy), { recursive: true });
@@ -180,7 +188,6 @@ describe('runMigrationFlow · TTY 确认与取消流程', () => {
       interactive: true,
       colors: { stdout: false, stderr: false },
       home,
-      platform: 'linux',
       ...col,
       createIO: ioStub.createIO,
       now: () => FIXED_DATE,
@@ -266,10 +273,13 @@ describe('runMigrationFlow · 非 TTY 自动无损迁移与非无损中止', () 
 describe('runMigrationFlow · 显式 `sweep migrate` 的 none / 幂等 / 错误分支', () => {
   test('无旧配置 (platform-default): 提示无需迁移并返 none', async () => {
     const home = makeSandbox();
+    const env =
+      process.platform === 'win32'
+        ? { APPDATA: join(home, 'AppData', 'Roaming') }
+        : {};
     const resolved = resolveConfigPath({
       homedir: home,
-      platform: 'linux',
-      env: {},
+      env,
     });
     const col = makeCollectors();
 
@@ -279,7 +289,6 @@ describe('runMigrationFlow · 显式 `sweep migrate` 的 none / 幂等 / 错误�
       interactive: false,
       colors: { stdout: false, stderr: false },
       home,
-      platform: 'linux',
       ...col,
     });
 

@@ -96,6 +96,38 @@ describe('buildConfigQuickCommands 三端平台快捷指令', () => {
       'Get-Content "C:\\Users\\my `"bad`"[31m path\\config.json"',
     );
   });
+
+  test("POSIX / macOS 家目录内含空格与中文路径时回退单引号包裹完整绝对路径, 避免产出不可展开的 '~/...'", () => {
+    const darwinCfg = '/Users/alice/My Configs/清理配置 (v2)/config.json';
+    const darwinCmds = buildConfigQuickCommands(
+      darwinCfg,
+      'darwin',
+      '/Users/alice',
+    ).map((c) => c.command);
+
+    expect(darwinCmds).toEqual([
+      'sweep config',
+      `cat '${darwinCfg}'`,
+      `\${EDITOR:-vi} '${darwinCfg}'`,
+      `open -e '${darwinCfg}'`,
+    ]);
+    expect(darwinCmds.some((c) => c.includes("'~/"))).toBe(false);
+
+    const linuxHomeWithSpace = '/home/Alice Smith';
+    const linuxCfg = `${linuxHomeWithSpace}/配置目录/config.json`;
+    const linuxCmds = buildConfigQuickCommands(
+      linuxCfg,
+      'linux',
+      linuxHomeWithSpace,
+    ).map((c) => c.command);
+
+    expect(linuxCmds).toEqual([
+      'sweep config',
+      `cat '${linuxCfg}'`,
+      `\${EDITOR:-vi} '${linuxCfg}'`,
+    ]);
+    expect(linuxCmds.some((c) => c.includes("'~/"))).toBe(false);
+  });
 });
 
 describe('renderConfigSummary 结构化配置摘要与零原始 JSON 红线', () => {
@@ -219,5 +251,25 @@ describe('renderConfigSummary 结构化配置摘要与零原始 JSON 红线', ()
     const text = lines.join('\n');
     expect(text).toContain('rule[31m boom [TRASH]');
     expect(text).toContain('inc name');
+  });
+
+  test('路径字符串物理风味与 platform 命令方言解耦: Windows 路径注入 darwin 平台时仍按反斜杠正确缩写 ~', () => {
+    const winHome = 'C:\\Users\\runneradmin\\tmp\\ci-home';
+    const winCfg = `${winHome}\\.config\\sweep\\config.json`;
+    const lines = renderConfigSummary({
+      configPath: winCfg,
+      config: baseConfig({ roots: [`${winHome}\\dev`] }),
+      heading: '配置已写入',
+      home: winHome,
+      platform: 'darwin',
+      color: false,
+    });
+    const text = lines.join('\n');
+    expect(text).toContain('配置已写入: ~\\.config\\sweep\\config.json  ✓');
+    expect(text).toContain('扫描根 (1 个): ~\\dev');
+    expect(text).toContain(`cat '${winCfg}'`);
+    expect(text).toContain(`\${EDITOR:-vi} '${winCfg}'`);
+    expect(text).toContain(`open -e '${winCfg}'`);
+    expect(text).not.toContain("'~\\");
   });
 });

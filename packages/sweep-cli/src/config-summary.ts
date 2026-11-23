@@ -12,7 +12,7 @@ import {
   sanitizeLine,
 } from '@iyowei/sweep';
 
-import { neutralLine, paint, shortenHome } from './render.ts';
+import { inferPathStyle, neutralLine, paint, shortenHome } from './render.ts';
 
 export interface ConfigSummaryOptions {
   /** 落盘配置路径 */
@@ -35,6 +35,9 @@ export interface ConfigSummaryOptions {
   color: boolean;
 }
 
+/** POSIX shell 无需单引号包裹的安全裸路径字符集 (含波浪号 ~ 以便 shell 自然展开) */
+const POSIX_BARE_PATH_RE = /^[A-Za-z0-9_./:@~+-]+$/;
+
 /** 对展示进 shell 指令的路径做安全引用 (先经 OF-14 净化再按平台引用) */
 function quoteCommandPath(rawPath: string, platform: NodeJS.Platform): string {
   const clean = sanitizeLine(rawPath);
@@ -42,7 +45,7 @@ function quoteCommandPath(rawPath: string, platform: NodeJS.Platform): string {
     const escaped = clean.replaceAll('"', '`"');
     return `"${escaped}"`;
   }
-  if (/^[A-Za-z0-9_./:@~+-]+$/.test(clean)) return clean;
+  if (POSIX_BARE_PATH_RE.test(clean)) return clean;
   return `'${clean.replaceAll("'", "'\\''")}'`;
 }
 
@@ -52,11 +55,23 @@ export function buildConfigQuickCommands(
   platform: NodeJS.Platform = process.platform,
   home?: string,
 ): { label: string; command: string }[] {
-  const displayPath =
-    platform === 'win32'
-      ? sanitizeLine(configPath)
-      : sanitizeLine(shortenHome(configPath, home));
-  const quoted = quoteCommandPath(displayPath, platform);
+  let quoted: string;
+  if (platform === 'win32') {
+    quoted = quoteCommandPath(sanitizeLine(configPath), platform);
+  } else {
+    const shortened = sanitizeLine(
+      shortenHome(
+        configPath,
+        home,
+        inferPathStyle(home ?? configPath, platform),
+      ),
+    );
+    // 仅当缩写路径无需加引号且不含反斜杠时使用 ~/...; 一旦需单引号包裹, 直接引用完整原路径防 '~' 无法展开
+    quoted =
+      POSIX_BARE_PATH_RE.test(shortened) && !shortened.includes('\\')
+        ? shortened
+        : quoteCommandPath(sanitizeLine(configPath), platform);
+  }
 
   if (platform === 'win32') {
     return [
@@ -103,18 +118,21 @@ function actionBadge(action: 'trash' | 'delete', color: boolean): string {
 export function renderConfigSummary(options: ConfigSummaryOptions): string[] {
   const { configPath, config, heading, home, color } = options;
   const platform = options.platform ?? process.platform;
+  const style = inferPathStyle(home ?? configPath, platform);
   const lines: string[] = [];
 
-  const shownPath = sanitizeLine(shortenHome(configPath, home));
+  const shownPath = sanitizeLine(shortenHome(configPath, home, style));
   lines.push(`  ${heading}: ${shownPath}  ${paint('✓', '32', color)}`);
 
   if (options.backupPath !== undefined) {
-    const shownBackup = sanitizeLine(shortenHome(options.backupPath, home));
+    const shownBackup = sanitizeLine(
+      shortenHome(options.backupPath, home, style),
+    );
     lines.push(neutralLine(`原配置已备份: ${shownBackup}`, color));
   }
 
   const rootLabels = config.roots.map((r) =>
-    sanitizeLine(shortenHome(r, home)),
+    sanitizeLine(shortenHome(r, home, style)),
   );
   lines.push(
     neutralLine(

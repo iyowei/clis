@@ -45,8 +45,10 @@ const WORKER_TIMEOUT_MS = 10_000;
  * (行为正确, 但那样各场景就测不到本意了)。与 fixtures.ts / run-conformance.ts 的 workspace root
  * 同款: 测试根一律取真实路径形态。
  */
+const realpathNative = realpathSync.native ?? realpathSync;
+
 function realConfigPath(raw: string): string {
-  return join(realpathSync(dirname(raw)), basename(raw));
+  return join(realpathNative(dirname(raw)), basename(raw));
 }
 
 /** written 场景的两个根: 真实存在的子目录 (过存在性校验); 投喂答案与断言两侧同源派生 */

@@ -17,12 +17,14 @@ import {
   createDefaultConfig,
   createDefaultPresets,
   isPresetName,
+  resolveDefaultRoot,
 } from '@iyowei/sweep';
 
 import { renderConfigSummary } from './config-summary.ts';
 import type { InitIO } from './init-io.ts';
 import {
   bannerLine,
+  inferPathStyle,
   neutralLine,
   paint,
   sanitizeLine,
@@ -356,11 +358,16 @@ export async function runInit(deps: InitDeps): Promise<InitResult> {
     io.print(neutralLine('首次使用, 先确定扫描范围与清理预设', color));
 
     const defaultRoot = createDefaultConfig({ homedir: home }).roots[0] ?? home;
+    const style = inferPathStyle(home ?? defaultRoot, deps.platform);
+    const defaultRootLabel =
+      resolveDefaultRoot(home) === defaultRoot
+        ? '~'
+        : sanitizeLine(shortenHome(defaultRoot, home, style));
     let roots: string[] = [];
     for (;;) {
       const rootsAnswer = await io.ask(
         '扫描根 (逗号或空白分隔多个)',
-        `默认: ${sanitizeLine(shortenHome(defaultRoot, home))}`,
+        `默认: ${defaultRootLabel}`,
       );
       if (rootsAnswer === null) return cancelled();
       roots = parsePathList(rootsAnswer, [defaultRoot], home);

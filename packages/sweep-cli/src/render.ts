@@ -6,7 +6,9 @@
  */
 import {
   type CleanupAction,
+  POSIX_STYLE,
   type PathStyle,
+  WIN32_STYLE,
   formatBytes,
   nativeStyle,
   sanitizeLine,
@@ -303,6 +305,30 @@ function shortenPath(path: string, style: PathStyle, home?: string): string {
   return fold(path, style).startsWith(fold(prefix, style))
     ? `~${sep}${path.slice(prefix.length)}`
     : path;
+}
+
+/**
+ * 推断路径字符串自身的分隔符风味 (供跨平台摘要/向导/迁移回显与 `shortenHome` 配套使用):
+ * - 盘符 (`C:\` / `C:/`)、UNC (`\\`) 或非 `/` 起头且含 `\` -> `WIN32_STYLE`;
+ * - `/` 起头且不含 `\` -> `POSIX_STYLE`;
+ * - 其余相对/空串回落到 `platform` (缺省当前宿主平台)。
+ */
+export function inferPathStyle(
+  samplePath: string | undefined,
+  platform: NodeJS.Platform = process.platform,
+): PathStyle {
+  if (samplePath !== undefined && samplePath !== '') {
+    if (
+      /^[A-Za-z]:[/\\]|^\\\\/.test(samplePath) ||
+      (!samplePath.startsWith('/') && samplePath.includes('\\'))
+    ) {
+      return WIN32_STYLE;
+    }
+    if (samplePath.startsWith('/') && !samplePath.includes('\\')) {
+      return POSIX_STYLE;
+    }
+  }
+  return platform === 'win32' ? WIN32_STYLE : POSIX_STYLE;
 }
 
 /**

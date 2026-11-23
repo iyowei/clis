@@ -63,9 +63,11 @@ interface FakePackage {
   cleanup: () => void;
 }
 
+const realpathNative = realpathSync.native ?? realpathSync;
+
 /** 临时包布局: <root>/bin/sweep.mjs + bin/bunfig.toml (启动器原样复制) + 空的 <root>/dist/ */
 const makePackage = (): FakePackage => {
-  const root = realpathSync(mkdtempSync(join(tmpdir(), 'sweep-pkg-')));
+  const root = realpathNative(mkdtempSync(join(tmpdir(), 'sweep-pkg-')));
   mkdirSync(join(root, 'bin'), { recursive: true });
   mkdirSync(join(root, 'dist'), { recursive: true });
   copyFileSync(LAUNCHER, join(root, 'bin', 'sweep.mjs'));
@@ -348,7 +350,9 @@ describe('npm 启动器 · 产物自证', () => {
 
 describe('npm 启动器 · 工作目录配置与环境变量隔离', () => {
   test('被扫目录存在损坏 bunfig.toml / 恶意 preload / .env 时, 经 node 启动器与 sh 启动器均安全运行且不受污染', () => {
-    const dirtyCwd = realpathSync(mkdtempSync(join(tmpdir(), 'sweep-dirty-')));
+    const dirtyCwd = realpathNative(
+      mkdtempSync(join(tmpdir(), 'sweep-dirty-')),
+    );
     try {
       writeFileSync(
         join(dirtyCwd, 'bunfig.toml'),

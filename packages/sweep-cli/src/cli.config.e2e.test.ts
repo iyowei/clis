@@ -34,9 +34,11 @@ import {
 const dirs: string[] = [];
 const { make, cleanup: cleanupWorkspaces } = createWorkspaceTracker();
 
-/** 临时目录 (取 realpath 归一形态: macOS /var 为软链, 否则 init/migrate 写入锚点会拒写) */
+const realpathNative = realpathSync.native ?? realpathSync;
+
+/** 临时目录 (取 realpath.native 归一形态: 绕过 macOS /var 软链并展开 Windows 8.3 短路径) */
 function tempDir(): string {
-  const dir = realpathSync(mkdtempSync(join(tmpdir(), 'sweep-config-')));
+  const dir = realpathNative(mkdtempSync(join(tmpdir(), 'sweep-config-')));
   dirs.push(dir);
   return dir;
 }
