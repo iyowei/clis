@@ -1,7 +1,8 @@
 /**
  * 启动器运行时解析防劫持 (X-P0-1 / SWEEPCLI-P0-5 / runtime-resolution:bare-name-cwd-precedence-windows)。
- * 三个入口 (bin/sweep.mjs / bin/sweep / bin/sweep.cmd) 挑运行时都不许让「当前目录」
- * 进入解析面, 且拦截 Windows Git Bash 注入的 `/usr/bin` 盘根相对路径与 POSIX `PATH=":$PATH"` 空段劫持。
+ * 三个入口分工设防: `bin/sweep.mjs` 与 POSIX `bin/sweep` 严格过滤 `PATH` 中的空段、相对条目及
+ * Windows Git Bash 注入的 `/usr/bin` 盘根相对路径; `bin/sweep.cmd` 经 `%%~$PATH:I` 仅在 `PATH` 条目内查找,
+ * 避免 `cmd` 默认优先搜索当前工作目录。
  */
 import { describe, expect, test } from 'bun:test';
 

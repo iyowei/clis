@@ -1,7 +1,7 @@
 @echo off
 rem sweep 启动器 (Windows): 挑选运行时 (Bun 优先, 其次 Node) 后启动真实入口。
 rem 全程只用单行 if 判定 (不用标签与括号块), 防回退 Node 时误传 Bun 参数。
-rem 使用 for 的 PATH 展开修饰符 (只搜 PATH, 不搜当前目录, 见 ADR 0007)。
+rem 使用 for 的 PATH 展开修饰符 (仅在 PATH 条目内查找, 避免 cmd 默认优先搜索当前工作目录)。
 setlocal
 set "ROOT=%~dp0.."
 set "ENTRY=%ROOT%\bin\sweep.mjs"

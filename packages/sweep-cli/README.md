@@ -7,7 +7,7 @@
 
 **English** | [中文](README.zh-CN.md)
 
-A general-purpose, workspace-level multi-toolchain cleaner (`sweep`): scan multiple roots in one pass for Node.js, Rust, Python, Java, C/C++ build artifacts and caches, OS junk files, and your own custom rules — preview first with sizes, then safely move to trash or delete in bulk.
+A general-purpose, workspace-level multi-toolchain cleaner (`sweep`): scan multiple roots in one pass for Node.js, Rust, Python, Java, C/C++ build artifacts and caches, OS junk files, and your own custom rules; preview first with sizes, then safely move to trash or delete in bulk.
 
 > **Private workspace package**: `@iyowei/sweep-cli` and its core library [`@iyowei/sweep`](https://github.com/iyowei/clis/blob/main/packages/sweep/README.md) are currently marked `"private": true` while evolving inside this monorepo and are excluded from the public npm release pipeline (see [ADR 0021](https://github.com/iyowei/clis/blob/main/packages/sweep/docs/adrs/0021-sweep-general-cleaner-evolution.md)). Install and run from a source checkout below.
 
@@ -129,7 +129,7 @@ Config path resolution priority: `--config <path>` > `SWEEP_CONFIG` > platform d
 - **`roots`**: scan roots (deduplicated by realpath). Omitting `roots` defaults to `[realpath(os.homedir())]`; explicitly setting `"roots": []` is rejected (`CONFIG_CORRUPT_SHAPE`) to prevent silent empty scans. Delete/trash execution requires every root and its ancestor chain to be symlink-free (including `/tmp` and `/var` on macOS).
 - **32 built-in home-directory guardrails (`DEFAULT_EXCLUDE`)**: omitting `exclude` applies 32 cross-platform exclusions covering package/version managers (`.bun`, `.npm`, `.pnpm-store`, `.yarn`, `.nvm`, `nvm`, `.fnm`, `.volta`, `.asdf`, `.n`), editors (`.vscode`, `.vscode-insiders`, `.vscode-server`, `.cursor`, `.antigravity`), system/app data (`Library`, `.local`, `.config`, `.cache`, `.claude`), trash bins (`.Trash`, `Trash`, `$Recycle.Bin`), Windows app roots (`AppData`, `scoop`), and language toolchain caches (`.cargo`, `.rustup`, `.m2`, `.gradle`, `.conda`, `.pyenv`, `.uv`). Writing `exclude` explicitly (including `[]`) overrides defaults.
 - **6 built-in presets (`presets`) with mandatory project anchoring**:
-  - **Key presence activates** a preset — **`enabled` fields are strictly forbidden** (`CONFIG_CORRUPT_SHAPE`), and unknown preset keys are rejected. Default action is `"delete"`, overridable per preset with `"action": "trash" | "delete"`; per-preset `exclude` / `include` only tighten scope.
+  - **Key presence activates** a preset: **`enabled` fields are strictly forbidden** (`CONFIG_CORRUPT_SHAPE`), and unknown preset keys are rejected. Default action is `"delete"`, overridable per preset with `"action": "trash" | "delete"`; per-preset `exclude` / `include` only tighten scope.
   - `node`: `node_modules` directory anchored by sibling `package.json` (plus install-tree semantic classification).
   - `rust`: `target` directory anchored by sibling `Cargo.toml`.
   - `python`: `.venv` / `venv` (anchored by sibling `pyproject.toml` / `requirements.txt` or inner `pyvenv.cfg`), plus `__pycache__`, `.pytest_cache`, `.mypy_cache`, `.ruff_cache`.
@@ -144,14 +144,14 @@ Config path resolution priority: `--config <path>` > `SWEEP_CONFIG` > platform d
 
 - **First run with no config**:
   - **TTY**: launches the `sweep init` wizard automatically; on the run where a config was just written, cleanup is forced to **preview-only** even if `--yes` was passed.
-  - **Non-TTY**: **never blocks, never falls back to scanning home or `cwd`, and never accepts `--yes`** — exits `1` immediately with guidance to run `sweep init`, `sweep init --default`, or `--config <path>`.
+  - **Non-TTY**: **never blocks, never falls back to scanning home or `cwd`, and never accepts `--yes`**, exiting `1` immediately with guidance to run `sweep init`, `sweep init --default`, or `--config <path>`.
 - **`sweep init --default`**: writes the complete best-practice v2 config (home root, all 6 presets including `os-junk`, 32 built-in guardrails). Enforces symlink-free config path checks and refuses silent overwrite in non-TTY mode.
 - **Lossless migration (`sweep migrate` or automatic on `sweep`)**:
   - Triggered when the new path is absent while the legacy path (`sweep-node-modules/config.json`) exists, or when an existing config has `version < 2` (or omits `version`).
   - Always creates a pre-write backup `config.json.YYYYMMDD_HHMMSS.modified` in the source config directory; aborts immediately if backup fails.
-  - Maps v1 strictly to `presets: { node: {} }` — **never silently enables new presets** (`rust` / `python` / `java` / `cpp` / `os-junk`), printing a neutral hint instead.
+  - Maps v1 strictly to `presets: { node: {} }`, **never silently enabling new presets** (`rust` / `python` / `java` / `cpp` / `os-junk`) and printing a neutral hint instead.
   - In TTY mode, prompts for confirmation before writing; in non-TTY mode, auto-migrates only when 100% lossless and exits `1` on unknown fields, future versions, or corrupt shapes.
-- **Structured summary display**: after `init`, `init --default`, or `migrate` writes disk, the terminal displays a compact `▍ SWEEP` summary (config path, roots, active presets with `[DELETE]` / `[TRASH]`, custom rules with retention days, global exclude count, and copy-pasteable view/edit commands for the current platform) — raw JSON is never dumped to stdout.
+- **Structured summary display**: after `init`, `init --default`, or `migrate` writes disk, the terminal displays a compact `▍ SWEEP` summary (config path, roots, active presets with `[DELETE]` / `[TRASH]`, custom rules with retention days, global exclude count, and copy-pasteable view/edit commands for the current platform: `sweep config` / `cat` / `Get-Content` / `${EDITOR:-vi}` / `open -e` / `notepad`); raw JSON is never dumped to stdout.
 
 ## Safety guardrails & zero-dependency trash
 
@@ -162,7 +162,7 @@ Config path resolution priority: `--config <path>` > `SWEEP_CONFIG` > platform d
   - **macOS**: `/usr/bin/trash -s <path>` (absolute path); falls back to `/usr/bin/osascript` via `on run argv` (never string-interpolates paths) if `/usr/bin/trash` is absent.
   - **Linux**: pure TypeScript Freedesktop XDG Trash 1.0 (`$XDG_DATA_HOME/Trash` or `~/.local/share/Trash`, atomic `wx` `.trashinfo` reservation with `.2`/`.3` deduplication, atomic `rename`, cleans up placeholder on `EXDEV` without cross-device copy-delete).
   - **Windows**: pre-rejects paths `>= 260` characters (`WIN32_TRASH_MAX_PATH`), strips `Read-Only` attributes, and invokes system `powershell.exe -NoProfile -NonInteractive` with `Microsoft.VisualBasic.FileIO.FileSystem` passing the path via environment variable.
-  - **Hard red line**: if any trash channel fails, the original file/directory remains untouched on disk, the entry is recorded under `failed` with `TRASH_FAILED` (`partialRisk: false`), and CLI exits `1` — it **never** falls back to `fs.rm`.
+  - **Hard red line**: if any trash channel fails, the original file/directory remains untouched on disk, the entry is recorded under `failed` with `TRASH_FAILED` (`partialRisk: false`), and CLI exits `1` (it **never** falls back to `fs.rm`).
 - **Generalized five-invariant guard & per-component re-check**: rejects malformed leaves (empty, `.`, `..`, `.git`, `*`, trailing separators), targets outside declared roots, filesystem roots and home body, symlinked root anchor chains, and duplicate realpaths; a single rejection aborts the whole batch with zero cleanup. Before each deletion or trash move, the owning root chain and every parent component are `lstat`-verified.
 - **Output sanitization**: every external path and rule name passes through the single sanitization pipeline (`sanitizeLine` / `sanitizeOutputLine`) before rendering.
 
