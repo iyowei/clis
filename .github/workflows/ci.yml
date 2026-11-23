@@ -13,7 +13,7 @@ env:
 
 concurrency:
   # 按事件名隔离并发组: PR 连续推送自动取消旧跑; 由 release.yml (push main) 经 workflow_call
-  # 复用时, 组名与 release.yml 顶层 group: release 互不重叠, 且不中途取消发布检查。
+  # 复用时, 组名与 release.yml 中 release job 的 group: release 互不重叠, 且不中途取消发布检查。
   group: ci-checks-${{ github.event_name }}-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
