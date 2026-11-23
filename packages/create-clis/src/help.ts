@@ -128,7 +128,10 @@ const CONTROL_OPTIONS: readonly OptionRow[] = [
   },
   { flag: '--no-git', desc: '跳过 git init (默认执行)' },
   { flag: '--no-install', desc: '跳过依赖安装 (默认执行)' },
-  { flag: '--yes', desc: '全部取默认值, 零交互' },
+  {
+    flag: '--yes',
+    desc: '全部取默认值, 零交互 (需 [目录]/--name 与合规 owner)',
+  },
 ];
 
 const META_OPTIONS: readonly OptionRow[] = [
@@ -195,7 +198,9 @@ export function formatHelpText(color: boolean): string {
     '',
     `  ${s.section('说明')}`,
     `    ${s.primary('目标目录')}  ${s.muted('缺省为当前目录下以项目名命名的子目录; 非空目录直接拒绝 (不覆盖)')}`,
-    `    ${s.primary('调用约定')}  ${s.muted('经 npm create 调用时旗标写在 -- 之后 (npm create clis -- --tier core)')}`,
+    `    ${s.primary('零交互态')}  ${s.muted('git user.name 未配置或含空格/非 ASCII 时, --yes 须传 --owner')}`,
+    `    ${s.primary('调用约定')}  ${s.muted('npm create 传参置于 -- 后 (例: npm create clis -- --tier core)')}`,
+    `    ${s.primary('选项终止')}  ${s.muted('-- 后参数均作目标目录 (可逃逸 - 开头或名为 update 的目录)')}`,
     '',
   ].join('\n');
 }

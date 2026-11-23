@@ -14,6 +14,7 @@ import {
   type CliOptions,
   type Environment,
   deriveBinName,
+  normalizeRepoUrl,
   parseFlags,
   resolveVocabulary,
   validateBinName,
@@ -114,8 +115,11 @@ describe('validateScope / validateOwner / validateRepoUrl', () => {
   test('repo: 需 scheme://host/path (路径段供裸 slug 解析)', () => {
     expect(validateRepoUrl('https://github.com/me/my-tool')).toBeNull();
     expect(validateRepoUrl('https://github.com/me/my-tool.git')).toBeNull();
+    expect(validateRepoUrl('https://github.com/me/my-tool.git/')).toBeNull();
     expect(validateRepoUrl('git@github.com:me/x')).not.toBeNull();
     expect(validateRepoUrl('https://github.com')).not.toBeNull();
+    expect(validateRepoUrl('https://github.com///')).not.toBeNull();
+    expect(validateRepoUrl('https://github.com/.git/')).not.toBeNull();
     expect(validateRepoUrl('')).not.toBeNull();
   });
 });
@@ -202,6 +206,18 @@ describe('parseFlags', () => {
       git: true,
       install: true,
       yes: false,
+    });
+
+    // 非首位的裸 update (未以 -- 逃逸且未显式传 --name update) 拒绝并提示子命令用法, 防误建 ./update/
+    expect(errorText(parseFlags(['--yes', 'update']))).toContain(
+      'update 子命令须位于首个参数',
+    );
+    expect(parseFlags(['--yes', 'update', '--name', 'update'])).toEqual({
+      dir: 'update',
+      name: 'update',
+      git: true,
+      install: true,
+      yes: true,
     });
   });
 
@@ -354,7 +370,7 @@ describe('resolveVocabulary', () => {
     ).toContain('owner');
   });
 
-  test('--repo 覆盖合成值; 非法地址报错', () => {
+  test('--repo 覆盖合成值并归一化剥除尾斜杠与 .git 后缀; 非法地址报错', () => {
     expect(
       vocabularyOf(
         resolveVocabulary(
@@ -363,10 +379,35 @@ describe('resolveVocabulary', () => {
         ),
       ).repoUrl,
     ).toBe('https://gitlab.com/me/x');
+    for (const raw of [
+      'https://github.com/acme/my-tool/',
+      'https://github.com/acme/my-tool///',
+      'https://github.com/acme/my-tool.git',
+      'https://github.com/acme/my-tool.GIT/',
+      'https://github.com/acme/my-tool/.git/',
+    ]) {
+      expect(normalizeRepoUrl(raw), raw).toBe(
+        'https://github.com/acme/my-tool',
+      );
+      expect(
+        vocabularyOf(
+          resolveVocabulary(options({ name: 'my-tool', repo: raw }), ENV),
+        ).repoUrl,
+        raw,
+      ).toBe('https://github.com/acme/my-tool');
+    }
     expect(
       errorText(
         resolveVocabulary(
           options({ name: 'my-tool', repo: 'github.com/me/x' }),
+          ENV,
+        ),
+      ),
+    ).toContain('仓库地址');
+    expect(
+      errorText(
+        resolveVocabulary(
+          options({ name: 'my-tool', repo: 'https://github.com/.git/' }),
           ENV,
         ),
       ),

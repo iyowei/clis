@@ -174,4 +174,48 @@ describe('create-clis CLI 前置目录校验、非 kebab 目录交互与 -- 分�
       true,
     );
   }, 60_000);
+
+  test('误传非首位 update (如 create-clis --yes update) 报错拒绝防误建 ./update, 显式 --name update 放行', () => {
+    const root = makeTmpRoot('create-clis-misplaced-update-');
+    createdRoots.push(root);
+    const home = join(root, 'home');
+    mkdirSync(home, { recursive: true });
+    writeFileSync(join(home, '.gitconfig'), '[user]\n\tname = me\n');
+    const env = {
+      ...process.env,
+      HOME: home,
+      USERPROFILE: home,
+      GIT_CONFIG_GLOBAL: join(home, '.gitconfig'),
+      CREATE_CLIS_TEMPLATE_DIR: TEMPLATE_DIR,
+    };
+
+    const rejected = spawnSync(
+      'node',
+      [CLI, '--yes', '--no-git', '--no-install', 'update'],
+      { cwd: root, encoding: 'utf8', env },
+    );
+    expect(rejected.status).toBe(1);
+    expect(rejected.stderr).toContain('update 子命令须位于首个参数');
+    expect(existsSync(join(root, 'update'))).toBe(false);
+
+    const allowed = spawnSync(
+      'node',
+      [
+        CLI,
+        '--tier',
+        'core',
+        '--yes',
+        '--no-git',
+        '--no-install',
+        '--name',
+        'update',
+        'update',
+      ],
+      { cwd: root, encoding: 'utf8', env },
+    );
+    expect(allowed.status, `stderr=${allowed.stderr}`).toBe(0);
+    expect(existsSync(join(root, 'update/packages/update/package.json'))).toBe(
+      true,
+    );
+  }, 60_000);
 });

@@ -17,6 +17,22 @@ describe('create-clis formatHelpText', () => {
     }
     expect(plain).toContain('-V, --version');
     expect(plain).toContain('-h, --help');
+    expect(plain).toContain('[目录]/--name');
+    expect(plain).toContain('--owner');
+    expect(plain).toContain('选项终止');
+    expect(plain).toContain('名为 update 的目录');
+    for (const line of plain.split('\n')) {
+      let width = 0;
+      for (const ch of line) {
+        const code = ch.codePointAt(0) ?? 0;
+        const wide =
+          (code >= 0x2e80 && code <= 0xa4cf) ||
+          (code >= 0xf900 && code <= 0xfaff) ||
+          (code >= 0xff00 && code <= 0xff60);
+        width += wide ? 2 : 1;
+      }
+      expect(width, `超 80 列: ${line}`).toBeLessThanOrEqual(80);
+    }
   });
 
   test('彩色态去色后与无色态逐字节一致', () => {

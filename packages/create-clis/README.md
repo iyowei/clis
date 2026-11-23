@@ -49,7 +49,7 @@ bunx create-clis my-tool --yes
 npm create clis -- my-tool --tier core
 ```
 
-With no flags it asks the five questions one by one (the brackets show the defaults; Enter takes them, and an answer that fails validation prints the reason and asks again). Fields already given, as flags or through the positional directory, are adopted as-is. `--yes` takes every default, zero questions.
+With no flags it asks the five questions one by one (the brackets show the defaults; Enter takes them, and an answer that fails validation prints the reason and asks again). Fields already given, as flags or through the positional directory, are adopted as-is. `--yes` takes every default with zero questions (requires a target project name via `[dir]` or `--name`, plus a valid URL-safe GitHub `--owner` when `git config user.name` is unset or contains spaces / non-ASCII characters).
 
 **Target directory**: a directory that already exists and is non-empty is refused outright (no overwrite, and no `--force` escape hatch; the risk of overwriting outweighs the convenience). An existing but empty directory is fine, and the files land in it.
 
@@ -70,12 +70,12 @@ The remaining flags:
 - **`--tier <tier>`**: `core` / `standard` / `full`, default `standard`;
 - **`--no-git`**: skip `git init` (runs by default);
 - **`--no-install`**: skip dependency install (runs by default);
-- **`--yes`**: all defaults, zero interaction;
+- **`--yes`**: all defaults, zero interaction (requires `[dir]` or `--name`, plus `--owner` if `git config user.name` is unset or contains spaces / non-ASCII characters);
 - **`-V`, `--version`**: print version;
 - **`-h`, `--help`**: print help;
-- **`create-clis update [--check] [--pm <pm>] [--registry <url>] [--force]`**: when installed globally via bun / npm / pnpm / yarn / volta, detect the active package manager and self-update (or inspect the latest version with `--check`).
+- **`create-clis update [--check] [--pm <pm>] [--registry <url>] [--force] [--verbose]`**: when installed globally via bun / npm / pnpm / yarn / volta, detect the active package manager and self-update (or inspect the latest version with `--check`).
 
-Under `npm create`, flags go after `--` (`npm create clis -- --tier core`); npm strips that `--`, which is standard npm behavior the generator does not have to handle. Values are validated the moment they are collected (kebab-case name, command-safe bin name, well-formed scope, owner, and repo URL), failing on the spot with the reason.
+Under `npm create`, flags go after `--` (`npm create clis -- --tier core`), where npm strips that first `--` as standard npm behavior. The generator itself also supports `--` to stop option parsing and treat a following argument as the target directory (escaping directory names starting with `-` or named `update`, e.g. `create-clis -- update`). Values are validated the moment they are collected (kebab-case name, command-safe bin name, well-formed scope, owner, and repo URL), failing on the spot with the reason.
 
 ## Tiers
 

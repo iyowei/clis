@@ -49,7 +49,7 @@ bunx create-clis my-tool --yes
 npm create clis -- my-tool --tier core
 ```
 
-无旗标时逐项提问, 方括号内是默认值、回车采用, 答错会说明原因并重问; 给过旗标 (或位置参数) 的字段直接采用、不再提问; `--yes` 则全部取默认值, 全程零交互。
+无旗标时逐项提问, 方括号内是默认值、回车采用, 答错会说明原因并重问; 给过旗标 (或位置参数) 的字段直接采用、不再提问; `--yes` 则全部取默认值, 全程零交互 (须由 `[dir]` 或 `--name` 提供目标名; 若 `git config user.name` 未配置或含空格 / 非 ASCII 字符, 还须显式提供可解析的合规 GitHub `--owner`)。
 
 **目标目录**: 已存在且非空直接拒绝 (不做覆盖, 也没有 `--force` 逃生口; 覆盖的风险远大于那点便利); 已存在但为空的目录可用, 文件落进该目录。
 
@@ -70,12 +70,12 @@ npm create clis -- my-tool --tier core
 - **`--tier <档>`**: `core` / `standard` / `full` 三选一, 默认 `standard`;
 - **`--no-git`**: 跳过 `git init` (默认执行);
 - **`--no-install`**: 跳过依赖安装 (默认执行);
-- **`--yes`**: 全部取默认值, 零交互;
+- **`--yes`**: 全部取默认值, 零交互 (须提供 `[dir]` 或 `--name`, 且当 `git config user.name` 未配置或含空格 / 非 ASCII 时须传合规 `--owner`);
 - **`-V`, `--version`**: 打印版本号;
 - **`-h`, `--help`**: 打印帮助;
-- **`create-clis update [--check] [--pm <管理器>] [--registry <url>] [--force]`**: 全局安装场景下自动识别安装器 (bun / npm / pnpm / yarn / volta) 并原地自更新 (`--check` 仅检查)。
+- **`create-clis update [--check] [--pm <管理器>] [--registry <url>] [--force] [--verbose]`**: 全局安装场景下自动识别安装器 (bun / npm / pnpm / yarn / volta) 并原地自更新 (`--check` 仅检查)。
 
-经 `npm create` 调用时, 旗标要写在 `--` 后面 (`npm create clis -- --tier core`); 这个 `--` 由 npm 剥离, 是生态的既有行为, 生成器不参与。各变量的取值在收集那一刻就校验 (项目名 kebab-case、bin 名命令行可用、scope / owner / 仓库地址形态), 不合法当场给原因。
+经 `npm create` 调用时, 旗标要写在 `--` 后面 (`npm create clis -- --tier core`), 该首层 `--` 由 npm 按生态约定剥离; 生成器自身也支持 `--` 终止选项解析, 将其后的参数视作目标目录 (用于逃逸以 `-` 开头或名为 `update` 的目录参数, 如 `create-clis -- update`)。各变量的取值在收集那一刻就校验 (项目名 kebab-case、bin 名命令行可用、scope / owner / 仓库地址形态), 不合法当场给原因。
 
 ## 档位
 

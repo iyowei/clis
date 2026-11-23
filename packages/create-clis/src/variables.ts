@@ -107,10 +107,19 @@ export function validateOwner(owner: string): string | null {
   return null;
 }
 
-/** 校验仓库地址 (scheme://host/path 形态) */
+/** 归一化仓库地址: 剥除末尾连续 `/`、末尾 `.git` (不区分大小写) 及残余末尾 `/` */
+export function normalizeRepoUrl(url: string): string {
+  return url
+    .replace(/\/+$/, '')
+    .replace(/\.git$/i, '')
+    .replace(/\/+$/, '');
+}
+
+/** 校验仓库地址 (scheme://host/path 形态, 且归一化剥除尾斜杠与 `.git` 后仍具非空路径段) */
 export function validateRepoUrl(url: string): string | null {
   if (url.length === 0) return '仓库地址不能为空';
-  if (!REPO_URL.test(url)) {
+  const normalized = normalizeRepoUrl(url);
+  if (!REPO_URL.test(url) || !REPO_URL.test(normalized)) {
     return `仓库地址 ${JSON.stringify(url)} 不是合法 URL (需 scheme://host/path, 如 https://github.com/me/my-tool)`;
   }
   return null;
@@ -198,6 +207,7 @@ function valueTokenAt(argv: string[], index: number): string | undefined {
 export function parseFlags(argv: string[]): CliOptions | { error: string } {
   const options: CliOptions = { git: true, install: true, yes: false };
   let afterDashDash = false;
+  let unescapedUpdateDir = false;
 
   for (let index = 0; index < argv.length; index += 1) {
     const token = argv[index]!;
@@ -212,6 +222,9 @@ export function parseFlags(argv: string[]): CliOptions | { error: string } {
         return {
           error: `只接受一个目标目录位置参数, 多余的: ${JSON.stringify(token)}`,
         };
+      }
+      if (!afterDashDash && token === 'update') {
+        unescapedUpdateDir = true;
       }
       options.dir = token;
       continue;
@@ -273,6 +286,13 @@ export function parseFlags(argv: string[]): CliOptions | { error: string } {
     if (value === undefined) return { error: `旗标 ${flag} 缺少值` };
     if (inline === undefined) index += 1;
     options[target] = value;
+  }
+
+  if (unescapedUpdateDir && options.name !== 'update') {
+    return {
+      error:
+        'update 子命令须位于首个参数 (用法: create-clis update [--check] [--pm <pm>] [--registry <url>] [--force] [--verbose]; 若确需创建 ./update 目录请传 --name update 或使用 create-clis -- update)',
+    };
   }
 
   if (options.name === undefined && options.dir !== undefined) {
@@ -337,9 +357,11 @@ export function resolveVocabulary(
   const ownerError = validateOwner(owner);
   if (ownerError !== null) return { error: ownerError };
 
-  const repoUrl = provided(opts.repo) ?? `https://github.com/${owner}/${name}`;
-  const repoError = validateRepoUrl(repoUrl);
+  const rawRepoUrl =
+    provided(opts.repo) ?? `https://github.com/${owner}/${name}`;
+  const repoError = validateRepoUrl(rawRepoUrl);
   if (repoError !== null) return { error: repoError };
+  const repoUrl = normalizeRepoUrl(rawRepoUrl);
 
   return { name, scope, binName, owner, repoUrl };
 }
