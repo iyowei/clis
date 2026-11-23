@@ -1,7 +1,5 @@
-# 包级 bun 配置: 在包目录裸跑 `bun test` (反射式命令) 时, 测试发现面不得捡走 assets 下的
-# 模板资产: 它是生成器按骨架清单产出的「新项目根」, 内含从本仓复制过去的 *.test.ts, 不是
-# 本包的测试 (同款排除见 .gitignore / .prettierignore / .oxlintrc.json 与 tsconfig.json)。
-# 根 bunfig.toml 的排除面是根相对路径 (packages/create-clis/assets/**), 在包目录内不解析;
-# 此处以包相对形态复写同一面, 与 package.json `test` 脚本显式指定 `src scripts` 互为兜底。
+# 包级 bun 配置: 在包目录跑 `bun test` 时, 测试发现面不得捡走 assets 模板生成物、
+# dist 构建产物与 scripts/template-skeletons 未渲染模板骨架 (内含 {{BIN_NAME}} 等占位符)。
+# 根 bunfig.toml 的排除面是根相对路径, 在包目录内不解析; 此处以包相对形态复写同一排除面。
 [test]
-pathIgnorePatterns = ["assets/**"]
+pathIgnorePatterns = ["dist/**", "assets/**", "scripts/template-skeletons/**"]

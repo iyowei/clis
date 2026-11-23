@@ -1,10 +1,6 @@
 /**
- * 模板快照构建链单测: 四类处置的行为 / 三条构建自检 (任一不过抛错) / 真实清单全量对账。
- *
- * 处置与自检用「假仓库 + 小清单 + 小骨架」的临时根夹具钉住行为语义 (逐字节 / 替换 / 重置 /
- * 排除 / 路径泛化); 真实清单用例是骨架缺失、清单漂移与产物面回归的守门人 —— 夹具覆盖不到的
- * 那些条目 (含全部 reset 条目的骨架落位), 逐条对账全在其上跑 (条数以 template-manifest 为准,
- * 不在注释里写死)。
+ * 模板快照构建链单测: 四类处置行为 / 真实清单全量对账 / Turbo 缓存输入与骨架共享配置物理同步守卫。
+ * (假仓库构建自检见同目录 `build-template-infra.test.ts`, 分文件以守 max-lines 门禁。)
  */
 import { afterEach, describe, expect, test } from 'bun:test';
 
@@ -198,140 +194,6 @@ describe('buildTemplate 四类处置', () => {
   });
 });
 
-describe('构建自检: 任一不过即抛错', () => {
-  test('泛化零残留自检: snapshot 内容残留原词汇即抛错', () => {
-    const base = setupFixture();
-    writeFileSync(join(base.repoRoot, 'conf/a.conf'), 'name=demo-app\n');
-    expect(() =>
-      buildTemplate({
-        repoRoot: base.repoRoot,
-        outDir: base.outDir,
-        original: FIXTURE_ORIGINAL,
-        manifest: FIXTURE_MANIFEST,
-        skeletonRoot: base.skeletonRoot,
-      }),
-    ).toThrow(/残留/);
-  });
-
-  test('泛化零残留自检: 骨架内容残留原词汇即抛错', () => {
-    const base = setupFixture();
-    writeFileSync(join(base.skeletonRoot, 'README.md'), '# demo-app\n');
-    expect(() =>
-      buildTemplate({
-        repoRoot: base.repoRoot,
-        outDir: base.outDir,
-        original: FIXTURE_ORIGINAL,
-        manifest: FIXTURE_MANIFEST,
-        skeletonRoot: base.skeletonRoot,
-      }),
-    ).toThrow(/残留/);
-  });
-
-  test('泛化零残留自检先于写盘: 失败时不破坏既有旧产物', () => {
-    const base = setupFixture();
-    const options = {
-      repoRoot: base.repoRoot,
-      outDir: base.outDir,
-      original: FIXTURE_ORIGINAL,
-      manifest: FIXTURE_MANIFEST,
-      skeletonRoot: base.skeletonRoot,
-    };
-    buildTemplate(options);
-    const sentinelPath = join(base.outDir, 'existing-good.txt');
-    writeFileSync(sentinelPath, 'kept-intact\n');
-
-    // 注入残留词触发自检失败
-    writeFileSync(join(base.repoRoot, 'conf/a.conf'), 'name=demo-app\n');
-    expect(() => buildTemplate(options)).toThrow(/残留/);
-    // 既有产物未被删旧覆写
-    expect(existsSync(sentinelPath)).toBe(true);
-    expect(readFileSync(sentinelPath, 'utf8')).toBe('kept-intact\n');
-  });
-
-  test('清单完整性自检: 源文件缺失即抛错', () => {
-    const base = setupFixture();
-    rmSync(join(base.repoRoot, 'demo-app.json'));
-    expect(() =>
-      buildTemplate({
-        repoRoot: base.repoRoot,
-        outDir: base.outDir,
-        original: FIXTURE_ORIGINAL,
-        manifest: FIXTURE_MANIFEST,
-        skeletonRoot: base.skeletonRoot,
-      }),
-    ).toThrow(/demo-app\.json/);
-  });
-
-  test('清单完整性自检: 骨架缺失即抛错', () => {
-    const base = setupFixture();
-    rmSync(join(base.skeletonRoot, 'README.md'));
-    expect(() =>
-      buildTemplate({
-        repoRoot: base.repoRoot,
-        outDir: base.outDir,
-        original: FIXTURE_ORIGINAL,
-        manifest: FIXTURE_MANIFEST,
-        skeletonRoot: base.skeletonRoot,
-      }),
-    ).toThrow(/骨架/);
-  });
-
-  test('清单完整性自检: 产出路径撞车即抛错', () => {
-    const base = setupFixture();
-    // 两条不同的源路径渲染到同一产出路径 (demo-app.json 与字面 {{NAME}}.json 都落 {{NAME}}.json)
-    writeFileSync(join(base.repoRoot, '{{NAME}}.json'), '{}\n');
-    const manifest: readonly ManifestEntry[] = [
-      { path: 'demo-app.json', disposition: 'generalize' },
-      { path: '{{NAME}}.json', disposition: 'generalize' },
-    ];
-    expect(() =>
-      buildTemplate({
-        repoRoot: base.repoRoot,
-        outDir: base.outDir,
-        original: FIXTURE_ORIGINAL,
-        manifest,
-        skeletonRoot: base.skeletonRoot,
-      }),
-    ).toThrow(/重复/);
-  });
-
-  test('禁词与排除包短名边界自检: 拦截 sweep-lab / docs/sweep/ 与排除包短名, 不误伤超集词', () => {
-    const manifestWithExcluded: readonly ManifestEntry[] = [
-      ...FIXTURE_MANIFEST,
-      { path: 'packages/secret/', disposition: 'exclude', note: '私有包' },
-    ];
-    for (const leaked of [
-      'user=sweep-lab\n',
-      'see docs/sweep/guide.md\n',
-      'cli: secret --help\n',
-    ]) {
-      const base = setupFixture();
-      writeFileSync(join(base.repoRoot, 'conf/a.conf'), leaked);
-      expect(() =>
-        buildTemplate({
-          repoRoot: base.repoRoot,
-          outDir: base.outDir,
-          original: FIXTURE_ORIGINAL,
-          manifest: manifestWithExcluded,
-          skeletonRoot: base.skeletonRoot,
-        }),
-      ).toThrow(/泄漏本仓/);
-    }
-    // 边界检查: 合法超集词 (secretive) 不被误伤
-    const clean = setupFixture();
-    writeFileSync(join(clean.repoRoot, 'conf/a.conf'), 'mode=secretive\n');
-    expect(() =>
-      buildTemplate({
-        repoRoot: clean.repoRoot,
-        outDir: clean.outDir,
-        original: FIXTURE_ORIGINAL,
-        manifest: manifestWithExcluded,
-        skeletonRoot: clean.skeletonRoot,
-      }),
-    ).not.toThrow();
-  });
-});
-
 describe('真实清单集成: 全量产出', () => {
   /** 真实清单构建一次 (临时 outDir), 供多条断言复用 */
   const buildReal = (): { outDir: string; files: string[] } => {
@@ -357,14 +219,24 @@ describe('真实清单集成: 全量产出', () => {
       'packages/{{NAME}}/package.json',
       'packages/{{NAME}}-cli/package.json',
       'packages/{{NAME}}-cli/bin/{{BIN_NAME}}',
+      'packages/{{NAME}}-cli/bin/{{BIN_NAME}}.cmd',
       'packages/{{NAME}}-cli/bin/{{BIN_NAME}}.mjs',
+      'packages/{{NAME}}-cli/bin/{{BIN_NAME}}.d.mts',
       'packages/{{NAME}}/src/index.ts',
+      'packages/{{NAME}}/docs/protocol/conformance/corpus.schema.json',
       'packages/{{NAME}}/scripts/verify-release.ts',
       'packages/{{NAME}}-cli/src/cli.ts',
+      'packages/{{NAME}}-cli/src/launcher.runtime-resolution.test.ts',
     ]) {
       expect(files, `${rel} 未产出`).toContain(rel);
       expect(existsSync(join(outDir, rel)), `${rel} 不在磁盘上`).toBe(true);
     }
+    const cmdTemplate = readFileSync(
+      join(outDir, 'packages/{{NAME}}-cli/bin/{{BIN_NAME}}.cmd'),
+      'utf8',
+    );
+    expect(cmdTemplate).toContain('bin\\{{BIN_NAME}}.mjs');
+    expect(cmdTemplate).not.toContain('sweep');
     // 路径泛化: 原包名不出现在任何产出路径里
     for (const file of files) {
       expect(containsResidual(file, ORIGINAL), `${file} 路径含原词汇`).toBe(
@@ -385,7 +257,7 @@ describe('真实清单集成: 全量产出', () => {
     for (const sweepInternal of ['runtime.d.ts', 'scan-native', 'size-du']) {
       expect(apiBuild).not.toContain(sweepInternal);
     }
-    // ADR 0019: 示例包不预置空壳 docs/README.md, 包根 README 不留未发包相对链接
+    // 示例包不预置空壳 docs/README.md, 包根 README 不留未发包相对链接
     expect(files).not.toContain('packages/{{NAME}}/docs/README.md');
     expect(files).not.toContain('packages/{{NAME}}-cli/docs/README.md');
     for (const readme of [
@@ -405,11 +277,21 @@ describe('真实清单集成: 全量产出', () => {
         join(outDir, 'packages/{{NAME}}/tsconfig.build.json'),
         'utf8',
       ),
+    ) as Record<string, unknown>;
+    expect(apiTsBuild).toMatchObject({
+      compilerOptions: { noEmitOnError: true, paths: {} },
+      exclude: ['src/**/*.test.ts', 'src/**/*smoke.ts'],
+    });
+
+    const rootTsConfig = JSON.parse(
+      readFileSync(join(outDir, 'tsconfig.json'), 'utf8'),
     ) as { exclude: string[] };
-    expect(apiTsBuild.exclude).toEqual([
-      'src/**/*.test.ts',
-      'src/**/*smoke.ts',
-    ]);
+    expect(rootTsConfig.exclude).toContain('**/dist');
+    expect(rootTsConfig.exclude).toContain('scripts/transcription/mutants');
+    const gitignoreCarrier = readFileSync(join(outDir, '_gitignore'), 'utf8');
+    expect(gitignoreCarrier).toContain('scripts/transcription/mutants/gen-*/');
+    expect(gitignoreCarrier).toContain('.vscode/*');
+    expect(gitignoreCarrier).toContain('!.vscode/settings.json');
   });
 
   test('npm 面包机制剔除的真实名以载体名落位 (TD-05 的载体面)', () => {
@@ -452,6 +334,40 @@ describe('真实清单集成: 全量产出', () => {
     }
   });
 
+  test('清单完整性: 非 exclude 条目逐条落位 (真实清单全量对账)', () => {
+    const { files } = buildReal();
+    for (const entry of TEMPLATE_MANIFEST) {
+      if (entry.disposition === 'exclude') continue;
+      const expected = toCarrierPath(
+        renderTemplate(entry.path, TEMPLATE_VOCABULARY, ORIGINAL),
+      );
+      const hit = entry.path.endsWith('/')
+        ? files.some((file) => file.startsWith(expected))
+        : files.includes(expected);
+      expect(hit, `${entry.path} (${entry.disposition}) 未产出`).toBe(true);
+    }
+  });
+});
+
+/** 将 Turbo inputs 中的 POSIX glob 转为全路径正则 */
+function turboGlobToRegExp(pattern: string): RegExp {
+  const placeholder = pattern
+    .replaceAll('/**/', '\0DIR\0')
+    .replace(/\/\*\*$/, '\0TAIL\0')
+    .replace(/^\*\*\//, '\0HEAD\0')
+    .replaceAll('*', '\0STAR\0')
+    .replaceAll('?', '\0QMARK\0');
+  const escaped = placeholder
+    .replace(/[.+^${}()|[\]\\]/g, '\\$&')
+    .replaceAll('\0DIR\0', '(?:/.+/|/)')
+    .replaceAll('\0TAIL\0', '/.+')
+    .replaceAll('\0HEAD\0', '(?:.+/)?')
+    .replaceAll('\0STAR\0', '[^/]*')
+    .replaceAll('\0QMARK\0', '[^/]');
+  return new RegExp(`^${escaped}$`);
+}
+
+describe('骨架与 Turbo 缓存物理对账守卫', () => {
   test('骨架同步守卫: template-skeletons/package.json 与根 package.json 工具链版本逐项一致', () => {
     const rootPkg = JSON.parse(
       readFileSync(join(REPO_ROOT, 'package.json'), 'utf8'),
@@ -479,8 +395,6 @@ describe('真实清单集成: 全量产出', () => {
     expect(skeletonPkg.packageManager).toBe(rootPkg.packageManager);
     expect(skeletonPkg.engines).toEqual(rootPkg.engines);
     expect(skeletonPkg.devDependencies).toEqual(rootPkg.devDependencies);
-    // 根仓与模板骨架改用 Bun 原生 fmt, 不再携带 prettier devDependencies;
-    // create-clis 保留运行期精确锁定的 prettier 与排序插件供纯 Node 场景生成收口
     expect(rootPkg.devDependencies.prettier).toBeUndefined();
     expect(
       rootPkg.devDependencies['@trivago/prettier-plugin-sort-imports'],
@@ -491,18 +405,100 @@ describe('真实清单集成: 全量产出', () => {
     ).toMatch(/^\d+\.\d+\.\d+$/);
   });
 
-  test('清单完整性: 非 exclude 条目逐条落位 (真实清单全量对账)', () => {
-    const { files } = buildReal();
-    // 逐条按同一替换面 + 同一落包改名推导期望产出路径: 文件条目须精确命中, 目录条目须有后代命中
-    for (const entry of TEMPLATE_MANIFEST) {
-      if (entry.disposition === 'exclude') continue;
-      const expected = toCarrierPath(
-        renderTemplate(entry.path, TEMPLATE_VOCABULARY, ORIGINAL),
+  test('Turbo 缓存输入守卫: snapshot / generalize 跨目录源路径均纳入 create-clis turbo.json inputs', () => {
+    const turboCfg = JSON.parse(
+      readFileSync(join(REPO_ROOT, 'packages/create-clis/turbo.json'), 'utf8'),
+    ) as { tasks: { build: { inputs: string[] } } };
+    const inputs = turboCfg.tasks.build.inputs;
+    expect(inputs).toContain('$TURBO_DEFAULT$');
+    expect(inputs).toContain('$TURBO_ROOT$/tsconfig.json');
+
+    const isCoveredByRootInputs = (relPath: string): boolean => {
+      let matched = false;
+      for (const rule of inputs) {
+        if (rule.startsWith('$TURBO_ROOT$/')) {
+          if (
+            turboGlobToRegExp(rule.slice('$TURBO_ROOT$/'.length)).test(relPath)
+          ) {
+            matched = true;
+          }
+        } else if (rule.startsWith('!$TURBO_ROOT$/')) {
+          if (
+            turboGlobToRegExp(rule.slice('!$TURBO_ROOT$/'.length)).test(relPath)
+          ) {
+            matched = false;
+          }
+        }
+      }
+      return matched;
+    };
+
+    expect(isCoveredByRootInputs('scripts/transcription/mutants/m1/x.ts')).toBe(
+      false,
+    );
+    expect(isCoveredByRootInputs('UNDECLARED_ROOT_FILE.txt')).toBe(false);
+
+    const uncovered = TEMPLATE_MANIFEST.filter(
+      (entry) =>
+        (entry.disposition === 'snapshot' ||
+          entry.disposition === 'generalize') &&
+        !entry.path.startsWith('packages/create-clis/') &&
+        !isCoveredByRootInputs(entry.path),
+    ).map((entry) => `${entry.path} (${entry.disposition})`);
+    expect(uncovered, '跨目录模板源文件漏配 $TURBO_ROOT$ inputs').toEqual([]);
+  });
+
+  test('骨架共享配置同步守卫: template-skeletons 的 .oxlintrc.json 与根 package.json 通用 scripts 完全对齐', () => {
+    const rootOxlint = JSON.parse(
+      readFileSync(join(REPO_ROOT, '.oxlintrc.json'), 'utf8'),
+    ) as Record<string, unknown>;
+    const skeletonOxlint = JSON.parse(
+      readFileSync(
+        join(
+          REPO_ROOT,
+          'packages/create-clis/scripts/template-skeletons/.oxlintrc.json',
+        ),
+        'utf8',
+      ),
+    ) as Record<string, unknown>;
+    for (const key of ['plugins', 'categories', 'rules', 'env', 'globals']) {
+      expect(skeletonOxlint[key], `.oxlintrc.json ${key} 漂移`).toEqual(
+        rootOxlint[key],
       );
-      const hit = entry.path.endsWith('/')
-        ? files.some((file) => file.startsWith(expected))
-        : files.includes(expected);
-      expect(hit, `${entry.path} (${entry.disposition}) 未产出`).toBe(true);
+    }
+
+    const rootScripts = (
+      JSON.parse(readFileSync(join(REPO_ROOT, 'package.json'), 'utf8')) as {
+        scripts: Record<string, string>;
+      }
+    ).scripts;
+    const skeletonScripts = (
+      JSON.parse(
+        readFileSync(
+          join(
+            REPO_ROOT,
+            'packages/create-clis/scripts/template-skeletons/package.json',
+          ),
+          'utf8',
+        ),
+      ) as { scripts: Record<string, string> }
+    ).scripts;
+    for (const key of [
+      'safe-install',
+      'prepare',
+      'build',
+      'lint',
+      'lint:fix',
+      'format',
+      'format-check',
+      'conformance',
+      'fuzz',
+      'fuzz:diff',
+      'ci',
+    ]) {
+      expect(skeletonScripts[key], `package.json scripts.${key} 漂移`).toBe(
+        rootScripts[key],
+      );
     }
   });
 });

@@ -19,6 +19,7 @@
         "$TURBO_ROOT$/.vscode/tasks.json",
         "$TURBO_ROOT$/CODE_OF_CONDUCT.md",
         "$TURBO_ROOT$/LICENSE",
+        "$TURBO_ROOT$/tsconfig.json",
         "$TURBO_ROOT$/docs/transcription/**",
         "$TURBO_ROOT$/lefthook.yml",
         "$TURBO_ROOT$/packages/sweep/LICENSE",
