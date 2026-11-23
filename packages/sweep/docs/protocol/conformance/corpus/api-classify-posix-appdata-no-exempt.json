@@ -1,0 +1,29 @@
+{
+  "id": "api-classify-posix-appdata-no-exempt",
+  "kind": "api",
+  "specRefs": ["BC-37"],
+  "fixture": {},
+  "steps": [
+    {
+      "call": {
+        "export": "classifyTarget",
+        "args": [
+          "/Users/Alice/AppData/Local/Temp/work/node_modules",
+          {
+            "style": {
+              "$probe": "pathops.posix"
+            },
+            "home": "/Users/Alice"
+          }
+        ]
+      }
+    }
+  ],
+  "expect": {
+    "result": {
+      "subset": {
+        "kind": "suspect-install-tree"
+      }
+    }
+  }
+}

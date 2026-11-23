@@ -177,10 +177,13 @@ export function resolveLegacyConfigPath(
   return platformConfigPath('sweep-node-modules', platform, home, env);
 }
 
+/** 优先 realpathSync.native 展开 Windows 8.3 短路径 (如 RUNNER~1), 与异步 fs/promises.realpath 保持同一坐标系 */
+const realpathNative = realpathSync.native ?? realpathSync;
+
 /** 计算配置省略 `roots` 时的默认根: `[realpath(homedir)]` (不可解析时回退原拼写) */
 export function resolveDefaultRoot(home: string = homedir()): string {
   try {
-    return realpathSync(home);
+    return realpathNative(home);
   } catch {
     return home;
   }

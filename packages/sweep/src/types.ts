@@ -48,7 +48,9 @@ export interface ScanOptions {
   rules?: readonly CustomRule[];
   /** 家目录 (用于拦截家目录本体 ~/.gradle 等全局缓存); 缺省 os.homedir(), null 关闭 */
   home?: string | null;
-  /** 用户是否显式指定了 exclude 名单 (用于区分 .gradle 默认护栏与显式排除) */
+  /** 路径比较风味 (缺省随当前平台; 供跨平台行为与大小写折叠测试注入) */
+  style?: PathStyle;
+  /** 用户是否显式指定了 exclude 名单 (缺省 false; 置 true 且 exclude 含 .gradle 时阻断项目级 .gradle 放行) */
   excludeExplicit?: boolean;
   /** `olderThanDays` 判定的当前时间戳 (毫秒, 缺省 Date.now(), 供测试注入) */
   nowMs?: number;
@@ -68,8 +70,8 @@ export interface ScanHit {
   target: string;
   /**
    * 所属扫描根 (原拼写)。
-   * 取值规则: 各根串行推进, 命中以 realpath 去重、先到者胜,
-   * 故归属取输入顺序中首个遍历到该命中的根, 结果确定可复现。
+   * 取值规则: 互不嵌套的独立根共享并发池推进、按 realpath 同步判重 (先到者胜, 独立根物理无重叠);
+   * 仅存在父子嵌套关系的多根退回按输入顺序串行推进, 确保重叠目标恒归属首个遍历到的根。
    */
   root: string;
   /** 目标实体形态 ('dir' | 'file', 缺省 'dir') */
@@ -87,10 +89,10 @@ export interface ScanResult {
   warnings: SweepWarning[];
   /**
    * 排除名单命中统计 (名称 → 命中次数); 未命中的名称也在列 (hits === 0)。
-   * 性质: 破坏性动作的「保命名单」反馈通道 —— 名字打错/大小写不符时不得静默。
+   * 性质: 破坏性动作的「保命名单」反馈通道: 名字打错/大小写不符时不得静默。
    * 例外: 内置默认名单项零命中不告警 (名单依平台与用户环境而异, 不是可修正的拼写错误;
    * 见 packages/sweep/docs/protocol/behavior-contract.md BC-09), 用户显式写出同名项时同样静默 (该项已由默认名单覆盖)。
-   * 必填的理由: 落盘形态不得随调用参数漂移 —— 月级 JSONL 序列里键时有时无,
+   * 必填的理由: 落盘形态不得随调用参数漂移; 月级 JSONL 序列里键时有时无,
    * 下游 schema 校验器无从分辨「没配名单」与「版本不支持该字段」。
    */
   excludeMatches: NameMatch[];
@@ -256,7 +258,7 @@ export interface SweepOptions {
   presets?: PresetsMap;
   /** 自定义清理规则列表; 缺省 [] */
   rules?: readonly CustomRule[];
-  /** 用户是否显式指定了 exclude (区分默认护栏与用户显式排除 .gradle) */
+  /** 用户是否显式指定了 exclude 名单 (缺省 false, 与 ScanOptions.excludeExplicit 同源) */
   excludeExplicit?: boolean;
   /** `olderThanDays` 判定时间基准 (毫秒, 测试注入用) */
   nowMs?: number;
@@ -372,7 +374,7 @@ export interface SweepPlan {
   include: string[];
   /** 本计划所用的安全策略 */
   policy: SweepPolicy;
-  /** 本次体积口径 (存在条目时给出; 全未测到时可与逐条 entry.basis 不同值; 无条目时缺省) */
+  /** 存在扫描命中条目 (`entries.length > 0`) 时给出本次请求的体积口径; 单条未测出体积时其 `entry.basis` 为 `undefined`; 无任何条目时缺省 */
   basis?: SizeBasis;
   /** 逐目标领域条目: 保扫描的 target 升序; 测量时已不存在的目标 (BC-13) 不产生条目 */
   entries: SweepEntry[];

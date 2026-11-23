@@ -55,11 +55,39 @@ afterEach(async () => {
 });
 
 describe('migrate 工具与无损转换', () => {
-  test('备份时间戳格式与路径拼装', () => {
+  test('备份时间戳格式与路径拼装 (含自定义配置文件名按源基名派生)', () => {
     expect(formatBackupTimestamp(FIXED_DATE)).toBe('20261120_090807');
     expect(
       buildMigrationBackupPath('/home/u/.config/sweep/config.json', FIXED_DATE),
     ).toBe('/home/u/.config/sweep/config.json.20261120_090807.modified');
+    expect(
+      buildMigrationBackupPath('/etc/sweep/my-sweep.json', FIXED_DATE),
+    ).toBe('/etc/sweep/my-sweep.json.20261120_090807.modified');
+    expect(
+      buildMigrationBackupPath(
+        'C:\\Users\\u\\AppData\\Roaming\\sweep\\config.json',
+        FIXED_DATE,
+      ),
+    ).toBe(
+      'C:\\Users\\u\\AppData\\Roaming\\sweep\\config.json.20261120_090807.modified',
+    );
+    expect(
+      buildMigrationBackupPath('D:\\cfg\\custom-v1.json', FIXED_DATE),
+    ).toBe('D:\\cfg\\custom-v1.json.20261120_090807.modified');
+    expect(
+      buildMigrationBackupPath(
+        'C:/Users/u/AppData/Roaming/sweep/config.json',
+        FIXED_DATE,
+      ),
+    ).toBe(
+      'C:/Users/u/AppData/Roaming/sweep/config.json.20261120_090807.modified',
+    );
+    expect(buildMigrationBackupPath('my-sweep.json', FIXED_DATE)).toBe(
+      'my-sweep.json.20261120_090807.modified',
+    );
+    expect(buildMigrationBackupPath('C:my-sweep.json', FIXED_DATE)).toBe(
+      'C:my-sweep.json.20261120_090807.modified',
+    );
     expect(NEW_PRESET_HINTS).toEqual([
       'rust',
       'python',
@@ -103,23 +131,24 @@ describe('migrate 工具与无损转换', () => {
 describe('migrate 路径迁移与就地升版 (红线 3)', () => {
   test('旧路径 sweep-node-modules/config.json → sweep/config.json 检测、写前备份与严格仅激活 node', async () => {
     const home = await makeTempHome();
-    const legacyPath = join(
-      home,
-      '.config',
-      'sweep-node-modules',
-      'config.json',
-    );
+    const isWin = process.platform === 'win32';
+    const appData = join(home, 'AppData', 'Roaming');
+    const env = isWin ? { APPDATA: appData } : {};
+    const legacyPath = isWin
+      ? join(appData, 'sweep-node-modules', 'config.json')
+      : join(home, '.config', 'sweep-node-modules', 'config.json');
+    const expectedTargetPath = isWin
+      ? join(appData, 'sweep', 'config.json')
+      : join(home, '.config', 'sweep', 'config.json');
     const rawV1 = `${JSON.stringify({ roots: [home], exclude: ['vendor'] }, null, 2)}\n`;
     await writeText(legacyPath, rawV1);
 
-    const env = {};
     const resolved = resolveConfigPath({
-      platform: 'darwin',
       homedir: home,
       env,
     });
+    expect(resolved.path).toBe(expectedTargetPath);
     const detected = await detectMigration(resolved, {
-      platform: 'darwin',
       homedir: home,
       env,
     });
@@ -171,19 +200,23 @@ describe('migrate 路径迁移与就地升版 (红线 3)', () => {
       { version: 1, roots: ['/work/b'], include: ['pkg'] },
     ]) {
       const home = await makeTempHome();
-      const targetPath = join(home, '.config', 'sweep', 'config.json');
+      const isWin = process.platform === 'win32';
+      const appData = join(home, 'AppData', 'Roaming');
+      const env = isWin ? { APPDATA: appData } : {};
+      const targetPath = isWin
+        ? join(appData, 'sweep', 'config.json')
+        : join(home, '.config', 'sweep', 'config.json');
       const rawV1 = `${JSON.stringify(payload, null, 2)}\n`;
       await writeText(targetPath, rawV1);
 
       const resolved = resolveConfigPath({
-        platform: 'darwin',
         homedir: home,
-        env: {},
+        env,
       });
+      expect(resolved.path).toBe(targetPath);
       const detected = await detectMigration(resolved, {
-        platform: 'darwin',
         homedir: home,
-        env: {},
+        env,
       });
       expect(detected.state).toBe('migratable');
       if (detected.state !== 'migratable') throw new Error('应可就地升版');
@@ -411,5 +444,28 @@ describe('migrate 安全中止与非无损边界', () => {
       env: {},
     });
     expect(legacyArray.state).toBe('unsupported');
+  });
+
+  test('自定义配置文件名 (如 my-sweep.json) 迁移落盘时生成同名 <basename>.<stamp>.modified 备份', async () => {
+    const home = await makeTempHome();
+    const customPath = join(home, 'custom', 'my-sweep.json');
+    const rawV1 = '{"roots":["/work/custom"]}\n';
+    await writeText(customPath, rawV1);
+
+    const detected = await detectMigration(
+      { path: customPath, source: 'flag' },
+      { homedir: home },
+    );
+    expect(detected.state).toBe('migratable');
+    if (detected.state !== 'migratable') throw new Error('应检测到可迁移');
+
+    const applied = await applyMigration(detected, { now: () => FIXED_DATE });
+    const expectedBackup = join(
+      home,
+      'custom',
+      'my-sweep.json.20261120_090807.modified',
+    );
+    expect(applied.backupPath).toBe(expectedBackup);
+    expect(await readFile(expectedBackup, 'utf8')).toBe(rawV1);
   });
 });

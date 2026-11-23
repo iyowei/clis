@@ -130,6 +130,7 @@ async function executePlan(
       presets: resolved.presets,
       rules: resolved.rules,
       home: resolved.home,
+      style: resolved.style,
       excludeExplicit: resolved.excludeExplicit,
       nowMs: hooks.nowMs,
       signal,

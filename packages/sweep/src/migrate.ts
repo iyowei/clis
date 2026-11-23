@@ -3,12 +3,12 @@
  * 设计见 packages/sweep/docs/adrs/0022-config-v2-presets-and-rules.md 与 0024-cli-init-migrate-and-summary-display.md。
  * 上下游: 依赖 config / config-validate / guard (`firstSymlinkOnTarget`) / errors; 供 sweep-cli 的 migrate-cli 调度。
  * 核心红线:
- * 1. 写盘前必检目标与备份路径符号链接锚点 (BC-40), 并在源目录以 `wx` 创建 `config.json.YYYYMMDD_HHMMSS.modified` 备份 (失败即中止);
+ * 1. 写盘前必检目标与备份路径符号链接锚点 (BC-40), 并在源目录以 `wx` 创建 `<源文件名>.YYYYMMDD_HHMMSS.modified` 备份 (失败即中止);
  * 2. 100% 无损等价升版: v1 仅映射为 `presets: { node: {} }`, 严禁替用户悄悄激活其余 5 个预设;
  * 3. 含未知字段 / 未来版本 / 结构损坏时一律返回 `state: 'unsupported'`, 绝不静默丢字段 (由 CLI 在非 TTY 下拒跑)。
  */
 import { lstat, mkdir, readFile, writeFile } from 'node:fs/promises';
-import { dirname, join } from 'node:path';
+import { dirname, posix, win32 } from 'node:path';
 
 import type { PresetName } from './codes.ts';
 import { parseV2ConfigObject } from './config-validate.ts';
@@ -87,15 +87,31 @@ export function formatBackupTimestamp(date: Date = new Date()): string {
   );
 }
 
-/** 计算写前备份路径: 在源配置目录创建 `config.json.YYYYMMDD_HHMMSS.modified` */
+/** 提取跨平台配置文件基名 (识别反斜杠与盘符前缀, 空名回退 config.json) */
+function extractConfigBasename(filePath: string): string {
+  const raw =
+    filePath.includes('\\') || /^[A-Za-z]:/.test(filePath)
+      ? win32.basename(filePath)
+      : posix.basename(filePath);
+  return raw || 'config.json';
+}
+
+/** 计算写前备份路径: 在源配置目录创建 `<源文件名>.YYYYMMDD_HHMMSS.modified` (原样保留源路径分隔符) */
 export function buildMigrationBackupPath(
   sourcePath: string,
   date: Date = new Date(),
 ): string {
-  return join(
-    dirname(sourcePath),
-    `config.json.${formatBackupTimestamp(date)}.modified`,
+  const baseName = extractConfigBasename(sourcePath);
+  const fileName = `${baseName}.${formatBackupTimestamp(date)}.modified`;
+  const lastSep = Math.max(
+    sourcePath.lastIndexOf('/'),
+    sourcePath.lastIndexOf('\\'),
   );
+  if (lastSep === -1) {
+    const drivePrefix = /^[A-Za-z]:/.exec(sourcePath)?.[0] ?? '';
+    return `${drivePrefix}${fileName}`;
+  }
+  return `${sourcePath.slice(0, lastSep + 1)}${fileName}`;
 }
 
 function isPlainRecord(value: unknown): value is Record<string, unknown> {

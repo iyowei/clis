@@ -1,0 +1,29 @@
+{
+  "id": "api-classify-win32-temp-exempt",
+  "kind": "api",
+  "specRefs": ["BC-37"],
+  "fixture": {},
+  "steps": [
+    {
+      "call": {
+        "export": "classifyTarget",
+        "args": [
+          "C:\\Users\\Alice\\AppData\\Local\\Temp\\work\\node_modules",
+          {
+            "style": {
+              "$probe": "pathops.win32"
+            },
+            "home": "C:\\Users\\Alice"
+          }
+        ]
+      }
+    }
+  ],
+  "expect": {
+    "result": {
+      "exact": {
+        "kind": "project"
+      }
+    }
+  }
+}

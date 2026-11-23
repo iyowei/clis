@@ -262,4 +262,50 @@ describe('classify: 平台风格', () => {
       }),
     ).toBeNull();
   });
+
+  test('win32: AppData\\Local\\Temp 系统临时目录不误判为 AppData 安装树, 内部安装树特征照常命中', () => {
+    const winHome = 'C:\\Users\\runneradmin';
+    const winTemp = `${winHome}\\AppData\\Local\\Temp`;
+    expect(
+      suspectReason(`${winTemp}\\sweep-lab\\app\\node_modules`, {
+        style: WIN32_STYLE,
+        home: winHome,
+      }),
+    ).toBeNull();
+    expect(
+      suspectReason(`${winTemp}\\sweep-lab\\pkg\\lib\\node_modules`, {
+        style: WIN32_STYLE,
+        home: winHome,
+      }),
+    ).toBe('父目录为 lib, 形如版本管理器的 node 安装树');
+    expect(
+      suspectReason(`${winTemp}\\_npx\\abc123\\node_modules`, {
+        style: WIN32_STYLE,
+        home: winHome,
+      }),
+    ).toBe('位于 _npx 安装树目录');
+    // 非 Temp 的 AppData\Local 与 AppData\Roaming 仍严格判为 AppData 安装树目录
+    expect(
+      suspectReason(
+        `${winHome}\\AppData\\Local\\pnpm\\global\\5\\node_modules`,
+        {
+          style: WIN32_STYLE,
+          home: winHome,
+        },
+      ),
+    ).toBe('位于 AppData 安装树目录');
+    expect(
+      suspectReason(`${winHome}\\AppData\\Roaming\\npm\\node_modules`, {
+        style: WIN32_STYLE,
+        home: winHome,
+      }),
+    ).toBe('位于 AppData 安装树目录');
+    // posix 下无此系统临时目录约定, AppData/Local/Temp 仍保守拦截为 AppData 安装树目录
+    expect(
+      suspectReason(`${HOME}/AppData/Local/Temp/app/node_modules`, {
+        style: POSIX_STYLE,
+        home: HOME,
+      }),
+    ).toBe('位于 AppData 安装树目录');
+  });
 });

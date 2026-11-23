@@ -45,7 +45,7 @@ export interface ClassifyOptions {
 
 /**
  * 判定 `node_modules` 目标类别 (逐条短路, 证据强度递减):
- * 1. `node_modules` 之上任一级命中安装树容器名 (`DEFAULT_EXCLUDE` + `extensions` + `_npx`, 小写折叠) -> `suspect-install-tree`;
+ * 1. `node_modules` 之上任一级命中安装树容器名 (`DEFAULT_EXCLUDE` + `extensions` + `_npx`, 小写折叠; Windows 系统临时目录三元组 `AppData/Local/Temp` 除外) -> `suspect-install-tree`;
  * 2. 直接父目录名为 `lib` (小写折叠, 兜住未收录版本管理器的 `<ver>/lib/node_modules`) -> `suspect-install-tree`;
  * 3. 位于家目录下的隐藏目录内 (相对 `home` 首段以 `.` 起头且非上溯/跨盘) -> `suspect-install-tree`;
  * 4. 其余 -> `project`。
@@ -79,8 +79,20 @@ export function classifyTarget(
   // 末段恒为 node_modules (调用方契约), 判定只看它之前的级别
   const ancestors = parts.slice(0, -1);
 
-  for (const segment of ancestors) {
-    if (INSTALL_TREE_SEGMENTS.has(segment.toLowerCase()))
+  for (let i = 0; i < ancestors.length; i += 1) {
+    const segment = ancestors[i]!;
+    const lower = segment.toLowerCase();
+    // win32 下系统临时目录 (%TEMP% = <Profile>\AppData\Local\Temp) 等价于 POSIX /tmp,
+    // 不因外层 AppData 段将临时工作区项目误判为应用安装树; 其内部子段 (_npx / .npm / lib 等) 仍照常逐级判定
+    if (
+      style.name === 'win32' &&
+      lower === 'appdata' &&
+      ancestors[i + 1]?.toLowerCase() === 'local' &&
+      ancestors[i + 2]?.toLowerCase() === 'temp'
+    ) {
+      continue;
+    }
+    if (INSTALL_TREE_SEGMENTS.has(lower))
       return {
         kind: 'suspect-install-tree',
         reason: `位于 ${segment} 安装树目录`,
