@@ -113,7 +113,7 @@ console.log(
   - `include?` `string[]`: 白名单目录名; 缺省 `[]` (不过滤); 与 `exclude` 重叠时 `exclude` 优先。
   - `presets?` `PresetsMap`: 激活的内置预设表 (键存在即激活; 与 `rules` 同时省略时缺省 `{ node: {} }`)。
   - `rules?` `readonly CustomRule[]`: 自定义清理规则; 缺省 `[]`。
-  - `excludeExplicit?` `boolean`: 区分默认护栏与用户显式排除 (用于 `java` 预设下项目级 `.gradle` 判定)。
+  - `excludeExplicit?` `boolean`: 区分默认护栏与用户显式排除 (缺省 `false`, 与 `ScanOptions.excludeExplicit` 同源; 用于 `java` 预设下项目级 `.gradle` 判定)。
   - `nowMs?` `number`: `olderThanDays` 判定时间基准 (毫秒, 缺省 `Date.now()`, 便于测试注入)。
   - `home?` `string | null`: 家目录 (用于 home 本体防护、`~/.gradle` 保护与隐藏目录形态判定; 缺省 `os.homedir()`, `null` 关闭)。
   - `style?` `PathStyle`: `POSIX_STYLE` / `WIN32_STYLE`; 缺省 `nativeStyle()`。
@@ -199,7 +199,7 @@ console.log(
 
 ### 删除与三端零依赖回收站 ([ADR 0023](https://github.com/iyowei/clis/blob/main/packages/sweep/docs/adrs/0023-zero-dep-cross-platform-trash.md))
 
-- `moveToTrash(target, deps?): Promise<TrashOutcome>`: 零第三方依赖的三端回收站通道 —— macOS (`/usr/bin/trash -s`, 缺失时经 `on run argv` 降级 `/usr/bin/osascript`)、Linux (纯 TS Freedesktop XDG Trash 1.0, `wx` 独占占位 `.trashinfo` + `.2`/`.3` 避让 + 原子 `rename`)、Windows (`>= 260` 字符前置拦截 + 只读剥离 + 环境变量传参调用 PowerShell `Microsoft.VisualBasic.FileIO.FileSystem`)。**失败绝不降级 `fs.rm`**, 返回 `{ ok: false, code: 'TRASH_FAILED', ... }` 且磁盘原文件完好不动。
+- `moveToTrash(target, deps?): Promise<TrashOutcome>`: 零第三方依赖的三端回收站通道: macOS (`/usr/bin/trash -s`, 缺失时经 `on run argv` 降级 `/usr/bin/osascript`)、Linux (纯 TS Freedesktop XDG Trash 1.0, `wx` 独占占位 `.trashinfo` + `.2`/`.3` 避让 + 原子 `rename`)、Windows (`>= 260` 字符前置拦截 + 只读剥离 + 环境变量传参调用 PowerShell `Microsoft.VisualBasic.FileIO.FileSystem`)。**失败绝不降级 `fs.rm`**, 返回 `{ ok: false, code: 'TRASH_FAILED', ... }` 且磁盘原文件完好不动。
 - 回收站常量与辅助: `MACOS_TRASH_BIN`、`MACOS_OSASCRIPT_BIN`、`WIN32_TRASH_MAX_PATH`、`resolveXdgTrashDir`、`encodeXdgTrashPath`、`formatTrashDeletionDate`、`resolveWindowsPowerShell`。
 - `removeTargets(targets, options): Promise<RemovalResult>`: 4 路有界并发执行器, 逐条执行前先复核信任根完整祖先链与目标父链 `lstat`; 支持 `actions?: ReadonlyMap<string, CleanupAction>`、`allowGeneralTargets`、`trashDeps`, 返回 `{ removed, trashed, missing, failed, aborted? }`。
 - `toTrustRoots(roots)` 与 `removeBatch(targets, options): Promise<BatchOutcome>`: 推荐写侧原语, 一次串联 `validateTargets` + 整批拒绝 + `toTrustRoots` + `removeTargets`。
@@ -223,7 +223,7 @@ console.log(
 
 **通道分界**: 能按目标逐条列出的域结果走返回值; 无法开始或无法继续的异常 (参数错误、配置损坏/待迁移/迁移失败、取消) 抛 `SweepError`。
 
-- `SweepError<Code>`: `{ name: 'SweepError', code, message, details? }` — 包内导出的唯一类。
+- `SweepError<Code>`: `{ name: 'SweepError', code, message, details? }` (包内导出的唯一类)。
 - `isSweepError(value)` 与 `isSweepErrorCode(value, code)`: 跨实例安全守卫, 按 `code` 精确收窄 `details`。
 - `SweepErrorCode`: `CONFIG_READ_FAILED` · `CONFIG_CORRUPT_JSON` · `CONFIG_CORRUPT_SHAPE` · `CONFIG_ABSENT` · `CONFIG_NEEDS_MIGRATION` · `CONFIG_MIGRATION_FAILED` · `INVALID_ARGUMENT` · `CANCELLED`。
 

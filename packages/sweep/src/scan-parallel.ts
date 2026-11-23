@@ -4,7 +4,7 @@
  * 并发与安全红线:
  * - 原生 `node:fs` 回调 `readdir(..., { withFileTypes: true })` 32 路有界并发池 (`CONCURRENCY = 32`) + 显式 LIFO 回压栈 (零深递归);
  * - 独立根共享同一并发池, 存在嵌套关系的根自动串行以严守归属序; 符号链接既不跟进也不命中, `.git` 固定跳过;
- * - 命中目录目标后剪枝不再下钻; 普通候选目录锚定未通过时回压栈继续下钻, 绕过默认护栏 (如项目 `.gradle`) 者未命中严禁回压下钻。
+ * - 命中目录目标后剪枝不再下钻; 普通候选目录锚定未通过时回压栈继续下钻, 任何未命中的 `.gradle` 目录及绕过默认护栏者严禁回压下钻。
  */
 import { type Dirent, readdir } from 'node:fs';
 import { realpath } from 'node:fs/promises';
@@ -22,6 +22,7 @@ import {
   evaluateTargetMatch,
   isPotentialTarget,
   mergeCleanupActions,
+  shouldPruneUnmatchedDir,
 } from './scan-match.ts';
 import { hasNestedRoots, precheckRoots } from './scan-roots.ts';
 import type {
@@ -58,6 +59,8 @@ interface PendingCandidate {
   /** 若为目录且锚定未命中时用于回压栈继续下钻 */
   nextIncluded: boolean;
   nextAncestors: readonly string[];
+  /** 当前条目自身是否首次触发了白名单命中 (若最终被护栏剪枝则不计入 includeCounts) */
+  matchedInclude?: boolean;
   /** true 表示该候选曾绕过默认护栏 (如项目级 .gradle), 未命中时严禁回压栈下钻 */
   bypassedExclude?: boolean;
 }
@@ -120,9 +123,11 @@ function processDirectoryEntries(
       if (name === GIT_DIR) continue;
 
       const matchedInclude = !item.included && hasInclude && include.has(name);
-      if (matchedInclude) {
-        includeCounts.set(name, (includeCounts.get(name) ?? 0) + 1);
-      }
+      const recordInclude = (): void => {
+        if (matchedInclude) {
+          includeCounts.set(name, (includeCounts.get(name) ?? 0) + 1);
+        }
+      };
 
       const bypassGradle = canBypassDefaultGradleExclude(
         name,
@@ -133,6 +138,7 @@ function processDirectoryEntries(
 
       if (!bypassGradle && hasExclude) {
         if (exclude.has(name)) {
+          recordInclude();
           excludeCounts.set(name, (excludeCounts.get(name) ?? 0) + 1);
           continue;
         }
@@ -153,14 +159,16 @@ function processDirectoryEntries(
           ancestors: item.ancestors,
           nextIncluded,
           nextAncestors,
+          matchedInclude,
           bypassedExclude: bypassGradle,
         });
         continue;
       }
 
-      // 即使目录名是 .gradle 但未通过上述目标条件 (如白名单未命中), 也不得越过护栏下钻
-      if (bypassGradle) continue;
+      // 任何名为 .gradle 的目录一旦未命中目标候选 (含 ~/.gradle、无锚点、未开 java 或白名单未命中), 一律剪枝跳过严禁下钻且不虚增白名单计数
+      if (shouldPruneUnmatchedDir(name, bypassGradle)) continue;
 
+      recordInclude();
       stack.push({
         dir: targetPath,
         root: item.root,
@@ -289,18 +297,34 @@ function walkRoots(roots: readonly string[], ctx: WalkContext): Promise<void> {
           targetPath: candidate.targetPath,
           siblingFiles: candidate.siblingFiles,
           ancestors: candidate.ancestors,
+          bypassedExclude: candidate.bypassedExclude,
         },
         matcher,
       )
         .then(async (match) => {
           if (stopped()) return;
           if (match !== null) {
+            if (candidate.matchedInclude === true) {
+              ctx.includeCounts.set(
+                candidate.name,
+                (ctx.includeCounts.get(candidate.name) ?? 0) + 1,
+              );
+            }
             await recordMatchedHit(candidate, match);
           } else if (
             candidate.kind === 'dir' &&
-            candidate.bypassedExclude !== true
+            !shouldPruneUnmatchedDir(
+              candidate.name,
+              candidate.bypassedExclude === true,
+            )
           ) {
-            // 候选目录锚定未通过 (如无 Cargo.toml 的普通 target 目录): 回压栈继续下钻, 防漏扫子项目
+            if (candidate.matchedInclude === true) {
+              ctx.includeCounts.set(
+                candidate.name,
+                (ctx.includeCounts.get(candidate.name) ?? 0) + 1,
+              );
+            }
+            // 候选目录锚定未通过 (如无 Cargo.toml 的普通 target 目录): 回压栈继续下钻, 防漏扫子项目; .gradle 一律剪枝不下钻
             stack.push({
               dir: candidate.targetPath,
               root: candidate.root,
@@ -402,7 +426,7 @@ export function createParallelScanner(): Scanner {
         if (!includeCounts.has(name)) includeCounts.set(name, 0);
       }
       const hitsByRealTarget = new Map<string, ScanHit>();
-      const style = nativeStyle();
+      const style = options.style ?? nativeStyle();
 
       const homeOpt = options.home === undefined ? homedir() : options.home;
       const realHome =
@@ -413,6 +437,7 @@ export function createParallelScanner(): Scanner {
         excludeExplicit: options.excludeExplicit,
         rawHome: homeOpt,
         realHome,
+        style,
         nowMs: options.nowMs,
       });
 

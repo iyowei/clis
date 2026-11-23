@@ -9,14 +9,20 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { DEFAULT_EXCLUDE } from './config.ts';
+import { POSIX_STYLE, WIN32_STYLE } from './guard.ts';
 import {
   OS_JUNK_FILES,
+  PRESET_BY_NAME,
   PRESET_NAMES,
   createDefaultPresets,
   isPresetName,
   matchesAnyActivePresetLeaf,
   resolvePresetAction,
 } from './presets.ts';
+import {
+  canBypassDefaultGradleExclude,
+  createScanMatcher,
+} from './scan-match.ts';
 import { createParallelScanner } from './scan-parallel.ts';
 import { createSweeper } from './sweep.ts';
 
@@ -296,7 +302,7 @@ describe('presets 锚定校验: java 双重护栏与 os-junk 白名单', () => {
       ].sort(),
     );
 
-    // 3. 预设局部 presets.java.exclude 含 .gradle → 项目 .gradle 被拦截
+    // 3. 预设局部 presets.java.exclude 含 .gradle -> 项目 .gradle 被拦截
     const localExcludeScan = await createParallelScanner().scan({
       roots: [fakeHome],
       home: fakeHome,
@@ -311,6 +317,100 @@ describe('presets 锚定校验: java 双重护栏与 os-junk 白名单', () => {
         join(fakeHome, 'dev', 'mvn-ok', 'target'),
       ].sort(),
     );
+
+    // 4. 显式不含 .gradle 的 exclude + excludeExplicit: true + java & os-junk:
+    // 项目 .gradle 正常命中, ~/.gradle 与无锚点 .gradle 一律剪枝严禁下钻扫出内部 .DS_Store
+    await touch(join(fakeHome, '.gradle', 'caches', '.DS_Store'), 'junk');
+    await touch(
+      join(fakeHome, 'dev', 'gr-bare', '.gradle', 'sub', '.DS_Store'),
+      'junk',
+    );
+    await touch(
+      join(fakeHome, 'dev', 'gr-kts', '.gradle', 'caches', '.DS_Store'),
+      'junk',
+    );
+    const customExcludeScan = await createParallelScanner().scan({
+      roots: [fakeHome],
+      home: fakeHome,
+      exclude: ['archive'],
+      excludeExplicit: true,
+      include: [],
+      presets: { java: {}, 'os-junk': {} },
+    });
+    expect(customExcludeScan.hits.map((h) => h.target)).toEqual(
+      expectedDefault,
+    );
+    const osJunkOnlyScan = await createParallelScanner().scan({
+      roots: [fakeHome],
+      home: fakeHome,
+      exclude: ['archive'],
+      excludeExplicit: true,
+      include: [],
+      presets: { 'os-junk': {} },
+    });
+    expect(osJunkOnlyScan.hits).toEqual([]);
+  });
+
+  test('java: win32 下 parentDir 与 home 大小写/正反斜杠/尾斜杠不同仍保护 ~/.gradle, posix 保持区分大小写', async () => {
+    const siblings = new Set(['build.gradle']);
+    const winMatcher = createScanMatcher({
+      presets: { java: {} },
+      excludeExplicit: false,
+      rawHome: 'C:\\Users\\Alice\\',
+      realHome: 'C:\\Users\\Alice',
+      style: WIN32_STYLE,
+    });
+    expect(
+      canBypassDefaultGradleExclude(
+        '.gradle',
+        'c:/users/alice',
+        siblings,
+        winMatcher,
+      ),
+    ).toBe(false);
+    expect(
+      canBypassDefaultGradleExclude(
+        '.gradle',
+        'c:/users/alice/dev/app',
+        siblings,
+        winMatcher,
+      ),
+    ).toBe(true);
+    expect(
+      await PRESET_BY_NAME.java.verifyAnchor({
+        name: '.gradle',
+        kind: 'dir',
+        parentDir: 'c:/users/alice',
+        targetPath: 'c:/users/alice/.gradle',
+        siblingFiles: siblings,
+        realHome: 'C:\\Users\\Alice\\',
+        style: WIN32_STYLE,
+      }),
+    ).toBe(false);
+
+    const posixMatcher = createScanMatcher({
+      presets: { java: {} },
+      excludeExplicit: false,
+      rawHome: '/Users/Alice',
+      realHome: '/Users/Alice',
+      style: POSIX_STYLE,
+    });
+    expect(
+      canBypassDefaultGradleExclude(
+        '.gradle',
+        '/Users/Alice/',
+        siblings,
+        posixMatcher,
+      ),
+    ).toBe(false);
+    expect(
+      canBypassDefaultGradleExclude(
+        '.gradle',
+        '/Users/alice',
+        siblings,
+        posixMatcher,
+      ),
+    ).toBe(true);
   });
 
   test('os-junk: 仅精确匹配 4 个普通文件, 严禁命中 desktop.ini / .directory / ._foo 及同名目录', async () => {

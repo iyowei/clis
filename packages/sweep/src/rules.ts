@@ -135,13 +135,21 @@ export interface CompiledRule {
  * - 流程: `compileNameMatcher('*.log')` 生成 `/^.*\.log$/` 闭包 + `exclude`/`include` 转为 `Set`
  * - Output: `[{ rule, matchesName: (s) => /^.*\.log$/.test(s), exclude: Set(['keep']), include: Set() }]`
  */
-export function compileRules(rules: readonly CustomRule[]): CompiledRule[] {
-  return rules.map((rule) => ({
-    rule,
-    matchesName: compileNameMatcher(rule.match),
-    exclude: new Set(rule.exclude ?? []),
-    include: new Set(rule.include ?? []),
-  }));
+export function compileRules(
+  rules: readonly CustomRuleInput[],
+): CompiledRule[] {
+  return rules.map((input) => {
+    const rule: CustomRule = {
+      ...input,
+      action: input.action ?? 'trash',
+    };
+    return {
+      rule,
+      matchesName: compileNameMatcher(rule.match),
+      exclude: new Set(rule.exclude ?? []),
+      include: new Set(rule.include ?? []),
+    };
+  });
 }
 
 /** 判定叶名称是否命中任意已配置自定义规则 (用于安全闸校验) */

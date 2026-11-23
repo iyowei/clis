@@ -4,12 +4,13 @@
  * 设计见 packages/sweep/docs/adrs/0022-config-v2-presets-and-rules.md:
  * - 多数预设锚定校验直接查询内存同级文件集合 `siblingFiles`, 零额外磁盘 syscall;
  * - 仅 `python` (`pyvenv.cfg`) 与 `cpp` (`CMakeCache.txt`) 在同级清单未命中时走一次轻量 `lstat`;
- * - `java` 的项目 `.gradle` 须同级含 Gradle 锚点且父目录非 `home` 本体, 未被用户显式覆盖排除;
+ * - `java` 的项目 `.gradle` 须同级含 Gradle 锚点且父目录非 `home` 本体, 未被用户显式排除 `.gradle`; 其余任何 `.gradle` 一律剪枝不下钻;
  * - 多源碰撞时严格取保守优先 (`'trash'` 优先于 `'delete'`)。
  */
-import { lstat } from 'node:fs/promises';
+import { lstat, realpath } from 'node:fs/promises';
 
 import type { CleanupAction, EntryKind, PresetName } from './codes.ts';
+import { type PathStyle, isHomeBody, nativeStyle } from './guard.ts';
 import {
   BUILTIN_PRESETS,
   type PresetConfig,
@@ -44,6 +45,7 @@ export interface CompiledScanMatcher {
   readonly excludeExplicit: boolean;
   readonly rawHome: string | null;
   readonly realHome: string | null;
+  readonly style: PathStyle;
   readonly nowMs: number;
 }
 
@@ -68,6 +70,7 @@ export function createScanMatcher(options: {
   excludeExplicit?: boolean;
   rawHome?: string | null;
   realHome: string | null;
+  style?: PathStyle;
   nowMs?: number;
 }): CompiledScanMatcher {
   const effectivePresets: PresetsMap =
@@ -107,6 +110,7 @@ export function createScanMatcher(options: {
     excludeExplicit: options.excludeExplicit ?? false,
     rawHome: options.rawHome ?? null,
     realHome: options.realHome,
+    style: options.style ?? nativeStyle(),
     nowMs: options.nowMs ?? Date.now(),
   };
 }
@@ -146,18 +150,20 @@ function hasGradleAnchor(siblingFiles: ReadonlySet<string>): boolean {
 }
 
 /**
- * 判定 `.gradle` 是否可作为 `java` 预设的项目级缓存跳过默认全局护栏:
- * 仅当 `java` 预设激活、用户未显式覆盖全局 `exclude` (`excludeExplicit === false`)、
- * `java` 预设局部未排除 `.gradle`、父目录既非 `realHome` 也非 `rawHome`、
- * 且同级存在 Gradle 锚点 (`build.gradle*` / `settings.gradle*`) 时返回 true; 其余情况 (含 `~/.gradle`) 一律保护。
+ * 判定 `.gradle` 是否可作为 `java` 预设的项目级缓存跳过默认全局护栏 (`DEFAULT_EXCLUDE` 中的 `.gradle`):
+ * - 当默认护栏生效 (`excludeExplicit === false`) 时, 仅在 `java` 预设激活、`java` 预设局部未排除 `.gradle`、
+ *   父目录既非 `realHome` 也非 `rawHome`、且同级存在 Gradle 锚点 (`build.gradle*` / `settings.gradle*`) 时返回 true 越过默认护栏;
+ * - 当用户显式传入不含 `.gradle` 的全局 `exclude` (`excludeExplicit === true`) 时, `.gradle` 不受全局 `exclude` 阻拦而直接进入
+ *   `evaluateTargetMatch`, 满足同一锚定与非 `home` 条件且局部未排除的项目级 `.gradle` 照常命中 `java` 预设;
+ * - 其余任何未命中的 `.gradle` (含 `~/.gradle` 及无 Gradle 锚点的目录) 均由 `shouldPruneUnmatchedDir` 剪枝跳过, 严禁下钻。
  *
  * ### 数据流转示例
  * ```text
  * Input: entryName = '.gradle', parentDir = '/w/demo', siblingFiles = Set { 'build.gradle.kts' },
  *        matcher = { javaPreset: active(exclude: []), excludeExplicit: false, realHome: '/Users/u', rawHome: '/Users/u' }
- * 步骤 1: 逐条门控 -> 名称是 '.gradle' -> java 激活 -> 全局未显式 exclude -> 局部未排除 -> parentDir !== home
+ * 步骤 1: 逐条门控 -> 名称是 '.gradle' -> java 激活 -> 全局未显式排除 .gradle -> 局部未排除 -> parentDir !== home
  * 步骤 2: 查内存同级文件集合 hasGradleAnchor(siblingFiles) -> 'build.gradle.kts' 命中
- * Output: true (若 parentDir = '/Users/u' 则在步骤 1 拦截返回 false, 护住全局 ~/.gradle)
+ * Output: true (若 parentDir = '/Users/u' 或无锚点则返回 false, 且后续由 shouldPruneUnmatchedDir 阻断下钻护住 ~/.gradle)
  * ```
  */
 export function canBypassDefaultGradleExclude(
@@ -170,9 +176,20 @@ export function canBypassDefaultGradleExclude(
   if (matcher.javaPreset === null) return false;
   if (matcher.excludeExplicit) return false;
   if (matcher.javaPreset.exclude.has('.gradle')) return false;
-  if (matcher.realHome !== null && parentDir === matcher.realHome) return false;
-  if (matcher.rawHome !== null && parentDir === matcher.rawHome) return false;
+  if (isHomeBody(parentDir, matcher.realHome, matcher.style)) return false;
+  if (isHomeBody(parentDir, matcher.rawHome, matcher.style)) return false;
   return hasGradleAnchor(siblingFiles);
+}
+
+/**
+ * 判定未命中目标的目录是否必须直接剪枝跳过而严禁回压栈下钻 (ADR 0022):
+ * 任何名为 `.gradle` 的目录 (如家目录本体 `~/.gradle` 或无 Gradle 锚点的 `.gradle`) 及曾绕过默认护栏的候选均严禁下钻其内部子树。
+ */
+export function shouldPruneUnmatchedDir(
+  entryName: string,
+  bypassedExclude: boolean,
+): boolean {
+  return bypassedExclude || entryName === '.gradle';
 }
 
 /** 廉价同步预筛: 判定条目是否可能命中任一预设或规则 (零异步开销, 过滤 99%+ 非目标) */
@@ -198,14 +215,48 @@ export function isPotentialTarget(
   return false;
 }
 
+/** 单次目标评估入参 */
+export interface TargetEvalInput {
+  readonly name: string;
+  readonly kind: EntryKind;
+  readonly parentDir: string;
+  readonly targetPath: string;
+  readonly siblingFiles: ReadonlySet<string>;
+  readonly ancestors: readonly string[];
+  /** true 表示该候选因 java 特批越过默认全局护栏 DEFAULT_EXCLUDE, 仅允许评估 java 预设, 严禁自定义规则借道 */
+  readonly bypassedExclude?: boolean;
+}
+
+/** 判定 `.gradle` 的父目录是否为家目录本体 (同时核对字面路径与 realpath 展开路径, 防软链根绕过) */
+async function isGradleAtHome(
+  parentDir: string,
+  matcher: CompiledScanMatcher,
+): Promise<boolean> {
+  if (matcher.realHome === null && matcher.rawHome === null) return false;
+  if (
+    isHomeBody(parentDir, matcher.realHome, matcher.style) ||
+    isHomeBody(parentDir, matcher.rawHome, matcher.style)
+  ) {
+    return true;
+  }
+  const resolvedParent = await realpath(parentDir).catch(() => null);
+  if (resolvedParent === null) return false;
+  return (
+    isHomeBody(resolvedParent, matcher.realHome, matcher.style) ||
+    isHomeBody(resolvedParent, matcher.rawHome, matcher.style)
+  );
+}
+
 /**
  * 异步执行锚定核验、局部过滤与 `olderThanDays` 检查, 合并全部命中来源的动作后返回结果或 null。
  * 多源碰撞规则: `source` 保留首个命中 (内置预设按注册序优先于自定义规则), `action` 保守合并 (`'trash'` 优先于 `'delete'`)。
+ * 特批隔离红线: `bypassedExclude === true` 时仅允许评估 `java` 预设, 未通过即返 null, 绝不落入 `compiledRules`;
+ * 任何名为 `.gradle` 的目录候选均强制拦截家目录本体 (含软链根指向 `~`)。
  *
  * ### 数据流转示例
  * ```text
- * Input: params = { name: 'target', kind: 'dir', parentDir: '/w/svc', targetPath: '/w/svc/target',
- *                   siblingFiles: Set { 'Cargo.toml' }, ancestors: ['svc'] }
+ * Input: input = { name: 'target', kind: 'dir', parentDir: '/w/svc', targetPath: '/w/svc/target',
+ *                  siblingFiles: Set { 'Cargo.toml' }, ancestors: ['svc'] }
  *        matcher = { activePresets: [rust(action: 'delete')], compiledRules: [rule('old-target', action: 'trash', olderThanDays: 30)] }
  * 步骤 1: 拼路径链 segments = ['svc', 'target'], 轮询预设 -> rust 名称/局部过滤/同级 Cargo.toml 命中
  *         -> firstSource = { kind: 'preset', name: 'rust' }, mergedAction = 'delete'
@@ -215,31 +266,46 @@ export function isPotentialTarget(
  * ```
  */
 export async function evaluateTargetMatch(
-  params: {
-    name: string;
-    kind: EntryKind;
-    parentDir: string;
-    targetPath: string;
-    siblingFiles: ReadonlySet<string>;
-    ancestors: readonly string[];
-  },
+  input: TargetEvalInput,
   matcher: CompiledScanMatcher,
 ): Promise<TargetMatchResult | null> {
-  const segments = [...params.ancestors, params.name];
+  // 任何名为 .gradle 的目录候选在评估预设与自定义规则前均死守家目录本体护栏 (含软链根 realpath 核验)
+  if (input.kind === 'dir' && input.name === '.gradle') {
+    if (await isGradleAtHome(input.parentDir, matcher)) {
+      return null;
+    }
+  }
+
+  const segments = [...input.ancestors, input.name];
   const ctx: PresetMatchContext = {
-    name: params.name,
-    kind: params.kind,
-    parentDir: params.parentDir,
-    targetPath: params.targetPath,
-    siblingFiles: params.siblingFiles,
+    name: input.name,
+    kind: input.kind,
+    parentDir: input.parentDir,
+    targetPath: input.targetPath,
+    siblingFiles: input.siblingFiles,
     realHome: matcher.realHome,
+    style: matcher.style,
   };
+
+  // 因 java 特批才越过默认全局护栏 DEFAULT_EXCLUDE 的候选: 只允许评估 java 预设, 严禁落入自定义规则借道命中
+  if (input.bypassedExclude === true) {
+    const java = matcher.javaPreset;
+    if (java === null) return null;
+    if (!java.spec.matchesName(input.name, input.kind)) return null;
+    if (!passesLocalFilters(segments, java.exclude, java.include)) return null;
+    const anchored = await java.spec.verifyAnchor(ctx);
+    if (!anchored) return null;
+    return {
+      action: java.action,
+      source: { kind: 'preset', name: 'java' },
+    };
+  }
 
   let firstSource: HitSource | null = null;
   let mergedAction: CleanupAction | null = null;
 
   for (const preset of matcher.activePresets) {
-    if (!preset.spec.matchesName(params.name, params.kind)) continue;
+    if (!preset.spec.matchesName(input.name, input.kind)) continue;
     if (!passesLocalFilters(segments, preset.exclude, preset.include)) continue;
     const anchored = await preset.spec.verifyAnchor(ctx);
     if (!anchored) continue;
@@ -256,7 +322,7 @@ export async function evaluateTargetMatch(
   const readMtime = async (): Promise<number | null> => {
     if (cachedMtimeMs !== undefined) return cachedMtimeMs;
     try {
-      const st = await lstat(params.targetPath);
+      const st = await lstat(input.targetPath);
       cachedMtimeMs = st.mtimeMs;
     } catch {
       cachedMtimeMs = null;
@@ -265,8 +331,8 @@ export async function evaluateTargetMatch(
   };
 
   for (const compiled of matcher.compiledRules) {
-    if (!ruleMatchesKind(compiled.rule.kind, params.kind)) continue;
-    if (!compiled.matchesName(params.name)) continue;
+    if (!ruleMatchesKind(compiled.rule.kind, input.kind)) continue;
+    if (!compiled.matchesName(input.name)) continue;
     if (!passesLocalFilters(segments, compiled.exclude, compiled.include)) {
       continue;
     }

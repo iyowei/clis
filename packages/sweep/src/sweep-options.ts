@@ -3,7 +3,7 @@
  * 下游依赖: `config.ts` (`DEFAULT_EXCLUDE` / `mergeNames`)、`guard.ts` (`PathStyle`)、`errors.ts`。
  * 职责与红线: 同步校验 `roots` (必填非空绝对路径)、`exclude` / `include`、`home`、`policy.releaseSuspects`,
  * 违规立即同步抛 `SweepError('INVALID_ARGUMENT', ..., { field })`; 合并缺省 (`presets` 与 `rules` 同省略时默认 `{ node: {} }`,
- * `exclude` 缺省注入 `DEFAULT_EXCLUDE` 并设 `excludeExplicit` 区分默认护栏与显式排除) 后返回深冻结只读快照。
+ * `exclude` 缺省注入 `DEFAULT_EXCLUDE`, `excludeExplicit` 缺省 `false` 与扫描原语层同源对齐) 后返回深冻结只读快照。
  */
 import { homedir } from 'node:os';
 
@@ -114,7 +114,7 @@ export function resolveSweepOptions(
     include: Object.freeze(mergeNames(options.include ?? [], [])),
     presets: Object.freeze(presets),
     rules: Object.freeze(rules),
-    excludeExplicit: options.excludeExplicit ?? options.exclude !== undefined,
+    excludeExplicit: options.excludeExplicit ?? false,
     home: options.home === undefined ? homedir() : options.home,
     style: options.style ?? nativeStyle(),
     policy: Object.freeze({

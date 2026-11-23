@@ -1,6 +1,6 @@
 /**
  * 6 大内置技术栈预设注册表与强制项目锚定校验 (设计见 packages/sweep/docs/adrs/0022-config-v2-presets-and-rules.md)。
- * 上下游: 依赖 codes.ts; 供 config / config-validate 校验、scan-match 扫描锚定、sweep 安全闸末段核验及 sweep-cli 初始化向导消费。
+ * 上下游: 依赖 codes.ts 与 guard.ts; 供 config / config-validate 校验、scan-match 扫描锚定、sweep 安全闸末段核验及 sweep-cli 初始化向导消费。
  * 核心红线:
  * 1. 对象内出现预设键名即激活, 严禁 `enabled` 字段;
  * 2. 易撞名目录 (`node_modules` / `target` / `.venv` / `venv` / `build` / `.gradle` / `cmake-build-*`) 强制核验同级清单或内置指纹文件, 且拦截家目录本体 `~/.gradle`;
@@ -10,6 +10,7 @@ import { lstat, realpath } from 'node:fs/promises';
 import { join } from 'node:path';
 
 import type { CleanupAction, EntryKind, PresetName } from './codes.ts';
+import { type PathStyle, isHomeBody, nativeStyle } from './guard.ts';
 
 /** 全部内置预设名 (稳定注册序, 兼作碰撞去重优先级) */
 export const PRESET_NAMES: readonly PresetName[] = Object.freeze([
@@ -55,6 +56,8 @@ export interface PresetMatchContext {
   readonly siblingFiles: ReadonlySet<string>;
   /** 归一化后的家目录绝对路径 (用于拦截家目录本体 ~/.gradle 等全局缓存) */
   readonly realHome: string | null;
+  /** 路径比较风味 (缺省平台原生; win32 下按 isHomeBody 折叠大小写与正反斜杠) */
+  readonly style?: PathStyle;
 }
 
 /** 单个预设的声明式规格 */
@@ -126,7 +129,7 @@ function isCppBuildDir(name: string): boolean {
  * - Input: `{ name: 'target', kind: 'dir', parentDir: '/work/app', siblingFiles: Set(['Cargo.toml']) }`
  * - 流程: `rust.matchesName('target', 'dir') => true` -> `rust.verifyAnchor(ctx)` 查内存 `siblingFiles.has('Cargo.toml')` -> Output: `true` (命中 `rust`)
  * - 反例 1: `{ name: 'build', kind: 'dir', siblingFiles: Set(['README.md']) }` -> `java` 无 `build.gradle*`/`settings.gradle*`, `cpp` 无 `CMakeLists.txt` 且内无 `CMakeCache.txt` -> Output: `false` (业务目录放过)
- * - 反例 2: `{ name: '.gradle', parentDir: realHome, siblingFiles: Set(['settings.gradle']) }` -> `java.verifyAnchor` 比对 `parentDir`/`realpath(parentDir) === realHome` -> Output: `false` (保护全局缓存)
+ * - 反例 2: `{ name: '.gradle', parentDir: realHome, siblingFiles: Set(['settings.gradle']) }` -> `java.verifyAnchor` 经 `isHomeBody` 比对 `parentDir` 与 `realpath(parentDir)` 命中 `realHome` -> Output: `false` (保护全局缓存)
  */
 export const BUILTIN_PRESETS: readonly PresetSpec[] = Object.freeze([
   {
@@ -176,13 +179,14 @@ export const BUILTIN_PRESETS: readonly PresetSpec[] = Object.freeze([
       if (ctx.name === 'target') {
         return ctx.siblingFiles.has('pom.xml');
       }
-      // 家目录本体的 ~/.gradle 是全局工具链缓存, 严禁被 java 预设纳入 (按 realpath 对齐防软链前缀失配)
+      // 家目录本体的 ~/.gradle 是全局工具链缓存, 严禁被 java 预设纳入 (复用 isHomeBody 消除软链/尾斜杠/win32 大小写差异)
       if (ctx.name === '.gradle' && ctx.realHome !== null) {
-        if (ctx.parentDir === ctx.realHome) return false;
+        const style = ctx.style ?? nativeStyle();
+        if (isHomeBody(ctx.parentDir, ctx.realHome, style)) return false;
         const resolvedParent = await realpath(ctx.parentDir).catch(
           () => ctx.parentDir,
         );
-        if (resolvedParent === ctx.realHome) return false;
+        if (isHomeBody(resolvedParent, ctx.realHome, style)) return false;
       }
       return hasGradleSibling(ctx.siblingFiles);
     },

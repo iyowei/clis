@@ -10,16 +10,18 @@ import {
   mkdtemp,
   realpath,
   rm,
+  symlink,
   utimes,
   writeFile,
 } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { loadConfig } from './config.ts';
+import { DEFAULT_EXCLUDE, loadConfig } from './config.ts';
 import {
   MS_PER_DAY,
   compileNameMatcher,
+  compileRules,
   isOlderThanDays,
   matchesAnyRuleLeaf,
   ruleMatchesKind,
@@ -124,6 +126,19 @@ describe('rules 纯函数校验与编译', () => {
         { name: 'logs', kind: 'file', match: '*.log', action: 'trash' },
       ]),
     ).toBe(false);
+
+    const compiled = compileRules([
+      { name: 'omitted-action', kind: 'file', match: '*.tmp' },
+      {
+        name: 'explicit-delete',
+        kind: 'dir',
+        match: 'dist-*',
+        action: 'delete',
+      },
+    ]);
+    expect(compiled[0]?.rule.action).toBe('trash');
+    expect(compiled[0]?.matchesName('a.tmp')).toBe(true);
+    expect(compiled[1]?.rule.action).toBe('delete');
   });
 
   test('配置解析强制保证 rules[].action 缺省为 trash', async () => {
@@ -348,5 +363,79 @@ describe('rules 多源碰撞保守优先 (trash > delete)', () => {
     );
     expect(targetHit?.action).toBe('trash');
     expect(logHit?.action).toBe('trash');
+  });
+
+  test('[S-2] 阻断自定义规则借道 java 特批越过 DEFAULT_EXCLUDE, 且软链根指向家目录时严防命中 ~/.gradle', async () => {
+    const base = await makeTempRoot();
+    const fakeHome = join(base, 'real-home');
+    const linkToHome = join(base, 'link-home');
+    await mkdir(join(fakeHome, '.gradle', 'caches'), { recursive: true });
+    await touch(join(fakeHome, 'build.gradle'), '// bait\n');
+    await touch(join(fakeHome, '.gradle', 'caches', 'keep.jar'), 'jar');
+    await mkdir(join(fakeHome, 'other-team', 'svc', '.gradle'), {
+      recursive: true,
+    });
+    await touch(join(fakeHome, 'other-team', 'svc', 'build.gradle'), '');
+    await mkdir(join(fakeHome, 'allowed-team', 'app', '.gradle'), {
+      recursive: true,
+    });
+    await touch(join(fakeHome, 'allowed-team', 'app', 'build.gradle'), '');
+
+    const dirLinkType = process.platform === 'win32' ? 'junction' : 'dir';
+    await symlink(fakeHome, linkToHome, dirLinkType);
+
+    // 攻击路径 1: DEFAULT_EXCLUDE 生效时, 越过默认护栏的 .gradle 只允许评估 java 预设, 自定义规则严禁借道命中或混入动作
+    const hijackScan = await createParallelScanner().scan({
+      roots: [fakeHome],
+      home: fakeHome,
+      exclude: [...DEFAULT_EXCLUDE],
+      excludeExplicit: false,
+      include: [],
+      presets: {
+        java: { action: 'delete', include: ['allowed-team'] },
+      },
+      rules: [
+        {
+          name: 'hijack-gradle',
+          kind: 'dir',
+          match: '.grad*',
+          action: 'trash',
+        },
+      ],
+    });
+    expect(hijackScan.hits).toEqual([
+      {
+        project: join(fakeHome, 'allowed-team', 'app'),
+        target: join(fakeHome, 'allowed-team', 'app', '.gradle'),
+        root: fakeHome,
+        entryKind: 'dir',
+        action: 'delete',
+        source: { kind: 'preset', name: 'java' },
+      },
+    ]);
+
+    // 攻击路径 2: 显式清空 exclude: [] 并以指向 ~ 的软链作为扫描根时, realpath(parentDir) 拦截 ~/.gradle
+    const symlinkRootScan = await createParallelScanner().scan({
+      roots: [linkToHome],
+      home: fakeHome,
+      exclude: [],
+      excludeExplicit: true,
+      include: [],
+      presets: { java: {} },
+      rules: [
+        {
+          name: 'hijack-home-gradle',
+          kind: 'dir',
+          match: '.grad*',
+          action: 'delete',
+        },
+      ],
+    });
+    expect(symlinkRootScan.hits.map((h) => h.target)).toEqual(
+      [
+        join(linkToHome, 'allowed-team', 'app', '.gradle'),
+        join(linkToHome, 'other-team', 'svc', '.gradle'),
+      ].sort(),
+    );
   });
 });

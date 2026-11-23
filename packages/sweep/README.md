@@ -7,7 +7,7 @@
 
 **English** | [中文](README.zh-CN.md)
 
-Programmable API for general-purpose, workspace-level multi-toolchain cleanup: scan, anchor-verify, measure, move to trash, or safely delete artifacts across Node.js, Rust, Python, Java, C/C++, OS junk files, and custom rules — all with zero third-party runtime dependencies. The CLI package ([`@iyowei/sweep-cli`](https://github.com/iyowei/clis/blob/main/packages/sweep-cli/README.md), command `sweep`) is a thin interactive shell over this API.
+Programmable API for general-purpose, workspace-level multi-toolchain cleanup: scan, anchor-verify, measure, move to trash, or safely delete artifacts across Node.js, Rust, Python, Java, C/C++, OS junk files, and custom rules, all with zero third-party runtime dependencies. The CLI package ([`@iyowei/sweep-cli`](https://github.com/iyowei/clis/blob/main/packages/sweep-cli/README.md), command `sweep`) is a thin interactive shell over this API.
 
 > **Private workspace package**: `@iyowei/sweep` and `@iyowei/sweep-cli` are currently marked `"private": true` inside this monorepo and are excluded from the public npm release pipeline while the v2 API and cross-platform trash stack mature (see [ADR 0021](https://github.com/iyowei/clis/blob/main/packages/sweep/docs/adrs/0021-sweep-general-cleaner-evolution.md)). Consume via workspace dependency inside the repository.
 
@@ -113,7 +113,7 @@ Constructs the orchestrator with zero scan/delete IO at construction time.
   - `include?` `string[]`: whitelist directory names; defaults to `[]` (no filtering). `exclude` always wins on overlap.
   - `presets?` `PresetsMap`: active built-in presets (key presence activates; omitting both `presets` and `rules` defaults to `{ node: {} }`).
   - `rules?` `readonly CustomRule[]`: custom cleanup rules; defaults to `[]`.
-  - `excludeExplicit?` `boolean`: distinguishes explicit user `exclude` from default guardrails (used for project-level `.gradle` resolution under `java`).
+  - `excludeExplicit?` `boolean`: distinguishes explicit user `exclude` from default guardrails (defaults to `false`, aligned with `ScanOptions.excludeExplicit`; used for project-level `.gradle` resolution under `java`).
   - `nowMs?` `number`: reference epoch ms for `olderThanDays` evaluation (defaults to `Date.now()`; injectable in tests).
   - `home?` `string | null`: home directory used by the home-body guard, `~/.gradle` protection, and hidden-dir install-tree classification; defaults to `os.homedir()`, `null` disables home-based checks.
   - `style?` `PathStyle`: `POSIX_STYLE` / `WIN32_STYLE`; defaults to `nativeStyle()`.
@@ -223,7 +223,7 @@ Every primitive is side-effect free at import and writes nothing to stdout/stder
 
 **Rule**: expected domain outcomes that can be listed per target are returned; unrecoverable errors (bad arguments, broken/unmigratable config, cancellation) throw `SweepError`.
 
-- `SweepError<Code>`: `{ name: 'SweepError', code, message, details? }` — the sole class exported by the package.
+- `SweepError<Code>`: `{ name: 'SweepError', code, message, details? }` (the sole class exported by the package).
 - `isSweepError(value)` & `isSweepErrorCode(value, code)`: cross-realm/multi-instance safe guards that narrow `details` by `code`.
 - `SweepErrorCode`: `CONFIG_READ_FAILED` · `CONFIG_CORRUPT_JSON` · `CONFIG_CORRUPT_SHAPE` · `CONFIG_ABSENT` · `CONFIG_NEEDS_MIGRATION` · `CONFIG_MIGRATION_FAILED` · `INVALID_ARGUMENT` · `CANCELLED`.
 
@@ -262,7 +262,7 @@ Pass `onProgress` and/or `signal` to `plan` / `run` or supporting primitives (`s
 
 - Events: `phase` (`scan` · `measure` · `classify` · `device` · `plan` · `validate` · `remove`), primitive events (`hit` · `measured` · `unmeasured` · `skipped` · `removed` with `outcome: 'removed' | 'trashed' | 'missing'` · `failed` · `aborted` · `warning`), and terminal events (`plan-done` for `plan()`, `done` for `run()`).
 - Callbacks run synchronously and are not awaited; throwing inside a callback aborts the call.
-- Cancellation throws `SweepError('CANCELLED')` at item/phase boundaries — single `rm` operations are never aborted mid-flight; `remove` phase cancellation includes `details.partial: RemovalResult`.
+- Cancellation throws `SweepError('CANCELLED')` at item/phase boundaries: single `rm` operations are never aborted mid-flight; `remove` phase cancellation includes `details.partial: RemovalResult`.
 
 ## Safety model
 

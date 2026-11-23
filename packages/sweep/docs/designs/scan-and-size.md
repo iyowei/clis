@@ -22,10 +22,10 @@
 1. **根预检与独立多根并发**: 并发校验每个输入根的可访问性与目录类型, 按错误码区分原因 (`SCAN_ROOT_MISSING` / `SCAN_ROOT_UNREADABLE` / `SCAN_ROOT_NOT_DIR` / `SCAN_ROOT_UNAVAILABLE`), 按平台归一化 realpath 去重 (win32 大小写折叠); 互不包含的独立根共享 32 路回调并发池, 存在嵌套包含关系的根自动回落串行以严守先到先得的 `ScanHit.root` 归属顺序。
 2. **单次 `readdir` 构造同级文件表 (零多余磁盘 IO 锚定)**: 每进入一个目录调用一次原生回调 `readdir(dir, { withFileTypes: true })`, 先线性提取该目录内所有普通文件名到 `siblingFiles: ReadonlySet<string>`。对绝大多数预设 (`node` 查 `package.json`、`rust` 查 `Cargo.toml`、`java` 查 `pom.xml`/`build.gradle*`/`settings.gradle*`、`python` 查 `pyproject.toml`/`requirements.txt`、`cpp` 查 `CMakeLists.txt`), 同级锚定校验为内存 `O(1)` 查询, 零额外 syscall; 仅内嵌指纹 (`pyvenv.cfg`、`CMakeCache.txt`) 与自定义规则 `olderThanDays` 执行一次轻量 `lstat`。
 3. **符号链接与 `.git` 硬跳过**: 任何 `entry.isSymbolicLink()` (无论指向文件还是目录) 既不跟进也不纳入目标命中; 目录名 `.git` 恒定剪枝跳过。
-4. **全局排除与 `.gradle` 双重角色裁决**: 进入目录时若命中 `exclude` 即整棵子树跳过; 唯一受控例外是 [ADR 0022](../adrs/0022-config-v2-presets-and-rules.md) 裁定的项目级 `.gradle`: 当 `java` 预设激活、用户未显式指定 `exclude` (或未在显式 `exclude` 与 `presets.java.exclude` 中排除 `.gradle`)、目录不位于家目录本体 (`~/.gradle` 仍严格保护) 且同级存在 Gradle 锚点时, 放行该项目级 `.gradle` 进入预设判定并剪枝。
+4. **全局排除与 `.gradle` 双重角色裁决**: 进入目录时若命中 `exclude` 即整棵子树跳过; 唯一受控例外是 [ADR 0022](../adrs/0022-config-v2-presets-and-rules.md) 裁定的项目级 `.gradle`: 当 `java` 预设激活、用户未显式指定 `exclude` (或未在显式 `exclude` 与 `presets.java.exclude` 中排除 `.gradle`)、目录不位于家目录本体 (`~/.gradle` 仍严格保护) 且同级存在 Gradle 锚点时, 放行该项目级 `.gradle` 进入预设判定并剪枝; 其余任何 `.gradle` (含 `~/.gradle` 及无 Gradle 锚点的目录) 严格剪枝跳过, 严禁回压栈下钻其内部子树。
 5. **目录命中剪枝 vs 未锚定回压下钻**:
    - 候选目录通过预设锚定或自定义规则 (`kind: "dir" | "any"`) 命中时, 记录为目标并**立即剪枝停止下钻** (防止嵌套目录与子产物重复命中);
-   - 候选目录名撞上预设通用名 (如普通业务文件夹名为 `target`、`build`、`venv` 或无 `package.json` 的 `node_modules`) 但未通过锚定校验时, **不记入命中并将其回压遍历栈继续下钻**, 确保内部真实子项目不被漏扫;
+   - 候选目录名撞上预设通用名 (如普通业务文件夹名为 `target`、`build`、`venv` 或无 `package.json` 的 `node_modules`, 不含恒定剪枝的 `.gradle`) 但未通过锚定校验时, **不记入命中并将其回压遍历栈继续下钻**, 确保内部真实子项目不被漏扫;
    - 普通文件命中 (`os-junk` 预设或 `kind: "file" | "any"` 规则) 记录后继续扫描同目录其余项。
 6. **白名单与局部名单语义**: 全局 `include` 与预设/规则级局部 `exclude` / `include` 均按自根下级起的祖先目录名链判定; 全局 `exclude` 恒优先于 `include`, 局部名单仅进一步收紧范围; `excludeMatches` / `includeMatches` 持续统计并暴露未命中拼写 (默认护栏项零命中不告警, 且白名单命中计数独立于排除优先)。
 7. **多源去重与动作保守合并**: 跨预设、跨规则或跨多根命中同一真实路径 (`dedupeKey(realPath)`) 时只保留一条 `ScanHit` (按 `target` 码点升序输出), 携带 `entryKind` (`'dir' | 'file'`)、`source` (`{ kind: 'preset', name }` 或 `{ kind: 'rule', name }`) 与 `action` (`'delete' | 'trash'`); 若多个命中的动作冲突, **`'trash'` 永远覆盖 `'delete'`**。
