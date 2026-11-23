@@ -174,9 +174,9 @@ export function formatUpdateHelp(
     '',
     `  ${dim('说明')}`,
     `    ${bold('识别依据')}  按当前包在磁盘上的真实落位路径判定, 不受 bun / node 运行时切换影响`,
-    `    ${bold('安全边界')}  npx / bunx / dlx 临时运行或本地源码态不盲目覆盖全局安装`,
-    `    ${bold('环境隔离')}  更新子进程在独立临时空目录执行, 隔绝 cwd 配置干扰`,
-    `    ${bold('镜像源')}    默认走官方源 registry.npmjs.org, 自动遵循本机 ~/.bunfig.toml 或 ~/.npmrc`,
+    `    ${bold('安全边界')}  npx / bunx / dlx 临时运行、本地源码态或项目本地 node_modules 依赖均不盲目覆盖全局或改写锁文件`,
+    `    ${bold('环境隔离')}  更新子进程在独立临时空目录执行并剥离宿主 npm 生命周期残留变量, 隔绝 cwd 配置干扰`,
+    `    ${bold('镜像源')}    按目标管理器读取家目录源配置 (bun 优先 ~/.bunfig.toml 回退 ~/.npmrc, 其余仅读 ~/.npmrc), 缺省官方源`,
     '',
   ].join('\n');
 }
