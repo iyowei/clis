@@ -1,5 +1,5 @@
 /**
- * install-git-hooks.mjs 的守卫契约测试 (C9 闭环, 见 ADR 0005 决策第 1 条):
+ * install-git-hooks.mjs 的守卫契约测试 (防止依赖安装污染宿主仓库 + 钩子执行链兜底):
  *
  * 一, 安装侧守卫: prepare 装钩子只允许发生在「本包自身的 git 仓库」, 其余落点
  * (vendor 进宿主仓库 / install-links 落进 node_modules / 非仓库目录) 一律不调 lefthook,
@@ -52,6 +52,8 @@ const isScriptWrapper = (file: string): boolean => {
  * 故命中包装脚本时改取其同包 node_modules 下的平台二进制。
  * 两处都取不到时退回原命中项: 该环境下复制出去仍会失败, 用例响亮失败而非静默跳过。
  */
+const realpathNative = realpathSync.native ?? realpathSync;
+
 const resolveRelocatableLefthook = (): string => {
   const found = spawnSync('sh', ['-c', 'command -v lefthook'], {
     encoding: 'utf8',
@@ -60,7 +62,7 @@ const resolveRelocatableLefthook = (): string => {
   if (found === '' || !isScriptWrapper(found)) return found;
 
   // <nm>/lefthook/bin/index.js -> <nm>: 平台二进制与 lefthook 包平级 (lefthook-<os>-<arch>)
-  const nodeModules = resolve(realpathSync(found), '..', '..', '..');
+  const nodeModules = resolve(realpathNative(found), '..', '..', '..');
   if (existsSync(nodeModules)) {
     for (const entry of readdirSync(nodeModules)) {
       if (!entry.startsWith('lefthook-')) continue;

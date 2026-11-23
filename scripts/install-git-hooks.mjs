@@ -7,7 +7,7 @@
  *   真实路径一致时才装钩子, 防止本包以 vendor / 本地路径依赖装入宿主仓库时误写宿主 `.git/hooks`;
  * - 各形态判定: 仓库检出态 / git 依赖临时克隆态 -> 装; vendor / install-links 落宿主树 / 非 git 目录 -> 跳过;
  * - 取用顺序: PATH 上的 `lefthook` -> `lefthook.yml` 的 `lefthook:` 配置命令 (经 bunx 取 pin 版,
- *   与执行期模板同源; lefthook 不列为依赖, 避免其 postinstall 污染宿主仓库, 见 ADR 0005 决策第 1 条);
+ *   与执行期模板同源; lefthook 不列为依赖, 避免其 postinstall 污染宿主仓库);
  * - 容错: CI 跳过; 任何失败仅打印提示不阻断安装 (与 prepare 的 `|| exit 0` 兜底一致)。
  */
 import { spawnSync } from 'node:child_process';
@@ -28,10 +28,12 @@ const run = (cmd, args, options = {}) =>
 const hasCommand = (cmd) =>
   run(cmd, ['--version'], { stdio: 'ignore' }).status === 0;
 
-/** 取真实路径用于比较 (路径不可解析时回退原值) */
+const realpathNative = realpathSync.native ?? realpathSync;
+
+/** 取真实路径用于比较 (优先 realpathSync.native 展开 Windows 8.3 短路径; 路径不可解析时回退原值) */
 const realpathOr = (value) => {
   try {
-    return realpathSync(value);
+    return realpathNative(value);
   } catch {
     return value;
   }
