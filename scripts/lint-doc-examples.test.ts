@@ -38,14 +38,26 @@ afterAll(() => {
 });
 
 describe('extractTsBlocks', () => {
-  test('取出 ```ts 块并给出内容首行行号 (1 起)', () => {
-    const text = ['# 标题', '', '```ts', 'const a = 1;', '```', '尾'].join(
-      '\n',
-    );
+  test('取出 ```ts 块并给出内容首行行号 (1 起), 支持列表缩进与四反引号开围栏', () => {
+    const text = [
+      '# 标题',
+      '',
+      '```ts',
+      'const a = 1;',
+      '```',
+      '1. 列表项:',
+      '   ````ts',
+      '   import { x } from "y";',
+      '   ```',
+      '   ````',
+      '尾',
+    ].join('\n');
     const blocks = extractTsBlocks(text, 'x.md');
-    expect(blocks).toHaveLength(1);
+    expect(blocks).toHaveLength(2);
     expect(blocks[0]!.startLine).toBe(4);
     expect(blocks[0]!.content).toBe('const a = 1;');
+    expect(blocks[1]!.startLine).toBe(8);
+    expect(blocks[1]!.content).toBe('import { x } from "y";\n```');
   });
 });
 
@@ -64,7 +76,7 @@ describe('extractShellCommands', () => {
       'sweep --yes',
       'sweep-rs --target x',
       'bunx sweep --force',
-      'npx other-cli --yes',
+      'npx __undeclared_cli --yes',
       '```',
       'sweep 块外不算',
     ].join('\n');
@@ -76,18 +88,18 @@ describe('extractShellCommands', () => {
 
   test('多命令采集支持 shell / bash 块、bunx/npx 包名别名与精准归属 binName', () => {
     const text = [
-      '```bash',
-      'extra --dry-run config.json',
-      'npx @acme/extra-cli --dry-run',
-      'create-app my-app --tier standard',
-      '```',
+      '  ```bash',
+      '  __peer --dry-run config.json',
+      '  npx @acme/__peer_cli --dry-run',
+      '  create-app my-app --tier standard',
+      '  ```',
     ].join('\n');
-    const aliases = new Map([['@acme/extra-cli', 'extra']]);
+    const aliases = new Map([['@acme/__peer_cli', '__peer']]);
     expect(
-      extractNamedShellCommands(text, ['extra', 'create-app'], aliases),
+      extractNamedShellCommands(text, ['__peer', 'create-app'], aliases),
     ).toEqual([
-      { binName: 'extra', command: 'extra --dry-run config.json' },
-      { binName: 'extra', command: 'extra --dry-run' },
+      { binName: '__peer', command: '__peer --dry-run config.json' },
+      { binName: '__peer', command: '__peer --dry-run' },
       { binName: 'create-app', command: 'create-app my-app --tier standard' },
     ]);
   });
@@ -108,7 +120,7 @@ describe('extractShellCommands', () => {
     expect(
       extractCommandTokens('create-app my-app --tier standard', false),
     ).toEqual(['--tier']);
-    expect(extractCommandTokens('extra init # 兼容 --init-schema')).toEqual([
+    expect(extractCommandTokens('__peer init # 兼容 --init-schema')).toEqual([
       'init',
     ]);
   });
@@ -124,7 +136,7 @@ describe('extractCommandTokens', () => {
       extractCommandTokens('sweep --exclude my-kits --exclude url'),
     ).toEqual(['--exclude']);
     expect(extractCommandTokens('sweep config')).toEqual(['config']);
-    expect(extractCommandTokens('extra ./deploy.json --dry-run')).toEqual([
+    expect(extractCommandTokens('__peer ./deploy.json --dry-run')).toEqual([
       '--dry-run',
     ]);
     expect(extractCommandTokens('sweep')).toEqual([]);
@@ -147,19 +159,23 @@ describe('parseTscErrors + classifyBlock', () => {
 });
 
 describe('checkTsExamples 集成', () => {
-  test('非本仓虚构模块判跳过, 本仓 scope 模块找不到直接判真断裂', () => {
+  test('非本仓虚构模块判跳过, 本仓 scope 模块与裸包名子路径找不到均判真断裂', () => {
     const root = makeRoot({
       'package.json': JSON.stringify({ workspaces: ['packages/*'] }),
       'packages/demo/package.json': JSON.stringify({ name: '@acme/demo' }),
+      'packages/my-tool/package.json': JSON.stringify({ name: 'my-tool' }),
       'tsconfig.json': '{"compilerOptions":{"noEmit":true}}',
       'docs/a.md': "```ts\nimport { nope } from 'nowhere-pkg';\nnope();\n```\n",
       'docs/b.md':
         "```ts\nimport { gone } from '@acme/renamed-pkg';\ngone();\n```\n",
+      'docs/c.md':
+        "1. 缩进块:\n   ```ts\n   import { sub } from 'my-tool/missing';\n   sub();\n   ```\n",
     });
     const { real, fragments } = checkTsExamples(root);
     expect(fragments).toHaveLength(1);
-    expect(real).toHaveLength(1);
-    expect(real[0]).toContain('docs/b.md');
+    expect(real).toHaveLength(2);
+    expect(real.some((r) => r.includes('docs/b.md'))).toBe(true);
+    expect(real.some((r) => r.includes('docs/c.md'))).toBe(true);
   }, 120000);
 });
 
@@ -173,19 +189,19 @@ describe('checkCliExamples 集成', () => {
       }),
       'packages/sweep-cli/src/cli.ts':
         "console.log(['sweep --yes  执行删除', 'sweep config  查看配置'].join('\\n'));\n",
-      'packages/extra-cli/package.json': JSON.stringify({
-        name: '@acme/extra-cli',
-        bin: { extra: 'bin/extra.mjs' },
+      'packages/__peer_cli/package.json': JSON.stringify({
+        name: '@acme/__peer_cli',
+        bin: { __peer: 'bin/__peer.mjs' },
       }),
-      'packages/extra-cli/src/cli.ts':
-        "console.log(['extra --dry-run  干跑', 'extra init  初始化'].join('\\n'));\n",
+      'packages/__peer_cli/src/cli.ts':
+        "console.log(['__peer --dry-run  干跑', '__peer init  初始化'].join('\\n'));\n",
       'README.md': [
         '```shell',
         'sweep --yes',
         'sweep --nope',
         'sweep config',
-        'extra init',
-        'extra --bogus',
+        '__peer init',
+        '__peer --bogus',
         '```',
       ].join('\n'),
     });

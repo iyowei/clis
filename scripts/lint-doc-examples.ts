@@ -73,21 +73,34 @@ export function cliHasSubcommands(binName: string, helpText: string): boolean {
   );
 }
 
-/** 提取全文的 ```ts 块 (闭合围栏以 ``` 收尾; startLine 指向内容首行) */
+/** 提取全文的 ```ts 块 (支持列表缩进围栏并按开围栏长度闭合; startLine 指向内容首行) */
 export function extractTsBlocks(content: string, file = '<inline>'): TsBlock[] {
   const blocks: TsBlock[] = [];
   const lines = content.split('\n');
   let start: number | null = null;
+  let fenceLen = 0;
+  let indentLen = 0;
   for (let i = 0; i < lines.length; i += 1) {
-    if (start === null && /^```ts\s*$/.test(lines[i]!)) {
-      start = i + 1;
+    if (start === null) {
+      const open = /^(\s*)(`{3,})ts\s*$/.exec(lines[i]!);
+      if (open !== null) {
+        start = i + 1;
+        indentLen = open[1]!.length;
+        fenceLen = open[2]!.length;
+      }
       continue;
     }
-    if (start !== null && /^```\s*$/.test(lines[i]!)) {
+    const close = /^\s*(`{3,})\s*$/.exec(lines[i]!);
+    if (close !== null && close[1]!.length >= fenceLen) {
+      const rawLines = lines.slice(start, i);
+      const dedented =
+        indentLen > 0
+          ? rawLines.map((l) => l.replace(new RegExp(`^ {1,${indentLen}}`), ''))
+          : rawLines;
       blocks.push({
         file,
         startLine: start + 1,
-        content: lines.slice(start, i).join('\n'),
+        content: dedented.join('\n'),
       });
       start = null;
     }
@@ -97,7 +110,7 @@ export function extractTsBlocks(content: string, file = '<inline>'): TsBlock[] {
 
 /** 自足判据: 块内出现行首 import 语句 (片段块依赖上文变量, 不参与编译) */
 export function isSelfContained(block: string): boolean {
-  return /^import\b/m.test(block);
+  return /^\s*import\b/m.test(block);
 }
 
 /** 构造命令名前缀正则 (转义正则元字符) */
@@ -127,17 +140,18 @@ export function extractNamedShellCommands(
   }
   const commands: NamedShellCommand[] = [];
   const lines = content.split('\n');
-  let inShell = false;
+  let shellFenceLen: number | null = null;
   for (const line of lines) {
-    if (/^```(?:shell|bash|sh)\s*$/.test(line)) {
-      inShell = true;
+    if (shellFenceLen === null) {
+      const open = /^\s*(`{3,})(?:shell|bash|sh)\s*$/.exec(line);
+      if (open !== null) shellFenceLen = open[1]!.length;
       continue;
     }
-    if (inShell && /^```\s*$/.test(line)) {
-      inShell = false;
+    const close = /^\s*(`{3,})\s*$/.exec(line);
+    if (close !== null && close[1]!.length >= shellFenceLen) {
+      shellFenceLen = null;
       continue;
     }
-    if (!inShell) continue;
     const trimmed = line.trim();
     if (trimmed === '' || trimmed.startsWith('#')) continue;
     let matched = false;
@@ -271,6 +285,9 @@ function hitsWorkspaceModuleNotFound(
     if (!match) continue;
     const mod = match[1]!;
     if (workspace.names.has(mod)) return true;
+    for (const name of workspace.names) {
+      if (mod.startsWith(`${name}/`)) return true;
+    }
     for (const scope of workspace.scopes) {
       if (mod.startsWith(scope)) return true;
     }
