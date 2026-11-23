@@ -95,6 +95,7 @@
             "properties": {
               "dir": {
                 "type": "string",
+                "minLength": 1,
                 "description": "项目目录 (相对根); 「.」表示根本身"
               },
               "files": {
@@ -135,19 +136,19 @@
             "additionalProperties": false,
             "required": ["at", "to"],
             "properties": {
-              "at": { "type": "string" },
-              "to": { "type": "string" }
+              "at": { "type": "string", "minLength": 1 },
+              "to": { "type": "string", "minLength": 1 }
             }
           }
         },
         "unreadable": {
           "type": "array",
-          "items": { "type": "string" },
+          "items": { "type": "string", "minLength": 1 },
           "description": "不可读目录清单 (建空目录后 chmod 000), 供「目录不可读, 告警跳过」类用例"
         },
         "readonly": {
           "type": "array",
-          "items": { "type": "string" },
+          "items": { "type": "string", "minLength": 1 },
           "description": "只读目录清单 (chmod 0500: 可读可进入、不可写): 内容可扫描与测体积, 但删除其条目会 EACCES, 供「删除失败 / 部分删除」类用例"
         }
       }
@@ -168,6 +169,7 @@
             "properties": {
               "path": {
                 "type": "string",
+                "minLength": 1,
                 "description": "目标文件路径 (相对 fixture 根; 父目录不存在时自动创建)"
               },
               "text": {
@@ -207,6 +209,7 @@
         },
         "cwd": {
           "type": "string",
+          "minLength": 1,
           "default": ".",
           "description": "工作目录 (相对 fixture 根的相对路径)"
         }
@@ -228,6 +231,7 @@
         "properties": {
           "as": {
             "type": "string",
+            "minLength": 1,
             "description": "把本步返回值存为句柄 (供后续方法步的 call.on 引用; 返回值须为对象)"
           },
           "call": {
@@ -236,20 +240,23 @@
             "properties": {
               "export": {
                 "type": "string",
+                "minLength": 1,
                 "description": "创建步: 调用的包顶层导出名 (与 on/method 互斥)"
               },
               "on": {
                 "type": "string",
+                "minLength": 1,
                 "description": "方法步: 目标句柄名 (与 method 成对; 与 export 互斥)"
               },
               "method": {
                 "type": "string",
+                "minLength": 1,
                 "description": "方法步: 调用的方法名"
               },
               "args": {
                 "type": "array",
                 "default": [],
-                "description": "调用实参 (JSON 值; 字符串内 $FIXTURE 由验收器替换; 含 \"$probe\" 键的对象由 harness 整体替换为对应探针, 对象其余键不参与)"
+                "description": "调用实参 (JSON 值; 字符串内 $FIXTURE 由验收器替换; 含 \"$probe\" 键的对象由 harness 整体替换为对应探针, 含 \"$map\" 键的对象按 [[key, value], ...] 二元组数组递归反序列化为 Map 键值映射, 对象其余键均不参与)"
               }
             },
             "oneOf": [
@@ -278,7 +285,7 @@
         },
         "then": {
           "properties": {
-            "collectEvents": { "const": false }
+            "collectEvents": false
           }
         }
       }
@@ -340,6 +347,7 @@
           "properties": {
             "code": {
               "type": "string",
+              "minLength": 1,
               "description": "期望错误码 (如 CANCELLED / CONFIG_* 等 code 体系取值)"
             },
             "name": {
@@ -380,7 +388,7 @@
             "additionalProperties": false,
             "required": ["path", "state"],
             "properties": {
-              "path": { "type": "string" },
+              "path": { "type": "string", "minLength": 1 },
               "state": {
                 "enum": ["gone", "exists", "empty"],
                 "description": "gone = 不存在; exists = 存在 (文件或目录, lstat 语义); empty = 存在且为空目录"

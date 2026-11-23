@@ -28,10 +28,10 @@
 在仓库根目录执行:
 
 ```bash
-bun scripts/transcription/run-conformance.ts --target "bun packages/sweep-cli/src/cli.ts"                  # bun 载体全量
-bun scripts/transcription/run-conformance.ts --target "node packages/sweep-cli/src/cli.ts"                 # node 载体全量
-bun scripts/transcription/run-conformance.ts --target "bun packages/sweep-cli/src/cli.ts" --filter scan-   # 按 id 子串筛选
-bun scripts/transcription/run-conformance.ts --target "bun packages/sweep-cli/src/cli.ts" --api-target "bun scripts/transcription/api-harness.ts"   # 双面全量 (cli + api; api 用例经 harness 验收)
-bun scripts/transcription/run-conformance.ts --target "bun scripts/transcription/mutants/gen-<id>/packages/sweep-cli/src/cli.ts"   # 变异自证 (预期有失败)
-bun scripts/transcription/run-conformance.ts --target "bun packages/sweep-cli/src/cli.ts" --api-target "bun scripts/transcription/mutants/gen-<id>/scripts/transcription/api-harness.ts" --filter api-   # 变异自证 · api 面 (预期有失败)
+bun scripts/transcription/run-conformance.ts --all-products --runtime bun                                   # bun 载体双面全量 (cli + api)
+bun scripts/transcription/run-conformance.ts --all-products --runtime node                                  # node 载体双面全量 (cli + api)
+bun scripts/transcription/run-conformance.ts --target "bun packages/sweep-cli/src/cli.ts" --filter scan-    # 按 id 子串筛选 (注: 单传 --target 仅切换 CLI 面, API 面缺省走 bun 参考 harness)
+bun scripts/transcription/run-conformance.ts --target "bun packages/sweep-cli/src/cli.ts" --api-target "node scripts/transcription/api-harness.ts --product packages/sweep"   # 单产品显式指定 cli + api 双面命令
+bun scripts/transcription/run-conformance.ts --target "bun scripts/transcription/mutants/gen-<id>/packages/sweep-cli/src/cli.ts" --api-target "bun scripts/transcription/mutants/gen-<id>/scripts/transcription/api-harness.ts"   # 变异自证 · cli + api 双面全量 (预期有失败)
+bun scripts/transcription/run-conformance.ts --target "bun packages/sweep-cli/src/cli.ts" --api-target "bun scripts/transcription/mutants/gen-<id>/scripts/transcription/api-harness.ts" --filter api-   # 变异自证 · 仅筛 api 面 (预期有失败)
 ```
