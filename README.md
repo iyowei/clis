@@ -14,7 +14,7 @@ A collection of command-line tools for my day-to-day development, managed as a m
 - **`@iyowei/sweep`** _(pre-release, `private: true`)_: the programmable API package behind `sweep`, for scanning, measuring, trashing, and safely removing workspace artifacts across multiple toolchains from your own programs or scripts; usage is documented in its [README](packages/sweep/README.md).
 - **`@iyowei/codd-cli`**: the `codd` command-line tool, a template-driven MongoDB 9.0 provisioning generator for Podman (Linux & macOS) and Kubernetes (Helm) with an interactive terminal wizard and collision-free deployment bundles; usage is documented in its [README](packages/codd-cli/README.md).
 - **`@iyowei/codd`**: the programmable API and template asset package behind `codd`, exposing hardware sizing formulas, manifest validation, state management, and bundle generation for programmatic integration; usage is documented in its [README](packages/codd/README.md).
-- **`@iyowei/cli-updater`** _(private shared library)_: zero-dependency cross-package-manager self-update engine (`bun` / `npm` / `pnpm` / `yarn` / `volta`) bundled into every CLI's `update` subcommand.
+- **`@iyowei/cli-updater`** _(private shared library)_: zero-dependency cross-package-manager self-update engine (`bun` / `npm` / `pnpm` / `yarn` / `volta`) bundled into every CLI's `update` subcommand; usage is documented in its [README](packages/cli-updater/README.md).
 
 ## Documentation
 

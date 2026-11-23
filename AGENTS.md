@@ -24,5 +24,6 @@ This block is written and re-added by `turbo` before repository-scoped commands 
 
 - 默认双包范式与三类包判定见 [包分类与发布协议](docs/designs/package-classification.md); 包间依赖方向由 `scripts/lint-dependency-direction.ts` 物理强制 ([依赖方向纪律](docs/designs/dependency-direction.md));
 - 通用多技术栈清理器双包为 `packages/sweep` (`@iyowei/sweep`) 与 `packages/sweep-cli` (`@iyowei/sweep-cli`, 命令 `sweep`, 配置环境变量 `SWEEP_CONFIG`, 默认路径 `~/.config/sweep/config.json`, 当前均标 `"private": true` 隔离于自动发布链之外);
-- 工程闸门链只有一份步骤清单, 就是 `scripts/ci.ts` (本地全链、pre-push、CI 与 Release 前置门禁共用; Release 获批后额外经 `--only npm-trust` 跑 OIDC 凭据预检, 见 [开发指南](docs/development.md)「发布」章);
+- **工程闸门链**: 只有一份步骤清单, 就是 `scripts/ci.ts` (本地全链、pre-push、CI 与 Release 前置门禁共用; Release 获批后额外经 `--only npm-trust` 跑 OIDC 凭据预检, 见 [开发指南](docs/development.md)「发布」章);
+- **仓内确定性工程技能 (`.agents/skills/`)**: [determinism-audit](.agents/skills/determinism-audit/SKILL.md) (技能确定性审计)、[extract-shared-package](.agents/skills/extract-shared-package/SKILL.md) (跨包共享库提炼与退化回收闭环) 与 [perf-loop](.agents/skills/perf-loop/SKILL.md) (多维度性能调优闭环);
 - 提交信息与发布链约定见 [CONTRIBUTING.md](CONTRIBUTING.md)。
