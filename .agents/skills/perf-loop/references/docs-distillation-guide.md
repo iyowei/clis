@@ -24,4 +24,4 @@ bun scripts/lint-doc-references.ts && bun scripts/lint-doc-examples.ts
 
 - 包根对外面向 npm 发布的 `README.md` / `README.zh-CN.md` 严禁引用指向包目录外的相对路径 (`../`); 内部性能设计沉淀一律进 `docs/` 而非包根 README;
 - 文中提及的每一处相对链接、`§` 章节号与 `ADR NNNN` 编号必须真实存在 (假设性编号勿放在普通正文中, 可放入代码块或附带「待创建」标记);
-- 若在文档中插入 `ts` 示例代码块且带行首 `import`, 必须能独立通过全仓 `tsc` 类型检查。
+- 若在文档中插入 `ts` 示例代码块且带行首 `import`, 必须能独立通过文档代码示例类型检查 (`bun scripts/lint-doc-examples.ts`)。
