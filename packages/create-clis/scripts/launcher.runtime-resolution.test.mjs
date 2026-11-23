@@ -1,7 +1,7 @@
 /**
  * 启动器运行时解析防劫持与进程模型单测 (X-P0-1)。
- * 三个入口 (bin/create-clis.mjs / bin/create-clis / bin/create-clis.cmd) 挑运行时都不许让
- * 「当前目录」或 Windows 盘根相对路径 (`/usr/bin`) 进入解析面; 同时覆盖:
+ * `bin/create-clis.mjs` 与 POSIX `bin/create-clis` 显式跳过 PATH 空段、相对条目与 Windows
+ * 盘根相对路径 (`/usr/bin`); `bin/create-clis.cmd` 经 `%%~$PATH:I` 仅搜 PATH 而不默认搜当前目录; 同时覆盖:
  * - win32 返回全部候选数组并逐一 probe (前位旧版 Node 18 / 损坏 shim 失败时继续后续 PATH);
  * - isSupportedNodeVersion (>= 22.18.0) 版本门禁;
  * - POSIX 壳按绝对 PATH 解析、40 跳软链上限、CDPATH 隔离与 CLIS_BUN_ISOLATED=1 透传;

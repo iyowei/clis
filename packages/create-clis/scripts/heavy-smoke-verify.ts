@@ -171,5 +171,19 @@ export const verifyCoreScopedProject = (
     return false;
   }
 
+  const launcherTest = join(
+    target,
+    'packages',
+    `${coreProjectName}-cli`,
+    'src',
+    'launcher.runtime-resolution.test.ts',
+  );
+  if (!existsSync(launcherTest)) {
+    process.stderr.write(
+      'heavy-smoke: core 档生成物缺少 CLI 启动器自证单测 launcher.runtime-resolution.test.ts\n',
+    );
+    return false;
+  }
+
   return verifyConformancePruned(target, 'core', ['lint:deps']);
 };

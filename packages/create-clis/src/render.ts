@@ -25,8 +25,8 @@ export interface Vocabulary {
   /**
    * 仅按无歧义复合形态替换 name / binName (跳过裸 name 与裸 binName):
    * 当源项目名或命令名为常用英文短词 (如 `ORIGINAL` 的 `sweep`) 时开启,
-   * 仅替换包坐标、`packages/<name>`、`vendor/<name>`、`bin/<bin>` 及受限引号/命令上下文,
-   * 防止无边界子串替换误伤 `sweepStale` / `sweep.ts` 或普通英文文本。
+   * 仅替换包坐标、POSIX `/` 与 Windows `\` 分隔的 `packages/<name>` / `vendor/<name>` /
+   * `bin/<bin>` 及受限引号/命令上下文, 防止无边界子串替换误伤 `sweepStale` / `sweep.ts` 或普通英文文本。
    */
   compoundOnly?: boolean;
 }
@@ -76,10 +76,8 @@ function parseRepoSlug(repoUrl: string): string | undefined {
  * 注册序与防误伤规则:
  * 1. `repoUrl` 整段与裸 slug (源 URL 可解析取路径段, 不可解析如 `{{REPO_URL}}` 时用 `owner/name`);
  * 2. 包坐标 (`<scope>/<name>-cli`, `<name>-cli`, `<scope>/<name>`);
- * 3. `name` / `binName`: `source.compoundOnly === true` 时仅注册 15 种路径/引号/反引号/命令复合形态
- *    (`packages/<name>/`, `packages/<name>`, `vendor/<name>`, `bin/<bin>`, `<bin>: `, `<bin> 启动器`,
- *    `'<bin>'`, `"<bin>"`, `'<bin> `, `"<bin> `, `` `<bin>` ``, `` `<bin>  ``, `bunx <bin>`,
- *    `<bin>-rs`, `{ <bin>: ` -> `{ '<target>': `),
+ * 3. `name` / `binName`: `source.compoundOnly === true` 时仅注册路径 (含 POSIX `/` 与 Windows `\`
+ *    分隔的 `packages/<name>`、`vendor/<name>`、`bin/<bin>`)、引号/反引号、命令前缀与对象键等无歧义复合形态,
  *    不注册裸 `name` 与裸 `binName`; 否则注册裸 `name` 与裸 `binName`;
  * 4. `scope`: 始终注册 `<scope>/` (目标无 scope 时连同 `/` 剥离防出现 `/pkg`),
  *    仅当 `source.scope !== @${source.owner}` 才注册裸 `scope` (防误伤 GitHub `@owner` mention);
@@ -118,9 +116,13 @@ function buildForms(target: Vocabulary, source: Vocabulary): Form[] {
   if (source.compoundOnly === true) {
     // 裸短词 (如 sweep) 只走无歧义复合形态, 严禁裸词无边界替换误伤 sweepStale / sweep.ts 等标识
     add(`packages/${source.name}/`, `packages/${target.name}/`);
+    add(`packages\\${source.name}\\`, `packages\\${target.name}\\`);
     add(`packages/${source.name}`, `packages/${target.name}`);
+    add(`packages\\${source.name}`, `packages\\${target.name}`);
     add(`vendor/${source.name}`, `vendor/${target.name}`);
+    add(`vendor\\${source.name}`, `vendor\\${target.name}`);
     add(`bin/${source.binName}`, `bin/${target.binName}`);
+    add(`bin\\${source.binName}`, `bin\\${target.binName}`);
     add(`${source.binName}: `, `${target.binName}: `);
     add(`${source.binName} 启动器`, `${target.binName} 启动器`);
     add(`'${source.binName}'`, `'${target.binName}'`);
@@ -223,11 +225,24 @@ export function containsResidual(
   // 2) 用 '\0' 而非空串, 防止左右残留字符拼接出伪原词汇导致误报;
   // 3) 长形态优先遮蔽, 放行同名 (owner === 'iyowei') 与超集 (owner === 'iyowei-lab'),
   //    又仍能精准抓住同一文件中混杂的真实残留。
-  const targetForms = buildForms(target, target)
+  const rawTargetForms = [
+    ...buildForms(target, target),
+    ...(original.compoundOnly === true && target.compoundOnly !== true
+      ? buildForms(
+          { ...target, compoundOnly: true },
+          { ...target, compoundOnly: true },
+        )
+      : []),
+  ];
+  const seenTarget = new Set<string>();
+  const targetForms = rawTargetForms
     .map((form) => form.from)
-    .filter(
-      (tf) => tf.length > 0 && forms.some((form) => tf.includes(form.from)),
-    );
+    .filter((tf) => {
+      if (tf.length === 0 || seenTarget.has(tf)) return false;
+      seenTarget.add(tf);
+      return forms.some((form) => tf.includes(form.from));
+    })
+    .sort((left, right) => right.length - left.length);
   let remaining = content;
   for (const tf of targetForms) {
     remaining = remaining.replaceAll(tf, '\0');

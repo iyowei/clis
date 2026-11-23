@@ -28,9 +28,12 @@ import { REPO_ROOT, TEMPLATE_MANIFEST } from './template-manifest.ts';
  */
 const VOCABULARY = [
   'packages/sweep-cli',
+  'packages\\sweep-cli',
   'packages/sweep/',
+  'packages\\sweep\\',
   'sweep-cli',
   'bin/sweep',
+  'bin\\sweep',
   'sweep: ',
   '`sweep`',
   '`sweep ',
@@ -176,6 +179,7 @@ describe('TEMPLATE_MANIFEST 词汇口径', () => {
       '@iyowei/sweep',
       'packages/sweep-cli',
       'bin/sweep.mjs',
+      'bin\\sweep.mjs',
       '`sweep`',
       '`sweep --help`',
       'iyowei/clis',

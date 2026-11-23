@@ -367,9 +367,12 @@ describe('行为级单源: 清单 generalize 面实扫零残留', () => {
    */
   const RESIDUAL_LITERALS = [
     'packages/sweep-cli',
+    'packages\\sweep-cli',
     'packages/sweep/',
+    'packages\\sweep\\',
     'sweep-cli',
     'bin/sweep',
+    'bin\\sweep',
     '@iyowei',
     'iyowei/clis',
     'iyowei',
@@ -392,6 +395,62 @@ describe('行为级单源: 清单 generalize 面实扫零残留', () => {
       "file: 'sweep.ts'",
     );
     expect(containsResidual('sweepStale', SNAPSHOT_ORIGINAL)).toBe(false);
+  });
+
+  test('Windows 反斜杠复合路径在构建泛化期与生成期双向替换且覆盖残留检测 (H-1)', () => {
+    const winCmdLine = 'set "ENTRY=%ROOT%\\bin\\sweep.mjs"';
+    const generalized = renderTemplate(
+      winCmdLine,
+      TEMPLATE_VOCABULARY,
+      SNAPSHOT_ORIGINAL,
+    );
+    expect(generalized).toBe('set "ENTRY=%ROOT%\\bin\\{{BIN_NAME}}.mjs"');
+
+    const myBinTarget: Vocabulary = { ...TARGET, binName: 'my-bin' };
+    const generated = renderTemplate(
+      generalized,
+      myBinTarget,
+      TEMPLATE_VOCABULARY,
+    );
+    expect(generated).toBe('set "ENTRY=%ROOT%\\bin\\my-bin.mjs"');
+
+    expect(
+      renderTemplate(
+        'packages\\sweep\\src\\index.ts 与 vendor\\sweep',
+        myBinTarget,
+        SNAPSHOT_ORIGINAL,
+      ),
+    ).toBe('packages\\my-tool\\src\\index.ts 与 vendor\\my-tool');
+
+    // 未替换的 Windows 反斜杠形态必被检出残留
+    expect(containsResidual(winCmdLine, SNAPSHOT_ORIGINAL)).toBe(true);
+    expect(containsResidual(winCmdLine, SNAPSHOT_ORIGINAL, myBinTarget)).toBe(
+      true,
+    );
+    expect(containsResidual(generated, SNAPSHOT_ORIGINAL, myBinTarget)).toBe(
+      false,
+    );
+
+    // 用户目标词为超集 (如 sweep-tool) 时合法遮蔽, 同文件混杂真残留仍精准抓出
+    const supersetBin: Vocabulary = {
+      ...TARGET,
+      name: 'sweep-tool',
+      binName: 'sweep-tool',
+    };
+    expect(
+      containsResidual(
+        'set "ENTRY=%ROOT%\\bin\\sweep-tool.mjs"',
+        SNAPSHOT_ORIGINAL,
+        supersetBin,
+      ),
+    ).toBe(false);
+    expect(
+      containsResidual(
+        'set "ENTRY=%ROOT%\\bin\\sweep-tool.mjs" & rem bin\\sweep.mjs',
+        SNAPSHOT_ORIGINAL,
+        supersetBin,
+      ),
+    ).toBe(true);
   });
 
   test('每个 generalize 文件渲染前含词汇、渲染后零残留', () => {

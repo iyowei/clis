@@ -1,10 +1,11 @@
 #!/usr/bin/env node
 /**
- * npm 安装场景的启动器: 挑选运行时 (Bun 优先, 其次 Node >= 22.18.0) 后启动真实入口 (只认构建产物)。
+ * npm 安装与壳脚本委托入口: 挑选运行时 (Bun 优先, 其次 Node >= 22.18.0) 后启动真实入口 (只认构建产物)。
  *
  * 安全与进程模型防线:
- * 1. 运行时解析防劫持: win32 严格按盘符/UNC 绝对路径正则过滤 PATH (拦截 /usr/bin 盘根相对路径与 cwd 劫持),
- *    返回全部候选数组逐一 probe; POSIX 仅按 `/` 开头绝对 PATH 解析;
+ * 1. 运行时解析防劫持: 本入口与 POSIX `bin/create-clis` 显式跳过 PATH 空段与相对条目 (win32 严格按盘符/UNC
+ *    绝对路径正则过滤 PATH, 拦截 `/usr/bin` 盘根相对路径并逐候选 probe; POSIX 仅按 `/` 开头绝对 PATH 解析);
+ *    配套 `bin/create-clis.cmd` 经 `%%~$PATH:I` 仅搜 PATH 而不默认搜当前目录, 再交由本入口复核;
  * 2. Bun 工作目录配置隔离: 选中 Bun 时强制附加 --config=<pkg>/bin/bunfig.toml 与
  *    --no-env-file (缺失隔离配置即拒绝); 经壳启动器透传 CLIS_BUN_ISOLATED=1 且当前已是 Bun 时同进程 import;
  * 3. 纯 Node 同进程零套娃: 无可用 Bun 且当前 Node >= 22.18.0 时直接同进程 import, 跨运行时切换时异步 spawn
