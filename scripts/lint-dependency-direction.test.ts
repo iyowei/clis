@@ -128,7 +128,9 @@ describe('checkDependencyDirection', () => {
     expect(violations).toHaveLength(1);
     expect(violations[0]).toContain('超过最大深度 2');
   });
+});
 
+describe('checkDependencyDirection · 私有库与待首发双包主包', () => {
   test('公开库在 dependencies / peerDependencies 依赖仓内私有库亮红灯, devDependencies 放行', () => {
     const bad = makeRoot({
       'package.json': { workspaces: ['packages/*'] },
@@ -197,5 +199,51 @@ describe('checkDependencyDirection', () => {
     const violations = checkDependencyDirection(root);
     expect(violations).toHaveLength(1);
     expect(violations[0]).toContain('超过最大深度 2');
+  });
+
+  test('暂标 private: true 的双包产品主包在运行期依赖仓内共享私库同样亮红灯, devDependencies 放行', () => {
+    const bad = makeRoot({
+      'package.json': { workspaces: ['packages/*'] },
+      'packages/shared/package.json': {
+        name: '@x/shared',
+        private: true,
+        clisRole: 'shared-lib',
+      },
+      'packages/prod/package.json': {
+        name: '@x/prod',
+        private: true,
+        dependencies: { '@x/shared': '1.0.0' },
+      },
+      'packages/prod-cli/package.json': {
+        name: '@x/prod-cli',
+        private: true,
+        bin: { prod: 'bin/prod.mjs' },
+        devDependencies: { '@x/prod': '1.0.0', '@x/shared': '1.0.0' },
+      },
+    });
+    const violations = checkDependencyDirection(bad);
+    expect(violations).toHaveLength(1);
+    expect(violations[0]).toContain('运行期依赖仓内私有库');
+
+    const ok = makeRoot({
+      'package.json': { workspaces: ['packages/*'] },
+      'packages/shared/package.json': {
+        name: '@x/shared',
+        private: true,
+        clisRole: 'shared-lib',
+      },
+      'packages/prod/package.json': {
+        name: '@x/prod',
+        private: true,
+        devDependencies: { '@x/shared': '1.0.0' },
+      },
+      'packages/prod-cli/package.json': {
+        name: '@x/prod-cli',
+        private: true,
+        bin: { prod: 'bin/prod.mjs' },
+        devDependencies: { '@x/prod': '1.0.0', '@x/shared': '1.0.0' },
+      },
+    });
+    expect(checkDependencyDirection(ok)).toEqual([]);
   });
 });

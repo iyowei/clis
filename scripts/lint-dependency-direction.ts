@@ -1,17 +1,18 @@
 /**
- * 依赖方向闸门: 强制执行 docs/designs/dependency-direction.md 约定的包间依赖有向无环图。
+ * 依赖方向闸门: 强制执行工作区包间依赖有向无环图与分层边界。
  * 触发方: `scripts/ci.ts` (`lint:deps` 并行只读闸门) 或手动执行。
  *
- * 包分类 (确定性字段, 与 docs/designs/package-classification.md 同源):
+ * 包分类 (由 package.json 确定性字段推导):
  * - cli:         package.json 有 `bin` 字段
- * - public-lib:  无 `bin`, 且 `private !== true`
+ * - public-lib:  无 `bin`, 且 `private !== true` (暂标 `private: true` 且非 `clisRole: "shared-lib"` 的双包主包同级受控)
  * - private-lib: 无 `bin`, 且 `private === true`
  *
- * 规则 (dependencies 与 devDependencies 一视同仁):
- * 1. 禁止 public-lib -> cli 与 private-lib -> cli (库不得反向依赖工具)
- * 2. 禁止 cli -> cli (工具之间不得互相依赖; 共享需求抽库)
+ * 规则 (扫描 dependencies / devDependencies / peerDependencies / optionalDependencies 四类字段):
+ * 1. 禁止 public-lib -> cli 与 private-lib -> cli (库不得反向依赖工具, 四类字段一视同仁)
+ * 2. 禁止 cli -> cli (工具之间不得互相依赖; 共享需求抽库, 四类字段一视同仁)
  * 3. 禁止自依赖与任何环依赖 (有向无环图)
- * 4. 禁止 public-lib -> public-lib 链条深度 > 2 (即边数 > 2, 超过 3 个公开库串联)
+ * 4. 禁止公开库层级 (含暂标 private 的双包主包) 依赖链深度 > 2 (即边数 > 2, 超过 3 个公开库串联)
+ * 5. 禁止公开库层级在运行期 (dependencies / peerDependencies / optionalDependencies) 依赖仓内私有库 (仅构建期打包须放 devDependencies)
  *
  * 用法: bun scripts/lint-dependency-direction.ts
  * 退出码: 0 全绿; 1 存在违规。
@@ -91,12 +92,13 @@ export function checkDependencyDirection(root: string = REPO_ROOT): string[] {
           `禁止库反向依赖 CLI: ${pkg.name} [${fromKind}] → ${dep} [cli]`,
         );
       } else if (
-        fromKind === 'public-lib' &&
+        isPublicTierLib(pkg.name) &&
         toKind === 'private-lib' &&
+        !isPublicTierLib(dep) &&
         runtimeInternalDeps.has(dep)
       ) {
         violations.push(
-          `禁止公开库在运行期依赖仓内私有库: ${pkg.name} [public-lib] → ${dep} [private-lib] (发布到 npm 后无法解析; 如仅构建期打包请移至 devDependencies)`,
+          `禁止公开库在运行期依赖仓内私有库: ${pkg.name} [${fromKind}] → ${dep} [private-lib] (发布到 npm 后无法解析; 如仅构建期打包请移至 devDependencies)`,
         );
       }
     }
