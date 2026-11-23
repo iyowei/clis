@@ -203,9 +203,23 @@ function expectCoreStructure(target: string): void {
   expect(readAt(target, 'docs/README.md')).not.toContain(
     'transcription/README.md',
   );
+  expect(readAt(target, 'docs/README.md')).not.toContain('coverage.md');
   expect(readAt(target, '.github/PULL_REQUEST_TEMPLATE.md')).not.toContain(
     'conformance suite',
   );
+  for (const cfg of [
+    'tsconfig.json',
+    '.oxlintrc.json',
+    '.prettierignore',
+    'bunfig.toml',
+    '.gitignorerc.json',
+    '.gitignore',
+  ]) {
+    expect(
+      readAt(target, cfg),
+      `${cfg} 不应残留 transcription 路径`,
+    ).not.toContain('scripts/transcription/');
+  }
 }
 
 /** 替换面抽样: 根包与 API 包的词汇落位 (全树零残留由 expectNoForm 背书) */
@@ -426,9 +440,17 @@ function defineFlagCases(runner: string, available: boolean): void {
           has(target, 'packages/demo-tool/docs/protocol/behavior-contract.md'),
         ).toBe(true);
         expect(has(target, 'docs/designs/tech-debt.md')).toBe(true);
-        expect(readAt(target, 'docs/README.md')).toContain(
-          'transcription/README.md',
+        const fullDocsIndex = readAt(target, 'docs/README.md');
+        expect(fullDocsIndex).toContain('transcription/README.md');
+        expect(fullDocsIndex).toContain(
+          '../packages/demo-tool/docs/protocol/behavior-contract.md',
         );
+        expect(fullDocsIndex).toContain(
+          '../packages/demo-tool/docs/protocol/conformance/coverage.md',
+        );
+        expect(result.stdout).toContain('packages/demo-tool/docs/protocol/');
+        expect(result.stdout).toContain('开箱');
+        expect(result.stdout).not.toContain('会红');
         // 根包脚本零悬空 + 闸门清单仍可跑: 摘除面不越界 (full 档保留 conformance 套件)
         expectRootScriptsResolve(target);
         const help = ciHelpAt(target);

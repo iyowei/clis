@@ -13,11 +13,22 @@ import { codeChars } from './tier-lexer.ts';
 /** 定位 `CONFORMANCE_GROUP` 声明行锚点 */
 const CONFORMANCE_GROUP_DECL = /^const CONFORMANCE_GROUP\b[^\n]*= \[/m;
 
+/** 定位顶部 JSDoc 中的 `--conformance` 分组列表行 */
+const JSDOC_CONFORMANCE_BULLET =
+  /^[ \t]*\*[ \t]*-[ \t]*`?--conformance`?\b[^\n]*\n/gm;
+
+/** 定位顶部 JSDoc 用法行中的 `--conformance` 分支 */
+const JSDOC_USAGE_CONFORMANCE =
+  /\s*\|\s*--conformance\b|\b--conformance\s*\|\s*/g;
+
+/** 定位顶部 JSDoc 中的三路 CI 描述 */
+const JSDOC_THREE_WAY_CI = /CI 三路 job \(Linux \/ Windows \/ macOS\)/g;
+
 /** 定位 `HELP_TEXT` 中的 `--conformance` 说明行 */
 const HELP_CONFORMANCE_LINE = /^[ \t]*'[^'\n]*--conformance[^'\n]*'[^\n]*\n/gm;
 
-/** 定位 `HELP_TEXT` 中全链拼接的 "+ 验收组 (去重)" 尾缀 */
-const HELP_FULL_CHAIN_SUFFIX = /\s*\+\s*验收组\s*\(去重\)/g;
+/** 定位顶部 JSDoc 与 `HELP_TEXT` 中全链拼接的 "+ 验收组 (...)" 尾缀 */
+const HELP_FULL_CHAIN_SUFFIX = /\s*\+\s*验收组(?:\s*\([^)\n]*\))?/g;
 
 /** 定位 `resolveSteps` 条件里对 `--conformance` 的或分支 (后置或前置两种写法) */
 const MODE_COND_TRAILING = /\s*\|\|\s*arg === '--conformance'/g;
@@ -128,20 +139,21 @@ export function pruneEmptyConformanceGroup(
   let out =
     afterGroupRefSource.slice(0, after.start) +
     afterGroupRefSource.slice(after.end);
+  out = out.replace(FULL_CHAIN_RETURN, '  return [...VERIFY_GROUP];');
+  out = out.replace(JSDOC_CONFORMANCE_BULLET, '');
+  out = out.replace(JSDOC_USAGE_CONFORMANCE, '');
+  out = out.replace(JSDOC_THREE_WAY_CI, 'CI 双路 job (Linux / Windows)');
   out = out.replace(HELP_CONFORMANCE_LINE, '');
   out = out.replace(HELP_FULL_CHAIN_SUFFIX, '');
   out = out.replace(MODE_COND_TRAILING, '');
   out = out.replace(MODE_COND_LEADING, '');
   out = out.replace(MODE_RETURN_LINE, '');
-  out = out.replace(FULL_CHAIN_RETURN, '  return [...VERIFY_GROUP];');
 
   if (out.includes('CONFORMANCE_GROUP')) {
     throw new Error(`步骤手术自检未过: CONFORMANCE_GROUP 仍残留在 ${ciScript}`);
   }
-  if (out.includes("'--conformance'")) {
-    throw new Error(
-      `步骤手术自检未过: '--conformance' 分支仍残留在 ${ciScript}`,
-    );
+  if (out.includes('--conformance')) {
+    throw new Error(`步骤手术自检未过: '--conformance' 仍残留在 ${ciScript}`);
   }
   return out;
 }
@@ -243,5 +255,198 @@ export function planConformanceDocPrunes(
     );
     if (pruned !== source) updates.set(prPath, pruned);
   }
+  return updates;
+}
+
+const RELEASE_CHECKS_COMMENT =
+  /全套三路检查\s*\(verify\s*\/\s*verify-windows\s*\/\s*\n([ \t]*#[ \t]*)conformance\),\s*既确保 main 推送零双跑、不白烧双倍 macOS runner,/g;
+
+/** 摘除 workflow 注释中残留的 conformance / macOS runner 引用 (仅触碰 `#` 注释行) */
+export function pruneWorkflowConformanceComments(
+  source: string,
+  workflowRel: string,
+): string {
+  let out = source.replace(
+    RELEASE_CHECKS_COMMENT,
+    '全套检查 (verify / verify-windows),\n$1既确保 main 推送零双跑,',
+  );
+  out = out
+    .split('\n')
+    .map((line) => {
+      if (!line.trimStart().startsWith('#')) return line;
+      return line
+        .replace(/全套三路检查(?=\s*\([^)\n]*conformance)/g, '全套检查')
+        .replace(/\s*\/\s*conformance\b/g, '')
+        .replace(/\bconformance\s*\/\s*/g, '')
+        .replace(/、不白烧双倍 macOS runner/g, '')
+        .replace(/checks 三平台 CI/g, 'checks 双平台 CI');
+    })
+    .join('\n');
+
+  for (const line of out.split('\n')) {
+    if (line.trimStart().startsWith('#') && /\bconformance\b/i.test(line)) {
+      throw new Error(
+        `workflow 注释裁剪自检未过 (${workflowRel}): 注释仍残留 conformance`,
+      );
+    }
+  }
+  return out;
+}
+
+const TRANSCRIPTION_PATH_PREFIX = 'scripts/transcription/';
+
+const JSON_ARRAY_CONFIGS: readonly (readonly [file: string, field: string])[] =
+  [
+    ['tsconfig.json', 'exclude'],
+    ['.oxlintrc.json', 'ignorePatterns'],
+    ['.gitignorerc.json', 'custom'],
+  ];
+
+const LINE_IGNORE_CONFIGS: readonly string[] = [
+  '.prettierignore',
+  '.gitignore',
+  '_gitignore',
+];
+
+const BUNFIG_PATH_IGNORE_RE =
+  /^([ \t]*pathIgnorePatterns[ \t]*=[ \t]*)\[([^\]]*)\][ \t]*$/m;
+
+function pruneJsonArrayField(
+  source: string,
+  field: string,
+  prefix: string,
+): string {
+  const parsed = JSON.parse(source) as Record<string, unknown>;
+  const arr = parsed[field];
+  if (!Array.isArray(arr)) return source;
+  const filtered = arr.filter(
+    (item) => !(typeof item === 'string' && item.startsWith(prefix)),
+  );
+  if (filtered.length === arr.length) return source;
+  parsed[field] = filtered;
+  return `${JSON.stringify(parsed, null, 2)}\n`;
+}
+
+function pruneLineEntries(source: string, prefix: string): string {
+  const lines = source.split('\n');
+  const kept = lines.filter((line) => !line.trim().startsWith(prefix));
+  if (kept.length === lines.length) return source;
+  return `${kept
+    .join('\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trimEnd()}\n`;
+}
+
+function pruneBunfigIgnore(source: string, prefix: string): string {
+  const match = BUNFIG_PATH_IGNORE_RE.exec(source);
+  if (match === null) return source;
+  const items: string[] = [];
+  for (const token of match[2]!.matchAll(/"([^"]*)"|'([^']*)'/g)) {
+    const val = token[1] ?? token[2] ?? '';
+    if (!val.startsWith(prefix)) items.push(val);
+  }
+  let out: string;
+  if (items.length > 0) {
+    const rendered = items.map((item) => JSON.stringify(item)).join(', ');
+    out = source.replace(BUNFIG_PATH_IGNORE_RE, `$1[${rendered}]`);
+  } else {
+    out = source.replace(
+      /^[ \t]*pathIgnorePatterns[ \t]*=[ \t]*\[[^\]]*\][ \t]*\n?/m,
+      '',
+    );
+    out = out.replace(
+      /(?:^|\n)\[test\][ \t]*(?:\n[ \t]*(?:#[^\n]*)?)*(?=\n\[|$)/,
+      '\n',
+    );
+  }
+  return `${out.replace(/\n{3,}/g, '\n\n').trimEnd()}\n`;
+}
+
+/** 增强档降级时同步摘除根配置族中指向 `scripts/transcription/` (含 `mutants`) 的死路径条目 */
+export function planConformanceConfigPrunes(
+  targetDir: string,
+  deletePaths: readonly string[],
+  conformanceKitDir: string,
+): Map<string, string> {
+  const updates = new Map<string, string>();
+  if (!deletePaths.includes(conformanceKitDir)) return updates;
+
+  const applyPrune = (
+    rel: string,
+    transform: (src: string) => string,
+  ): void => {
+    const filePath = join(targetDir, rel);
+    if (!existsSync(filePath)) return;
+    const source = readFileSync(filePath, 'utf8');
+    const pruned = transform(source);
+    if (pruned.includes(TRANSCRIPTION_PATH_PREFIX)) {
+      throw new Error(
+        `配置裁剪自检未过 (${rel}): 仍残留 ${TRANSCRIPTION_PATH_PREFIX}`,
+      );
+    }
+    if (pruned !== source) updates.set(filePath, pruned);
+  };
+
+  for (const [rel, field] of JSON_ARRAY_CONFIGS) {
+    applyPrune(rel, (src) =>
+      pruneJsonArrayField(src, field, TRANSCRIPTION_PATH_PREFIX),
+    );
+  }
+  for (const rel of LINE_IGNORE_CONFIGS) {
+    applyPrune(rel, (src) => pruneLineEntries(src, TRANSCRIPTION_PATH_PREFIX));
+  }
+  applyPrune('bunfig.toml', (src) =>
+    pruneBunfigIgnore(src, TRANSCRIPTION_PATH_PREFIX),
+  );
+  return updates;
+}
+
+const DESIGNS_README = 'docs/designs/README.md';
+
+/** 裁剪 core 档删除 tech-debt.md 时, 同步将 docs/designs/README.md 的登记行替换为无死链空表占位 */
+export function planTechDebtDocPrunes(
+  targetDir: string,
+  deletePaths: readonly string[],
+  techDebtLedger: string,
+  existingUpdates: ReadonlyMap<string, string>,
+): Map<string, string> {
+  const updates = new Map(existingUpdates);
+  if (!deletePaths.includes(techDebtLedger)) return updates;
+  const readmePath = join(targetDir, DESIGNS_README);
+  if (!existsSync(readmePath)) return updates;
+  const source = updates.get(readmePath) ?? readFileSync(readmePath, 'utf8');
+  if (!source.includes('tech-debt.md')) return updates;
+
+  const lines = source.split('\n');
+  const isDataRow = (line: string): boolean => {
+    const trimmed = line.trim();
+    return (
+      trimmed.startsWith('|') &&
+      trimmed.endsWith('|') &&
+      !/^\|\s*[-:|\s]+\|$/.test(trimmed)
+    );
+  };
+  // 表头占 1 行, 仅当表体只有 tech-debt.md 这 1 行时替换为占位行, 否则直接删行保留其余条目
+  const replaceWithPlaceholder = lines.filter(isDataRow).length <= 2;
+  const prunedLines: string[] = [];
+  for (const line of lines) {
+    if (isDataRow(line) && line.includes('tech-debt.md')) {
+      if (replaceWithPlaceholder) {
+        const cols = line.split('|').length - 2;
+        prunedLines.push(
+          cols >= 3 ? '| 1    | (待登记) | -    |' : '| (待登记) | - |',
+        );
+      }
+      continue;
+    }
+    prunedLines.push(line);
+  }
+  const pruned = prunedLines.join('\n');
+  if (pruned.includes('tech-debt.md')) {
+    throw new Error(
+      `设计索引裁剪自检未过 (${DESIGNS_README}): 仍残留 tech-debt.md 引用`,
+    );
+  }
+  if (pruned !== source) updates.set(readmePath, pruned);
   return updates;
 }

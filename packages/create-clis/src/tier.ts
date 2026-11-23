@@ -10,9 +10,12 @@ import { existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import {
+  planConformanceConfigPrunes,
   planConformanceDocPrunes,
+  planTechDebtDocPrunes,
   pruneEmptyConformanceGroup,
   pruneOrphanedCarriers,
+  pruneWorkflowConformanceComments,
 } from './tier-conformance.ts';
 import { codeChars } from './tier-lexer.ts';
 import {
@@ -204,7 +207,10 @@ export function pruneTemplate(targetDir: string, rules: RemoveRule): void {
       }
     }
     for (const wf of foundWorkflows) {
-      const pruned = pruneWorkflowJobs(wf.source, workflowJobs);
+      let pruned = pruneWorkflowJobs(wf.source, workflowJobs);
+      if (workflowJobs.includes('conformance')) {
+        pruned = pruneWorkflowConformanceComments(pruned, wf.rel);
+      }
       const residuals = findResidualWorkflowJobs(pruned, workflowJobs);
       if (residuals.length > 0) {
         throw new Error(
@@ -214,10 +220,20 @@ export function pruneTemplate(targetDir: string, rules: RemoveRule): void {
       prunedWorkflows.set(wf.path, pruned);
     }
   }
-  const prunedDocs = planConformanceDocPrunes(
+  const prunedDocs = planTechDebtDocPrunes(
     targetDir,
     rules.deletePaths,
-    CONFORMANCE_DOCS_DIR,
+    TECH_DEBT_LEDGER,
+    planConformanceDocPrunes(
+      targetDir,
+      rules.deletePaths,
+      CONFORMANCE_DOCS_DIR,
+    ),
+  );
+  const prunedConfigs = planConformanceConfigPrunes(
+    targetDir,
+    rules.deletePaths,
+    CONFORMANCE_KIT_DIR,
   );
   for (const path of rules.deletePaths) {
     rmSync(join(targetDir, path), { recursive: true, force: true });
@@ -231,6 +247,9 @@ export function pruneTemplate(targetDir: string, rules: RemoveRule): void {
   }
   for (const [docPath, content] of prunedDocs) {
     writeFileSync(docPath, content);
+  }
+  for (const [cfgPath, content] of prunedConfigs) {
+    writeFileSync(cfgPath, content);
   }
 }
 

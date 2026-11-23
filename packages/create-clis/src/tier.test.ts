@@ -20,7 +20,14 @@ import { pruneTemplate, removeRulesFor } from './tier.ts';
 /** 夹具 ci.ts: 形态对齐模板 `scripts/ci.ts` —— 单行条目 / 多行条目 (嵌套数组) / 模板字面量 /
  *  组数组 / 条目自带前置注释, 供步骤手术的精确断言 ("其它内容原样")。 */
 const FIXTURE_CI_TS = `/**
- * 本地 CI 预演 (夹具, 形态对齐模板 scripts/ci.ts)
+ * 本地 CI 预演 (夹具, 形态对齐模板 scripts/ci.ts): 消费方含 CI 三路 job (Linux / Windows / macOS)。
+ *
+ * 分组:
+ * - \`--verify\`         验证组;
+ * - \`--conformance\`    验收组 (macOS 口径);
+ * - (无旗标)           全链 = 验证组 + 验收组 (重复步骤去重);
+ *
+ * 用法: bun scripts/ci.ts [--verify | --conformance | --only <step> | --help]
  */
 import { spawnSync } from 'node:child_process';
 
@@ -91,7 +98,13 @@ function resolveSteps(argv: string[]): string[] {
 /** 夹具裁剪后的期望全文: 被摘条目 (含其前置注释) 与组数组引用行整体消失, CONFORMANCE_GROUP 及
  *  --conformance 分支随真实验收步骤同步摘净, 只服务被摘步骤的载体声明与导入一并摘净, 其余逐字节原样。 */
 const FIXTURE_CI_TS_PRUNED = `/**
- * 本地 CI 预演 (夹具, 形态对齐模板 scripts/ci.ts)
+ * 本地 CI 预演 (夹具, 形态对齐模板 scripts/ci.ts): 消费方含 CI 双路 job (Linux / Windows)。
+ *
+ * 分组:
+ * - \`--verify\`         验证组;
+ * - (无旗标)           全链 = 验证组;
+ *
+ * 用法: bun scripts/ci.ts [--verify | --only <step> | --help]
  */
 import { spawnSync } from 'node:child_process';
 
@@ -364,5 +377,139 @@ describe('pruneTemplate 脚本声明手术', () => {
     expect(readFileSync(join(orphanScript, 'package.json'), 'utf8')).toBe(
       FIXTURE_PACKAGE_JSON,
     );
+  });
+});
+
+describe('pruneTemplate 配置族 mutants 路径与 release.yml 注释同步清理', () => {
+  test('摘除 scripts/transcription/ 时同步清理根配置族与 release.yml 注释残留', () => {
+    const root = setupCiFixture();
+    mkdirSync(join(root, '.github/workflows'), { recursive: true });
+    const files: Record<string, string> = {
+      '.github/workflows/ci.yml':
+        'jobs:\n  verify:\n    runs-on: ubuntu-latest\n  conformance:\n    runs-on: macos-latest\n',
+      '.github/workflows/release.yml':
+        'jobs:\n  # 发布前置门禁 (单一事实来源): 直接复用 ci.yml 的全套三路检查 (verify / verify-windows /\n' +
+        '  # conformance), 既确保 main 推送零双跑、不白烧双倍 macOS runner, 又把 Windows 兼容正式纳入发版硬门禁。\n' +
+        '  checks:\n    uses: ./.github/workflows/ci.yml\n' +
+        '  # 又避免前一次待审批的 waiting run 把后续 main 推送的 checks 三平台 CI 卡死在 pending。\n' +
+        '  release:\n    needs: checks\n    runs-on: ubuntu-latest\n',
+      'tsconfig.json':
+        '{"exclude": ["dist", "node_modules", "scripts/transcription/mutants"]}\n',
+      '.oxlintrc.json':
+        '{"ignorePatterns": ["**/dist/**", "scripts/transcription/mutants/**"]}\n',
+      '.gitignorerc.json':
+        '{"custom": ["package-lock.json", "scripts/transcription/mutants/gen-*/", ".turbo/"]}\n',
+      '.prettierignore': 'dist\nscripts/transcription/mutants\n',
+      '.gitignore': 'node_modules/\nscripts/transcription/mutants/gen-*/\n',
+      'bunfig.toml':
+        '[install]\nlinker = "hoisted"\n\n[test]\npathIgnorePatterns = ["scripts/transcription/mutants/**"]\n',
+    };
+    for (const [rel, content] of Object.entries(files)) {
+      writeFileSync(join(root, rel), content);
+    }
+
+    pruneTemplate(root, {
+      deletePaths: ['scripts/transcription/'],
+      ciSteps: ['lint:coverage', 'conformance:bun'],
+      packageScripts: ['conformance'],
+      workflowJobs: ['conformance'],
+    });
+
+    for (const rel of [
+      'tsconfig.json',
+      '.oxlintrc.json',
+      '.gitignorerc.json',
+      '.prettierignore',
+      '.gitignore',
+      'bunfig.toml',
+    ]) {
+      expect(readFileSync(join(root, rel), 'utf8'), rel).not.toContain(
+        'scripts/transcription/',
+      );
+    }
+    expect(readFileSync(join(root, 'bunfig.toml'), 'utf8')).not.toContain(
+      '[test]',
+    );
+    const relYml = readFileSync(
+      join(root, '.github/workflows/release.yml'),
+      'utf8',
+    );
+    expect(relYml).not.toMatch(/conformance/i);
+    expect(relYml).toContain('全套检查 (verify / verify-windows)');
+    expect(relYml).toContain('checks 双平台 CI');
+  });
+
+  test('bunfig.toml 含额外 pathIgnorePatterns 或额外 [test] 项时仅移除 transcription 条目', () => {
+    const root = setupCiFixture();
+    writeFileSync(
+      join(root, 'bunfig.toml'),
+      '[test]\ntimeout = 5000\npathIgnorePatterns = ["fixtures/**", "scripts/transcription/mutants/**"]\n',
+    );
+    pruneTemplate(root, {
+      deletePaths: ['scripts/transcription/'],
+      ciSteps: [],
+      packageScripts: [],
+    });
+    const bunfig = readFileSync(join(root, 'bunfig.toml'), 'utf8');
+    expect(bunfig).toContain('[test]');
+    expect(bunfig).toContain('timeout = 5000');
+    expect(bunfig).toContain('pathIgnorePatterns = ["fixtures/**"]');
+    expect(bunfig).not.toContain('scripts/transcription/');
+  });
+});
+
+describe('pruneTemplate 设计文档索引 tech-debt.md 联动裁剪 (R2-3 #4)', () => {
+  test('standard 档保留 tech-debt.md 入链; core 档删除 tech-debt.md 并替换为无死链半角 - 占位', () => {
+    const setupDesigns = (readme: string): string => {
+      const root = setupCiFixture();
+      mkdirSync(join(root, 'docs/designs'), { recursive: true });
+      writeFileSync(join(root, 'docs/designs/README.md'), readme);
+      writeFileSync(join(root, 'docs/designs/tech-debt.md'), '# 技术债登记\n');
+      return root;
+    };
+    const readme3Col =
+      '# 设计文档索引\n\n| 顺序 | 文档 | 一句话 |\n| ---- | ---- | ------ |\n| 1 | [技术债登记](tech-debt.md) | 台账 |\n';
+
+    const stdRoot = setupDesigns(readme3Col);
+    pruneTemplate(stdRoot, {
+      deletePaths: ['scripts/transcription/'],
+      ciSteps: ['lint:coverage', 'conformance:bun'],
+      packageScripts: ['conformance'],
+    });
+    expect(existsSync(join(stdRoot, 'docs/designs/tech-debt.md'))).toBe(true);
+    expect(
+      readFileSync(join(stdRoot, 'docs/designs/README.md'), 'utf8'),
+    ).toContain('[技术债登记](tech-debt.md)');
+
+    const coreRoot = setupDesigns(readme3Col);
+    pruneTemplate(coreRoot, {
+      deletePaths: ['scripts/transcription/', 'docs/designs/tech-debt.md'],
+      ciSteps: ['lint:coverage', 'conformance:bun'],
+      packageScripts: ['conformance'],
+    });
+    expect(existsSync(join(coreRoot, 'docs/designs/tech-debt.md'))).toBe(false);
+    const coreDesigns3 = readFileSync(
+      join(coreRoot, 'docs/designs/README.md'),
+      'utf8',
+    );
+    expect(coreDesigns3).not.toContain('tech-debt.md');
+    expect(coreDesigns3).toContain('(待登记)');
+    expect(coreDesigns3).not.toContain('\u2014');
+
+    const coreRoot2Col = setupDesigns(
+      '# 设计文档索引\n\n| 文档 | 一句话 |\n| ---- | ------ |\n| [技术债登记](tech-debt.md) | 台账 |\n',
+    );
+    pruneTemplate(coreRoot2Col, {
+      deletePaths: ['docs/designs/tech-debt.md'],
+      ciSteps: [],
+      packageScripts: [],
+    });
+    const coreDesigns2 = readFileSync(
+      join(coreRoot2Col, 'docs/designs/README.md'),
+      'utf8',
+    );
+    expect(coreDesigns2).not.toContain('tech-debt.md');
+    expect(coreDesigns2).toContain('| (待登记) | - |');
+    expect(coreDesigns2).not.toContain('\u2014');
   });
 });
