@@ -7,11 +7,14 @@ import { readFileSync } from 'node:fs';
 import { runSelfUpdate } from '@iyowei/cli-updater';
 import {
   type FanController,
+  type FanInfo,
   type FanStateStore,
   type FanStatusReport,
   type FanTransport,
   type PersistDaemonStatus,
+  type PersistDaemonSyncResult,
   createFanController,
+  ensurePersistDaemon,
   getPersistDaemonStatus,
   installPersistDaemon,
   uninstallPersistDaemon,
@@ -20,6 +23,7 @@ import {
 import { parseArgs } from './args.ts';
 import { helpText } from './help.ts';
 import {
+  isManualFanSettled,
   paint,
   renderPersistStatus,
   renderReport,
@@ -30,6 +34,7 @@ export interface PersistDaemonOps {
   getStatus: () => PersistDaemonStatus;
   install: () => PersistDaemonStatus;
   uninstall: () => PersistDaemonStatus;
+  ensure?: () => PersistDaemonSyncResult;
 }
 
 export interface CliDeps {
@@ -39,8 +44,13 @@ export interface CliDeps {
   stdoutColor?: boolean;
   stderrColor?: boolean;
   out?: (line: string) => void;
+  rawWrite?: (chunk: string) => void;
   err?: (line: string) => void;
   version?: string;
+  /** 是否在调速命令后原地刷新追踪实际转速爬升 (默认仅在真 TTY 交互执行时开启) */
+  liveSettle?: boolean;
+  settleIntervalMs?: number;
+  settleMaxMs?: number;
 }
 
 function defaultColors(): { stdout: boolean; stderr: boolean } {
@@ -107,6 +117,130 @@ const ACTION_TITLES: Readonly<Record<string, string>> = {
   apply: '已应用持久化配置',
 };
 
+const SPINNER_FRAMES = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
+const AUTO_PLATEAU_LIMIT = 8;
+const AUTO_PLATEAU_DELTA_RPM = 30;
+
+function fansNeedSettle(report: FanStatusReport): boolean {
+  return report.fans.some((fan) => {
+    if (fan.mode === 'manual') {
+      return !isManualFanSettled(fan);
+    }
+    return Math.round(fan.actualRpm) > 0;
+  });
+}
+
+function isAutoPlateau(
+  prevFans: readonly FanInfo[],
+  nextFans: readonly FanInfo[],
+): boolean {
+  if (nextFans.length === 0 || nextFans.some((f) => f.mode !== 'auto')) {
+    return false;
+  }
+  return nextFans.every((next) => {
+    const prev = prevFans.find((p) => p.index === next.index);
+    return (
+      prev !== undefined &&
+      Math.abs(next.actualRpm - prev.actualRpm) <= AUTO_PLATEAU_DELTA_RPM
+    );
+  });
+}
+
+async function renderWithLiveSettle(options: {
+  initialReport: FanStatusReport;
+  controller: FanController;
+  fanIndex: number | undefined;
+  color: boolean;
+  title: string | undefined;
+  writeRaw: (chunk: string) => void;
+  intervalMs: number;
+  maxMs: number | undefined;
+}): Promise<void> {
+  const {
+    initialReport,
+    controller,
+    fanIndex,
+    color,
+    title,
+    writeRaw,
+    intervalMs,
+    maxMs,
+  } = options;
+
+  let current: FanStatusReport = initialReport;
+  if (!fansNeedSettle(current) || (maxMs !== undefined && maxMs <= 0)) {
+    writeRaw(`${renderReport(current, { color, json: false, title })}\n`);
+    return;
+  }
+
+  let tick = 0;
+  const hasAutoSpinning = () =>
+    current.fans.some((f) => f.mode === 'auto' && Math.round(f.actualRpm) > 0);
+  const spinHint = () => {
+    const glyph = SPINNER_FRAMES[tick % SPINNER_FRAMES.length]!;
+    return hasAutoSpinning()
+      ? `${glyph} 正在等待风扇降速停转… (Ctrl+C 跳过等待)`
+      : `${glyph} 物理风扇正在响应目标转速… (Ctrl+C 跳过等待)`;
+  };
+
+  let frame = renderReport(current, {
+    color,
+    json: false,
+    title,
+    extraHint: spinHint(),
+    settlingAuto: true,
+  });
+  writeRaw(`${frame}\n`);
+
+  let interrupted = false;
+  const onSigint = () => {
+    interrupted = true;
+  };
+  process.on('SIGINT', onSigint);
+  if (color) writeRaw('\u001B[?25l');
+
+  let autoPlateauTicks = 0;
+  const deadline = maxMs === undefined ? undefined : Date.now() + maxMs;
+  try {
+    while (
+      !interrupted &&
+      (deadline === undefined || Date.now() < deadline) &&
+      fansNeedSettle(current)
+    ) {
+      await new Promise((resolve) => setTimeout(resolve, intervalMs));
+      if (interrupted) break;
+      tick += 1;
+      const prevFans = current.fans;
+      const latest = controller.status({ fanIndex });
+      current = { ...initialReport, fans: latest.fans };
+      if (!fansNeedSettle(current)) break;
+
+      if (isAutoPlateau(prevFans, current.fans)) {
+        autoPlateauTicks += 1;
+        if (autoPlateauTicks >= AUTO_PLATEAU_LIMIT) break;
+      } else {
+        autoPlateauTicks = 0;
+      }
+
+      const prevLines = frame.split('\n').length;
+      frame = renderReport(current, {
+        color,
+        json: false,
+        title,
+        extraHint: spinHint(),
+        settlingAuto: true,
+      });
+      writeRaw(`\u001B[${String(prevLines)}A\r\u001B[0J${frame}\n`);
+    }
+    const prevLines = frame.split('\n').length;
+    const finalFrame = renderReport(current, { color, json: false, title });
+    writeRaw(`\u001B[${String(prevLines)}A\r\u001B[0J${finalFrame}\n`);
+  } finally {
+    if (color) writeRaw('\u001B[?25h');
+    process.off('SIGINT', onSigint);
+  }
+}
+
 const PERSIST_TITLES: Readonly<Record<string, string>> = {
   status: '持久化守护状态',
   install: '已安装持久化守护服务',
@@ -158,6 +292,20 @@ export async function runCli(
     getStatus: () => getPersistDaemonStatus(),
     install: () => installPersistDaemon(),
     uninstall: () => uninstallPersistDaemon(),
+    ensure: () => ensurePersistDaemon(),
+  };
+
+  const ensureFromOps = (): PersistDaemonSyncResult => {
+    if (persistOps.ensure !== undefined) {
+      return persistOps.ensure();
+    }
+    const cur = persistOps.getStatus();
+    if (cur.installed && cur.running) {
+      return { status: cur, action: 'unchanged' };
+    }
+    const existed = cur.installed;
+    const next = persistOps.install();
+    return { status: next, action: existed ? 'updated' : 'installed' };
   };
 
   try {
@@ -183,9 +331,14 @@ export async function runCli(
       return 0;
     }
 
+    const shouldManageDaemon =
+      deps.persistOps !== undefined ||
+      (deps.transport === undefined && process.platform === 'darwin');
+
     const controller = createFanController({
       transport: deps.transport,
       stateStore: deps.stateStore,
+      ensureDaemon: shouldManageDaemon ? ensureFromOps : false,
     });
 
     if (options.command === 'status' && options.watchSeconds !== undefined) {
@@ -217,16 +370,32 @@ export async function runCli(
       report = controller.apply();
     }
 
-    let extraHint: string | undefined;
-    const shouldCheckDaemon =
-      deps.persistOps !== undefined ||
-      (deps.transport === undefined && process.platform === 'darwin');
-    if (report.didPersist === true && !options.json && shouldCheckDaemon) {
-      const daemon = persistOps.getStatus();
-      if (!daemon.installed) {
-        extraHint =
-          '提示: 尚未安装开机/唤醒恢复守护, 运行 fan persist install 即可在重启与睡眠唤醒后自动恢复';
-      }
+    const isMutatingTuneCmd =
+      options.command === 'set' ||
+      options.command === 'max' ||
+      options.command === 'min' ||
+      options.command === 'auto' ||
+      options.command === 'apply';
+    const shouldLiveSettle =
+      !options.json &&
+      isMutatingTuneCmd &&
+      (deps.liveSettle ??
+        (deps.out === undefined && process.stdout.isTTY === true));
+
+    if (shouldLiveSettle) {
+      const writeRaw =
+        deps.rawWrite ?? ((chunk: string) => process.stdout.write(chunk));
+      await renderWithLiveSettle({
+        initialReport: report,
+        controller,
+        fanIndex: options.fanIndex,
+        color: stdoutColor,
+        title: ACTION_TITLES[options.command],
+        writeRaw,
+        intervalMs: deps.settleIntervalMs ?? 200,
+        maxMs: deps.settleMaxMs,
+      });
+      return 0;
     }
 
     out(
@@ -234,7 +403,6 @@ export async function runCli(
         color: stdoutColor,
         json: options.json,
         title: ACTION_TITLES[options.command],
-        extraHint,
       }),
     );
     return 0;

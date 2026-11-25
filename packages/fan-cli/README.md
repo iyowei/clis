@@ -8,7 +8,7 @@
 
 **English** | [中文](README.zh-CN.md)
 
-Command-line tool (`fan`) to inspect and manually control Apple Silicon / Mac fan speeds via AppleSMC IOKit with zero third-party runtime dependencies. **No need to install Macs Fan Control or any GUI fan utility**; just run `fan max` or `fan set 4000` to change system fan speeds directly. Changes persist automatically across reboots and sleep/wake cycles once the built-in `LaunchDaemon` is installed (pass `--once` for temporary overrides).
+Command-line tool (`fan`) to inspect and manually control Apple Silicon / Mac fan speeds via AppleSMC IOKit with zero third-party runtime dependencies. **No need to install Macs Fan Control or any GUI fan utility**; just run `fan max` or `fan set 4000` to change system fan speeds directly. Manual speed commands automatically ensure the built-in `LaunchDaemon` is active so fans return to system `auto` (stop spinning) when closing the lid without an external display or entering sleep, and automatically restore your saved speeds on lid open / wake and reboot (pass `--once` for temporary overrides).
 
 This CLI is a thin parsing and rendering shell over [`@iyowei/fan`](https://www.npmjs.com/package/@iyowei/fan). For programmatic use in scripts or automation pipelines, import `@iyowei/fan` directly.
 
@@ -87,7 +87,7 @@ fan --help
 fan update --check
 ```
 
-> **Tip**: No third-party fan app (such as `Macs Fan Control`) is required. While awake, `fan`'s `LaunchDaemon` does not poll or fight manual `--once` overrides; it only restores `state.json` on system boot (`RunAtLoad`) and sleep wake (`kIOMessageSystemHasPoweredOn`). If you previously installed a GUI fan controller and left it running in the background with a fixed preset, quit it first so it does not overwrite `fan` CLI targets.
+> **Tip**: No third-party fan app (such as `Macs Fan Control`) is required. Running `fan set` / `fan max` / `fan min` automatically keeps the `com.iyowei.fan` `LaunchDaemon` installed and synced: it releases manual fans to `auto` on non-docked lid close, sleep, and `DarkWake` (preserving manual speeds in docked external-display clamshell mode), restores `state.json` on boot and full wake / lid open, and never polls or fights `--once` overrides while awake. If you previously installed a GUI fan controller and left it running in the background with a fixed preset, quit it first so it does not overwrite `fan` CLI targets.
 
 ## Exit codes
 

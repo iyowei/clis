@@ -8,7 +8,7 @@
 
 [English](README.md) | **中文**
 
-用于查看与手动控制 Apple Silicon / Mac 风扇转速的命令行工具 (`fan`), 直接通过 AppleSMC IOKit 读写风扇键, 零第三方运行时依赖。**无需安装 Macs Fan Control 等第三方 GUI 软件**, 只需直接执行 `fan max`、`fan set 4000` 或 `fan auto` 即可改动并恢复系统风扇转速。所有设置操作默认自动记住 (`--once` 可临时生效不保存), 安装内置守护服务后还可在**开机与睡眠唤醒后自动恢复**。
+用于查看与手动控制 Apple Silicon / Mac 风扇转速的命令行工具 (`fan`), 直接通过 AppleSMC IOKit 读写风扇键, 零第三方运行时依赖。**无需安装 Macs Fan Control 等第三方 GUI 软件**, 只需直接执行 `fan max`、`fan set 4000` 或 `fan auto` 即可改动并恢复系统风扇转速。手动调速操作默认自动记住配置 (`--once` 可临时生效不保存) 并自动确保内置守护服务就绪: **无外接屏合盖或进入睡眠时自动交还系统 `auto` 停转 (外接显示器合盖办公保留手动转速), 开盖/唤醒与开机重启后自动恢复**。
 
 本 CLI 是套在 API 主包 [`@iyowei/fan`](https://www.npmjs.com/package/@iyowei/fan) 外层的参数解析与终端渲染薄壳。若需在脚本或自动化中编程调用, 请直接使用 `@iyowei/fan`。
 
@@ -87,7 +87,7 @@ fan --help
 fan update --check
 ```
 
-> **说明**: 使用本工具无需安装 `Macs Fan Control` 等第三方风扇软件; 只需直接执行 `fan set 4000`、`fan set 30%`、`fan max` 或 `fan auto` 即可改写并自动记住系统风扇转速。内置 `LaunchDaemon` 只在系统启动 (`RunAtLoad`) 与每次睡眠唤醒 (`kIOMessageSystemHasPoweredOn`) 时按 `state.json` 恢复转速, 醒着期间不会定时轮询覆写 `--once` 临时设定。如果本机之前装过并仍在后台运行固定预设, 先退出对应软件即可避免它定时覆写手动目标值。
+> **说明**: 使用本工具无需安装 `Macs Fan Control` 等第三方风扇软件; 只需直接执行 `fan set 4000`、`fan set 30%`、`fan max` 或 `fan auto` 即可改写并自动记住系统风扇转速。执行 `set` / `max` / `min` 时会自动确保内置 `LaunchDaemon` (`com.iyowei.fan`) 已安装并同步至最新脚本: 无外接屏合盖、系统睡眠及后台 `DarkWake` 期间自动将风扇切回 `auto` 停转 (连接外接显示器的合盖桌面模式保留手动转速), 开机与真实唤醒/开盖时按 `state.json` 恢复转速, 醒着开盖期间边沿驱动零轮询、不覆盖 `--once` 临时设定。如果本机之前装过并仍在后台运行固定预设, 先退出对应软件即可避免它定时覆写手动目标值。
 
 ## 退出码
 

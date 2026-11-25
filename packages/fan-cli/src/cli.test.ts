@@ -120,20 +120,21 @@ describe('runCli 编排', () => {
     expect((await run(['-V'])).out).toBe('1.0.0');
     expect((await run(['-h'])).out).toContain('FAN');
 
-    // 未安装守护前修改默认自动持久化并提示 install
+    // 未安装守护前修改默认自动持久化并自动安装启用后台守护
     const setRes = await run(['set', '30%']);
     expect(setRes.code).toBe(0);
-    expect(setRes.out).toContain('已记住配置 (Fan 0=30%, Fan 1=30%)');
-    expect(setRes.out).toContain('fan persist install');
+    expect(setRes.out).toContain('已记住预设 (30%)');
+    expect(setRes.out).toContain('已自动启用后台守护 (com.iyowei.fan)');
+    expect(persistOps.getStatus().installed).toBe(true);
     expect(stateStore.read()?.fans).toEqual({
       '0': { mode: 'manual', kind: 'percent', value: 30 },
       '1': { mode: 'manual', kind: 'percent', value: 30 },
     });
 
-    // 安装守护后再 set --once: 硬件变为 max, 但磁盘配置仍保持 30%
-    const inst = await run(['persist', 'install']);
+    // 查看或显式重装守护状态正常, 再 set --once: 硬件变为 max, 磁盘配置仍保持 30%
+    const inst = await run(['persist', 'status']);
     expect(inst.code).toBe(0);
-    expect(inst.out).toContain('已安装 / 运行中');
+    expect(inst.out).toContain('已安装 · 运行中');
 
     const onceMax = await run(['max', '--once', '--json']);
     expect(onceMax.code).toBe(0);
@@ -156,7 +157,7 @@ describe('runCli 编排', () => {
 
     const autoRes = await run(['auto']);
     expect(autoRes.code).toBe(0);
-    expect(autoRes.out).toContain('auto');
+    expect(autoRes.out).toContain('自动温控');
 
     const uninst = await run(['persist', 'uninstall', '--json']);
     expect(uninst.code).toBe(0);
@@ -180,5 +181,174 @@ describe('runCli 编排', () => {
     expect(code).toBe(1);
     expect(out).toEqual([]);
     expect(err.join('\n')).toContain('超出允许范围');
+  });
+});
+
+describe('runCli liveSettle 动态追踪', () => {
+  test('原地重绘追踪风扇从 0 RPM 爬升、auto 归零及 100% 严苛满速到位', async () => {
+    let actual = 0;
+    let target = 0;
+    const transport: FanTransport = {
+      readFans: () => [
+        {
+          index: 0,
+          actualRpm: actual,
+          targetRpm: target,
+          minRpm: 1350,
+          maxRpm: 6250,
+          mode: target > 0 ? 'manual' : 'auto',
+          percent: target > 0 ? Math.max(0, ((actual - 1350) / 4900) * 100) : 0,
+        },
+      ],
+      applyWrites(reqs) {
+        const req = reqs[0]!;
+        target = req.kind === 'manual' ? req.targetRpm : 0;
+        // 模拟刚写入瞬间物理风扇仍为 0 RPM, 后续每次 status 采样爬升 1500 RPM
+        actual = 0;
+        const snap = this.readFans();
+        return snap;
+      },
+      isMacsFanControlRunning: () => false,
+    };
+
+    let pollCount = 0;
+    const origRead = transport.readFans.bind(transport);
+    transport.readFans = () => {
+      const snap = origRead();
+      if (target > 0) {
+        pollCount += 1;
+        if (pollCount >= 2) {
+          actual = Math.min(target, actual + 1500);
+        }
+      }
+      return snap;
+    };
+
+    const chunks: string[] = [];
+    const code = await runCli(['set', '2820', '--once'], {
+      transport,
+      stateStore: makeStubStateStore(),
+      persistOps: makeStubPersistOps(true),
+      stdoutColor: false,
+      stderrColor: false,
+      rawWrite: (c) => chunks.push(c),
+      liveSettle: true,
+      settleIntervalMs: 5,
+      settleMaxMs: 200,
+    });
+
+    expect(code).toBe(0);
+    // 首帧显示「起转中」与「目标 2820 RPM」, 中间帧显示「提速 2820 RPM」, 最终定格为「手动 2820 RPM」且移除等待提示
+    expect(chunks[0]).toContain('起转中');
+    expect(chunks[0]).toContain('目标 2820 RPM');
+    expect(chunks.some((c) => c.includes('提速 2820 RPM'))).toBe(true);
+    expect(chunks.some((c) => c.includes('\u001B['))).toBe(true);
+    const lastFrame = chunks[chunks.length - 1]!;
+    expect(lastFrame).toContain('2820 RPM');
+    expect(lastFrame).toContain('手动 2820 RPM');
+    expect(lastFrame).not.toContain('跳过等待');
+
+    // 再测 fan auto: 从 2820 RPM 逐帧降速至 0 RPM 后自动定格退出
+    let autoActual = 2820;
+    const autoTransport: FanTransport = {
+      readFans: () => [
+        {
+          index: 0,
+          actualRpm: autoActual,
+          targetRpm: 2820,
+          minRpm: 1350,
+          maxRpm: 6250,
+          mode: 'auto',
+          percent: Math.max(0, ((autoActual - 1350) / 4900) * 100),
+        },
+      ],
+      applyWrites() {
+        return this.readFans();
+      },
+      isMacsFanControlRunning: () => false,
+    };
+    const origAutoRead = autoTransport.readFans.bind(autoTransport);
+    let autoPolls = 0;
+    autoTransport.readFans = () => {
+      const snap = origAutoRead();
+      autoPolls += 1;
+      if (autoPolls >= 2) {
+        autoActual = Math.max(0, autoActual - 1500);
+      }
+      return snap;
+    };
+
+    const autoChunks: string[] = [];
+    const autoCode = await runCli(['auto'], {
+      transport: autoTransport,
+      stateStore: makeStubStateStore(),
+      persistOps: makeStubPersistOps(true),
+      stdoutColor: false,
+      stderrColor: false,
+      rawWrite: (c) => autoChunks.push(c),
+      liveSettle: true,
+      settleIntervalMs: 5,
+      settleMaxMs: 200,
+    });
+    expect(autoCode).toBe(0);
+    expect(autoChunks[0]).toContain('自动 (降速中)');
+    const autoFinal = autoChunks[autoChunks.length - 1]!;
+    expect(autoFinal).toContain('0 RPM');
+    expect(autoFinal).toContain('▪▪▪▪▪▪▪▪▪▪▪▪');
+    expect(autoFinal).toContain('自动温控');
+    expect(autoFinal).not.toContain('跳过等待');
+
+    // 100% 满速严苛守卫: 连续停留在 99.7% (6735/6750) 时绝不提前退出, 直至真正捕捉到 100.0% 才退出
+    const samples = [0, 6735, 6735, 6735, 6735, 6750];
+    let sampleIdx = 0;
+    const maxTransport: FanTransport = {
+      readFans: () => {
+        const rpm = samples[Math.min(sampleIdx, samples.length - 1)]!;
+        const pct = Math.round(((rpm - 1350) / 5400) * 1000) / 10;
+        return [
+          {
+            index: 1,
+            actualRpm: rpm,
+            targetRpm: 6750,
+            minRpm: 1350,
+            maxRpm: 6750,
+            mode: 'manual',
+            percent: Math.max(0, Math.min(100, pct)),
+          },
+        ];
+      },
+      applyWrites() {
+        sampleIdx = 0;
+        return this.readFans();
+      },
+      isMacsFanControlRunning: () => false,
+    };
+    const origMaxRead = maxTransport.readFans.bind(maxTransport);
+    let maxPolls = 0;
+    maxTransport.readFans = () => {
+      const snap = origMaxRead();
+      maxPolls += 1;
+      if (maxPolls >= 2) {
+        sampleIdx += 1;
+      }
+      return snap;
+    };
+
+    const maxChunks: string[] = [];
+    const maxCode = await runCli(['set', '100%', '--once'], {
+      transport: maxTransport,
+      stateStore: makeStubStateStore(),
+      persistOps: makeStubPersistOps(true),
+      stdoutColor: false,
+      stderrColor: false,
+      rawWrite: (c) => maxChunks.push(c),
+      liveSettle: true,
+      settleIntervalMs: 5,
+    });
+    expect(maxCode).toBe(0);
+    expect(maxChunks.some((c) => c.includes('99.7%'))).toBe(true);
+    const maxFinal = maxChunks[maxChunks.length - 1]!;
+    expect(maxFinal).toContain('100.0%');
+    expect(maxFinal).not.toContain('99.7%');
   });
 });

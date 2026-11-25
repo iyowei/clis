@@ -2,7 +2,9 @@
  * `@iyowei/fan-cli` 帮助页文案与统一左对齐排版渲染 (零外部依赖)。
  * 全页所有分段使用同一基于东亚宽度的 `descCol` 列线, 消除中西文混排参差不齐的问题。
  */
-import { BAR_BLOCK, paint } from './render.ts';
+import { BAR_BLOCK, displayWidth, paint } from './render.ts';
+
+export { displayWidth };
 
 interface CommandRow {
   name: string;
@@ -118,8 +120,8 @@ const ENV_NOTES: readonly NoteRow[] = [
     desc: 'set/max/min/auto 默认保存至 state.json; 传 --once 仅本次生效',
   },
   {
-    label: '开机唤醒',
-    desc: '执行 fan persist install 后, 开机及睡眠唤醒自动恢复设定',
+    label: '守护联动',
+    desc: 'set/max/min 自动同步后台守护: 无外接屏合盖或睡眠切回 auto, 开盖/重启恢复',
   },
   {
     label: '提权边界',
@@ -149,35 +151,6 @@ const EXIT_CODES: readonly NoteRow[] = [
 ];
 
 const RULE_WIDTH = 76;
-
-function isFullWidthCodePoint(code: number): boolean {
-  return (
-    code === 0x3000 ||
-    (code >= 0x1100 && code <= 0x115f) ||
-    (code >= 0x2329 && code <= 0x232a) ||
-    (code >= 0x2e80 && code <= 0xa4cf) ||
-    (code >= 0xac00 && code <= 0xd7a3) ||
-    (code >= 0xf900 && code <= 0xfaff) ||
-    (code >= 0xfe10 && code <= 0xfe19) ||
-    (code >= 0xfe30 && code <= 0xfe6f) ||
-    (code >= 0xff01 && code <= 0xff60) ||
-    (code >= 0xffe0 && code <= 0xffe6) ||
-    (code >= 0x1f300 && code <= 0x1faff) ||
-    (code >= 0x20000 && code <= 0x2fffd) ||
-    (code >= 0x30000 && code <= 0x3fffd)
-  );
-}
-
-/** 计算纯文本字符串在终端中的精确显示列宽 (东亚全角计 2 列, ASCII 计 1 列) */
-export function displayWidth(text: string): number {
-  let width = 0;
-  for (const ch of text) {
-    const code = ch.codePointAt(0) ?? 0;
-    if (code < 32 || (code >= 0x7f && code <= 0x9f)) continue;
-    width += isFullWidthCodePoint(code) ? 2 : 1;
-  }
-  return width;
-}
 
 function examplePlainParts(row: ExampleRow): string[] {
   return [row.cmd, ...(row.tail ?? []).map(([, value]) => value)];
@@ -253,7 +226,7 @@ export function helpText(color: boolean): string {
   return [
     '',
     `  ${s.badge('FAN')}  ${s.bold('macOS 风扇查看与手动控制器')}`,
-    `  ${s.dim('直接读写 AppleSMC 风扇键 (FNum/F*Ac/F*Tg/F*md), 支持重启与睡眠唤醒自动恢复。')}`,
+    `  ${s.dim('直接读写 AppleSMC 风扇键 (FNum/F*Ac/F*Tg/F*md), 合盖/睡眠自动停转, 开盖与重启自动恢复。')}`,
     `  ${s.dim('─'.repeat(RULE_WIDTH))}`,
     '',
     `  ${s.dim('用法')}`,
