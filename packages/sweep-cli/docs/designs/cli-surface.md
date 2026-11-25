@@ -17,6 +17,8 @@
 | 2026-11-20 | 重构 `--help` 独立分层布局 (80 列防截断); 新增 `stderr` TTY 实时进度指示器 (`src/progress.ts`); 升级 `update` 子命令异步捕获与 Spinner 体验                                                                                                                                                                                                                                                                                                                                           |
 | 2026-11-20 | 依 [ADR 0021](../../../sweep/docs/adrs/0021-sweep-general-cleaner-evolution.md) ~ [ADR 0024](../../../sweep/docs/adrs/0024-cli-init-migrate-and-summary-display.md) 演进为通用清理命令 `sweep` (`@iyowei/sweep-cli`, 当前 `"private": true`): 新增 `init --default` 与 `migrate` 子命令、无配置非 TTY 硬报错拒盲扫、`init`/`migrate` 落盘改用 `▍ SWEEP` 模板化结构摘要 (标注 `[TRASH]`/`[DELETE]`, 严禁吐原始 JSON 全文)、预览与执行清单标注 `[TRASH]` 并在执行汇总统计回收站分桶计数 |
 
+| 2026-11-26 | 接入 `@iyowei/cli-i18n` 全链路中英双语 (`zh` / `en`): 新增 `sweep lang [system\|en\|zh]` 子命令、`--lang <system\|en\|zh>` 全局旗标与 `SWEEP_LANG` / `CLIS_LANG` 环境变量, 独立持久化于 `~/.config/sweep/lang.json` (默认 `system` 自动跟随操作系统真实 UI 语言) |
+
 ## 命令面
 
 ```text
@@ -26,10 +28,12 @@ sweep --force               连同疑似安装树一并纳入清理批 (需配 -
 sweep --exclude <名字>      临时追加排除目录名, 可重复 (与配置合并)
 sweep --include <名字>      仅清理命中白名单目录名的项目, 可重复 (与配置合并)
 sweep --config <路径>       指定配置文件路径 (优先于 SWEEP_CONFIG)
+sweep --lang <语言>         单次覆盖显示语言 (system | en | zh)
 sweep init                  初始化向导: 交互式生成 v2 配置文件 (TTY 专属)
 sweep init --default        一键生成包含完整最佳实践的默认 v2 配置 (含覆盖与锚点保护)
 sweep migrate               无损迁移旧版 v1 配置到 v2 (写前自动备份原配置)
 sweep config                查看实际生效的配置: 来源 + 路径 + 文件状态 (恒退 0)
+sweep lang [system|en|zh]   查看或持久化显示语言偏好 (默认 system 跟随系统语言)
 sweep update                自更新: 自动识别安装器升级到最新版 (--check 仅检查)
 sweep --version / -V        显示版本号
 sweep --help / -h           显示帮助

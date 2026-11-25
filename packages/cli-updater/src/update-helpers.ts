@@ -1,8 +1,9 @@
 /**
- * `runSelfUpdate` 流程辅助函数: 来源文案、跨 PM 阴影警示、动态实查复核与升级后轻复核。
- * 调用方: `update.ts` (来源探测与非全局安全指引) 与 `update-flow.ts` (升级后轻复核)。
+ * `runSelfUpdate` 流程辅助函数: 来源文案、跨 PM 阴影警示、动态实查复核与升级后轻复核 (中英双语)。
  */
 import { existsSync, readFileSync } from 'node:fs';
+
+import { type Locale, t } from '@iyowei/cli-i18n';
 
 import {
   type EphemeralRunner,
@@ -21,17 +22,9 @@ import {
   probeGlobalRoots,
   resolveExecutableInPath,
 } from './executor.ts';
-import { type FetchVersionResult } from './registry.ts';
 import { compareSemver } from './semver.ts';
-import { type UpdateSpinner } from './spinner.ts';
-import {
-  type UpdateUi,
-  createUpdateUi,
-  extractRegistryHost,
-  sanitizeText,
-} from './ui.ts';
+import { type UpdateUi, createUpdateUi, sanitizeText } from './ui.ts';
 
-/** 供 update-helpers 消费的最小包元数据结构 */
 export interface PackageMetaRef {
   name: string;
   version: string;
@@ -40,13 +33,11 @@ export interface PackageMetaRef {
   packageRoot: string;
 }
 
-/** 供 update-helpers 消费的输出通道 */
 export interface UpdateIORef {
   out: (line: string) => void;
   err: (line: string) => void;
 }
 
-/** 供 resolveOrigin 使用的最小依赖集合 */
 export interface OriginResolveDeps {
   platform?: NodeJS.Platform;
   env?: NodeJS.ProcessEnv;
@@ -59,7 +50,6 @@ export interface OriginResolveDeps {
   spawnFn?: SpawnLike;
 }
 
-/** 升级成功后的轻复核输入 */
 export interface PostUpgradeCheckInput {
   binName: string;
   meta: PackageMetaRef;
@@ -72,19 +62,17 @@ export interface PostUpgradeCheckInput {
   isFile?: (path: string) => boolean;
   io: UpdateIORef;
   ui?: UpdateUi;
+  locale?: Locale;
 }
 
-/** 净化外部字符串中的控制字符 (防止远端或路径文本污染终端) */
 export function sanitize(raw: string): string {
   return sanitizeText(raw);
 }
 
-/** 将纯数字开头的版本号格式化为 vX.Y.Z; 非数字 tag (如 latest) 保持原样 */
 export function formatVersionLabel(spec: string): string {
   return /^\d/.test(spec) ? `v${spec}` : spec;
 }
 
-/** 安全读文本文件 (不存在或不可读返回 null) */
 function defaultReadText(path: string): string | null {
   try {
     return readFileSync(path, 'utf8');
@@ -93,7 +81,6 @@ function defaultReadText(path: string): string | null {
   }
 }
 
-/** 生成临时运行器对应的最新版调用命令建议 */
 export function ephemeralHintCommand(
   runner: EphemeralRunner,
   packageName: string,
@@ -112,7 +99,6 @@ export function ephemeralHintCommand(
   }
 }
 
-/** 生成项目本地依赖对应的更新命令建议 */
 export function localProjectHintCommand(
   pm: ProjectPackageManager,
   packageName: string,
@@ -129,8 +115,54 @@ export function localProjectHintCommand(
   }
 }
 
+const ORIGIN_REASON_EN: Readonly<Record<string, string>> = {
+  '命中 Volta 全局工具安装目录': 'Volta global directory',
+  '命中 Bun 全局安装目录 (~/.bun)': 'Bun global directory (~/.bun)',
+  '命中 pnpm 全局安装目录': 'pnpm global directory',
+  '命中 Yarn 全局安装目录': 'Yarn global directory',
+  '命中 npm 全局安装目录': 'npm global directory',
+  '命中标准 <prefix>/lib/node_modules 全局目录':
+    'standard <prefix>/lib/node_modules',
+  '位于环境变量 VOLTA_HOME 目录内': 'VOLTA_HOME directory',
+  '位于环境变量 BUN_INSTALL 目录内': 'BUN_INSTALL directory',
+  '位于环境变量 BUN_INSTALL_GLOBAL_DIR 目录内':
+    'BUN_INSTALL_GLOBAL_DIR directory',
+  '位于环境变量 PNPM_HOME 目录内': 'PNPM_HOME directory',
+  '位于环境变量 NPM_CONFIG_PREFIX 目录内': 'NPM_CONFIG_PREFIX directory',
+  '位于 npx 临时缓存目录 (_npx)': 'npx cache (_npx)',
+  '位于 bunx 临时执行目录': 'bunx cache',
+  '位于 pnpm dlx 临时缓存目录': 'pnpm dlx cache',
+  '位于 yarn dlx 临时执行目录': 'yarn dlx cache',
+  '位于 Deno npm 缓存目录 (/deno/npm/)': 'Deno npm cache (/deno/npm/)',
+};
+
+function translateOriginReason(reason: string): string {
+  const mapped = ORIGIN_REASON_EN[reason];
+  if (mapped !== undefined) return mapped;
+  const probed = /^匹配\s+(\S+)\s+实查全局目录\s+\((.+)\)$/.exec(reason);
+  if (probed !== null) return `probed ${probed[1]} global root (${probed[2]})`;
+  return reason;
+}
+
 /** 构造人读的安装来源描述 */
-export function describeOrigin(origin: InstallOrigin): string {
+export function describeOrigin(
+  origin: InstallOrigin,
+  locale: Locale = 'zh',
+): string {
+  if (locale === 'en') {
+    switch (origin.kind) {
+      case 'global':
+        return `${origin.pm} global install (${translateOriginReason(origin.reason)})`;
+      case 'ephemeral':
+        return `${origin.runner} temporary run (${translateOriginReason(origin.reason)})`;
+      case 'source':
+        return `local source checkout (${origin.packageRoot})`;
+      case 'local-project':
+        return `local project dependency (${origin.projectDir})`;
+      case 'unknown':
+        return `unrecognized location (${origin.packageRoot})`;
+    }
+  }
   switch (origin.kind) {
     case 'global':
       return `${origin.pm} 全局安装 (${origin.reason})`;
@@ -151,11 +183,16 @@ export function warnCrossPmOverride(
   targetPm: PackageManager,
   io: UpdateIORef,
   ui: UpdateUi = createUpdateUi({ stdout: false, stderr: false }),
+  locale: Locale = 'zh',
 ): void {
   if (origin.kind === 'global' && origin.pm !== targetPm) {
     io.out(
       ui.warn(
-        `注意: 当前命令实际由 ${origin.pm} 全局安装, 改用 ${targetPm} 安装会在磁盘产生双份副本, PATH 靠前的旧副本可能遮蔽新版本!`,
+        t(
+          locale,
+          `注意: 当前命令实际由 ${origin.pm} 全局安装, 改用 ${targetPm} 安装会在磁盘产生双份副本, PATH 靠前的旧副本可能遮蔽新版本!`,
+          `Note: Currently installed globally via ${origin.pm}; installing via ${targetPm} creates a second copy that may be shadowed in PATH.`,
+        ),
       ),
     );
     return;
@@ -163,7 +200,11 @@ export function warnCrossPmOverride(
   if (origin.kind === 'source') {
     io.out(
       ui.warn(
-        `注意: 当前运行在本地源码工作树 (${sanitize(origin.packageRoot)}), 通过 ${targetPm} 全局安装会产生独立全局副本, 请核对 PATH 优先级避免版本阴影!`,
+        t(
+          locale,
+          `注意: 当前运行在本地源码工作树 (${sanitize(origin.packageRoot)}), 通过 ${targetPm} 全局安装会产生独立全局副本, 请核对 PATH 优先级避免版本阴影!`,
+          `Note: Running from local source (${sanitize(origin.packageRoot)}); installing globally via ${targetPm} creates a separate global copy.`,
+        ),
       ),
     );
     return;
@@ -171,18 +212,16 @@ export function warnCrossPmOverride(
   if (origin.kind === 'local-project') {
     io.out(
       ui.warn(
-        `注意: 当前运行在项目本地依赖 (${sanitize(origin.projectDir)}), 通过 ${targetPm} 全局安装不会更新项目本地依赖, 且可能被本地副本遮蔽!`,
+        t(
+          locale,
+          `注意: 当前运行在项目本地依赖 (${sanitize(origin.projectDir)}), 通过 ${targetPm} 全局安装不会更新项目本地依赖, 且可能被本地副本遮蔽!`,
+          `Note: Running from local project dependency (${sanitize(origin.projectDir)}); a global install via ${targetPm} will not update the project dependency.`,
+        ),
       ),
     );
   }
 }
 
-/**
- * 探测安装来源 (两段式快慢路径):
- * 1. 快路径: 纯路径判定 detectInstallOriginFromPath (零子进程开销);
- * 2. 慢路径兜底: 若首轮命中 unknown / local-project 或低置信度 `<prefix>/lib/node_modules` 启发式,
- *    且真实包根位于 `/node_modules/` 内, 再调 probeGlobalRoots 实查自定义全局目录并复判。
- */
 export function resolveOrigin(
   meta: PackageMetaRef,
   deps: OriginResolveDeps,
@@ -239,9 +278,10 @@ export function resolveOrigin(
   return firstPass;
 }
 
-/** 升级 status === 0 后的轻复核: 检测原目录版本未变或 PATH 仍指向旧路径 */
 export function verifyPostUpgrade(input: PostUpgradeCheckInput): void {
-  const ui = input.ui ?? createUpdateUi({ stdout: false, stderr: false });
+  const locale = input.locale ?? 'zh';
+  const ui =
+    input.ui ?? createUpdateUi({ stdout: false, stderr: false }, locale);
   const readText = input.readText ?? defaultReadText;
   const pkgText = readText(joinForPath(input.meta.packageRoot, 'package.json'));
   let unchangedAtOldRoot = false;
@@ -262,7 +302,11 @@ export function verifyPostUpgrade(input: PostUpgradeCheckInput): void {
         unchangedAtOldRoot = true;
         input.io.out(
           ui.warn(
-            `提示: 原安装目录 (${sanitize(input.meta.packageRoot)}) 的版本仍为 ${formatVersionLabel(sanitize(afterVersion))}, 新版本可能安装到了其他位置, 请运行 ${sanitize(input.binName)} --version 核查。`,
+            t(
+              locale,
+              `提示: 原安装目录 (${sanitize(input.meta.packageRoot)}) 的版本仍为 ${formatVersionLabel(sanitize(afterVersion))}, 新版本可能安装到了其他位置, 请运行 ${sanitize(input.binName)} --version 核查。`,
+              `Note: Version in ${sanitize(input.meta.packageRoot)} is still ${formatVersionLabel(sanitize(afterVersion))}; verify active binary with '${sanitize(input.binName)} --version'.`,
+            ),
           ),
         );
       }
@@ -305,101 +349,12 @@ export function verifyPostUpgrade(input: PostUpgradeCheckInput): void {
   ) {
     input.io.out(
       ui.warn(
-        `提示: 当前 PATH 中的 ${sanitize(input.binName)} 仍指向旧路径 (${sanitize(resolvedBin.path)}), 可能遮蔽 ${input.targetPm} 新安装的版本, 请检查 PATH 优先级。`,
-      ),
-    );
-  }
-}
-
-/** 处理非全局受管场景 (源码态 / 临时运行态 / 项目本地依赖) 且未指定 --pm 的安全指引 */
-export async function handleNonGlobalOrigin(ctx: {
-  meta: PackageMetaRef;
-  origin: Extract<
-    InstallOrigin,
-    { kind: 'source' | 'ephemeral' | 'local-project' }
-  >;
-  hasExplicitRegistry: boolean;
-  io: UpdateIORef;
-  ui?: UpdateUi;
-  spinner?: UpdateSpinner;
-  fetchVersion: (registry: string) => Promise<FetchVersionResult>;
-  registry: string;
-}): Promise<number> {
-  const { meta, origin, hasExplicitRegistry, io, fetchVersion, registry } = ctx;
-  const ui = ctx.ui ?? createUpdateUi({ stdout: false, stderr: false });
-  io.out(ui.kv('当前版本', `${meta.name}@${meta.version}`, 'bold'));
-  io.out(ui.kv('安装方式', describeOrigin(origin)));
-
-  if (meta.isPrivate !== true || hasExplicitRegistry) {
-    ctx.spinner?.start('正在检查最新版本', extractRegistryHost(registry));
-    let remote: FetchVersionResult;
-    try {
-      remote = await fetchVersion(registry);
-    } finally {
-      ctx.spinner?.stop();
-    }
-    if (remote.ok) {
-      const cmp = compareSemver(meta.version, remote.version);
-      let status: string;
-      if (cmp === -1) {
-        status = `发现新版本 ${remote.version} (源: ${remote.registry})`;
-      } else if (cmp === null) {
-        status = `远端版本为 ${remote.version} (无法按 SemVer 比较, 源: ${remote.registry})`;
-      } else {
-        status = `远端最新版为 ${remote.version} (源: ${remote.registry})`;
-      }
-      io.out(ui.kv('版本检查', status, cmp === -1 ? 'cyan' : 'plain'));
-    } else if (remote.code !== 'not-found') {
-      io.out(
-        ui.kv(
-          '版本检查',
-          `暂未获取远端版本 (${sanitize(remote.message)})`,
-          'dim',
+        t(
+          locale,
+          `提示: 当前 PATH 中的 ${sanitize(input.binName)} 仍指向旧路径 (${sanitize(resolvedBin.path)}), 可能遮蔽 ${input.targetPm} 新安装的版本, 请检查 PATH 优先级。`,
+          `Note: '${sanitize(input.binName)}' in PATH still resolves to ${sanitize(resolvedBin.path)}, which may shadow the ${input.targetPm} install.`,
         ),
-      );
-    }
-  }
-
-  if (origin.kind === 'source') {
-    io.out(ui.kv('更新方式', '当前运行在本地源码工作树, 不通过包管理器覆盖。'));
-    io.out(
-      ui.hint('  请在仓库根目录运行: git pull && bun install && bun run build'),
-    );
-    io.out(
-      ui.hint(
-        '  若要通过包管理器安装全局发布版, 可显式指定 --pm <bun|npm|pnpm|yarn|volta>',
       ),
     );
-    return 0;
   }
-
-  if (origin.kind === 'ephemeral') {
-    io.out(
-      ui.kv('更新方式', `当前经 ${origin.runner} 临时运行, 无需原地升级。`),
-    );
-    io.out(
-      ui.hint(
-        `  下次获取最新版请运行: ${sanitize(ephemeralHintCommand(origin.runner, meta.name))}`,
-      ),
-    );
-    io.out(
-      ui.hint(
-        '  若希望改为全局安装, 可运行带 --pm <bun|npm|pnpm|yarn|volta> 的 update 或直接全局安装',
-      ),
-    );
-    return 0;
-  }
-
-  io.out(
-    ui.kv(
-      '更新方式',
-      `当前作为项目本地依赖运行 (${sanitize(origin.projectDir)}), 为避免静默改写项目锁文件, 不自动覆盖。`,
-    ),
-  );
-  io.out(
-    ui.hint(
-      `  请在项目目录执行: ${sanitize(localProjectHintCommand(origin.suggestedPm, meta.name))}`,
-    ),
-  );
-  return 0;
 }

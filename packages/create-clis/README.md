@@ -71,8 +71,10 @@ The remaining flags:
 - **`--no-git`**: skip `git init` (runs by default);
 - **`--no-install`**: skip dependency install (runs by default);
 - **`--yes`**: all defaults, zero interaction (requires `[dir]` or `--name`, plus `--owner` if `git config user.name` is unset or contains spaces / non-ASCII characters);
+- **`--lang <system|en|zh>`**: override display language for this invocation (also supports `CREATE_CLIS_LANG` / `CLIS_LANG`; defaults to `system` following your OS UI language);
 - **`-V`, `--version`**: print version;
 - **`-h`, `--help`**: print help;
+- **`create-clis lang [system|en|zh]`**: inspect or save your independent display language preference (`~/.config/create-clis/lang.json` / `%APPDATA%\create-clis\lang.json`);
 - **`create-clis update [--check] [--pm <pm>] [--registry <url>] [--force] [--verbose]`**: when installed globally via bun / npm / pnpm / yarn / volta, detect the active package manager and self-update (or inspect the latest version with `--check`).
 
 Under `npm create`, flags go after `--` (`npm create clis -- --tier core`), where npm strips that first `--` as standard npm behavior. The generator itself also supports `--` to stop option parsing and treat a following argument as the target directory (escaping directory names starting with `-` or named `update`, e.g. `create-clis -- update`). Values are validated the moment they are collected (kebab-case name, command-safe bin name, well-formed scope, owner, and repo URL), failing on the spot with the reason.

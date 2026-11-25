@@ -1,23 +1,24 @@
 /**
- * CLI 顶层入口编排: 上游由 `bin/sweep.mjs` 启动, 下游串联 `args.ts` / `cli-commands.ts` /
- * `migrate-cli.ts` / `@iyowei/sweep` (`createSweeper`) / `progress.ts` / `outcome.ts` / `render.ts`。
+ * CLI 顶层入口编排 (支持中英双语、操作系统语言自动探测与独立 `lang` 偏好持久化):
  * 红线: 向导刚写入配置的当轮强制预览 (即使带 `--yes`); 非 TTY 缺配置拒盲扫退 1;
  * 异常统一收口至 stderr 并返回退出码 1 (权威: `cli-surface.md` 与 ADR 0024)。
  */
 import { readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 
+import {
+  type Locale,
+  resolveCliLocale,
+  runLangCommand,
+  stripLangArgs,
+  t,
+} from '@iyowei/cli-i18n';
 import { runSelfUpdate } from '@iyowei/cli-updater';
 import {
   type Config,
-  DEFAULT_EXCLUDE,
-  type ResolvedConfigPath,
-  type ScanResult,
   type SweepPlan,
   type SweepProgressEvent,
   createSweeper,
-  isSweepError,
-  loadResolvedConfig,
   mergeNames,
   resolveConfigPath,
   summarizeReport,
@@ -26,11 +27,17 @@ import {
 import { type CliOptions, parseArgs } from './args.ts';
 import {
   type ColorChannels,
+  collectNameNotes,
   handleInitCommand,
   reportConfig,
-  runWizard,
+  resolveActiveConfig,
 } from './cli-commands.ts';
 import { helpText } from './help.ts';
+import {
+  localizePlanTrailer,
+  localizeSweepError,
+  localizeSweepWarningText,
+} from './i18n-messages.ts';
 import { runMigrationFlow } from './migrate-cli.ts';
 import {
   abortedUnattemptedCount,
@@ -87,151 +94,13 @@ function readCliVersion(): string {
   }
 }
 
-type ResolveOutcome =
-  | {
-      state: 'ready';
-      config: Config;
-      excludeExplicit: boolean;
-      source: 'file' | 'wizard' | 'migrated';
-    }
-  | { state: 'abort'; exitCode: number };
-
-/**
- * 装载生效配置 (先探自动迁移, 再按存在性与交互性分流):
- * - 命中旧路径 / v1 配置: 触发 `runMigrationFlow` (写前必备份, 非 TTY 仅 100% 无损放行);
- * - 未触发迁移: 调 `loadResolvedConfig` (显式 `--config` / `SWEEP_CONFIG` 缺失会抛 `CONFIG_ABSENT`);
- * - 平台默认路径缺失: TTY 拉起 `runWizard` (返回 `source: 'wizard'`, 上游强制本轮预览);
- *   非 TTY 严禁阻塞或盲扫家目录, 立即告警并返回 `{ state: 'abort', exitCode: 1 }`。
- *
- * ### 数据流转示例
- * ```text
- * Input  : resolved = { path: '~/.config/sweep/config.json', source: 'platform-default' }, interactive = true
- * 步骤 1 : runMigrationFlow({ explicit: false }) -> { state: 'none' } (无旧配置)
- * 步骤 2 : loadResolvedConfig(resolved) -> { state: 'absent' } (默认配置不存在)
- * 步骤 3 : TTY 分支启动 runWizard -> 用户完成四问并确认写盘 -> { state: 'written', config }
- * Output : { state: 'ready', config, excludeExplicit, source: 'wizard' } (main 随后剥离 --yes 强制预览)
- * ```
- */
-async function resolveConfig(
-  resolved: ResolvedConfigPath,
-  colors: ColorChannels,
-  home: string,
-): Promise<ResolveOutcome> {
-  const migration = await runMigrationFlow({
-    resolved,
-    explicit: false,
-    interactive: interactive(),
-    colors,
-    home,
-    print,
-    warn: (line) => warn(line, colors.stderr),
-    notice,
-  });
-
-  if (migration.state === 'error') return { state: 'abort', exitCode: 1 };
-  if (migration.state === 'cancelled') return { state: 'abort', exitCode: 0 };
-  if (migration.state === 'migrated') {
-    return {
-      state: 'ready',
-      config: migration.config,
-      excludeExplicit: migration.excludeExplicit,
-      source: 'migrated',
-    };
-  }
-
-  const loaded = await loadResolvedConfig(resolved, { homedir: home });
-  if (loaded.state === 'ok') {
-    return {
-      state: 'ready',
-      config: loaded.config,
-      excludeExplicit: loaded.excludeExplicit,
-      source: 'file',
-    };
-  }
-
-  if (!interactive()) {
-    warn(
-      `未找到配置文件 (${resolved.path}), 非交互模式下拒绝盲扫; 请先运行 sweep init 或 sweep init --default, 或用 --config 指定配置文件`,
-      colors.stderr,
-    );
-    return { state: 'abort', exitCode: 1 };
-  }
-
-  const result = await runWizard(resolved.path, colors.stdout, home);
-  if (result.state === 'written' && result.config !== undefined) {
-    return {
-      state: 'ready',
-      config: result.config,
-      excludeExplicit: result.excludeExplicit ?? false,
-      source: 'wizard',
-    };
-  }
-
-  print('配置未写入, 本次未执行清理');
-  return { state: 'abort', exitCode: 0 };
-}
-
-type NameMatches = NonNullable<ScanResult['excludeMatches']>;
-const BUILTIN_EXCLUDE_NAMES = new Set(DEFAULT_EXCLUDE);
-
-/** 汇总扫描期排除/包含名单回执: 用户自定义项零命中走 stderr 告警 (跳过内置护栏), 命中项仅在 stdout 为 TTY 时入顶栏提示 */
-function collectNameNotes(
-  excludeMatches: NameMatches | undefined,
-  includeMatches: NameMatches | undefined,
-  stderrColor: boolean,
-): string[] {
-  const notes: string[] = [];
-  const tty = process.stdout.isTTY === true;
-
-  for (const item of excludeMatches ?? []) {
-    if (item.hits === 0) {
-      if (BUILTIN_EXCLUDE_NAMES.has(item.name)) continue;
-      warn(
-        `排除名未命中任何已扫描的目录: ${item.name} (按目录名精确匹配; 若其上层目录已被排除则属预期)`,
-        stderrColor,
-      );
-    } else if (tty) notes.push(`排除生效: ${item.name} (${item.hits} 处)`);
-  }
-
-  const includes = includeMatches ?? [];
-  for (const item of includes) {
-    if (item.hits === 0)
-      warn(
-        `包含名未命中任何已扫描的目录: ${item.name} (按目录名精确匹配; 若其上层目录已被排除则属预期)`,
-        stderrColor,
-      );
-    else if (tty) notes.push(`包含命中: ${item.name} (${item.hits} 处)`);
-  }
-  if (includes.length > 0 && includes.every((item) => item.hits === 0))
-    warn(
-      '包含名单无一条命中, 本次扫描必为空结果 (请核对名字与大小写; 若名字位于被排除的目录之下则属预期)',
-      stderrColor,
-    );
-
-  return notes;
-}
-
-/**
- * 执行主清理编排: 组装 `createSweeper` -> 驱动 stderr 实时进度 -> 按 `options.yes` 分流预览 (`plan`) 或执行 (`run`)。
- * 告警事件经 `progress.suspend() -> warn() -> progress.resume()` 插入防花屏;
- * 预览恒退 0, 执行在安全闸整批拒绝、存在失败/未处理项或整批中止时退 1。
- *
- * ### 数据流转示例
- * ```text
- * Input  : config (v2), options = { yes: true, force: false, exclude: ['demo'], include: [] }
- * 步骤 1 : mergeNames 合并配置与 CLI 名单 -> createSweeper({ ..., policy: { releaseSuspects: false } })
- * 步骤 2 : progress.start() -> sweeper.run({ onProgress }) -> finally { progress.stop() }
- * 步骤 3 : status === 'rejected' 时输出被拒清单并退 1; 否则 entries.map(toExecuteEntry) -> render(mode='execute')
- * 步骤 4 : 若 removal.aborted 补整批中止告警与 abortedUnattemptedCount; summarizeReport 判定退出码
- * Output : 0 (failed === 0 && unprocessed === 0 && !aborted) 或 1
- * ```
- */
 async function sweep(
   config: Config,
   excludeExplicit: boolean,
   options: CliOptions,
   colors: ColorChannels,
   home: string,
+  locale: Locale,
 ): Promise<number> {
   const sweeper = createSweeper({
     roots: config.roots,
@@ -251,12 +120,16 @@ async function sweep(
       process.env.TERM?.toLowerCase() !== 'dumb',
     color: colors.stderr,
     rootCount: config.roots.length,
+    locale,
   });
 
   const onProgress = (event: SweepProgressEvent): void => {
     if (event.kind === 'warning') {
       progress.suspend();
-      warn(event.warning.message, colors.stderr);
+      warn(
+        localizeSweepWarningText(event.warning.message, locale),
+        colors.stderr,
+      );
       progress.resume();
       return;
     }
@@ -267,7 +140,9 @@ async function sweep(
     collectNameNotes(
       plan.nameMatches.exclude,
       plan.nameMatches.include,
-      colors.stderr,
+      (line) => warn(line, colors.stderr),
+      process.stdout.isTTY === true,
+      locale,
     );
 
   if (!options.yes) {
@@ -282,12 +157,13 @@ async function sweep(
       render({
         mode: 'preview',
         roots: plan.roots,
-        entries: plan.entries.map(toRenderEntry),
+        entries: plan.entries.map((e) => toRenderEntry(e, locale)),
         color: colors.stdout,
         home,
         notes: nameNotesOf(plan),
         runtime,
-        trailer: plan.trailer,
+        trailer: localizePlanTrailer(plan.trailer, locale),
+        locale,
       }),
     );
     return 0;
@@ -304,7 +180,11 @@ async function sweep(
   if (report.status === 'rejected') {
     const rejected = report.validation?.rejected ?? [];
     warn(
-      `整批拒绝: ${rejected.length} 个目标未通过安全闸, 未执行任何删除`,
+      t(
+        locale,
+        `整批拒绝: ${rejected.length} 个目标未通过安全闸, 未执行任何删除`,
+        `Batch rejected: ${rejected.length} target(s) failed safety guard; nothing was deleted`,
+      ),
       colors.stderr,
     );
     for (const item of rejected) notice(`  ${item.target} (${item.message})`);
@@ -315,20 +195,35 @@ async function sweep(
     render({
       mode: 'execute',
       roots: report.plan.roots,
-      entries: report.entries.map(toExecuteEntry),
+      entries: report.entries.map((e) => toExecuteEntry(e, locale)),
       color: colors.stdout,
       home,
       releasedBytes: report.releasedBytes,
       notes: nameNotesOf(report.plan),
       runtime,
-      trailer: report.plan.trailer,
+      trailer: localizePlanTrailer(report.plan.trailer, locale),
+      locale,
     }),
   );
 
   const summary = summarizeReport(report);
   if (report.removal?.aborted !== undefined) {
-    warn(`整批中止: ${report.removal.aborted.message}`, colors.stderr);
-    notice(`  本轮未执行删除: ${abortedUnattemptedCount(report, summary)} 处`);
+    const unattempted = abortedUnattemptedCount(report, summary);
+    warn(
+      t(
+        locale,
+        `整批中止: ${report.removal.aborted.message}`,
+        `Batch aborted: ${report.removal.aborted.message}`,
+      ),
+      colors.stderr,
+    );
+    notice(
+      t(
+        locale,
+        `  本轮未执行删除: ${unattempted} 处`,
+        `  Targets left untouched: ${unattempted}`,
+      ),
+    );
   }
 
   return summary.failed === 0 && summary.unprocessed === 0 && !summary.aborted
@@ -336,31 +231,84 @@ async function sweep(
     : 1;
 }
 
-/** 总入口: 参数解析 -> `-V`/`-h` 短路 -> `update`/`init`/`migrate`/`config` 子命令分流 -> 配置装载与主清理; 异常统一落 stderr 退 1 */
 async function main(): Promise<number> {
   const colors = colorChannels();
-  const parsed = parseArgs(process.argv.slice(2));
+  const rawArgv = process.argv.slice(2);
+  const home = homedir();
+
+  const baseLocale = resolveCliLocale({
+    toolName: 'sweep',
+    homedir: home,
+  }).locale;
+  const peeked = stripLangArgs(rawArgv, {
+    fallbackLocale: baseLocale,
+    valueFlags: new Set(['--exclude', '--include', '--config']),
+  });
+  const preLocale =
+    peeked.lang !== undefined
+      ? resolveCliLocale({
+          toolName: 'sweep',
+          flag: peeked.lang,
+          homedir: home,
+        }).locale
+      : baseLocale;
+
+  const parsed = parseArgs(rawArgv, preLocale);
   if (!parsed.ok) {
-    warn(`参数错误: ${parsed.message} (用 --help 查看用法)`, colors.stderr);
+    warn(
+      t(
+        preLocale,
+        `参数错误: ${parsed.message} (用 --help 查看用法)`,
+        `Invalid argument: ${parsed.message} (run 'sweep --help' for usage)`,
+      ),
+      colors.stderr,
+    );
     return 1;
   }
 
   const { options } = parsed;
+  const locale = resolveCliLocale({
+    toolName: 'sweep',
+    flag: options.lang,
+    homedir: home,
+  }).locale;
+
+  if (options.command === 'lang') {
+    const stripped = stripLangArgs(options.langArgs ?? [], {
+      fallbackLocale: locale,
+    });
+    if (stripped.error !== undefined) {
+      warn(stripped.error, colors.stderr);
+      return 1;
+    }
+    return runLangCommand({
+      toolName: 'sweep',
+      binName: 'sweep',
+      argv: stripped.argv,
+      flag: stripped.lang,
+      color: colors,
+      homedir: home,
+      out: print,
+      err: (line) => warn(line, colors.stderr),
+    });
+  }
+
   if (options.version) {
     print(readCliVersion());
     return 0;
   }
   if (options.help) {
-    print(helpText(colors.stdout));
+    print(helpText(colors.stdout, locale));
     return 0;
   }
-  const home = homedir();
+
   let activeConfigPath: string | undefined;
 
   try {
     if (options.command === 'update') {
       return await runSelfUpdate({
         binName: 'sweep',
+        toolName: 'sweep',
         entryMetaUrl: import.meta.url,
         argv: options.updateArgs ?? [],
         color: colors,
@@ -380,6 +328,7 @@ async function main(): Promise<number> {
         interactive: interactive(),
         colors,
         home,
+        locale,
         print,
         warn: (line) => warn(line, colors.stderr),
       });
@@ -392,6 +341,7 @@ async function main(): Promise<number> {
         interactive: interactive(),
         colors,
         home,
+        locale,
         print,
         warn: (line) => warn(line, colors.stderr),
         notice,
@@ -400,16 +350,30 @@ async function main(): Promise<number> {
     }
 
     if (options.command === 'config') {
-      return await reportConfig(resolvedPath, colors.stdout, print);
+      return await reportConfig(resolvedPath, colors.stdout, print, locale);
     }
 
-    const resolved = await resolveConfig(resolvedPath, colors, home);
+    const resolved = await resolveActiveConfig({
+      resolved: resolvedPath,
+      colors,
+      home,
+      locale,
+      interactive: interactive(),
+      print,
+      warn: (line) => warn(line, colors.stderr),
+      notice,
+    });
     if (resolved.state === 'abort') return resolved.exitCode;
 
-    // 向导刚写入配置的这一轮强制预览: 用户尚未见过任何清单, 带 --yes 也不得直删
     const freshConfig = resolved.source === 'wizard';
     if (freshConfig && options.yes) {
-      notice('首次配置已生成; 本轮先预览, 复核后可再运行 --yes 执行');
+      notice(
+        t(
+          locale,
+          '首次配置已生成; 本轮先预览, 复核后可再运行 --yes 执行',
+          'Initial configuration created; showing preview first. Rerun with --yes to clean',
+        ),
+      );
     }
 
     return await sweep(
@@ -418,16 +382,10 @@ async function main(): Promise<number> {
       freshConfig ? { ...options, yes: false } : options,
       colors,
       home,
+      locale,
     );
   } catch (error) {
-    const baseMessage = error instanceof Error ? error.message : String(error);
-    const message =
-      isSweepError(error) &&
-      error.code === 'INVALID_ARGUMENT' &&
-      activeConfigPath !== undefined
-        ? `${baseMessage} (配置: ${activeConfigPath})`
-        : baseMessage;
-    warn(message, colors.stderr);
+    warn(localizeSweepError(error, activeConfigPath, locale), colors.stderr);
     return 1;
   }
 }

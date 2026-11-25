@@ -19,6 +19,7 @@
   - 主包 / API 包 (`@iyowei/fan`, `packages/fan`): [主包文档入口](../packages/fan/docs/README.md) (含 AppleSMC 键值契约与 API 面设计);
   - CLI 薄壳包 (`@iyowei/fan-cli`, `packages/fan-cli`, 命令 `fan`): [CLI 包文档入口](../packages/fan-cli/docs/README.md) (命令面、选项与渲染契约)。
 - **`@iyowei/cli-updater` (仓内私有共享库)**: 为仓内全部 CLI 提供统一 `update` 自更新引擎 (跨 `bun` / `npm` / `pnpm` / `yarn` / `volta` 识别安装源并隔离执行更新, 源码位于 `packages/cli-updater/`, 不对外发布; 见 [README](../packages/cli-updater/README.md))。
+- **`@iyowei/cli-i18n` (仓内私有共享库)**: 为仓内全部 CLI 提供零依赖中英双语 (`zh` / `en`) 解析、操作系统真实 UI 语言探测 (`system` 默认跟随) 与各 CLI 独立偏好持久化 (`lang.json`, 源码位于 `packages/cli-i18n/`, 不对外发布; 见 [README](../packages/cli-i18n/README.md))。
 
 ## 仓库级决策 (ADR)
 

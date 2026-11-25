@@ -81,11 +81,20 @@ fan persist status
 fan persist install
 fan persist uninstall
 
+# 查看或设置显示语言 (默认 system 自动跟随 macOS 系统语言, 支持自定义固定为 en 或 zh)
+fan lang
+fan lang en
+fan lang zh
+fan lang system
+fan status --lang en
+
 # 查看版本 / 帮助或检查更新
 fan --version
 fan --help
 fan update --check
 ```
+
+> **中英双语支持**: `fan` 默认按操作系统首选语言自动展示 (`system`), 也支持通过 `fan lang <system|en|zh>` 独立持久化语言偏好 (`~/.config/fan/lang.json`), 或通过 `--lang <system|en|zh>`、`FAN_LANG`、`CLIS_LANG` 单次覆盖。
 
 > **说明**: 使用本工具无需安装 `Macs Fan Control` 等第三方风扇软件; 只需直接执行 `fan set 4000`、`fan set 30%`、`fan max` 或 `fan auto` 即可改写并自动记住系统风扇转速。执行 `set` / `max` / `min` 时会自动确保内置 `LaunchDaemon` (`com.iyowei.fan`) 已安装并同步至最新脚本: 无外接屏合盖、系统睡眠及后台 `DarkWake` 期间自动将风扇切回 `auto` 停转 (连接外接显示器的合盖桌面模式保留手动转速), 开机与真实唤醒/开盖时按 `state.json` 恢复转速, 醒着开盖期间边沿驱动零轮询、不覆盖 `--once` 临时设定。如果本机之前装过并仍在后台运行固定预设, 先退出对应软件即可避免它定时覆写手动目标值。
 

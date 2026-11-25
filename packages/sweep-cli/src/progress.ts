@@ -4,6 +4,7 @@
  * 红线: `enabled=false` (非 TTY / `TERM=dumb`) 恒 0 字节输出; 单行按终端列宽截断防软折行残影;
  * 告警插队前 `suspend()` 擦行暂停帧刷新, `stop()` 幂等清行不留残影。
  */
+import { type Locale, t } from '@iyowei/cli-i18n';
 import {
   type SweepPhase,
   type SweepProgressEvent,
@@ -28,6 +29,8 @@ export interface SweepProgressOptions {
   color: boolean;
   /** 本次扫描根数量 (初始首帧立即展示) */
   rootCount: number;
+  /** 界面语言 (缺省 `'zh'`) */
+  locale?: Locale;
   /** 写入通道 (默认 process.stderr.write, 供单测注入) */
   write?: (chunk: string) => void;
   /** 读取终端列宽 (默认 process.stderr.columns || 80, 防软折行留残影) */
@@ -101,49 +104,71 @@ function describeState(
   state: ProgressState,
   rootCount: number,
   elapsedMs: number,
+  locale: Locale,
 ): { action: string; detail: string } {
   const elapsed = formatElapsed(elapsedMs);
   const parts: string[] = [];
-  let action = '扫描中';
+  let action = t(locale, '扫描中', 'Scanning');
 
   switch (state.phase) {
     case 'scan':
-      action = '扫描中';
+      action = t(locale, '扫描中', 'Scanning');
       parts.push(
-        state.hits > 0 ? `已发现 ${state.hits} 处` : `${rootCount} 个根`,
+        state.hits > 0
+          ? t(locale, `已发现 ${state.hits} 处`, `${state.hits} found`)
+          : t(
+              locale,
+              `${rootCount} 个根`,
+              `${rootCount} ${rootCount === 1 ? 'root' : 'roots'}`,
+            ),
       );
       break;
     case 'measure':
-      action = '统计体积';
+      action = t(locale, '统计体积', 'Sizing');
       if (state.measured > 0) {
+        const denom = Math.max(state.hits, state.measured);
         parts.push(
-          `${state.measured}/${Math.max(state.hits, state.measured)} 处`,
+          t(
+            locale,
+            `${state.measured}/${denom} 处`,
+            `${state.measured}/${denom}`,
+          ),
         );
         if (state.measuredBytes > 0) {
           parts.push(formatBytes(state.measuredBytes));
         }
       } else {
-        parts.push(`共 ${state.hits} 处`);
+        parts.push(t(locale, `共 ${state.hits} 处`, `${state.hits} total`));
       }
       break;
     case 'classify':
     case 'device':
     case 'plan':
-      action = '整理清单';
-      parts.push(`${state.hits} 处`);
+      action = t(locale, '整理清单', 'Planning');
+      parts.push(t(locale, `${state.hits} 处`, `${state.hits} targets`));
       break;
-    case 'validate':
-      action = '安全复核';
-      parts.push(`${Math.max(0, state.hits - state.skipped)} 处`);
+    case 'validate': {
+      action = t(locale, '安全复核', 'Verifying');
+      const count = Math.max(0, state.hits - state.skipped);
+      parts.push(t(locale, `${count} 处`, `${count} targets`));
       break;
+    }
     case 'remove': {
-      action = '正在清理';
+      action = t(locale, '正在清理', 'Cleaning');
       const total = Math.max(
         state.hits - state.skipped,
         state.removed + state.failed,
       );
-      parts.push(`${state.removed + state.failed}/${total} 处`);
-      if (state.failed > 0) parts.push(`失败 ${state.failed}`);
+      parts.push(
+        t(
+          locale,
+          `${state.removed + state.failed}/${total} 处`,
+          `${state.removed + state.failed}/${total}`,
+        ),
+      );
+      if (state.failed > 0) {
+        parts.push(t(locale, `失败 ${state.failed}`, `${state.failed} failed`));
+      }
       break;
     }
   }
@@ -217,6 +242,7 @@ export function createSweepProgress(
       state,
       options.rootCount,
       now() - startedAt,
+      options.locale ?? 'zh',
     );
     const maxCols = Math.max(12, columns() - 1);
     const prefixPlain = `  ${frame} `;

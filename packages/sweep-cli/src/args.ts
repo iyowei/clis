@@ -1,18 +1,24 @@
 /**
- * CLI 参数解析 (纯函数, 零 IO): 供 `cli.ts` 主入口与单测直接导入, 不触发顶层执行。
- * 支持 `--yes` / `--force` / `--default` / `--exclude` / `--include` / `--config` /
- * `-V` (`--version`) / `-h` (`--help`) 与 `init` / `config` / `migrate` / `update` 子命令。
- * 红线: `update` 必须位于参数首位且后续参数原样透传给 `@iyowei/cli-updater`; 其余子命令与旗标严格互斥。
+ * CLI 参数解析 (纯函数, 零 IO, 支持中英双语错误提示): 供 `cli.ts` 主入口与单测直接导入。
+ * 支持 `--yes` / `--force` / `--default` / `--exclude` / `--include` / `--config` / `--lang` /
+ * `-V` (`--version`) / `-h` (`--help`) 与 `init` / `config` / `migrate` / `lang` / `update` 子命令。
  */
+import {
+  type LangPreference,
+  type Locale,
+  parseLangPreference,
+  t,
+} from '@iyowei/cli-i18n';
 
-export type CliCommand = 'sweep' | 'init' | 'config' | 'migrate' | 'update';
+export type CliCommand =
+  'sweep' | 'init' | 'config' | 'migrate' | 'lang' | 'update';
 
 export interface CliOptions {
-  /** 子命令: 缺省为清理流程, init 初始化配置, config 报告生效配置, migrate 迁移旧配置, update 自更新 */
+  /** 子命令: 缺省为清理流程, init 初始化, config 查看配置, migrate 迁移, lang 语言偏好, update 自更新 */
   command: CliCommand;
   /** 执行清理 (缺省为预览) */
   yes: boolean;
-  /** 连同疑似安装树一并纳入清理批 (缺省跳过; 只影响批次构造, 不放宽安全闸不变量) */
+  /** 连同疑似安装树一并纳入清理批 */
   force: boolean;
   /** `init --default`: 直接生成包含完整最佳实践的默认 v2 配置 */
   defaultConfig: boolean;
@@ -22,6 +28,10 @@ export interface CliOptions {
   include: string[];
   /** `--config` 旗标值 (配置路径的最高优先级来源, 不可重复指定) */
   config?: string;
+  /** `--lang` 单次语言覆盖 */
+  lang?: LangPreference;
+  /** `lang` 子命令参数 */
+  langArgs?: string[];
   /** `update` 子命令透传参数 (由 @iyowei/cli-updater 统一解析) */
   updateArgs?: string[];
   help: boolean;
@@ -31,12 +41,13 @@ export interface CliOptions {
 export type ParseOutcome =
   { ok: true; options: CliOptions } | { ok: false; message: string };
 
-type ValueFlag = '--exclude' | '--include' | '--config';
+type ValueFlag = '--exclude' | '--include' | '--config' | '--lang';
 
 const VALUE_FLAGS: ReadonlySet<string> = new Set<ValueFlag>([
   '--exclude',
   '--include',
   '--config',
+  '--lang',
 ]);
 
 const SUBCOMMANDS: ReadonlySet<string> = new Set(['init', 'config', 'migrate']);
@@ -45,6 +56,7 @@ function applyValueFlag(
   options: CliOptions,
   flag: ValueFlag,
   value: string,
+  locale: Locale,
 ): string | null {
   if (flag === '--exclude') {
     options.exclude.push(value);
@@ -54,7 +66,25 @@ function applyValueFlag(
     options.include.push(value);
     return null;
   }
-  if (options.config !== undefined) return '参数 --config 不能重复指定';
+  if (flag === '--lang') {
+    const parsed = parseLangPreference(value);
+    if (parsed === null) {
+      return t(
+        locale,
+        `参数 --lang 不支持 "${value}" (可选值: system | en | zh)`,
+        `Invalid --lang value "${value}" (expected: system | en | zh)`,
+      );
+    }
+    options.lang = parsed;
+    return null;
+  }
+  if (options.config !== undefined) {
+    return t(
+      locale,
+      '参数 --config 不能重复指定',
+      'Option --config cannot be specified multiple times',
+    );
+  }
   options.config = value;
   return null;
 }
@@ -69,16 +99,17 @@ function splitEqualsFlag(
   return { flag: flag as ValueFlag, value: arg.slice(eqIndex + 1) };
 }
 
-/**
- * 校验子命令与旗标的互斥规则:
- * - `sweep`: 禁 `--default`;
- * - `init`: 禁 `--yes` / `--force` / `--exclude` / `--include` (允许 `--default` / `--config`);
- * - `config` / `migrate`: 另禁 `--default` (仅允许 `--config` 与 `-h`/`-V`)。
- */
-function validateSubcommandFlags(options: CliOptions): string | null {
+function validateSubcommandFlags(
+  options: CliOptions,
+  locale: Locale,
+): string | null {
   if (options.command === 'sweep') {
     if (options.defaultConfig) {
-      return '参数 --default 仅适用于 init 子命令 (用法: sweep init --default)';
+      return t(
+        locale,
+        '参数 --default 仅适用于 init 子命令 (用法: sweep init --default)',
+        "Option --default is only valid with 'init' (usage: sweep init --default)",
+      );
     }
     return null;
   }
@@ -91,32 +122,16 @@ function validateSubcommandFlags(options: CliOptions): string | null {
     disallowed.push('--default');
   }
   if (disallowed.length > 0) {
-    return `子命令 ${options.command} 不支持参数: ${disallowed.join(', ')}`;
+    return t(
+      locale,
+      `子命令 ${options.command} 不支持参数: ${disallowed.join(', ')}`,
+      `Subcommand '${options.command}' does not accept: ${disallowed.join(', ')}`,
+    );
   }
   return null;
 }
 
-/**
- * 解析命令行参数 (`process.argv.slice(2)`):
- * - 首位为 `update` 时立即短路, 其余参数原样装入 `updateArgs` 交更新器解析;
- * - 其余路径逐项解析布尔旗标、带值旗标 (`--flag value` / `--flag=value`) 与至多 1 个子命令位置参数;
- * - 未知参数、缺值、重复 `--config`、非首位 `update` 或子命令旗标冲突一律返回 `{ ok: false, message }`。
- *
- * ### 数据流转示例
- * ```text
- * Case A (主清理):
- *   Input  : ['--yes', '--exclude', 'my-kits', '--config=/tmp/c.json']
- *   步骤 1 : 识别布尔旗标 yes=true, 带值旗标 exclude=['my-kits'], config='/tmp/c.json'
- *   步骤 2 : 位置参数为空 -> command='sweep', 通过互斥校验
- *   Output : { ok: true, options: { command: 'sweep', yes: true, exclude: ['my-kits'], config: '/tmp/c.json', ... } }
- *
- * Case B (子命令透传):
- *   Input  : ['update', '--check', '--channel=next']
- *   步骤 1 : 命中 argv[0] === 'update' 短路, 跳过本模块旗标校验
- *   Output : { ok: true, options: { command: 'update', updateArgs: ['--check', '--channel=next'], ... } }
- * ```
- */
-export function parseArgs(argv: string[]): ParseOutcome {
+export function parseArgs(argv: string[], locale: Locale = 'zh'): ParseOutcome {
   if (argv[0] === 'update') {
     return {
       ok: true,
@@ -128,6 +143,22 @@ export function parseArgs(argv: string[]): ParseOutcome {
         exclude: [],
         include: [],
         updateArgs: argv.slice(1),
+        help: false,
+        version: false,
+      },
+    };
+  }
+  if (argv[0] === 'lang') {
+    return {
+      ok: true,
+      options: {
+        command: 'lang',
+        yes: false,
+        force: false,
+        defaultConfig: false,
+        exclude: [],
+        include: [],
+        langArgs: argv.slice(1),
         help: false,
         version: false,
       },
@@ -172,9 +203,16 @@ export function parseArgs(argv: string[]): ParseOutcome {
     if (VALUE_FLAGS.has(arg)) {
       const value = argv[index + 1];
       if (value === undefined || value === '' || value.startsWith('-')) {
-        return { ok: false, message: `参数 ${arg} 缺少取值` };
+        return {
+          ok: false,
+          message: t(
+            locale,
+            `参数 ${arg} 缺少取值`,
+            `Option ${arg} requires a value`,
+          ),
+        };
       }
-      const err = applyValueFlag(options, arg as ValueFlag, value);
+      const err = applyValueFlag(options, arg as ValueFlag, value, locale);
       if (err !== null) return { ok: false, message: err };
       index += 1;
       continue;
@@ -182,13 +220,25 @@ export function parseArgs(argv: string[]): ParseOutcome {
     const eq = splitEqualsFlag(arg);
     if (eq !== null) {
       if (eq.value === '') {
-        return { ok: false, message: `参数 ${eq.flag} 缺少取值` };
+        return {
+          ok: false,
+          message: t(
+            locale,
+            `参数 ${eq.flag} 缺少取值`,
+            `Option ${eq.flag} requires a value`,
+          ),
+        };
       }
-      const err = applyValueFlag(options, eq.flag, eq.value);
+      const err = applyValueFlag(options, eq.flag, eq.value, locale);
       if (err !== null) return { ok: false, message: err };
       continue;
     }
-    if (arg.startsWith('-')) return { ok: false, message: `未知参数: ${arg}` };
+    if (arg.startsWith('-')) {
+      return {
+        ok: false,
+        message: t(locale, `未知参数: ${arg}`, `Unknown option: ${arg}`),
+      };
+    }
     positionals.push(arg);
   }
 
@@ -196,19 +246,40 @@ export function parseArgs(argv: string[]): ParseOutcome {
   if (positionals.includes('update')) {
     return {
       ok: false,
-      message: '子命令 update 必须位于参数首位 (用法: sweep update [选项])',
+      message: t(
+        locale,
+        '子命令 update 必须位于参数首位 (用法: sweep update [选项])',
+        "Subcommand 'update' must come first (usage: sweep update [options])",
+      ),
+    };
+  }
+  if (positionals.includes('lang')) {
+    return {
+      ok: false,
+      message: t(
+        locale,
+        '子命令 lang 必须位于参数首位 (用法: sweep lang [system|en|zh])',
+        "Subcommand 'lang' must come first (usage: sweep lang [system|en|zh])",
+      ),
     };
   }
   if (
     positionals.length > 1 ||
     (only !== undefined && !SUBCOMMANDS.has(only))
   ) {
-    return { ok: false, message: `未知参数: ${positionals.join(' ')}` };
+    return {
+      ok: false,
+      message: t(
+        locale,
+        `未知参数: ${positionals.join(' ')}`,
+        `Unknown argument: ${positionals.join(' ')}`,
+      ),
+    };
   }
   if (only !== undefined) {
     options.command = only as CliCommand;
   }
-  const flagError = validateSubcommandFlags(options);
+  const flagError = validateSubcommandFlags(options, locale);
   if (flagError !== null) return { ok: false, message: flagError };
   return { ok: true, options };
 }

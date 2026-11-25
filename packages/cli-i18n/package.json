@@ -1,0 +1,30 @@
+{
+  "name": "@iyowei/cli-i18n",
+  "version": "1.0.0",
+  "private": true,
+  "clisRole": "shared-lib",
+  "description": "Shared zero-dependency CLI internationalization, OS native language detection, and per-tool language preference engine for clis.",
+  "author": "iTonyYo (https://github.com/iTonyYo)",
+  "license": "MIT",
+  "type": "module",
+  "sideEffects": false,
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "engines": {
+    "node": ">=22.18.0"
+  },
+  "scripts": {
+    "build": "bun scripts/build.ts",
+    "typecheck": "bun check",
+    "test": "bun test src"
+  }
+}

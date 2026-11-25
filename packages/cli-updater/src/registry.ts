@@ -10,6 +10,8 @@
 import { readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 
+import { type Locale, t } from '@iyowei/cli-i18n';
+
 import {
   normalizeRegistryUrl as normalizeRegistryUrlInternal,
   parseAuthTokenFromBunfig,
@@ -83,6 +85,7 @@ export interface FetchVersionInput {
   fetchFn?: FetchLike;
   /** 可选同源 Bearer token (仅写入请求头, 绝不记录到日志或异常消息) */
   authToken?: string;
+  locale?: Locale;
 }
 
 export type FetchVersionResult =
@@ -236,19 +239,28 @@ function cleanMessage(raw: string, secret?: string): string {
 export async function fetchLatestVersion(
   input: FetchVersionInput,
 ): Promise<FetchVersionResult> {
+  const locale = input.locale ?? 'zh';
   const tag = input.tag ?? 'latest';
   if (!isValidPackageName(input.packageName)) {
     return {
       ok: false,
       code: 'invalid-response',
-      message: `非法包名: ${cleanMessage(input.packageName)}`,
+      message: t(
+        locale,
+        `非法包名: ${cleanMessage(input.packageName)}`,
+        `Invalid package name: ${cleanMessage(input.packageName)}`,
+      ),
     };
   }
   if (!isValidTargetSpec(tag) || !isValidRegistryUrl(input.registry)) {
     return {
       ok: false,
       code: 'invalid-response',
-      message: '非法的 registry 地址或版本标签',
+      message: t(
+        locale,
+        '非法的 registry 地址或版本标签',
+        'Invalid registry URL or dist-tag',
+      ),
     };
   }
 
@@ -284,8 +296,16 @@ export async function fetchLatestVersion(
       code: 'network',
       message:
         detail === ''
-          ? `无法连接包注册表 (${base})`
-          : `无法连接包注册表 (${base}): ${detail}`,
+          ? t(
+              locale,
+              `无法连接包注册表 (${base})`,
+              `Cannot reach registry (${base})`,
+            )
+          : t(
+              locale,
+              `无法连接包注册表 (${base}): ${detail}`,
+              `Cannot reach registry (${base}): ${detail}`,
+            ),
     };
   }
 
@@ -294,7 +314,11 @@ export async function fetchLatestVersion(
       ok: false,
       code: 'auth',
       status: response.status,
-      message: `访问包注册表 ${base} 鉴权失败 (HTTP ${response.status}), 请检查 ~/.npmrc / ~/.bunfig.toml 认证凭据或登录状态`,
+      message: t(
+        locale,
+        `访问包注册表 ${base} 鉴权失败 (HTTP ${response.status}), 请检查 ~/.npmrc / ~/.bunfig.toml 认证凭据或登录状态`,
+        `Authentication failed for ${base} (HTTP ${response.status}); check credentials in ~/.npmrc or ~/.bunfig.toml`,
+      ),
     };
   }
   if (response.status === 404) {
@@ -302,7 +326,11 @@ export async function fetchLatestVersion(
       ok: false,
       code: 'not-found',
       status: 404,
-      message: `${input.packageName} 尚未在 ${base} 发布 (HTTP 404)`,
+      message: t(
+        locale,
+        `${input.packageName} 尚未在 ${base} 发布 (HTTP 404)`,
+        `${input.packageName} is not published on ${base} (HTTP 404)`,
+      ),
     };
   }
   if (!response.ok) {
@@ -310,7 +338,11 @@ export async function fetchLatestVersion(
       ok: false,
       code: 'http',
       status: response.status,
-      message: `包注册表返回异常状态 HTTP ${response.status} (${base})`,
+      message: t(
+        locale,
+        `包注册表返回异常状态 HTTP ${response.status} (${base})`,
+        `Registry returned HTTP ${response.status} (${base})`,
+      ),
     };
   }
 
@@ -321,7 +353,11 @@ export async function fetchLatestVersion(
     return {
       ok: false,
       code: 'invalid-response',
-      message: `包注册表返回的内容不是合法 JSON (${base})`,
+      message: t(
+        locale,
+        `包注册表返回的内容不是合法 JSON (${base})`,
+        `Registry returned invalid JSON (${base})`,
+      ),
     };
   }
 
@@ -333,7 +369,11 @@ export async function fetchLatestVersion(
     return {
       ok: false,
       code: 'invalid-response',
-      message: `包注册表响应缺少合法 version 字段 (${base})`,
+      message: t(
+        locale,
+        `包注册表响应缺少合法 version 字段 (${base})`,
+        `Registry response is missing a valid version field (${base})`,
+      ),
     };
   }
 

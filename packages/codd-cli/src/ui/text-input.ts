@@ -5,6 +5,7 @@
  */
 import { stdout } from 'node:process';
 
+import { ct } from '../i18n.ts';
 import {
   countPhysicalLines,
   currentTheme,
@@ -118,16 +119,26 @@ const buildTextFooter = (
 ): string => {
   const parts: string[] = [];
   if (!hasInput && hasDefault) {
-    parts.push(`${palette.keycap('Enter')} ${palette.dim('采用默认值')}`);
+    parts.push(
+      `${palette.keycap('Enter')} ${palette.dim(ct('采用默认值', 'Use Default'))}`,
+    );
     if (cardW >= 58) {
-      parts.push(`${palette.keycap('Tab')} ${palette.dim('填入并修改默认值')}`);
+      parts.push(
+        `${palette.keycap('Tab')} ${palette.dim(ct('填入并修改默认值', 'Edit Default'))}`,
+      );
     }
   } else if (!hasInput) {
-    parts.push(`${palette.keycap('Enter')} ${palette.dim('留空跳过')}`);
+    parts.push(
+      `${palette.keycap('Enter')} ${palette.dim(ct('留空跳过', 'Skip'))}`,
+    );
   } else {
-    parts.push(`${palette.keycap('Enter')} ${palette.dim('确认输入')}`);
+    parts.push(
+      `${palette.keycap('Enter')} ${palette.dim(ct('确认输入', 'Confirm'))}`,
+    );
     if (cardW >= 58) {
-      parts.push(`${palette.keycap('Ctrl+U')} ${palette.dim('清空重填')}`);
+      parts.push(
+        `${palette.keycap('Ctrl+U')} ${palette.dim(ct('清空重填', 'Clear'))}`,
+      );
     }
   }
   return `    ${parts.join('   ')}`;
@@ -138,15 +149,22 @@ const askTextNonInteractive = async (cfg: AskTextConfig): Promise<string> => {
     label,
     summaryLabel,
     defaultVal = '',
-    emptySummary = '未填写 (使用默认设置)',
+    emptySummary = ct('未填写 (使用默认设置)', 'Empty (using default)'),
     validate,
   } = cfg;
   const summaryKey = summaryLabel ?? label;
   for (;;) {
-    const defText = defaultVal ? ` [默认: ${defaultVal}]` : '';
+    const defText = defaultVal
+      ? ct(` [默认: ${defaultVal}]`, ` [default: ${defaultVal}]`)
+      : '';
     const raw = await readNonInteractiveLine(`    ${label}${defText}: `);
     if (raw === null) {
-      throw new PromptCancelledError('输入流已关闭, 已取消配置向导');
+      throw new PromptCancelledError(
+        ct(
+          '输入流已关闭, 已取消配置向导',
+          'Input stream closed; wizard cancelled',
+        ),
+      );
     }
     const val = raw.trim() || defaultVal;
     const err = validate ? validate(val) : null;
@@ -180,7 +198,7 @@ export const askText = async (cfg: AskTextConfig): Promise<string> => {
     hint,
     placeholder,
     defaultVal = '',
-    emptySummary = '未填写 (使用默认设置)',
+    emptySummary = ct('未填写 (使用默认设置)', 'Empty (using default)'),
     validate,
   } = cfg;
   const summaryKey = summaryLabel ?? label;
@@ -235,7 +253,10 @@ export const askText = async (cfg: AskTextConfig): Promise<string> => {
     let cursorColumn1Based: number;
 
     if (currentStr.length === 0) {
-      const ghostRaw = defaultVal || placeholder || '可留空, 直接按回车跳过';
+      const ghostRaw =
+        defaultVal ||
+        placeholder ||
+        ct('可留空, 直接按回车跳过', 'Optional, press Enter to skip');
       const ghostClipped = truncateDisplay(ghostRaw, fieldInnerBudget);
       fieldContent = `  ${promptGlyph}  ${palette.dim(ghostClipped)}`;
       cursorColumn1Based = Math.min(termCols, 10);

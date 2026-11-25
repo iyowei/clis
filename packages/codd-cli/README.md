@@ -100,6 +100,7 @@ codd update
 | -------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
 | `codd wizard` / `-i`, `--wizard` | Launch the interactive 4-step configuration wizard                                                                                     |
 | `codd init` / `--init-schema`    | Export `deploy.schema.json`, `deploy-2c2g.json`, and safe `.gitignore` into the current directory                                      |
+| `codd lang [system\|en\|zh]`     | Show or save display language preference (`~/.config/codd/lang.json` / `%APPDATA%\codd\lang.json`; defaults to `system`)               |
 | `codd update`                    | Self-update via the active package manager (`--check`, `--pm`, `--registry`, `--force`, `--verbose`)                                   |
 | `codd [manifest.json]`           | Generate deployment bundle(s) from the specified JSON manifest (defaults to `./deploy.json`)                                           |
 | `-c`, `--config <path>`          | Explicit path to the JSON manifest file                                                                                                |
@@ -108,6 +109,7 @@ codd update
 | `--rotate-all`                   | Rotate all credentials including `root` and `keyFile` (fresh deployments only)                                                         |
 | `--new-fingerprint`              | Generate a brand-new 12-hex instance fingerprint for side-by-side deployment                                                           |
 | `--dry-run`                      | Validate manifest and preview computed sizing formulas without writing any files (in wizard mode, also skips saving the manifest file) |
+| `--lang <system\|en\|zh>`        | Override CLI display language for the current invocation (also supports `CODD_LANG` / `CLIS_LANG`)                                     |
 | `--`                             | End of flags; treat the following argument as a literal manifest path                                                                  |
 | `-V`, `-v`, `--version`          | Print the installed CLI version                                                                                                        |
 | `-h`, `--help`                   | Show usage help                                                                                                                        |

@@ -1,8 +1,8 @@
 /**
- * 帮助页文案与分层排版渲染 (零外部依赖): 上游供 `cli.ts` 处理 `-h`/`--help` 调用,
- * 下游复用 `render.ts` 的 `BAR_BLOCK` / `paint` / `sanitizeLine` 与 `@iyowei/sweep` 路径解析。
+ * 帮助页文案与分层排版渲染 (零外部依赖, 中英双语均严守 80 列行宽与 OF-10 降级恒等式):
  * 红线: 命令面以 `cli-surface.md` 为唯一事实来源; 新增子命令或旗标须与语料 `cli-help` 同批更新 (BC-30)。
  */
+import type { Locale } from '@iyowei/cli-i18n';
 import { resolveConfigPath } from '@iyowei/sweep';
 
 import { BAR_BLOCK, paint, sanitizeLine } from './render.ts';
@@ -10,12 +10,12 @@ import { BAR_BLOCK, paint, sanitizeLine } from './render.ts';
 function createStyler(color: boolean) {
   return {
     badge: (text: string) => paint(`${BAR_BLOCK} ${text} `, '1;7', color),
-    bold: (t: string) => paint(t, '1', color),
-    dim: (t: string) => paint(t, '2', color),
-    section: (t: string) => paint(t, '2', color),
-    token: (t: string) => paint(t, '36', color),
-    green: (t: string) => paint(t, '1;32', color),
-    red: (t: string) => paint(t, '1;31', color),
+    bold: (s: string) => paint(s, '1', color),
+    dim: (s: string) => paint(s, '2', color),
+    section: (s: string) => paint(s, '2', color),
+    token: (s: string) => paint(s, '36', color),
+    green: (s: string) => paint(s, '1;32', color),
+    red: (s: string) => paint(s, '1;31', color),
   };
 }
 
@@ -37,22 +37,26 @@ interface ExampleRow {
   desc: string;
 }
 
-/** 子命令清单 (与清理选项彻底分层) */
-const SUBCOMMANDS: readonly CommandRow[] = [
+const SUBCOMMANDS_ZH: readonly CommandRow[] = [
   {
     name: 'init',
     desc: '交互式向导生成 v2 配置 (支持 --default 写入最佳实践)',
   },
   { name: 'migrate', desc: '无损迁移旧版配置到 v2 (写前自动备份原配置)' },
   { name: 'config', desc: '查看实际生效的配置 (来源 / 路径 / 状态)' },
-  {
-    name: 'update',
-    desc: '自动识别安装器升级到最新版 (--check 仅检查)',
-  },
+  { name: 'lang', desc: '查看或设置显示语言 (system | en | zh, 默认 system)' },
+  { name: 'update', desc: '自动识别安装器升级到最新版 (--check 仅检查)' },
 ];
 
-/** 核心清理与筛选选项 */
-const ACTION_OPTIONS: readonly OptionRow[] = [
+const SUBCOMMANDS_EN: readonly CommandRow[] = [
+  { name: 'init', desc: 'Interactive v2 setup wizard (--default for preset)' },
+  { name: 'migrate', desc: 'Losslessly migrate v1 config with auto-backup' },
+  { name: 'config', desc: 'Show active config path, source, and file state' },
+  { name: 'lang', desc: 'Show or save display language (system | en | zh)' },
+  { name: 'update', desc: 'Upgrade CLI via detected installer (--check only)' },
+];
+
+const ACTION_OPTIONS_ZH: readonly OptionRow[] = [
   { flag: '--yes', desc: '执行清理 (默认仅预览, 零副作用)' },
   { flag: '--force', desc: '连同疑似安装树一并清理 (默认跳过)' },
   { flag: '--default', desc: '配合 init 直接写入完整最佳实践默认配置' },
@@ -71,16 +75,53 @@ const ACTION_OPTIONS: readonly OptionRow[] = [
     arg: '<path>',
     desc: '指定配置文件路径 (优先于 SWEEP_CONFIG)',
   },
+  {
+    flag: '--lang',
+    arg: '<lang>',
+    desc: '单次覆盖显示语言 (system | en | zh)',
+  },
 ];
 
-/** 通用元选项 */
-const META_OPTIONS: readonly OptionRow[] = [
+const ACTION_OPTIONS_EN: readonly OptionRow[] = [
+  { flag: '--yes', desc: 'Execute cleanup (default: dry-run preview only)' },
+  {
+    flag: '--force',
+    desc: 'Include suspect install trees (skipped by default)',
+  },
+  { flag: '--default', desc: 'Write best-practice v2 config with sweep init' },
+  {
+    flag: '--exclude',
+    arg: '<name>',
+    desc: 'Exclude directory name for this run (repeatable)',
+  },
+  {
+    flag: '--include',
+    arg: '<name>',
+    desc: 'Only match projects containing name (repeatable)',
+  },
+  {
+    flag: '--config',
+    arg: '<path>',
+    desc: 'Specify config file path (overrides SWEEP_CONFIG)',
+  },
+  {
+    flag: '--lang',
+    arg: '<lang>',
+    desc: 'Override language for this run (system | en | zh)',
+  },
+];
+
+const META_OPTIONS_ZH: readonly OptionRow[] = [
   { flag: '-V, --version', desc: '显示当前版本号' },
   { flag: '-h, --help', desc: '显示本帮助' },
 ];
 
-/** 常用示例 */
-const EXAMPLES: readonly ExampleRow[] = [
+const META_OPTIONS_EN: readonly OptionRow[] = [
+  { flag: '-V, --version', desc: 'Print current version' },
+  { flag: '-h, --help', desc: 'Show this help message' },
+];
+
+const EXAMPLES_ZH: readonly ExampleRow[] = [
   { cmd: 'sweep', desc: '预览工作区内可清理的构建产物与缓存' },
   {
     cmd: 'sweep',
@@ -100,11 +141,26 @@ const EXAMPLES: readonly ExampleRow[] = [
   },
 ];
 
+const EXAMPLES_EN: readonly ExampleRow[] = [
+  { cmd: 'sweep', desc: 'Preview cleanable build artifacts & caches' },
+  { cmd: 'sweep', flag: '--yes', desc: 'Clean matched items via trash/delete' },
+  {
+    cmd: 'sweep init',
+    flag: '--default',
+    desc: 'Write best-practice v2 config in one step',
+  },
+  {
+    cmd: 'sweep',
+    flag: '--exclude',
+    arg: 'my-kits',
+    desc: 'Exclude a directory name for this run',
+  },
+];
+
 const LEFT_COL = 20;
 const EXAMPLE_COL = 28;
 const RULE_WIDTH = 76;
 
-/** 刻意传入空 env 忽略 SWEEP_CONFIG, 帮助页只展示当前平台默认配置路径 */
 function defaultConfigPath(): string {
   return resolveConfigPath({ env: {} }).path;
 }
@@ -138,18 +194,65 @@ function formatExampleRow(
 }
 
 /** 帮助页: 分层布局 + 主视图同源标准 SGR 单色系 (80 列内防截断, 降级无 ANSI 逐字等价) */
-export function helpText(color: boolean): string {
+export function helpText(color: boolean, locale: Locale = 'zh'): string {
   const s = createStyler(color);
   const configPath = sanitizeLine(defaultConfigPath());
 
-  const commandRows = SUBCOMMANDS.map((row) => {
+  if (locale === 'en') {
+    const commandRows = SUBCOMMANDS_EN.map((row) => {
+      const pad = ' '.repeat(Math.max(2, LEFT_COL - row.name.length));
+      return `    ${s.bold(row.name)}${pad}${row.desc}`;
+    });
+    const actionRows = ACTION_OPTIONS_EN.map((row) => formatOptionRow(row, s));
+    const metaRows = META_OPTIONS_EN.map((row) => formatOptionRow(row, s));
+    const exampleRows = EXAMPLES_EN.map((row) => formatExampleRow(row, s));
+
+    return [
+      '',
+      `  ${s.badge('SWEEP')}  ${s.bold('Multi-Stack Workspace Cleaner')}`,
+      `  ${s.dim('Scan build artifacts, dependency caches, and OS junk; preview before cleaning.')}`,
+      `  ${s.dim('─'.repeat(RULE_WIDTH))}`,
+      '',
+      `  ${s.section('Usage')}`,
+      `    ${s.bold('sweep')} ${s.dim('[options]')}`,
+      `    ${s.bold('sweep')} ${s.dim('<command> [options]')}`,
+      '',
+      `  ${s.section('Commands')}`,
+      ...commandRows,
+      '',
+      `  ${s.section('Options')}`,
+      ...actionRows,
+      '',
+      ...metaRows,
+      '',
+      `  ${s.section('Examples')}`,
+      ...exampleRows,
+      '',
+      `  ${s.section('Config & Safety')}`,
+      `    ${s.bold('Default Config')}  ${s.token(configPath)}`,
+      `                    ${s.dim("Run 'sweep config' when using --config or SWEEP_CONFIG")}`,
+      `    ${s.bold('Project Anchor')}  node / rust / python / java / cpp verify project anchors`,
+      `                    ${s.dim('Custom rules default to trash; never falls back to rm')}`,
+      `    ${s.bold('Name Matching')}   --exclude / --include match exact dir names (case-sensitive)`,
+      `                    ${s.dim('Exclude wins on conflict; 32 safety guardrails by default')}`,
+      `    ${s.bold('Real Anchors')}    --force only includes suspect trees; roots must be real dirs`,
+      `                    ${s.dim('Symlinked roots (/tmp, /var) reject --yes; use /private/tmp')}`,
+      `    ${s.bold('Plain Output')}    Auto-disables ANSI when NO_COLOR, TERM=dumb, or non-TTY`,
+      '',
+      `  ${s.section('Exit Codes')}`,
+      `    ${s.green('0')}         Success (preview, empty, init/migrate/config/lang/update, -V/-h)`,
+      `    ${s.red('1')}         Failure (failed/skipped/rejected, missing config, or bad args)`,
+      '',
+    ].join('\n');
+  }
+
+  const commandRows = SUBCOMMANDS_ZH.map((row) => {
     const pad = ' '.repeat(Math.max(2, LEFT_COL - row.name.length));
     return `    ${s.bold(row.name)}${pad}${row.desc}`;
   });
-
-  const actionRows = ACTION_OPTIONS.map((row) => formatOptionRow(row, s));
-  const metaRows = META_OPTIONS.map((row) => formatOptionRow(row, s));
-  const exampleRows = EXAMPLES.map((row) => formatExampleRow(row, s));
+  const actionRows = ACTION_OPTIONS_ZH.map((row) => formatOptionRow(row, s));
+  const metaRows = META_OPTIONS_ZH.map((row) => formatOptionRow(row, s));
+  const exampleRows = EXAMPLES_ZH.map((row) => formatExampleRow(row, s));
 
   return [
     '',
@@ -184,7 +287,7 @@ export function helpText(color: boolean): string {
     `    ${s.bold('输出降级')}  设置 NO_COLOR、TERM=dumb 或非 TTY 时自动降级为无颜色纯文本`,
     '',
     `  ${s.section('退出码')}`,
-    `    ${s.green('0')}         成功 (预览、空结果、init/migrate/config/update、-V/-h)`,
+    `    ${s.green('0')}         成功 (预览、空结果、init/migrate/config/lang/update、-V/-h)`,
     `    ${s.red('1')}         失败 (清理/回收站失败 / 跳过 / 拒绝 / 无配置非 TTY / 参数或配置错)`,
     '',
   ].join('\n');

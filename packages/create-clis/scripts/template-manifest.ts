@@ -241,6 +241,10 @@ export const TEMPLATE_MANIFEST: readonly ManifestEntry[] = [
     'packages/cli-updater/',
     '本仓多 CLI 共享自更新私有库; 生成物示例包保持最小 greet 骨架, 不进模板',
   ),
+  exclInfra(
+    'packages/cli-i18n/',
+    '本仓多 CLI 共享双语与系统语言探测私有库; 生成物示例包保持最小 greet 骨架, 不进模板',
+  ),
   excl(
     'packages/codd/',
     'MongoDB 模板化装配 API 主包与文档 (本仓领域工具); 不进模板',

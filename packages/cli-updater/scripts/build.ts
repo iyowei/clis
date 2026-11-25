@@ -52,6 +52,8 @@ runOrExit('bun', [
 
 const INTERNAL_DTS_FILES: readonly string[] = [
   'config-parse.d.ts',
+  'non-global-flow.d.ts',
+  'remote-dispatch.d.ts',
   'update-flow.d.ts',
   'update-helpers.d.ts',
   'windows-exec.d.ts',

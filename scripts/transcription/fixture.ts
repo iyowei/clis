@@ -188,6 +188,7 @@ export function buildEnv(
   const fakeHome = join(root, HOME_DIR_NAME);
   env.HOME = fakeHome;
   env.USERPROFILE = fakeHome;
+  env.CLIS_TEST_OS_LOCALE = 'zh-CN';
   for (const [key, value] of Object.entries(extra)) {
     env[key] = applyVars(value, root);
   }

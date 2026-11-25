@@ -81,11 +81,20 @@ fan persist status
 fan persist install
 fan persist uninstall
 
+# Switch display language (defaults to `system`, following macOS preferred language)
+fan lang
+fan lang en
+fan lang zh
+fan lang system
+fan status --lang en
+
 # Print version / help, or check self-update
 fan --version
 fan --help
 fan update --check
 ```
+
+> **Language**: `fan` automatically detects your macOS system UI language (`system` by default) and supports independent per-tool customization via `fan lang <system|en|zh>` (`~/.config/fan/lang.json`), per-run `--lang <system|en|zh>`, or `FAN_LANG` / `CLIS_LANG`.
 
 > **Tip**: No third-party fan app (such as `Macs Fan Control`) is required. Running `fan set` / `fan max` / `fan min` automatically keeps the `com.iyowei.fan` `LaunchDaemon` installed and synced: it releases manual fans to `auto` on non-docked lid close, sleep, and `DarkWake` (preserving manual speeds in docked external-display clamshell mode), restores `state.json` on boot and full wake / lid open, and never polls or fights `--once` overrides while awake. If you previously installed a GUI fan controller and left it running in the background with a fixed preset, quit it first so it does not overwrite `fan` CLI targets.
 

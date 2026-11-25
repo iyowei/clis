@@ -12,6 +12,7 @@
 - `fan auto`: 恢复目标风扇为系统自动温控 (`F{i}md = 0`), 并更新持久化状态为 `auto`。
 - `fan apply`: 立即读取 `/Library/Application Support/iyowei-fan/state.json` 并应用至全部对应风扇。
 - `fan persist [status|install|uninstall]`: 查看、安装或卸载系统级 `LaunchDaemon` (`com.iyowei.fan`), 负责开机/唤醒恢复与合盖/睡眠自动停转。
+- `fan lang [system|en|zh]`: 查看或独立持久化 `fan` 的显示语言偏好 (`~/.config/fan/lang.json`, 默认 `system` 自动探测 macOS 系统首选语言)。
 - `fan update`: 委托 `@iyowei/cli-updater` 执行跨包管理器自更新 (须作首个子命令)。
 
 ## 2. 选项
@@ -20,10 +21,11 @@
 - `--once`, `--no-save`: 仅用于 `set` / `max` / `min` / `auto`, 只改写当前硬件转速而不保存至持久化文件。
 - `--json`: 以 JSON 格式输出 `FanStatusReport` 或 `PersistDaemonStatus`。
 - `-w, --watch [sec]`: 仅用于 `status`, 按指定秒数 (默认 `1`) 持续刷新输出。
+- `--lang <system|en|zh>`: 单次覆盖显示语言 (优先级: `--lang` > `FAN_LANG` > `CLIS_LANG` > `~/.config/fan/lang.json` > 系统语言)。
 - `-V, --version` / `-h, --help`: 输出版本号或统一左对齐的分层帮助页。
 
 ## 3. 退出码与渲染降级
 
-- 退出码 `0`: 正常完成 (含 `--version`、`--help`、`persist`、`apply`、`update` 及正常读写控制)。
+- 退出码 `0`: 正常完成 (含 `--version`、`--help`、`persist`、`apply`、`lang`、`update` 及正常读写控制)。
 - 退出码 `1`: 参数校验失败、平台不支持、SMC/守护操作异常或 `sudo` 提权失败。
 - 当 `NO_COLOR` 存在、`TERM=dumb` 或输出流非 TTY 时, 自动省略 ANSI 转义序列输出纯文本。

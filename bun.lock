@@ -15,9 +15,16 @@
         "typescript": "7.0.2",
       },
     },
+    "packages/cli-i18n": {
+      "name": "@iyowei/cli-i18n",
+      "version": "1.0.0",
+    },
     "packages/cli-updater": {
       "name": "@iyowei/cli-updater",
       "version": "1.0.0",
+      "devDependencies": {
+        "@iyowei/cli-i18n": "1.0.0",
+      },
     },
     "packages/codd": {
       "name": "@iyowei/codd",
@@ -25,18 +32,19 @@
     },
     "packages/codd-cli": {
       "name": "@iyowei/codd-cli",
-      "version": "1.3.0",
+      "version": "1.3.1",
       "bin": {
         "codd": "bin/codd.mjs",
       },
       "devDependencies": {
+        "@iyowei/cli-i18n": "1.0.0",
         "@iyowei/cli-updater": "1.0.0",
         "@iyowei/codd": "1.4.0",
       },
     },
     "packages/create-clis": {
       "name": "create-clis",
-      "version": "1.4.0",
+      "version": "1.4.1",
       "bin": {
         "create-clis": "bin/create-clis.mjs",
       },
@@ -45,22 +53,24 @@
         "prettier": "3.9.9",
       },
       "devDependencies": {
+        "@iyowei/cli-i18n": "1.0.0",
         "@iyowei/cli-updater": "1.0.0",
       },
     },
     "packages/fan": {
       "name": "@iyowei/fan",
-      "version": "1.0.0",
+      "version": "1.0.1",
     },
     "packages/fan-cli": {
       "name": "@iyowei/fan-cli",
-      "version": "1.0.0",
+      "version": "1.1.0",
       "bin": {
         "fan": "bin/fan.mjs",
       },
       "devDependencies": {
+        "@iyowei/cli-i18n": "1.0.0",
         "@iyowei/cli-updater": "1.0.0",
-        "@iyowei/fan": "1.0.0",
+        "@iyowei/fan": "1.0.1",
       },
     },
     "packages/sweep": {
@@ -74,6 +84,7 @@
         "sweep": "bin/sweep.mjs",
       },
       "devDependencies": {
+        "@iyowei/cli-i18n": "1.0.0",
         "@iyowei/cli-updater": "1.0.0",
         "@iyowei/sweep": "1.0.0",
       },
@@ -109,6 +120,8 @@
     "@colors/colors": ["@colors/colors@1.6.0", "https://registry.npmmirror.com/@colors/colors/-/colors-1.6.0.tgz", {}, "sha512-Ir+AOibqzrIsL6ajt3Rz3LskB7OiMVHqltZmspbW/TJuTVuyOMirVqAkjfY6JISiLHgyNqicAC8AyHHGzNd/dA=="],
 
     "@dabh/diagnostics": ["@dabh/diagnostics@2.0.9", "https://registry.npmmirror.com/@dabh/diagnostics/-/diagnostics-2.0.9.tgz", { "dependencies": { "@so-ric/colorspace": "^1.1.6", "enabled": "2.0.x", "kuler": "^2.0.0" } }, "sha512-R6siwR65Hm+3yfgP7o8DKhNvputQAwfoz9zTc3kyDudnomj2/BcLmD+uGQQPICjuFUp8ounPBU+jmKsocwVVAg=="],
+
+    "@iyowei/cli-i18n": ["@iyowei/cli-i18n@workspace:packages/cli-i18n"],
 
     "@iyowei/cli-updater": ["@iyowei/cli-updater@workspace:packages/cli-updater"],
 

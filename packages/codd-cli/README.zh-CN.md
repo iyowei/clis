@@ -100,6 +100,7 @@ codd update
 | -------------------------------- | ------------------------------------------------------------------------------------------------------- |
 | `codd wizard` / `-i`, `--wizard` | 打开交互式 4 步向导, 引导生成配置清单与部署安装包                                                       |
 | `codd init` / `--init-schema`    | 在当前目录导出 `deploy.schema.json`、`deploy-2c2g.json` 与安全 `.gitignore`                             |
+| `codd lang [system\|en\|zh]`     | 查看或独立保存显示语言偏好 (`~/.config/codd/lang.json` / `%APPDATA%\codd\lang.json`, 默认 `system`)     |
 | `codd update`                    | 自动识别当前安装器升级到最新版 (`--check` 仅检查, 支持 `--pm` / `--registry` / `--force` / `--verbose`) |
 | `codd [配置文件.json]`           | 按指定 JSON 清单生成部署包 (不传默认读取 `./deploy.json`)                                               |
 | `-c`, `--config <文件路径>`      | 显式指定 JSON 配置文件路径 (与位置参数等效)                                                             |
@@ -108,6 +109,7 @@ codd update
 | `--rotate-all`                   | 轮换包含 `root` 与 `keyFile` 在内的全部密钥 (仅限全新部署前使用)                                        |
 | `--new-fingerprint`              | 生成全新的 12 位实例唯一指纹 (同台服务器并行部署新实例时使用)                                           |
 | `--dry-run`                      | 仅校验配置并预览公式推导结果, 不写入任何文件 (向导模式亦跳过保存清单)                                   |
+| `--lang <system\|en\|zh>`        | 单次覆盖当前执行的界面语言 (另支持环境变量 `CODD_LANG` / `CLIS_LANG`)                                   |
 | `--`                             | 终止旗标解析, 其后参数均按位置清单路径处理                                                              |
 | `-V`, `-v`, `--version`          | 打印当前已安装的 CLI 版本号                                                                             |
 | `-h`, `--help`                   | 打印帮助说明                                                                                            |

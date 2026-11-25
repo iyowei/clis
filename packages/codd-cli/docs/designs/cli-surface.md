@@ -10,6 +10,7 @@
 ```text
 codd wizard                    打开 4 步交互式配置向导 (等效于 -i / --wizard)
 codd init                      导出 deploy.schema.json、deploy-2c2g.json 与安全 .gitignore (等效于 --init-schema)
+codd lang [system|en|zh]       查看或独立持久化显示语言偏好 (默认 system 自动跟随操作系统语言)
 codd update                    自动识别当前安装器 (bun/npm/pnpm/yarn/volta) 升级到最新版 (支持 --check / --pm / --registry / --force / --verbose)
 codd [配置文件.json]            按指定 JSON 清单生成部署包 (缺省读 ./deploy.json)
 codd -c, --config <路径>       显式指定 JSON 清单文件路径 (与位置参数互斥)
@@ -18,6 +19,7 @@ codd --rotate                  仅轮换业务库与备份账号密码 (保留�
 codd --rotate-all              轮换包括 root 与 keyFile 在内的全部凭证 (仅限全新部署前)
 codd --new-fingerprint         重新生成 12 位十六进制唯一实例指纹 (同机并行部署新实例)
 codd --dry-run                 只校验清单并预览公式推导结果, 零磁盘落盘
+codd --lang <语言>             单次覆盖显示语言 (system | en | zh; 优先级高于 CODD_LANG / CLIS_LANG / ~/.config/codd/lang.json)
 codd -- <文件路径>             终止旗标解析, 其后 token 按位置清单路径处理
 codd -V, -v, --version         输出当前 @iyowei/codd-cli 版本号
 codd -h, --help                输出帮助说明

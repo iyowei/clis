@@ -7,10 +7,11 @@
 import { stdin, stdout } from 'node:process';
 import { StringDecoder } from 'node:string_decoder';
 
+import { ct } from '../i18n.ts';
 import { restoreDefaultCursor } from './ansi.ts';
 
 export class PromptCancelledError extends Error {
-  constructor(message = '已取消配置向导') {
+  constructor(message = ct('已取消配置向导', 'Wizard cancelled')) {
     super(message);
     this.name = 'PromptCancelledError';
   }
@@ -145,7 +146,10 @@ export const withRawModeSession = async <T>(
         afterCleanup?.();
         resolve(value);
       },
-      cancel: (message = '已取消配置向导', afterCleanup) => {
+      cancel: (
+        message = ct('已取消配置向导', 'Wizard cancelled'),
+        afterCleanup,
+      ) => {
         if (settled) return;
         settled = true;
         cleanup();
@@ -182,7 +186,14 @@ export const withRawModeSession = async <T>(
       decoder.end();
       handlers.onBeforeClose?.();
       cleanup();
-      reject(new PromptCancelledError('输入流已关闭, 已取消配置向导'));
+      reject(
+        new PromptCancelledError(
+          ct(
+            '输入流已关闭, 已取消配置向导',
+            'Input stream closed; wizard cancelled',
+          ),
+        ),
+      );
     };
 
     const onData = (buf: Buffer): void => {
@@ -197,7 +208,10 @@ export const withRawModeSession = async <T>(
           handlers.onKeys(before, controls);
           if (settled) return;
         }
-        controls.cancel('已取消配置向导', handlers.onAfterCancel);
+        controls.cancel(
+          ct('已取消配置向导', 'Wizard cancelled'),
+          handlers.onAfterCancel,
+        );
         return;
       }
       handlers.onKeys(keys, controls);

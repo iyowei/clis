@@ -9,6 +9,13 @@ import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import {
+  type Locale,
+  resolveCliLocale,
+  stripLangArgs,
+  t,
+} from '@iyowei/cli-i18n';
+
 import { formatUpdateHelp, parseUpdateArgs } from './args.ts';
 import {
   type GlobalRootMap,
@@ -22,12 +29,17 @@ import {
   type UpgradePlanExecutor,
 } from './exec-async.ts';
 import { type CommandSpec, type SpawnLike } from './executor.ts';
+import { handleNonGlobalOrigin } from './non-global-flow.ts';
 import {
   type FetchVersionResult,
   fetchLatestVersion,
   resolveRegistry,
   resolveRegistryAuthToken,
 } from './registry.ts';
+import {
+  dispatchRemoteVersion,
+  handleFetchFailure,
+} from './remote-dispatch.ts';
 import { type UpdateSpinner, createUpdateSpinner } from './spinner.ts';
 import {
   type ColorChannels,
@@ -36,10 +48,8 @@ import {
   extractRegistryHost,
   stderrSupportsSpinner,
 } from './ui.ts';
-import { dispatchRemoteVersion, handleFetchFailure } from './update-flow.ts';
 import {
   describeOrigin,
-  handleNonGlobalOrigin,
   resolveOrigin,
   sanitize,
   warnCrossPmOverride,
@@ -68,6 +78,10 @@ export interface UpdateIO {
 export interface SelfUpdateRunOptions {
   /** 命令展示名 (如 sweep / codd / create-clis) */
   binName: string;
+  /** 工具配置名 (用于读取对应工具独立的 lang.json 偏好, 缺省取 binName) */
+  toolName?: string;
+  /** 显式指定本次自更新界面语言 (覆盖自动解析) */
+  locale?: Locale;
   /** CLI 入口模块的 import.meta.url (用于定位相邻 package.json 与包目录) */
   entryMetaUrl?: string;
   /** 若调用方已读好包元数据可直接传入 (测试或自定义布局) */
@@ -146,6 +160,38 @@ export function readPackageMeta(entryMetaUrl: string): PackageMeta {
  * Output: 进程退出码 (0 / 1)
  * ```
  */
+function resolveUpdateLocale(
+  options: SelfUpdateRunOptions,
+  flag?: 'system' | 'en' | 'zh',
+): Locale {
+  if (options.locale !== undefined) return options.locale;
+  const deps = options.deps ?? {};
+  return resolveCliLocale({
+    toolName: options.toolName ?? options.binName,
+    flag,
+    platform: deps.platform,
+    homedir: deps.homeDir,
+    env: deps.env,
+  }).locale;
+}
+
+function loadPackageMetaOrThrow(
+  options: SelfUpdateRunOptions,
+  locale: Locale,
+): PackageMeta {
+  if (options.meta !== undefined) return options.meta;
+  if (options.entryMetaUrl !== undefined) {
+    return readPackageMeta(options.entryMetaUrl);
+  }
+  throw new Error(
+    t(
+      locale,
+      '缺少 entryMetaUrl 或 meta, 无法定位当前包信息',
+      'Missing entryMetaUrl or meta for package resolution',
+    ),
+  );
+}
+
 export async function runSelfUpdate(
   options: SelfUpdateRunOptions,
 ): Promise<number> {
@@ -160,27 +206,49 @@ export async function runSelfUpdate(
     (usingDefaultIo
       ? detectColorChannels(deps.env)
       : { stdout: false, stderr: false });
-  const ui = createUpdateUi(color);
 
-  const parsed = parseUpdateArgs(options.argv);
+  const baseLocale = resolveUpdateLocale(options);
+  const peeked = stripLangArgs(options.argv, {
+    fallbackLocale: baseLocale,
+    valueFlags: new Set(['--pm', '--registry']),
+  });
+  const preLocale =
+    peeked.lang !== undefined
+      ? resolveUpdateLocale(options, peeked.lang)
+      : baseLocale;
+
+  const parsed = parseUpdateArgs(options.argv, preLocale);
   if (!parsed.ok) {
-    io.err(ui.error(`参数错误: ${parsed.message}`));
+    const errUi = createUpdateUi(color, preLocale);
+    io.err(
+      errUi.error(
+        t(
+          preLocale,
+          `参数错误: ${parsed.message}`,
+          `Invalid argument: ${parsed.message}`,
+        ),
+      ),
+    );
     return 1;
   }
   const opts = parsed.options;
+  const locale = resolveUpdateLocale(options, opts.lang);
+  const ui = createUpdateUi(color, locale);
 
   let meta: PackageMeta;
   try {
-    if (options.meta !== undefined) {
-      meta = options.meta;
-    } else if (options.entryMetaUrl !== undefined) {
-      meta = readPackageMeta(options.entryMetaUrl);
-    } else {
-      throw new Error('缺少 entryMetaUrl 或 meta, 无法定位当前包信息');
-    }
+    meta = loadPackageMetaOrThrow(options, locale);
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error);
-    io.err(ui.error(`读取当前包信息失败: ${sanitize(msg)}`));
+    io.err(
+      ui.error(
+        t(
+          locale,
+          `读取当前包信息失败: ${sanitize(msg)}`,
+          `Failed to read package metadata: ${sanitize(msg)}`,
+        ),
+      ),
+    );
     return 1;
   }
 
@@ -189,6 +257,7 @@ export async function runSelfUpdate(
       options.binName,
       meta.name,
       color.stdout,
+      locale,
     ).split('\n')) {
       io.out(line);
     }
@@ -234,6 +303,7 @@ export async function runSelfUpdate(
       packageName: meta.name,
       registry: reg,
       authToken,
+      locale,
     });
   };
 
@@ -253,17 +323,35 @@ export async function runSelfUpdate(
       spinner,
       fetchVersion,
       registry,
+      locale,
     });
   }
 
-  io.out(ui.kv('当前版本', `${meta.name}@${meta.version}`, 'bold'));
-  io.out(ui.kv('安装方式', describeOrigin(origin)));
+  io.out(
+    ui.kv(
+      t(locale, '当前版本', 'Current'),
+      `${meta.name}@${meta.version}`,
+      'bold',
+    ),
+  );
+  io.out(
+    ui.kv(t(locale, '安装方式', 'Origin'), describeOrigin(origin, locale)),
+  );
   if (opts.pm !== undefined && opts.pm !== detectedPm) {
-    io.out(ui.kv('目标安装器', `${opts.pm} (经 --pm 手动指定)`, 'cyan'));
-    warnCrossPmOverride(origin, opts.pm, io, ui);
+    io.out(
+      ui.kv(
+        t(locale, '目标安装器', 'Target PM'),
+        t(locale, `${opts.pm} (经 --pm 手动指定)`, `${opts.pm} (via --pm)`),
+        'cyan',
+      ),
+    );
+    warnCrossPmOverride(origin, opts.pm, io, ui, locale);
   }
 
-  spinner.start('正在检查最新版本', extractRegistryHost(registry));
+  spinner.start(
+    t(locale, '正在检查最新版本', 'Checking latest version'),
+    extractRegistryHost(registry),
+  );
   let remote: FetchVersionResult;
   try {
     remote = await fetchVersion(registry);
@@ -285,6 +373,7 @@ export async function runSelfUpdate(
       ui,
       spinner,
       deps,
+      locale,
     });
   }
 
@@ -300,5 +389,6 @@ export async function runSelfUpdate(
     ui,
     spinner,
     deps,
+    locale,
   });
 }

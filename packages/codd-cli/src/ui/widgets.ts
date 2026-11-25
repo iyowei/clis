@@ -1,12 +1,11 @@
 /**
- * Apple System Settings 级终端排版组件: 页眉、分段步骤指示器、圆角面板、KV 列表与参数/汇总卡片。
- * 供 `cli.ts`、`wizard.ts`、`wizard-steps.ts`、`prompts.ts` 与 `text-input.ts` 共用。
- * 关键约束: 所有输出行落框前先按换行符拆分, 并在窄屏下动态收缩左栏防止脱色与边框撑裂。
+ * Apple System Settings 级终端排版组件 (支持中英双语): 页眉、分段步骤指示器、圆角面板、KV 列表与参数/汇总卡片。
  */
 import { stderr, stdout } from 'node:process';
 
 import type { FormulaStep } from '@iyowei/codd';
 
+import { ct, localizeFormulaStep, localizeHardwareSummary } from '../i18n.ts';
 import {
   SUMMARY_LABEL_COL,
   currentTheme,
@@ -35,7 +34,6 @@ export const printCompletedRow = (label: string, value: string): void => {
   );
 };
 
-/** 顶部 Apple 产品级页眉 (带圆润品牌胶囊、右对齐环境标识与通俗导语) */
 export const printHeader = (subtitle: string, lead?: string): void => {
   const w = getBoxWidth();
   const cleanSub = sanitizeSingleLine(subtitle);
@@ -79,7 +77,6 @@ const renderStepTrack = (step: string): string => {
   return joined;
 };
 
-/** Apple 分段式步骤进度头: ●━━◉──○──○  步骤 2 / 4 · 标题 */
 export const printSection = (
   step: string,
   title: string,
@@ -88,7 +85,7 @@ export const printSection = (
   const track = renderStepTrack(step);
   console.log('');
   console.log(
-    `  ${track}   ${palette.dim(`步骤 ${step}`)}  ${palette.title(sanitizeSingleLine(title))}`,
+    `  ${track}   ${palette.dim(ct(`步骤 ${step}`, `Step ${step}`))}  ${palette.title(sanitizeSingleLine(title))}`,
   );
   if (subtitle) {
     const w = Math.max(14, getBoxWidth() - 4);
@@ -140,7 +137,6 @@ export const printKV = (rows: Array<[string, string]>, indent = 4): void => {
   }
 };
 
-/** 格式化 Apple System Settings 风格圆角分组面板行数组 (先按 \n 拆行防撑裂边框) */
 export const formatBoxLines = (
   title: string,
   subtitle: string | undefined,
@@ -192,7 +188,6 @@ export const formatBoxLines = (
   return out;
 };
 
-/** Apple System Settings 风格圆角分组面板 */
 export const drawBox = (
   title: string,
   subtitle: string | undefined,
@@ -204,7 +199,6 @@ export const drawBox = (
   }
 };
 
-/** 面向初级工程师的直观参数配比面板: 窄屏下动态收缩左两栏, 防止整行脱色 */
 export const formatFormulaCardLines = (
   hardwareSummary: string,
   steps: FormulaStep[],
@@ -212,14 +206,21 @@ export const formatFormulaCardLines = (
 ): string[] => {
   const safeBoxW = Math.max(20, boxW);
   const innerW = safeBoxW - 6;
-  const labels = steps.map((s) => sanitizeSingleLine(s.label || s.key));
+  const localizedSteps = steps.map((s) => localizeFormulaStep(s));
+  const localizedSummary = localizeHardwareSummary(hardwareSummary);
+  const labels = localizedSteps.map((s) =>
+    sanitizeSingleLine(s.label || s.key),
+  );
   const rawCol1 = Math.min(
     18,
     Math.max(...labels.map((l) => displayWidth(l)), 10),
   );
   const rawCol2 = Math.min(
     15,
-    Math.max(...steps.map((s) => displayWidth(sanitizeSingleLine(s.value))), 8),
+    Math.max(
+      ...localizedSteps.map((s) => displayWidth(sanitizeSingleLine(s.value))),
+      8,
+    ),
   );
   const minDescW = Math.min(12, Math.max(6, Math.floor(innerW * 0.35)));
   const maxColsBudget = Math.max(8, innerW - minDescW - 4);
@@ -234,7 +235,7 @@ export const formatFormulaCardLines = (
   const descW = Math.max(4, innerW - col1 - col2 - 4);
 
   const lines: string[] = [];
-  for (const s of steps) {
+  for (const s of localizedSteps) {
     const lblPlain = truncateDisplay(
       sanitizeSingleLine(s.label || s.key),
       col1,
@@ -252,8 +253,8 @@ export const formatFormulaCardLines = (
     }
   }
   return formatBoxLines(
-    '已为你自动测算最佳运行参数',
-    hardwareSummary,
+    ct('已为你自动测算最佳运行参数', 'Optimal Sizing Parameters'),
+    localizedSummary,
     lines,
     2,
     safeBoxW,
@@ -269,7 +270,6 @@ export const printFormulaCard = (
   }
 };
 
-/** 格式化键值对圆角汇总卡片行数组 (窄屏自动压缩键列宽并按显示宽度折行值列) */
 export const formatSummaryCardLines = (
   title: string,
   badgeText: string,
@@ -321,15 +321,14 @@ const alertGlyph = (
 const alertStyle = (
   kind: 'ok' | 'warn' | 'err',
   colorEnabled: boolean,
-): ((t: string) => string) => {
+): ((s: string) => string) => {
   if (kind === 'err')
-    return (t: string) => fg(currentTheme().red, t, false, colorEnabled);
+    return (s: string) => fg(currentTheme().red, s, false, colorEnabled);
   if (kind === 'warn')
-    return (t: string) => fg(currentTheme().orange, t, false, colorEnabled);
-  return (t: string) => fg(currentTheme().labelPrimary, t, false, colorEnabled);
+    return (s: string) => fg(currentTheme().orange, s, false, colorEnabled);
+  return (s: string) => fg(currentTheme().labelPrimary, s, false, colorEnabled);
 };
 
-/** 打印带状态图标的单/多行提示 (`err` 写 `stderr`, `ok`/`warn` 写 `stdout`, 按目标流独立判定 `isTTY`) */
 export const printAlert = (kind: 'ok' | 'warn' | 'err', msg: string): void => {
   const w = Math.max(12, getBoxWidth() - 6);
   const wrapped = wrapMultiline(msg, w);

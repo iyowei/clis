@@ -11,6 +11,7 @@ linker = "hoisted"
 # 测试发现面: 排除派生生成物 (**/dist/**、mutants、assets, 同见 .gitignore) 与入库模板源码空间
 # (template-skeletons、packages/codd/template; 工具链排除另见 .prettierignore / .oxlintrc.json 与 tsconfig.json)。
 [test]
+preload = ["./packages/cli-i18n/test-preload.ts"]
 pathIgnorePatterns = [
   "**/dist/**",
   "scripts/transcription/mutants/**",

@@ -3,6 +3,13 @@
  * 调用方: `update.ts` (`runSelfUpdate`), 仓内全部 CLI (`sweep` / `codd` / `create-clis`) 共用同一套语法与错误文案。
  * 支持旗标: `--check` / `--force` / `--verbose` / `--pm <pm>` / `--registry <url>` / `-h, --help`。
  */
+import {
+  type LangPreference,
+  type Locale,
+  parseLangPreference,
+  t,
+} from '@iyowei/cli-i18n';
+
 import { type PackageManager, SUPPORTED_PACKAGE_MANAGERS } from './detect.ts';
 import { isValidRegistryUrl } from './semver.ts';
 import { BAR_BLOCK, paint, sanitizeText } from './ui.ts';
@@ -19,6 +26,8 @@ export interface UpdateOptions {
   pm?: PackageManager;
   /** 临时指定本次查询与安装使用的 npm registry */
   registry?: string;
+  /** 临时指定本次自更新界面语言 */
+  lang?: LangPreference;
   /** 打印 update 子命令帮助 */
   help: boolean;
 }
@@ -33,22 +42,56 @@ function isPackageManager(value: string): value is PackageManager {
 }
 
 /** 校验并应用 --pm 取值 */
-function applyPm(options: UpdateOptions, value: string): string | null {
+function applyPm(
+  options: UpdateOptions,
+  value: string,
+  locale: Locale,
+): string | null {
   const normalized = value.trim().toLowerCase();
+  const list = SUPPORTED_PACKAGE_MANAGERS.join(' | ');
   if (!isPackageManager(normalized)) {
-    return `参数 --pm 不支持 "${value}" (可选值: ${SUPPORTED_PACKAGE_MANAGERS.join(' | ')})`;
+    return t(
+      locale,
+      `参数 --pm 不支持 "${value}" (可选值: ${list})`,
+      `Invalid --pm value "${value}" (expected: ${list})`,
+    );
   }
   options.pm = normalized;
   return null;
 }
 
 /** 校验并应用 --registry 取值 */
-function applyRegistry(options: UpdateOptions, value: string): string | null {
+function applyRegistry(
+  options: UpdateOptions,
+  value: string,
+  locale: Locale,
+): string | null {
   const trimmed = value.trim();
   if (!isValidRegistryUrl(trimmed)) {
-    return `参数 --registry 不是合法的 http(s) URL: "${value}"`;
+    return t(
+      locale,
+      `参数 --registry 不是合法的 http(s) URL: "${value}"`,
+      `Invalid --registry URL (must be http/https): "${value}"`,
+    );
   }
   options.registry = trimmed;
+  return null;
+}
+
+function applyLang(
+  options: UpdateOptions,
+  value: string,
+  locale: Locale,
+): string | null {
+  const parsed = parseLangPreference(value);
+  if (parsed === null) {
+    return t(
+      locale,
+      `参数 --lang 不支持 "${value}" (可选值: system | en | zh)`,
+      `Invalid --lang value "${value}" (expected: system | en | zh)`,
+    );
+  }
+  options.lang = parsed;
   return null;
 }
 
@@ -60,13 +103,17 @@ function nextValueToken(argv: readonly string[], index: number): string | null {
 }
 
 /** 解析 `<cli> update` 之后的全部参数 */
-export function parseUpdateArgs(argv: readonly string[]): ParseUpdateOutcome {
+export function parseUpdateArgs(
+  argv: readonly string[],
+  locale: Locale = 'zh',
+): ParseUpdateOutcome {
   const options: UpdateOptions = {
     check: false,
     force: false,
     verbose: false,
     help: false,
   };
+  const pmList = SUPPORTED_PACKAGE_MANAGERS.join(' | ');
 
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i]!;
@@ -91,10 +138,14 @@ export function parseUpdateArgs(argv: readonly string[]): ParseUpdateOutcome {
       if (val === null) {
         return {
           ok: false,
-          message: `参数 --pm 缺少取值 (可选值: ${SUPPORTED_PACKAGE_MANAGERS.join(' | ')})`,
+          message: t(
+            locale,
+            `参数 --pm 缺少取值 (可选值: ${pmList})`,
+            `Option --pm requires a value (expected: ${pmList})`,
+          ),
         };
       }
-      const err = applyPm(options, val);
+      const err = applyPm(options, val, locale);
       if (err !== null) return { ok: false, message: err };
       i += 1;
       continue;
@@ -104,32 +155,90 @@ export function parseUpdateArgs(argv: readonly string[]): ParseUpdateOutcome {
       if (val === '') {
         return {
           ok: false,
-          message: `参数 --pm 缺少取值 (可选值: ${SUPPORTED_PACKAGE_MANAGERS.join(' | ')})`,
+          message: t(
+            locale,
+            `参数 --pm 缺少取值 (可选值: ${pmList})`,
+            `Option --pm requires a value (expected: ${pmList})`,
+          ),
         };
       }
-      const err = applyPm(options, val);
+      const err = applyPm(options, val, locale);
       if (err !== null) return { ok: false, message: err };
       continue;
     }
     if (arg === '--registry') {
       const val = nextValueToken(argv, i);
-      if (val === null)
-        return { ok: false, message: '参数 --registry 缺少取值' };
-      const err = applyRegistry(options, val);
+      if (val === null) {
+        return {
+          ok: false,
+          message: t(
+            locale,
+            '参数 --registry 缺少取值',
+            'Option --registry requires a URL value',
+          ),
+        };
+      }
+      const err = applyRegistry(options, val, locale);
       if (err !== null) return { ok: false, message: err };
       i += 1;
       continue;
     }
     if (arg.startsWith('--registry=')) {
       const val = arg.slice('--registry='.length);
-      if (val === '') return { ok: false, message: '参数 --registry 缺少取值' };
-      const err = applyRegistry(options, val);
+      if (val === '') {
+        return {
+          ok: false,
+          message: t(
+            locale,
+            '参数 --registry 缺少取值',
+            'Option --registry requires a URL value',
+          ),
+        };
+      }
+      const err = applyRegistry(options, val, locale);
+      if (err !== null) return { ok: false, message: err };
+      continue;
+    }
+    if (arg === '--lang') {
+      const val = nextValueToken(argv, i);
+      if (val === null) {
+        return {
+          ok: false,
+          message: t(
+            locale,
+            '参数 --lang 缺少取值 (可选值: system | en | zh)',
+            'Option --lang requires a value (expected: system | en | zh)',
+          ),
+        };
+      }
+      const err = applyLang(options, val, locale);
+      if (err !== null) return { ok: false, message: err };
+      i += 1;
+      continue;
+    }
+    if (arg.startsWith('--lang=')) {
+      const val = arg.slice('--lang='.length);
+      if (val === '') {
+        return {
+          ok: false,
+          message: t(
+            locale,
+            '参数 --lang 缺少取值 (可选值: system | en | zh)',
+            'Option --lang requires a value (expected: system | en | zh)',
+          ),
+        };
+      }
+      const err = applyLang(options, val, locale);
       if (err !== null) return { ok: false, message: err };
       continue;
     }
     return {
       ok: false,
-      message: `子命令 update 不支持参数: ${arg} (用 update --help 查看用法)`,
+      message: t(
+        locale,
+        `子命令 update 不支持参数: ${arg} (用 update --help 查看用法)`,
+        `Unknown option for 'update': ${arg} (run 'update --help' for usage)`,
+      ),
     };
   }
 
@@ -141,6 +250,7 @@ export function formatUpdateHelp(
   binName: string,
   packageName: string,
   color = false,
+  locale: Locale = 'zh',
 ): string {
   const safeBin = sanitizeText(binName);
   const safePkg = sanitizeText(packageName);
@@ -149,10 +259,39 @@ export function formatUpdateHelp(
     '1;7',
     color,
   );
-  const bold = (t: string): string => paint(t, '1', color);
-  const dim = (t: string): string => paint(t, '2', color);
-  const token = (t: string): string => paint(t, '36', color);
+  const bold = (s: string): string => paint(s, '1', color);
+  const dim = (s: string): string => paint(s, '2', color);
+  const token = (s: string): string => paint(s, '36', color);
   const pmList = SUPPORTED_PACKAGE_MANAGERS.join(' | ');
+
+  if (locale === 'en') {
+    return [
+      '',
+      `  ${badge}  ${bold('Self-Update')} ${dim(`(${safePkg})`)}`,
+      `  ${dim('Detects your installer (bun / npm / pnpm / yarn / volta) and upgrades in place.')}`,
+      `  ${dim('────────────────────────────────────────────────────────────────────────────')}`,
+      '',
+      `  ${dim('Usage')}`,
+      `    ${bold(`${safeBin} update`)} ${dim('[options]')}`,
+      '',
+      `  ${dim('Options')}`,
+      `    ${token('--check')}               Check latest version and install origin without upgrading`,
+      `    ${token('--pm')} ${dim('<manager>')}        Override package manager (${pmList})`,
+      `    ${token('--registry')} ${dim('<url>')}      Use a custom npm registry URL for this run`,
+      `    ${token('--force')}               Reinstall latest version even if already up to date`,
+      `    ${token('--verbose')}             Stream raw package manager output (default: quiet spinner)`,
+      `    ${token('--lang')} ${dim('<lang>')}         Display language for this run (system | en | zh)`,
+      '',
+      `    ${token('-h, --help')}            Show this help message`,
+      '',
+      `  ${dim('Notes')}`,
+      `    ${bold('Detection')}    Resolved from real package path on disk, runtime-independent`,
+      `    ${bold('Safety')}       Never overwrites npx/bunx/dlx runs, source trees, or local deps`,
+      `    ${bold('Isolation')}    Runs in a clean temp directory with lifecycle env vars stripped`,
+      `    ${bold('Registry')}     Reads ~/.bunfig.toml (bun) or ~/.npmrc; defaults to npmjs.org`,
+      '',
+    ].join('\n');
+  }
 
   return [
     '',
@@ -169,6 +308,7 @@ export function formatUpdateHelp(
     `    ${token('--registry')} ${dim('<url>')}     临时指定本次查询与更新所用的 npm registry`,
     `    ${token('--force')}              即使已是最新版本仍强制重新安装`,
     `    ${token('--verbose')}            实时显示包管理器原始输出 (默认静默接管进度)`,
+    `    ${token('--lang')} ${dim('<语言>')}        临时指定本次显示语言 (system | en | zh)`,
     '',
     `    ${token('-h, --help')}           显示本帮助`,
     '',

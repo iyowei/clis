@@ -80,12 +80,17 @@ sweep config
 # Override config file path (takes precedence over SWEEP_CONFIG)
 sweep --config /abs/path/to/config.json
 
+# Inspect or persist display language (system | en | zh; defaults to system)
+sweep lang
+sweep lang en
+sweep --lang en
+
 # Print version / help
 sweep --version
 sweep --help
 ```
 
-> Subcommand `sweep update` / `sweep update --check` is also available for package-manager self-upgrade once published.
+> Subcommand `sweep update` / `sweep update --check` is also available for package-manager self-upgrade once published. Display language defaults to `system` (detecting your OS UI language) and can be customized independently via `sweep lang <system|en|zh>` (`~/.config/sweep/lang.json` / `%APPDATA%\sweep\lang.json`), `--lang <system|en|zh>`, or `SWEEP_LANG` / `CLIS_LANG`.
 
 On interactive terminals, the header displays the active runtime (e.g. `bun 1.4.5`); non-TTY output omits it and disables ANSI color (also honoring `NO_COLOR` and `TERM=dumb`).
 

@@ -1,10 +1,9 @@
 /**
- * 领域产物到渲染条目的纯转换 (零 IO): 上游接收 `@iyowei/sweep` 的 `SweepEntry` / `SweepOutcomeEntry` /
- * `SweepReport`, 下游产出 `render.ts` 所需的 `RenderEntry`, 供 `cli.ts` 与单测直接导入 (不触发顶层 `main`)。
- * 红线: 统一锁定 `[TRASH]` 标注、`trashed` 计数标记与整批中止未删计数口径 (`not-attempted`)。
+ * 领域产物到渲染条目的纯转换 (零 IO, 支持中英双语标注)。
  */
 import { basename } from 'node:path';
 
+import { type Locale, t } from '@iyowei/cli-i18n';
 import {
   type SweepEntry,
   type SweepOutcomeEntry,
@@ -16,38 +15,45 @@ import {
 
 import type { RenderEntry } from './render.ts';
 
-/** 单条清理结果 (对应 render 条目的 ok / trashed / error 字段) */
 export interface RemovalOutcome {
   ok: boolean;
   trashed?: boolean;
   error?: string;
 }
 
-/** 整批中止时给未被处理条目的统一说明 (与普通失败区分: 这些目标根本没被动过) */
 export const ABORTED_HINT = '整批中止, 未执行删除';
+export const ABORTED_HINT_EN = 'Batch aborted, not removed';
 
-/**
- * 领域条目 -> 渲染条目: 行尾 `note` 按 `[TRASH]` -> 疑似安装树 -> 跨设备 -> 体积统计失败 顺序双空格拼接,
- * `project` 取末段目录名 (`basename` 为空时保留原值)。
- *
- * ### 数据流转示例
- * ```text
- * Input  : { target: '/w/app/logs', project: '/w/app', bytes: 1048576, action: 'trash', kind: 'project' }
- * 步骤 1 : action === 'trash' -> notes = ['[TRASH]']; basename('/w/app') -> 'app'
- * Output : { target: '/w/app/logs', bytes: 1048576, project: 'app', suspect: false, action: 'trash', note: '[TRASH]' }
- * ```
- */
-export function toRenderEntry(entry: SweepEntry): RenderEntry {
+export function toRenderEntry(
+  entry: SweepEntry,
+  locale: Locale = 'zh',
+): RenderEntry {
   const notes: string[] = [];
   if (entry.action === 'trash') notes.push('[TRASH]');
   if (entry.kind === 'suspect-install-tree') {
-    notes.push(`疑似安装树: ${entry.kindReason}`);
+    notes.push(
+      t(
+        locale,
+        `疑似安装树: ${entry.kindReason}`,
+        `Suspect install tree: ${entry.kindReason ?? ''}`,
+      ),
+    );
   }
   if (entry.crossDevice !== undefined) {
-    notes.push(crossDeviceNote(entry.crossDevice));
+    notes.push(
+      locale === 'en'
+        ? `Cross-device mount (${entry.crossDevice})`
+        : crossDeviceNote(entry.crossDevice),
+    );
   }
   if (entry.bytes === undefined && entry.unmeasuredReason !== undefined) {
-    notes.push(`体积统计失败: ${entry.unmeasuredReason}`);
+    notes.push(
+      t(
+        locale,
+        `体积统计失败: ${entry.unmeasuredReason}`,
+        `Size check failed: ${entry.unmeasuredReason}`,
+      ),
+    );
   }
   return {
     target: entry.target,
@@ -59,14 +65,10 @@ export function toRenderEntry(entry: SweepEntry): RenderEntry {
   };
 }
 
-/**
- * 执行结果 -> 渲染的 `ok` / `trashed` 与行尾 `error`:
- * - `removed` / `missing` / `stale`: `{ ok: true }`; `trashed`: `{ ok: true, trashed: true }` (供汇总统计回收站数);
- * - `failed`: 附 `failure.message` (含 `TRASH_FAILED` 保留原文件提示);
- * - `skipped`: `unmeasured` 仅置 `{ ok: false }` (防与 `note` 的体积失败说明重复), 其余附 `skipNote`;
- * - `not-attempted`: 附 `ABORTED_HINT`; `rejected` / `not-expected`: `{ ok: false }`。
- */
-export function outcomeResult(entry: SweepOutcomeEntry): RemovalOutcome {
+export function outcomeResult(
+  entry: SweepOutcomeEntry,
+  locale: Locale = 'zh',
+): RemovalOutcome {
   const { outcome } = entry;
   switch (outcome.kind) {
     case 'removed':
@@ -80,32 +82,30 @@ export function outcomeResult(entry: SweepOutcomeEntry): RemovalOutcome {
     case 'skipped':
       return outcome.reason === 'unmeasured'
         ? { ok: false }
-        : { ok: false, error: entry.skipNote };
+        : {
+            ok: false,
+            error:
+              locale === 'en' ? `Skipped (${outcome.reason})` : entry.skipNote,
+          };
     case 'not-attempted':
-      return { ok: false, error: ABORTED_HINT };
+      return {
+        ok: false,
+        error: t(locale, ABORTED_HINT, ABORTED_HINT_EN),
+      };
     case 'rejected':
     case 'not-expected':
       return { ok: false };
   }
 }
 
-/**
- * 执行面条目 = `toRenderEntry(entry)` + `outcomeResult(entry)`。
- *
- * ### 数据流转示例
- * ```text
- * Input  : { target: '/w/app/logs', project: '/w/app', bytes: 1048576, action: 'trash', kind: 'project', outcome: { kind: 'trashed' } }
- * 步骤 1 : toRenderEntry -> { ..., action: 'trash', note: '[TRASH]' }
- * 步骤 2 : outcomeResult -> { ok: true, trashed: true } (驱动 render.ts 的 footExecute 显示「含回收站 N 处」)
- * Output : { target: '/w/app/logs', bytes: 1048576, project: 'app', suspect: false, action: 'trash', note: '[TRASH]', ok: true, trashed: true }
- * ```
- */
-export const toExecuteEntry = (entry: SweepOutcomeEntry): RenderEntry => ({
-  ...toRenderEntry(entry),
-  ...outcomeResult(entry),
+export const toExecuteEntry = (
+  entry: SweepOutcomeEntry,
+  locale: Locale = 'zh',
+): RenderEntry => ({
+  ...toRenderEntry(entry, locale),
+  ...outcomeResult(entry, locale),
 });
 
-/** 整批中止时实际未执行清理的条目数 (取 summarizeReport 的 not-attempted 计数) */
 export function abortedUnattemptedCount(
   report: SweepReport,
   summary: SweepSummary = summarizeReport(report),

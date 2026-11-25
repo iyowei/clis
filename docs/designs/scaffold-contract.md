@@ -42,7 +42,7 @@
 
 ## 旗标汇总
 
-`--name` `--scope` `--bin` `--owner` `--repo` `--tier` `--no-git` `--no-install` `--yes` (其余项取默认值、零交互; 需已通过位置参数 `[dir]` 或 `--name` 提供目标名, 且具备可从 git 全局 `user.name` 自动推导或经 `--owner` 显式传入的合规 GitHub owner) 与 `--version` / `-V`、`--help` / `-h`; 另提供子命令 `create-clis update [--check] [--pm <管理器>] [--registry <url>] [--force] [--verbose]` 支持全局安装场景自动识别安装器原地自更新。
+`--name` `--scope` `--bin` `--owner` `--repo` `--tier` `--no-git` `--no-install` `--yes` (其余项取默认值、零交互; 需已通过位置参数 `[dir]` 或 `--name` 提供目标名, 且具备可从 git 全局 `user.name` 自动推导或经 `--owner` 显式传入的合规 GitHub owner)、`--lang <system|en|zh>` (单次覆盖显示语言, 另支持 `CREATE_CLIS_LANG` / `CLIS_LANG`) 与 `--version` / `-V`、`--help` / `-h`; 另提供子命令 `create-clis lang [system|en|zh]` (独立持久化显示语言偏好至 `~/.config/create-clis/lang.json` / `%APPDATA%\create-clis\lang.json`, 默认 `system` 跟随操作系统语言) 与 `create-clis update [--check] [--pm <管理器>] [--registry <url>] [--force] [--verbose]` 支持全局安装场景自动识别安装器原地自更新。
 
 经 `npm create` 调用时, 旗标要写在 `--` 后面 (`npm create clis -- --name x`), 这是 npm 生态的既有行为 (由包管理器吞掉第一道 `--`); 生成器自身同样支持 `--` 终止选项解析, 用于逃逸以 `-` 开头或与 `update` 同名的目标目录 (如 `create-clis -- update`)。
 

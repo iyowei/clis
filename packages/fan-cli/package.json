@@ -42,6 +42,7 @@
     "registry": "https://registry.npmjs.org/"
   },
   "devDependencies": {
+    "@iyowei/cli-i18n": "1.0.0",
     "@iyowei/cli-updater": "1.0.0",
     "@iyowei/fan": "1.0.1"
   },
@@ -50,6 +51,6 @@
     "prepublishOnly": "npm run build && npm run verify:release",
     "verify:release": "bun scripts/verify-release.ts",
     "typecheck": "bun check",
-    "test": "bun test"
+    "test": "bun test --preload ../cli-i18n/test-preload.ts"
   }
 }

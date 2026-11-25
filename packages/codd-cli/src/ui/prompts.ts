@@ -5,6 +5,7 @@
  */
 import { stdout } from 'node:process';
 
+import { ct } from '../i18n.ts';
 import {
   countPhysicalLines,
   currentTheme,
@@ -121,10 +122,18 @@ const selectOptionNonInteractive = async <T>(
   }
   for (;;) {
     const raw = await readNonInteractiveLine(
-      `    请选择 [1-${options.length}, 默认 ${defaultIndex + 1}]: `,
+      ct(
+        `    请选择 [1-${options.length}, 默认 ${defaultIndex + 1}]: `,
+        `    Select [1-${options.length}, default ${defaultIndex + 1}]: `,
+      ),
     );
     if (raw === null) {
-      throw new PromptCancelledError('输入流已关闭, 已取消配置向导');
+      throw new PromptCancelledError(
+        ct(
+          '输入流已关闭, 已取消配置向导',
+          'Input stream closed; wizard cancelled',
+        ),
+      );
     }
     const ans = raw.trim();
     if (ans === '') {
@@ -141,7 +150,12 @@ const selectOptionNonInteractive = async <T>(
       }
     }
     console.log(
-      `    ${palette.red(`✕ 请输入 1 到 ${options.length} 之间的数字序号 (当前输入: ${ans})`)}`,
+      `    ${palette.red(
+        ct(
+          `✕ 请输入 1 到 ${options.length} 之间的数字序号 (当前输入: ${ans})`,
+          `✕ Enter a number between 1 and ${options.length} (received: ${ans})`,
+        ),
+      )}`,
     );
   }
 };
@@ -188,8 +202,8 @@ export const selectOption = async <T>(cfg: SelectConfig<T>): Promise<T> => {
 
     const footer =
       cardW >= 54
-        ? `    ${palette.keycap('↑↓')} ${palette.dim('上下选择')}   ${palette.keycap(`1-${options.length}`)} ${palette.dim('数字快选')}   ${palette.keycap('Enter')} ${palette.dim('确认')}`
-        : `    ${palette.keycap('↑↓')} ${palette.dim('选择')}  ${palette.keycap('Enter')} ${palette.dim('确认')}`;
+        ? `    ${palette.keycap('↑↓')} ${palette.dim(ct('上下选择', 'Navigate'))}   ${palette.keycap(`1-${options.length}`)} ${palette.dim(ct('数字快选', 'Quick Select'))}   ${palette.keycap('Enter')} ${palette.dim(ct('确认', 'Confirm'))}`
+        : `    ${palette.keycap('↑↓')} ${palette.dim(ct('选择', 'Select'))}  ${palette.keycap('Enter')} ${palette.dim(ct('确认', 'Confirm'))}`;
     outLines.push(footer);
 
     stdout.write(outLines.map((l) => `\x1b[2K${l}\n`).join(''));
@@ -262,8 +276,8 @@ const askConfirmNonInteractive = async (
   const {
     label,
     summaryLabel,
-    yesLabel = '保存',
-    noLabel = '跳过',
+    yesLabel = ct('保存', 'Save'),
+    noLabel = ct('跳过', 'Skip'),
     defaultYes = true,
   } = cfg;
   const summaryKey = summaryLabel ?? label;
@@ -272,7 +286,12 @@ const askConfirmNonInteractive = async (
       `    ${label} [${defaultYes ? 'Y/n' : 'y/N'}]: `,
     );
     if (raw === null) {
-      throw new PromptCancelledError('输入流已关闭, 已取消配置向导');
+      throw new PromptCancelledError(
+        ct(
+          '输入流已关闭, 已取消配置向导',
+          'Input stream closed; wizard cancelled',
+        ),
+      );
     }
     const ans = raw.trim().toLowerCase();
     if (ans === '') {
@@ -287,7 +306,14 @@ const askConfirmNonInteractive = async (
       printCompletedRow(summaryKey, noLabel);
       return false;
     }
-    console.log(`    ${palette.red('✕ 请输入 y 或 n (直接回车采用默认值)')}`);
+    console.log(
+      `    ${palette.red(
+        ct(
+          '✕ 请输入 y 或 n (直接回车采用默认值)',
+          '✕ Enter y or n (or press Enter for default)',
+        ),
+      )}`,
+    );
   }
 };
 
@@ -301,8 +327,8 @@ export const askConfirm = async (cfg: AskConfirmConfig): Promise<boolean> => {
     label,
     summaryLabel,
     hint,
-    yesLabel = '保存',
-    noLabel = '跳过',
+    yesLabel = ct('保存', 'Save'),
+    noLabel = ct('跳过', 'Skip'),
     defaultYes = true,
   } = cfg;
   const summaryKey = summaryLabel ?? label;
@@ -331,8 +357,8 @@ export const askConfirm = async (cfg: AskConfirmConfig): Promise<boolean> => {
     outLines.push(`       ${yBtn}   ${nBtn}`);
     const footer =
       cardW >= 48
-        ? `    ${palette.keycap('←→')} ${palette.dim('切换')}   ${palette.keycap('y / n')} ${palette.dim('快捷键')}   ${palette.keycap('Enter')} ${palette.dim('确认')}`
-        : `    ${palette.keycap('←→')} ${palette.dim('切换')}  ${palette.keycap('Enter')} ${palette.dim('确认')}`;
+        ? `    ${palette.keycap('←→')} ${palette.dim(ct('切换', 'Switch'))}   ${palette.keycap('y / n')} ${palette.dim(ct('快捷键', 'Shortcut'))}   ${palette.keycap('Enter')} ${palette.dim(ct('确认', 'Confirm'))}`
+        : `    ${palette.keycap('←→')} ${palette.dim(ct('切换', 'Switch'))}  ${palette.keycap('Enter')} ${palette.dim(ct('确认', 'Confirm'))}`;
     outLines.push(footer);
 
     stdout.write(outLines.map((l) => `\x1b[2K${l}\n`).join(''));

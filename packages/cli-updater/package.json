@@ -22,9 +22,12 @@
   "engines": {
     "node": ">=22.18.0"
   },
+  "devDependencies": {
+    "@iyowei/cli-i18n": "1.0.0"
+  },
   "scripts": {
     "build": "bun scripts/build.ts",
     "typecheck": "bun check",
-    "test": "bun test src"
+    "test": "bun test --preload ../cli-i18n/test-preload.ts src"
   }
 }

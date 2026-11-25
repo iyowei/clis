@@ -5,6 +5,7 @@
  * `36` 青、`1;32` 绿、`1;31` 红、`33` 黄, 零硬编码 24-bit RGB), 自动融入用户终端明暗主题;
  * 非 TTY / NO_COLOR / TERM=dumb 下自动降级为零 ANSI 纯文本且字符骨架逐字等价。
  */
+import { type Locale, t } from '@iyowei/cli-i18n';
 
 /** stdout 与 stderr 各自独立的着色开关 (任一通道重定向为非 TTY 时互不串色) */
 export interface ColorChannels {
@@ -189,22 +190,24 @@ export interface UpdateUi {
   errorLogLine(line: string): string;
 }
 
-/** 创建绑定双通道着色开关的自更新渲染器 */
-export function createUpdateUi(color: ColorChannels): UpdateUi {
+/** 创建绑定双通道着色开关与界面语言的自更新渲染器 */
+export function createUpdateUi(
+  color: ColorChannels,
+  locale: Locale = 'zh',
+): UpdateUi {
   const out = color.stdout;
   const err = color.stderr;
+  const labelCols = locale === 'en' ? 14 : KV_LABEL_COLS;
 
   return {
     header(binName: string): string {
       const badgeText = `${BAR_BLOCK} ${sanitizeText(binName).toUpperCase()} `;
-      return `${paint(badgeText, '1;7', out)}  ${paint('自更新', '1', out)}`;
+      return `${paint(badgeText, '1;7', out)}  ${paint(t(locale, '自更新', 'Self-Update'), '1', out)}`;
     },
     kv(label: string, value: string, tone = 'plain'): string {
       const safeLabel = sanitizeText(label);
       const safeValue = sanitizeText(value);
-      const pad = ' '.repeat(
-        Math.max(2, KV_LABEL_COLS - displayWidth(safeLabel)),
-      );
+      const pad = ' '.repeat(Math.max(2, labelCols - displayWidth(safeLabel)));
       let styledValue = safeValue;
       if (tone === 'bold') styledValue = paint(safeValue, '1', out);
       else if (tone === 'cyan') styledValue = paint(safeValue, '36', out);
@@ -233,6 +236,10 @@ export function createUpdateUi(color: ColorChannels): UpdateUi {
       const safeReg = sanitizeText(registry);
       const arrow = paint('→', '2', out);
       const target = paint(`v${safeTo}`, '1;36', out);
+      if (locale === 'en') {
+        const src = paint(`(${safeReg})`, '2', out);
+        return `  Update available: v${safeFrom} ${arrow} ${target} ${src}`;
+      }
       const src = paint(`(源: ${safeReg})`, '2', out);
       return `  发现新版本: v${safeFrom} ${arrow} ${target} ${src}`;
     },

@@ -1,8 +1,8 @@
 /**
- * `runSelfUpdate` 升级执行与远端结果分发流程 (从 update.ts 拆分以保持单文件与单函数紧凑度)。
- * 调用方: `update.ts`; 包含 `performUpgrade` (计划构造与异步隔离升级)、`handleFetchFailure`
- * (远端查询失败分类与 `--force` 兜底) 及 `dispatchRemoteVersion` (版本比较与升级分流)。
+ * `runSelfUpdate` 升级执行与远端结果分发流程 (中英双语)。
  */
+import { type Locale, t } from '@iyowei/cli-i18n';
+
 import { type UpdateOptions } from './args.ts';
 import { type InstallOrigin, type PackageManager } from './detect.ts';
 import {
@@ -16,11 +16,8 @@ import {
   type CommandSpec,
   type SpawnLike,
   buildUpgradePlan,
-  formatUpgradeDisplayCommand,
   probeYarnVersion,
 } from './executor.ts';
-import { type FetchVersionResult } from './registry.ts';
-import { compareSemver } from './semver.ts';
 import { type UpdateSpinner } from './spinner.ts';
 import {
   type ColorChannels,
@@ -37,7 +34,6 @@ import {
   verifyPostUpgrade,
 } from './update-helpers.ts';
 
-/** 执行层所需依赖切片 */
 export interface UpgradeFlowDeps {
   platform?: NodeJS.Platform;
   env?: NodeJS.ProcessEnv;
@@ -65,40 +61,36 @@ export interface PerformUpgradeContext {
   ui: UpdateUi;
   spinner: UpdateSpinner;
   deps: UpgradeFlowDeps;
+  locale: Locale;
 }
 
-/** 在静默捕获模式下失败时展开净化后的底层尾部错误摘要 */
 function emitCapturedFailureTail(
   result: ExecuteUpgradeResult,
   verbose: boolean,
   io: UpdateIORef,
   ui: UpdateUi,
+  locale: Locale,
 ): void {
   if (verbose || typeof result.capturedOutput !== 'string') return;
   const tail = sanitizeMultilineTail(result.capturedOutput);
   if (tail.lines.length === 0) return;
   const isClipped = result.truncated === true || tail.clipped;
   io.err(
-    ui.errorHint(isClipped ? '底层输出摘要 (仅显示末尾):' : '底层输出摘要:'),
+    ui.errorHint(
+      isClipped
+        ? t(
+            locale,
+            '底层输出摘要 (仅显示末尾):',
+            'Package manager output (tail):',
+          )
+        : t(locale, '底层输出摘要:', 'Package manager output:'),
+    ),
   );
   for (const line of tail.lines) {
     io.err(ui.errorLogLine(line));
   }
 }
 
-/**
- * 在确认存在目标包管理器且需更新后, 构造并异步隔离执行升级计划。
- *
- * ### 数据流转示例
- * ```text
- * Input:  { binName, meta, origin, targetPm, targetSpec, opts, io, ui, spinner, deps }
- * 步骤 1: 若 targetPm === 'yarn', 先 probeYarnVersion; 调用 buildUpgradePlan 校验并构造 CommandSpec
- * 步骤 2: verbose 模式打印命令并透传 stdio; 静默模式启 spinner 并异步隔离执行 (64 KiB 尾部捕获)
- * 步骤 3: finally 停 spinner; 异常/信号/非零退出时展开净化尾部日志与手动命令并返 1
- * 步骤 4: status === 0 时打印耗时汇总并跑 verifyPostUpgrade 轻复核 (检测版本未变或 PATH 阴影)
- * Output: 进程退出码 (0 成功 / 1 失败)
- * ```
- */
 export async function performUpgrade(
   ctx: PerformUpgradeContext,
 ): Promise<number> {
@@ -114,6 +106,7 @@ export async function performUpgrade(
     ui,
     spinner,
     deps,
+    locale,
   } = ctx;
   const platform = deps.platform ?? process.platform;
   const env = deps.env ?? process.env;
@@ -134,21 +127,41 @@ export async function performUpgrade(
     env,
     isFile: deps.isFile,
     yarnVersion,
+    locale,
   });
 
+  const manualHint = (cmd: string): string =>
+    t(locale, `手动更新命令: ${cmd}`, `Run manually: ${cmd}`);
+
   if (!built.ok) {
-    io.err(ui.error(`无法自动更新: ${built.reason}`));
+    io.err(
+      ui.error(
+        t(
+          locale,
+          `无法自动更新: ${built.reason}`,
+          `Cannot upgrade automatically: ${built.reason}`,
+        ),
+      ),
+    );
     if (built.fallbackCommand !== undefined) {
-      io.err(ui.errorHint(`手动更新命令: ${built.fallbackCommand}`));
+      io.err(ui.errorHint(manualHint(built.fallbackCommand)));
     }
     return 1;
   }
 
   const targetLabel = formatVersionLabel(sanitize(targetSpec));
   if (opts.verbose) {
-    io.out(ui.kv('执行命令', built.plan.displayCommand, 'dim'));
+    io.out(
+      ui.kv(t(locale, '执行命令', 'Command'), built.plan.displayCommand, 'dim'),
+    );
   } else {
-    spinner.start(`正在通过 ${targetPm} 升级至 ${targetLabel}`);
+    spinner.start(
+      t(
+        locale,
+        `正在通过 ${targetPm} 升级至 ${targetLabel}`,
+        `Upgrading to ${targetLabel} via ${targetPm}`,
+      ),
+    );
   }
 
   let result: ExecuteUpgradeResult;
@@ -173,37 +186,67 @@ export async function performUpgrade(
   }
 
   if (result.error !== undefined) {
-    io.err(ui.error(`更新命令启动失败: ${sanitize(result.error.message)}`));
-    emitCapturedFailureTail(result, opts.verbose, io, ui);
-    io.err(ui.errorHint(`手动更新命令: ${built.plan.displayCommand}`));
+    io.err(
+      ui.error(
+        t(
+          locale,
+          `更新命令启动失败: ${sanitize(result.error.message)}`,
+          `Failed to launch package manager: ${sanitize(result.error.message)}`,
+        ),
+      ),
+    );
+    emitCapturedFailureTail(result, opts.verbose, io, ui, locale);
+    io.err(ui.errorHint(manualHint(built.plan.displayCommand)));
     return 1;
   }
   if (result.signal !== undefined && result.signal !== null) {
-    io.err(ui.error(`更新进程被信号中断 (${result.signal})`));
-    emitCapturedFailureTail(result, opts.verbose, io, ui);
-    io.err(ui.errorHint(`手动更新命令: ${built.plan.displayCommand}`));
+    io.err(
+      ui.error(
+        t(
+          locale,
+          `更新进程被信号中断 (${result.signal})`,
+          `Upgrade interrupted by signal (${result.signal})`,
+        ),
+      ),
+    );
+    emitCapturedFailureTail(result, opts.verbose, io, ui, locale);
+    io.err(ui.errorHint(manualHint(built.plan.displayCommand)));
     return 1;
   }
   if (result.status !== 0) {
     io.err(
-      ui.error(`更新失败 (${targetPm} 退出码 ${String(result.status ?? 1)})`),
+      ui.error(
+        t(
+          locale,
+          `更新失败 (${targetPm} 退出码 ${String(result.status ?? 1)})`,
+          `Upgrade failed (${targetPm} exited with code ${String(result.status ?? 1)})`,
+        ),
+      ),
     );
-    emitCapturedFailureTail(result, opts.verbose, io, ui);
+    emitCapturedFailureTail(result, opts.verbose, io, ui, locale);
     if (platform === 'win32') {
       io.err(
         ui.errorHint(
-          `Windows 提示: 当前正在运行的 ${sanitize(binName)} 自身可执行/shim 文件可能被系统锁定 (EBUSY / EPERM), 请退出当前命令并关闭其他占用终端后直接执行下方命令:`,
+          t(
+            locale,
+            `Windows 提示: 当前正在运行的 ${sanitize(binName)} 自身可执行/shim 文件可能被系统锁定 (EBUSY / EPERM), 请退出当前命令并关闭其他占用终端后直接执行下方命令:`,
+            `Windows note: The running '${sanitize(binName)}' shim may be locked (EBUSY / EPERM); close active terminals and run manually:`,
+          ),
         ),
       );
     }
     if (targetPm === 'pnpm') {
       io.err(
         ui.errorHint(
-          'pnpm 提示: 若提示未配置全局 bin 目录, 请检查 PNPM_HOME 环境变量或先运行 pnpm setup。',
+          t(
+            locale,
+            'pnpm 提示: 若提示未配置全局 bin 目录, 请检查 PNPM_HOME 环境变量或先运行 pnpm setup。',
+            "pnpm note: If global bin directory is unconfigured, check PNPM_HOME or run 'pnpm setup'.",
+          ),
         ),
       );
     }
-    io.err(ui.errorHint(`手动更新命令: ${built.plan.displayCommand}`));
+    io.err(ui.errorHint(manualHint(built.plan.displayCommand)));
     return 1;
   }
 
@@ -212,7 +255,11 @@ export async function performUpgrade(
   const verLabel = paint(targetLabel, '1;36', color.stdout);
   io.out(
     ui.success(
-      `已通过 ${targetPm} 更新 ${pkgLabel} 至 ${verLabel}`,
+      t(
+        locale,
+        `已通过 ${targetPm} 更新 ${pkgLabel} 至 ${verLabel}`,
+        `Updated ${pkgLabel} to ${verLabel} via ${targetPm}`,
+      ),
       elapsed !== '' ? `(${elapsed})` : undefined,
     ),
   );
@@ -228,222 +275,7 @@ export async function performUpgrade(
     isFile: deps.isFile,
     io,
     ui,
+    locale,
   });
   return 0;
-}
-
-/** 远端版本查询失败时的分类汇报与 --force 兜底直装 */
-export async function handleFetchFailure(ctx: {
-  binName: string;
-  meta: PackageMetaRef;
-  origin: InstallOrigin;
-  targetPm: PackageManager | undefined;
-  registry: string;
-  remote: Extract<FetchVersionResult, { ok: false }>;
-  opts: UpdateOptions;
-  io: UpdateIORef;
-  color: ColorChannels;
-  ui: UpdateUi;
-  spinner: UpdateSpinner;
-  deps: UpgradeFlowDeps;
-}): Promise<number> {
-  const {
-    binName,
-    meta,
-    origin,
-    targetPm,
-    registry,
-    remote,
-    opts,
-    io,
-    color,
-    ui,
-    spinner,
-    deps,
-  } = ctx;
-
-  if (opts.force && !opts.check && targetPm !== undefined) {
-    io.err(ui.error(`警示: 远端版本查询失败 (${sanitize(remote.message)})`));
-    io.out(
-      ui.body(
-        `强制重装模式 (--force): 跳过远端版本校验, 将直接通过 ${targetPm} 安装 ${sanitize(meta.name)}@latest`,
-      ),
-    );
-    return await performUpgrade({
-      binName,
-      meta,
-      origin,
-      targetPm,
-      targetSpec: 'latest',
-      opts,
-      io,
-      color,
-      ui,
-      spinner,
-      deps,
-    });
-  }
-
-  if (remote.code === 'not-found') {
-    io.err(
-      ui.error(
-        `${sanitize(meta.name)} 尚未在 ${sanitize(registry)} 发布 (HTTP 404), 无法在线更新` +
-          (meta.isPrivate ? ' (当前包标记为 private)' : ''),
-      ),
-    );
-    io.err(ui.errorHint('若已发布到私有源, 请加 --registry <url> 后重试'));
-    return 1;
-  }
-
-  if (remote.code === 'auth') {
-    io.err(ui.error(`检查最新版本失败: ${sanitize(remote.message)}`));
-    io.err(
-      ui.errorHint(
-        '请先完成源登录或在 ~/.npmrc / ~/.bunfig.toml 配置同源访问 token, 或加 --force 直接委托包管理器安装',
-      ),
-    );
-  } else {
-    io.err(ui.error(`检查最新版本失败: ${sanitize(remote.message)}`));
-  }
-
-  if (targetPm !== undefined) {
-    const cmd = formatUpgradeDisplayCommand(
-      targetPm,
-      meta.name,
-      'latest',
-      opts.registry,
-    );
-    io.err(ui.errorHint(`可稍后重试或手动执行: ${cmd}`));
-  }
-  return 1;
-}
-
-/**
- * 比较远端版本与本地版本并分流到已最新 / --check / 执行升级。
- *
- * ### 数据流转示例
- * ```text
- * Input:  { meta.version, remote: { version, registry }, targetPm, opts: { check, force } }
- * 步骤 1: compareSemver(local, remote) -> 不可比且无 --force 退 0; 已最新且无 --force 退 0
- * 步骤 2: 打印新版本或 --force 重装提示; 若 --check 仅给升级命令建议后退 0
- * 步骤 3: 缺 targetPm 拒绝盲装并退 1; 否则委派 performUpgrade 执行升级
- * Output: 进程退出码 (0 已最新/仅检查/升级成功; 1 缺安装器或升级失败)
- * ```
- */
-export async function dispatchRemoteVersion(ctx: {
-  binName: string;
-  meta: PackageMetaRef;
-  origin: InstallOrigin;
-  targetPm: PackageManager | undefined;
-  remote: Extract<FetchVersionResult, { ok: true }>;
-  opts: UpdateOptions;
-  io: UpdateIORef;
-  color: ColorChannels;
-  ui: UpdateUi;
-  spinner: UpdateSpinner;
-  deps: UpgradeFlowDeps;
-}): Promise<number> {
-  const {
-    binName,
-    meta,
-    origin,
-    targetPm,
-    remote,
-    opts,
-    io,
-    color,
-    ui,
-    spinner,
-    deps,
-  } = ctx;
-
-  const cmp = compareSemver(meta.version, remote.version);
-  if (cmp === null && !opts.force) {
-    io.out(
-      ui.body(
-        `版本比较: 当前版本 (${sanitize(meta.version)}) 与远端版本 (${sanitize(remote.version)}, 源: ${sanitize(remote.registry)}) 无法按标准 SemVer 比较, 未自动覆盖。`,
-      ),
-    );
-    io.out(
-      ui.hint(
-        `  若确认需要安装远端版本, 请加 --force 重试 (例如: ${sanitize(binName)} update --force)`,
-      ),
-    );
-    return 0;
-  }
-
-  const hasUpdate = cmp === -1;
-  if (!hasUpdate && !opts.force) {
-    const safeVer = sanitize(meta.version);
-    const safeRemote = sanitize(remote.version);
-    const safeReg = sanitize(remote.registry);
-    io.out(
-      ui.success(
-        `已是最新版本: ${paint(`v${safeVer}`, '1', color.stdout)}`,
-        `(远端最新 v${safeRemote}, 源: ${safeReg})`,
-      ),
-    );
-    return 0;
-  }
-
-  if (hasUpdate) {
-    io.out(ui.foundUpdate(meta.version, remote.version, remote.registry));
-  } else {
-    io.out(
-      ui.body(
-        `强制重装模式 (--force): 将重新安装 ${paint(formatVersionLabel(sanitize(remote.version)), '1;36', color.stdout)} ${paint(`(源: ${sanitize(remote.registry)})`, '2', color.stdout)}`,
-      ),
-    );
-  }
-
-  if (opts.check) {
-    if (targetPm !== undefined) {
-      const cmd = formatUpgradeDisplayCommand(
-        targetPm,
-        meta.name,
-        remote.version,
-        opts.registry,
-      );
-      io.out(
-        ui.hint(
-          `运行 ${sanitize(binName)} update 即可升级 (将执行: ${sanitize(cmd)})`,
-        ),
-      );
-    } else {
-      io.out(
-        ui.hint(
-          `未能自动识别安装器, 升级请运行: ${sanitize(binName)} update --pm <bun|npm|pnpm|yarn|volta>`,
-        ),
-      );
-    }
-    return 0;
-  }
-
-  if (targetPm === undefined) {
-    io.err(
-      ui.error(
-        '未能自动确认安装本命令的包管理器, 为避免在 PATH 中装出重复版本已停止自动执行',
-      ),
-    );
-    io.err(
-      ui.errorHint(
-        `请使用 --pm 显式指定你的包管理器后重试, 例如: ${sanitize(binName)} update --pm bun`,
-      ),
-    );
-    return 1;
-  }
-
-  return await performUpgrade({
-    binName,
-    meta,
-    origin,
-    targetPm,
-    targetSpec: remote.version,
-    opts,
-    io,
-    color,
-    ui,
-    spinner,
-    deps,
-  });
 }

@@ -4,6 +4,7 @@
  * `neutralLine` / `shortenHome`; 下游复用 `@iyowei/sweep` 的 `formatBytes` 与 `sanitizeLine`。
  * 红线: `color=false` 输出零 ANSI 且与着色版逐字等价; 路径风味可注入 (设计: `cli-surface.md` & ADR 0007)。
  */
+import { type Locale, t } from '@iyowei/cli-i18n';
 import {
   type CleanupAction,
   POSIX_STYLE,
@@ -108,6 +109,8 @@ export interface RenderOptions {
    * (读者须先看完清单与合计, 才知道「N 处被跳过」指的是什么)。
    */
   trailer?: string[];
+  /** 界面语言 (缺省 `'zh'`) */
+  locale?: Locale;
 }
 
 /**
@@ -150,19 +153,29 @@ export interface RenderOptions {
  *   return 多行文本 ([head, ...body, foot].join('\n'), 无尾换行)
  * ```
  */
+function formatRootCount(count: number, locale: Locale): string {
+  if (locale === 'en') {
+    return count === 1 ? '1 root' : `${count} roots`;
+  }
+  return `${count} 个根`;
+}
+
 export function render(options: RenderOptions): string {
   const { mode, roots, entries, color, home, releasedBytes, pathStyle } =
     options;
+  const locale = options.locale ?? 'zh';
   const style = pathStyle ?? PLATFORM_STYLE;
+  const rootUnit = formatRootCount(roots.length, locale);
   const scope =
     roots.length > 0 && roots.length <= ROOT_LIST_LIMIT
-      ? `${roots.length} 个根: ${roots.map((root) => sanitizeLine(shortenPath(root, style, home))).join(' · ')}`
-      : `${roots.length} 个根`;
+      ? `${rootUnit}: ${roots.map((root) => sanitizeLine(shortenPath(root, style, home))).join(' · ')}`
+      : rootUnit;
   const runtime = options.runtime ? ` · ${sanitizeLine(options.runtime)}` : '';
-  const head = bannerLine(
-    `${mode === 'execute' ? '执行' : '预览'} · ${scope}${runtime}`,
-    color,
-  );
+  const modeLabel =
+    mode === 'execute'
+      ? t(locale, '执行', 'Clean')
+      : t(locale, '预览', 'Preview');
+  const head = bannerLine(`${modeLabel} · ${scope}${runtime}`, color);
   // 顶栏下方的中性提示: 与清单同一视觉语言, 不打断顶栏与清单的紧邻关系
   const notes = (options.notes ?? []).map((note) =>
     neutralLine(sanitizeLine(note), color),
@@ -173,13 +186,12 @@ export function render(options: RenderOptions): string {
   );
 
   if (entries.length === 0) {
-    return [
-      head,
-      ...notes,
-      // 空结果行保留内联形态: make-mutants.ts 以此字面量为 mutant 注入锚点, 换成 neutralLine 即失配
-      `  ${paint(`${NEUTRAL_BLOCK} 未发现可清理目标`, '2', color)}`,
-      ...trailer,
-    ].join('\n');
+    // 空结果行中文分支保留内联形态: make-mutants.ts 以此字面量为 mutant 注入锚点
+    const emptyLine =
+      locale === 'en'
+        ? `  ${paint(`${NEUTRAL_BLOCK} No cleanable targets found`, '2', color)}`
+        : `  ${paint(`${NEUTRAL_BLOCK} 未发现可清理目标`, '2', color)}`;
+    return [head, ...notes, emptyLine, ...trailer].join('\n');
   }
 
   const rows = [...entries].sort((a, b) => (b.bytes ?? -1) - (a.bytes ?? -1));
@@ -205,40 +217,60 @@ export function render(options: RenderOptions): string {
     const path = sanitizeLine(rawPath);
     // 净化改写了显示名即与磁盘名不一致: 补提示, 防用户照显示名复制路径
     const rewritten = name !== row.project || path !== rawPath;
-    const tail = tailsOf(row, fail, rewritten);
+    const tail = tailsOf(row, fail, rewritten, locale);
     const shown = `${paint(padEnd(name, nameWidth), '1', color)}    ${paint(path, '2', color)}`;
     return `  ${mark} ${volume}  ${shown}${tail ? `  ${paint(tail, '2', color)}` : ''}`;
   });
 
   // 提示整段压暗, 仅 --yes 加粗 (可执行动作是这行的落点; 空格留在着色段之外, 不入色)
-  const hint = [
-    paint('加', '2', color),
-    paint('--yes', '1', color),
-    paint('执行删除', '2', color),
-  ].join(' ');
+  const hint =
+    locale === 'en'
+      ? [
+          paint('Pass', '2', color),
+          paint('--yes', '1', color),
+          paint('to clean', '2', color),
+        ].join(' ')
+      : [
+          paint('加', '2', color),
+          paint('--yes', '1', color),
+          paint('执行删除', '2', color),
+        ].join(' ');
+  const totalSummary =
+    locale === 'en'
+      ? `Total ${rows.length} ${rows.length === 1 ? 'target' : 'targets'} · ${formatBytes(sum(rows))}`
+      : `合计 ${rows.length} 处 · ${formatBytes(sum(rows))}`;
   const foot =
     mode === 'execute'
-      ? footExecute(rows, color, releasedBytes)
-      : `  ${paint(TOTAL_BLOCK, '7', color)} ${paint(`合计 ${rows.length} 处 · ${formatBytes(sum(rows))}`, '1', color)}   ${hint}`;
+      ? footExecute(rows, color, releasedBytes, locale)
+      : `  ${paint(TOTAL_BLOCK, '7', color)} ${paint(totalSummary, '1', color)}   ${hint}`;
 
   return [head, ...notes, ...body, foot, ...trailer].join('\n');
 }
 
 /**
  * 执行模式末行: 汇总成功 / 失败计数 (取代预览合计);
- * 当存在成功移入回收站的条目 (`ok !== false && trashed === true`) 时追加 `(含回收站 N 处)`,
- * 提供 `releasedBytes` 时追加 `· 释放 X`。
+ * 当存在成功移入回收站的条目 (`ok !== false && trashed === true`) 时追加回收站计数,
+ * 提供 `releasedBytes` 时追加释放体积。
  */
 function footExecute(
   rows: RenderEntry[],
   color: boolean,
   releasedBytes?: number,
+  locale: Locale = 'zh',
 ): string {
   const failed = rows.filter((row) => row.ok === false).length;
   const trashed = rows.filter(
     (row) => row.ok !== false && row.trashed === true,
   ).length;
   const succeeded = rows.length - failed;
+  if (locale === 'en') {
+    const trashNote = trashed > 0 ? ` (${trashed} trashed)` : '';
+    const released =
+      releasedBytes === undefined
+        ? ''
+        : ` · freed ${formatBytes(releasedBytes)}`;
+    return `  ${paint(TOTAL_BLOCK, '7', color)} ${paint(`Summary  ${succeeded} cleaned${trashNote}${released} · ${failed} failed`, '1', color)}`;
+  }
   const trashNote = trashed > 0 ? ` (含回收站 ${trashed} 处)` : '';
   const released =
     releasedBytes === undefined ? '' : ` · 释放 ${formatBytes(releasedBytes)}`;
@@ -249,16 +281,23 @@ function footExecute(
 const volumeOf = (row: RenderEntry): string =>
   row.bytes === undefined ? '?' : formatBytes(row.bytes);
 
-/** 显示名被净化改写时的行尾提示 (控制类字符剥除或空白折叠都会改写显示名, 照显示名复制路径即失效) */
+/** 显示名被净化改写时的行尾提示 */
 const SANITIZED_NOTE = '名字已净化显示';
+const SANITIZED_NOTE_EN = 'sanitized display name';
 
 /**
  * 行尾补充: 净化提示 / note / 执行失败原因依次并置
- * (净化提示最前, 它关乎整行显示名的可信度; note 属目标属性, 失败原因属动作结果)。
  */
-function tailsOf(row: RenderEntry, fail: boolean, rewritten: boolean): string {
+function tailsOf(
+  row: RenderEntry,
+  fail: boolean,
+  rewritten: boolean,
+  locale: Locale = 'zh',
+): string {
   const parts: string[] = [];
-  if (rewritten) parts.push(SANITIZED_NOTE);
+  if (rewritten) {
+    parts.push(locale === 'en' ? SANITIZED_NOTE_EN : SANITIZED_NOTE);
+  }
   if (row.note) parts.push(sanitizeLine(row.note));
   if (fail && row.error) parts.push(sanitizeLine(row.error));
   return parts.join('  ');

@@ -2,7 +2,7 @@
 
 > 仓内私有共享库 (`"private": true`, `"clisRole": "shared-lib"`, 不单独发布到 npm)。
 
-零外部依赖的跨包管理器自更新引擎, 由本仓全部 CLI 包 (`@iyowei/sweep-cli`、`@iyowei/codd-cli`、`create-clis`) 通过 `devDependencies` 引入并在构建期全量内联进各自单文件产物 (`dist/cli.js` / `dist/create-clis.js`), 统一承载 `update` 子命令。
+零外部依赖的跨包管理器自更新引擎, 由本仓全部 CLI 包 (`@iyowei/fan-cli`、`@iyowei/sweep-cli`、`@iyowei/codd-cli`、`create-clis`) 通过 `devDependencies` 引入并在构建期全量内联进各自单文件产物 (`dist/cli.js` / `dist/create-clis.js`), 统一承载 `update` 子命令, 并与 `@iyowei/cli-i18n` 协同支持中英双语输出 (`--lang <system|en|zh>`)。
 
 ## 核心能力与安全防线
 

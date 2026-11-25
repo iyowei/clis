@@ -71,8 +71,10 @@ npm create clis -- my-tool --tier core
 - **`--no-git`**: 跳过 `git init` (默认执行);
 - **`--no-install`**: 跳过依赖安装 (默认执行);
 - **`--yes`**: 全部取默认值, 零交互 (须提供 `[dir]` 或 `--name`, 且当 `git config user.name` 未配置或含空格 / 非 ASCII 时须传合规 `--owner`);
+- **`--lang <system|en|zh>`**: 单次覆盖显示语言 (另支持环境变量 `CREATE_CLIS_LANG` / `CLIS_LANG`; 默认 `system` 自动跟随操作系统语言);
 - **`-V`, `--version`**: 打印版本号;
 - **`-h`, `--help`**: 打印帮助;
+- **`create-clis lang [system|en|zh]`**: 查看或独立保存显示语言偏好 (`~/.config/create-clis/lang.json` / `%APPDATA%\create-clis\lang.json`);
 - **`create-clis update [--check] [--pm <管理器>] [--registry <url>] [--force] [--verbose]`**: 全局安装场景下自动识别安装器 (bun / npm / pnpm / yarn / volta) 并原地自更新 (`--check` 仅检查)。
 
 经 `npm create` 调用时, 旗标要写在 `--` 后面 (`npm create clis -- --tier core`), 该首层 `--` 由 npm 按生态约定剥离; 生成器自身也支持 `--` 终止选项解析, 将其后的参数视作目标目录 (用于逃逸以 `-` 开头或名为 `update` 的目录参数, 如 `create-clis -- update`)。各变量的取值在收集那一刻就校验 (项目名 kebab-case、bin 名命令行可用、scope / owner / 仓库地址形态), 不合法当场给原因。

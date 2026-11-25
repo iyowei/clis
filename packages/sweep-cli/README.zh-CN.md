@@ -80,12 +80,17 @@ sweep config
 # 显式指定配置文件路径 (优先于 SWEEP_CONFIG)
 sweep --config /abs/path/to/config.json
 
+# 查看或持久化设置显示语言 (system | en | zh, 默认 system 自动跟随系统语言)
+sweep lang
+sweep lang en
+sweep --lang en
+
 # 查看版本 / 完整帮助
 sweep --version
 sweep --help
 ```
 
-> 另提供 `sweep update` / `sweep update --check` 自更新子命令 (待公开分发后用于自动识别包管理器升级)。
+> 另提供 `sweep update` / `sweep update --check` 自更新子命令 (待公开分发后用于自动识别包管理器升级)。显示语言默认 `system` 自动跟随操作系统语言, 支持通过 `sweep lang <system|en|zh>` 独立持久化 (`~/.config/sweep/lang.json` / `%APPDATA%\sweep\lang.json`) 或经 `--lang`、`SWEEP_LANG`、`CLIS_LANG` 覆盖。
 
 交互终端下顶栏尾部会标注当前实际运行时 (如 `bun 1.4.5`); 非 TTY、设置 `NO_COLOR` 或 `TERM=dumb` 时自动降级为无着色纯文本。
 
