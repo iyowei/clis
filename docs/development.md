@@ -61,6 +61,8 @@ bun run safe-install
 
 ## 发布
 
+> 可逐条命令照做的首发 / 日常发布操作步骤见 [npm 发布与新包首发操作指南](releasing.md); 下文记录发布链机制、OIDC 设计缘由与历史排障复盘。
+
 主路径是 CI 自动链 (`.github/workflows/release.yml`): 推送到 `main` 后, `checks` job 直接通过 `workflow_call` 复用 `.github/workflows/ci.yml` 的三路检查 (`verify` Linux 权威全量 / `verify-windows` Windows OS 兼容 / `conformance` macOS 金样本验收, 消除 `main` 推送双跑并把 Windows 兼容正式纳入发版门禁), 通过后 `release` job 停在 `environment: release` 的人工批准闸门外, 批准即由 Lido multi-semantic-release 执行发布; npm 侧走 OIDC Trusted Publishing, 不设 token、无 OTP, 自动带 provenance 签名, 完成后打 tag 并建 GitHub Release。版本语义按提交判定 (angular 预设): `feat` 提 minor, `fix` 提 patch。发布链覆盖非 private 双包与生成器包: API 包自 2026-09-29 公开面收口 (`packages/sweep/docs/designs/api-surface.md` §9 Q17) 起纳入同链发布 (新包与重构中待首发包均以包自身 `"private": true` 隔离, 如当前演进至多技术栈清理器的 `@iyowei/sweep` 与 `@iyowei/sweep-cli`, 见 [ADR 0021](../packages/sweep/docs/adrs/0021-sweep-general-cleaner-evolution.md); 生成器包 `create-clis` 与 `@iyowei/codd` / `@iyowei/codd-cli` 双包均已按下方「新包首发路径」完成首发)。
 
 OIDC 免密发布有一处仓库外依赖: npm 侧的 Trusted Publisher 登记表。换证时 npm 拿 GitHub OIDC 令牌与登记逐字段核对 (repository / workflow 文件名 / environment), 全对才发短期凭证; 仓库改名、换 workflow 文件名、换 environment 名都不会自动跟改登记, 且已存登记不支持就地修改, 只能 revoke 后重建。2026-09-30, 仓库由旧单产品仓名改名为 `iyowei/clis`: 仓内引用 (徽章、两包 `package.json` 的 `repository` 字段、链接) 随改名提交同步了, npm 侧登记还留在旧仓库名上; 改名前的发布 run 还是绿的 (正常发出 0.5.1 与 0.3.0), 改名后每轮 Release run 都在 `release` job 的 npm 认证处失败, 报的却是误导性的 `ENONPMTOKEN No npm token specified` (OIDC 换证被拒后回落到 token 检查所致, 报错不指明真因); 失败自动建 issue 的通道又因仓库缺 `semantic-release` label 报 422, 真错因被掩埋。
@@ -117,6 +119,7 @@ bun run build && bun run conformance -- --all-products --runtime node
 ## 相关文档
 
 - [工程技术文档总索引](README.md)
+- [npm 发布与新包首发操作指南](releasing.md): 日常迭代发版、新包 `0.0.0-stage` 起步发布与排错手册
 - [设计文档索引](designs/README.md): 设计总纲与各分册
 - [架构决策记录](adrs/README.md): 仓级工程 ADR
 - [跨语言转写基建](transcription/README.md): 全仓共享转写纪律、对抗评审指令、TS 暗坑核查表与目标语言通用模板

@@ -19,6 +19,7 @@
 
 - `README.md`: 仓库级总入口, 列出各包/产品入口与仓库级文档导航;
 - `development.md`: 环境准备、常用命令、双运行时验证、发布链与提交钩子;
+- `releasing.md`: 日常版本发布与新包首发实操手册 (含 `0.0.0-stage` 起步、Trusted Publisher 登记与排错);
 - `adrs/`: 仓库级工程 ADR 及其索引 `adrs/README.md`;
 - `designs/`: 仓库级治理与脚手架设计及其索引 `designs/README.md`;
 - `transcription/`: 全仓共享的跨语言转写基建文档 (通用实施纪律、对抗评审指令、TS 暗坑核查表与目标语言通用模板), 与仓库根 `scripts/transcription/` 配套, 避免每个包重复维护通用提示词。

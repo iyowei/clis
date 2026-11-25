@@ -32,5 +32,6 @@
 ## 开发与协作
 
 - [开发指南](development.md): 环境准备、常用命令、双运行时验证、发布链与提交钩子。
+- [npm 发布与新包首发操作指南](releasing.md): 日常迭代发版、新包 `0.0.0-stage` 起步发布、Trusted Publisher 登记与排错手册。
 - [贡献指南 (English)](../CONTRIBUTING.md) / [贡献指南 (中文)](../CONTRIBUTING.zh-CN.md) / [安全策略](../SECURITY.md)。
 - 仓内确定性工程技能 (`.agents/skills/`): [determinism-audit](../.agents/skills/determinism-audit/SKILL.md)、[extract-shared-package](../.agents/skills/extract-shared-package/SKILL.md) 与 [perf-loop](../.agents/skills/perf-loop/SKILL.md)。

@@ -229,6 +229,10 @@ export const TEMPLATE_MANIFEST: readonly ManifestEntry[] = [
   excl('.agents/', '本仓 AI 工作流 Skill 与确定性性能引擎; 不进脚手架模板'),
   excl('.mailmap', '维护者个人提交映射; 不进模板'),
   excl('bun.lock', '锁文件生成物; 新项目 bun install 重建'),
+  excl(
+    'docs/releasing.md',
+    '本仓 npm 发布与新包首发操作指南 (绑定 iyowei/clis 实操路径; 模板骨架已在 development.md 收口简版发布说明)',
+  ),
   excl('packages/create-clis/', '生成器自身; 生成物不含生成器'),
   exclInfra(
     'packages/cli-updater/',
