@@ -13,7 +13,7 @@ import {
   extname,
   isAbsolute,
   join,
-  parse,
+  posix,
   resolve,
 } from 'node:path';
 
@@ -61,17 +61,19 @@ export function splitPathPrefixes(targetPath: string): string[] {
     return prefixes;
   }
 
-  const normalized = resolve(targetPath);
-  const parsed = parse(normalized);
-  const relBody = normalized.slice(parsed.root.length);
-  const segments = relBody.split(/[\\/]+/).filter(Boolean);
-  const prefixes: string[] = [];
-  let current = parsed.root;
-  for (const seg of segments) {
-    current = join(current, seg);
-    prefixes.push(current);
+  if (targetPath.startsWith('/')) {
+    const normalized = posix.normalize(targetPath);
+    const segments = normalized.split('/').filter(Boolean);
+    const prefixes: string[] = [];
+    let current = '';
+    for (const seg of segments) {
+      current = `${current}/${seg}`;
+      prefixes.push(current);
+    }
+    return prefixes;
   }
-  return prefixes;
+
+  return splitPathPrefixes(resolve(targetPath));
 }
 
 function findHighestSymlinkPrefix(targetPath: string): string | undefined {
