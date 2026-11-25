@@ -3,7 +3,13 @@
  */
 import { describe, expect, test } from 'bun:test';
 
-import { mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import {
+  chmodSync,
+  mkdtempSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -11,6 +17,7 @@ import { buildDaemonPythonScript } from './daemon-script.ts';
 import {
   FAN_DAEMON_LABEL,
   buildLaunchDaemonPlist,
+  ensurePersistDaemon,
   getPersistDaemonStatus,
   installPersistDaemon,
   uninstallPersistDaemon,
@@ -117,9 +124,61 @@ describe('@iyowei/fan 持久化状态与守护构建', () => {
     );
     expect(py).toContain('IORegisterForSystemPower');
     expect(py).toContain('IOAllowPowerChange');
+    expect(py).toContain('IOServiceAddInterestNotification');
+    expect(py).toContain('AppleClamshellState');
+    expect(py).toContain('AppleClamshellCausesSleep');
+    expect(py).toContain('IOPMUserTriggeredFullWake');
+    expect(py).toContain('release_manual_fans_to_auto');
     expect(py).toContain('0xE0000270');
     expect(py).toContain('0xE0000280');
     expect(py).toContain('0xE0000300');
+  });
+
+  test('ensurePersistDaemon 在已运行且脚本/plist 一致时免 sudo 短路返回 unchanged', () => {
+    if (process.platform === 'win32') return;
+    withTempDir((dir) => {
+      const plistPath = join(dir, 'com.iyowei.fan.plist');
+      const daemonScriptPath = join(dir, 'fan-daemon.py');
+      const statePath = join(dir, 'state.json');
+      const logPath = join(dir, 'iyowei-fan.log');
+      const fakePython = join(dir, 'fake-python3');
+      const fakeLaunchctl = join(dir, 'fake-launchctl');
+
+      writeFileSync(fakePython, '#!/bin/sh\nexit 0\n', 'utf8');
+      chmodSync(fakePython, 0o755);
+      writeFileSync(fakeLaunchctl, '#!/bin/sh\nexit 0\n', 'utf8');
+      chmodSync(fakeLaunchctl, 0o755);
+
+      writeFileSync(
+        daemonScriptPath,
+        buildDaemonPythonScript(statePath),
+        'utf8',
+      );
+      writeFileSync(
+        plistPath,
+        buildLaunchDaemonPlist({
+          label: FAN_DAEMON_LABEL,
+          python3Bin: fakePython,
+          daemonScriptPath,
+          logPath,
+        }),
+        'utf8',
+      );
+
+      const sync = ensurePersistDaemon({
+        platform: 'darwin',
+        plistPath,
+        daemonScriptPath,
+        statePath,
+        logPath,
+        python3Bin: fakePython,
+        launchctlBin: fakeLaunchctl,
+        sudoBin: join(dir, 'missing-sudo-must-not-be-called'),
+      });
+      expect(sync.action).toBe('unchanged');
+      expect(sync.status.installed).toBe(true);
+      expect(sync.status.running).toBe(true);
+    });
   });
 
   test('getPersistDaemonStatus 与非 darwin 平台守卫', () => {

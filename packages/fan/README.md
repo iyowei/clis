@@ -8,7 +8,7 @@
 
 **English** | [中文](README.zh-CN.md)
 
-Programmable API for reading and manually controlling Apple Silicon / Mac fan speeds via AppleSMC IOKit with zero third-party runtime dependencies, requiring no Macs Fan Control installation. Mutating operations (`set`, `max`, `min`, `auto`) automatically persist target configurations to `/Library/Application Support/iyowei-fan/state.json` by default (unless `persist: false`), with a built-in macOS `LaunchDaemon` manager (`com.iyowei.fan`) to restore speeds on boot and sleep wake.
+Programmable API for reading and manually controlling Apple Silicon / Mac fan speeds via AppleSMC IOKit with zero third-party runtime dependencies, requiring no Macs Fan Control installation. Mutating operations (`set`, `max`, `min`, `auto`) automatically persist target configurations to `/Library/Application Support/iyowei-fan/state.json` by default (unless `persist: false`), and manual speed commands (`set`, `max`, `min`) automatically ensure the `com.iyowei.fan` `LaunchDaemon` is installed and up to date—releasing fans back to system `auto` on lid close (without an external display), system sleep, and background `DarkWake`, then restoring saved speeds on lid open / wake and boot.
 
 This package is a **pure programmable library** (no `bin` command). For the CLI tool (`fan`), install [`@iyowei/fan-cli`](https://www.npmjs.com/package/@iyowei/fan-cli) (`fan max`, `fan set 4000`, `fan set 30%`, `fan auto`).
 
@@ -48,14 +48,14 @@ try {
 
 ## Public API surface
 
-| Export                                                                          | Purpose                                                                                                                                                                                                    |
-| ------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `createFanController(options?)`                                                 | Create controller with `status`, `set`, `max`, `min`, `auto`, and `apply` (auto-persists unless `persist: false`; injectable `transport` and `stateStore`)                                                 |
-| `createAppleSmcTransport(overrides?)`                                           | macOS AppleSMC IOKit transport via `/usr/bin/python3` and `/usr/bin/sudo`                                                                                                                                  |
-| `readPersistedState` / `mergePersistedState` / `createMacOsFanStateStore`       | Safe symlink-checking `state.json` v1 persistence helpers and macOS root-shared store                                                                                                                      |
-| `getPersistDaemonStatus` / `installPersistDaemon` / `uninstallPersistDaemon`    | Manage the `com.iyowei.fan` `LaunchDaemon` restoring saved speeds on boot (`RunAtLoad`) and wake (`kIOMessageSystemHasPoweredOn`)                                                                          |
-| `parseSpeedSpec(input)` / `resolveTargetRpm(fan, spec)` / `computePercent(...)` | Pure RPM and percentage parsing, clamping, and range helpers                                                                                                                                               |
-| `FanError` / `isFanError(value)`                                                | Structured domain error with `FanErrorCode` (`UNSUPPORTED_PLATFORM`, `SMC_UNAVAILABLE`, `SMC_COMMAND_FAILED`, `INVALID_FAN_INDEX`, `INVALID_SPEED`, `PERMISSION_DENIED`, `STATE_CORRUPT`, `DAEMON_FAILED`) |
+| Export                                                                                               | Purpose                                                                                                                                                                                                    |
+| ---------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `createFanController(options?)`                                                                      | Create controller with `status`, `set`, `max`, `min`, `auto`, and `apply` (auto-persists unless `persist: false`; injectable `transport` and `stateStore`)                                                 |
+| `createAppleSmcTransport(overrides?)`                                                                | macOS AppleSMC IOKit transport via `/usr/bin/python3` and `/usr/bin/sudo`                                                                                                                                  |
+| `readPersistedState` / `mergePersistedState` / `createMacOsFanStateStore`                            | Safe symlink-checking `state.json` v1 persistence helpers and macOS root-shared store                                                                                                                      |
+| `ensurePersistDaemon` / `getPersistDaemonStatus` / `installPersistDaemon` / `uninstallPersistDaemon` | Idempotently sync and manage the `com.iyowei.fan` `LaunchDaemon` (clamshell/sleep auto-stop + boot/wake restore)                                                                                           |
+| `parseSpeedSpec(input)` / `resolveTargetRpm(fan, spec)` / `computePercent(...)`                      | Pure RPM and percentage parsing, clamping, and range helpers                                                                                                                                               |
+| `FanError` / `isFanError(value)`                                                                     | Structured domain error with `FanErrorCode` (`UNSUPPORTED_PLATFORM`, `SMC_UNAVAILABLE`, `SMC_COMMAND_FAILED`, `INVALID_FAN_INDEX`, `INVALID_SPEED`, `PERMISSION_DENIED`, `STATE_CORRUPT`, `DAEMON_FAILED`) |
 
 ## Documentation
 

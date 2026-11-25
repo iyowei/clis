@@ -193,4 +193,52 @@ describe('createFanController 契约', () => {
       '1': { mode: 'auto' },
     });
   });
+
+  test('set / max / min 自动触发 ensureDaemon 并返回 daemonAction, status 与 auto 不触发安装', () => {
+    const { transport } = makeFakeTransport(DUAL_FANS, false);
+    const stateStore = makeMemoryStateStore();
+    let installed = false;
+    let ensureCalls = 0;
+    const fan = createFanController({
+      transport,
+      stateStore,
+      ensureDaemon: () => {
+        ensureCalls += 1;
+        const action = installed ? 'unchanged' : 'installed';
+        installed = true;
+        return {
+          action,
+          status: {
+            installed: true,
+            running: true,
+            label: 'com.iyowei.fan',
+            plistPath: '/stub/plist',
+            daemonScriptPath: '/stub/daemon.py',
+            statePath: '/memory/state.json',
+            logPath: '/stub/fan.log',
+            state: null,
+          },
+        };
+      },
+    });
+
+    expect(fan.status().daemonAction).toBeUndefined();
+    expect(ensureCalls).toBe(0);
+
+    const firstSet = fan.set({ speed: '40%' });
+    expect(firstSet.daemonAction).toBe('installed');
+    expect(ensureCalls).toBe(1);
+
+    const nextMax = fan.max();
+    expect(nextMax.daemonAction).toBe('unchanged');
+    expect(ensureCalls).toBe(2);
+
+    const nextMin = fan.min();
+    expect(nextMin.daemonAction).toBe('unchanged');
+    expect(ensureCalls).toBe(3);
+
+    const backAuto = fan.auto();
+    expect(backAuto.daemonAction).toBeUndefined();
+    expect(ensureCalls).toBe(3);
+  });
 });

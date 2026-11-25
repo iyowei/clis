@@ -48,6 +48,15 @@ export interface SetSpeedOptions extends TargetFanOptions {
   speed: string | SpeedSpec;
 }
 
+/** 守护同步动作结果 */
+export type PersistDaemonAction = 'unchanged' | 'installed' | 'updated';
+
+/** 确保守护服务已安装且脚本为最新版的返回结果 */
+export interface PersistDaemonSyncResult {
+  status: PersistDaemonStatus;
+  action: PersistDaemonAction;
+}
+
 /** 查询或变更操作后的统一返回结构 */
 export interface FanStatusReport {
   fans: FanInfo[];
@@ -55,6 +64,7 @@ export interface FanStatusReport {
   warnings: FanWarning[];
   persisted?: FanPersistedState | null;
   didPersist?: boolean;
+  daemonAction?: PersistDaemonAction;
 }
 
 /** 单次写入动作 (用于批处理底层 AppleSMC 调用) */
@@ -92,6 +102,8 @@ export interface PersistDaemonStatus {
 export interface FanControllerOptions {
   transport?: FanTransport;
   stateStore?: FanStateStore;
+  /** 手动设定转速 (set/max/min) 时自动确保后台守护就绪并同步至最新脚本 (传 false 禁用) */
+  ensureDaemon?: (() => PersistDaemonSyncResult) | false;
 }
 
 /** 编排层风扇控制器接口 */

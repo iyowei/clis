@@ -3,7 +3,7 @@
  * 安装、卸载与状态查询开机及睡眠唤醒自动恢复服务。
  */
 import { spawnSync } from 'node:child_process';
-import { existsSync } from 'node:fs';
+import { existsSync, lstatSync, readFileSync } from 'node:fs';
 
 import { buildDaemonPythonScript } from './daemon-script.ts';
 import { FanError } from './errors.ts';
@@ -13,7 +13,7 @@ import {
   DEFAULT_FAN_STATE_PATH,
   readPersistedState,
 } from './state.ts';
-import type { PersistDaemonStatus } from './types.ts';
+import type { PersistDaemonStatus, PersistDaemonSyncResult } from './types.ts';
 
 export const FAN_DAEMON_LABEL = 'com.iyowei.fan';
 export const DEFAULT_DAEMON_SCRIPT_PATH = `${DEFAULT_FAN_DIR}/fan-daemon.py`;
@@ -249,4 +249,56 @@ export function uninstallPersistDaemon(
     paths.launchctlBin,
   ]);
   return getPersistDaemonStatus(opts);
+}
+
+function readSafeText(filePath: string): string | null {
+  try {
+    if (!existsSync(filePath) || lstatSync(filePath).isSymbolicLink()) {
+      return null;
+    }
+    return readFileSync(filePath, 'utf8');
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * 幂等确保 `LaunchDaemon` 已安装、运行且脚本/plist 与当前版本完全一致:
+ * - 若已安装、正在运行且磁盘脚本与 plist 逐字节匹配, 免 `sudo` 直接返回 `action: 'unchanged'`;
+ * - 若未安装、未运行或守护模板已升级, 自动安装/重载并返回 `'installed'` 或 `'updated'`。
+ */
+export function ensurePersistDaemon(
+  opts: DaemonPaths = {},
+): PersistDaemonSyncResult {
+  const paths = resolvePaths(opts);
+  assertDarwin(paths.platform, paths.python3Bin);
+
+  const expectedScript = buildDaemonPythonScript(paths.statePath);
+  const expectedPlist = buildLaunchDaemonPlist({
+    label: FAN_DAEMON_LABEL,
+    python3Bin: paths.python3Bin,
+    daemonScriptPath: paths.daemonScriptPath,
+    logPath: paths.logPath,
+  });
+
+  const currentScript = readSafeText(paths.daemonScriptPath);
+  const currentPlist = readSafeText(paths.plistPath);
+  const currentStatus = getPersistDaemonStatus(opts);
+
+  if (
+    currentStatus.installed &&
+    currentStatus.running &&
+    currentScript === expectedScript &&
+    currentPlist === expectedPlist
+  ) {
+    return { status: currentStatus, action: 'unchanged' };
+  }
+
+  const existedBefore =
+    currentScript !== null || currentPlist !== null || currentStatus.installed;
+  const nextStatus = installPersistDaemon(opts);
+  return {
+    status: nextStatus,
+    action: existedBefore ? 'updated' : 'installed',
+  };
 }

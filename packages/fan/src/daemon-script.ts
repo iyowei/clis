@@ -1,12 +1,16 @@
 /**
  * 内联于 `@iyowei/fan` 的 macOS LaunchDaemon 守护脚本模板 (内部模块, 不进公开 API)。
- * 在开机 (`RunAtLoad`) 与每次睡眠唤醒 (`kIOMessageSystemHasPoweredOn`) 时,
- * 从持久化 `state.json` 读取手动风扇设定并恢复至 AppleSMC; 醒着期间零轮询, 不干扰 `--once` 临时设定。
+ * 职责:
+ * 1. 开机 (`RunAtLoad`) 与真实唤醒 (`FullWake` / 开盖) 时从 `state.json` 恢复手动风扇转速;
+ * 2. 无外接显示器合盖 (`AppleClamshellState && AppleClamshellCausesSleep`)、进入系统睡眠 (`kIOMessageSystemWillSleep`)
+ *    以及合盖/息屏后台唤醒 (`DarkWake`, `IOPMUserTriggeredFullWake == False`) 期间, 自动将手动风扇临时交还系统 `auto` (停转),
+ *    不改写 `state.json`; 外接显示器合盖办公模式 (`AppleClamshellCausesSleep == False`) 保留手动转速;
+ * 3. 醒着正常开盖期间采用边沿状态机, 零定时轮询且不覆盖 `--once` 临时设定。
  */
 
 function daemonPreamble(escapedStatePath: string): string {
   return `#!/usr/bin/python3
-"""LaunchDaemon for @iyowei/fan: restores persisted SMC fan speeds on boot and wake."""
+"""LaunchDaemon for @iyowei/fan: restores SMC fan speeds and releases to auto on clamshell/sleep."""
 
 import ctypes
 import json
@@ -28,6 +32,7 @@ K_SMC_GET_KEY_INFO = 9
 K_IO_MSG_CAN_SYSTEM_SLEEP = 0xE0000270
 K_IO_MSG_SYSTEM_WILL_SLEEP = 0xE0000280
 K_IO_MSG_SYSTEM_HAS_POWERED_ON = 0xE0000300
+K_CF_STRING_ENCODING_UTF8 = 0x08000100
 
 
 class Vers(ctypes.Structure):
@@ -98,10 +103,21 @@ iokit.IOConnectCallStructMethod.argtypes = [
     ctypes.POINTER(ctypes.c_size_t),
 ]
 iokit.IOConnectCallStructMethod.restype = ctypes.c_int32
+iokit.IORegistryEntryCreateCFProperty.argtypes = [
+    ctypes.c_uint32,
+    ctypes.c_void_p,
+    ctypes.c_void_p,
+    ctypes.c_uint32,
+]
+iokit.IORegistryEntryCreateCFProperty.restype = ctypes.c_void_p
 
 POWER_CB = ctypes.CFUNCTYPE(
     None, ctypes.c_void_p, ctypes.c_uint32, ctypes.c_uint32, ctypes.c_void_p
 )
+INTEREST_CB = ctypes.CFUNCTYPE(
+    None, ctypes.c_void_p, ctypes.c_uint32, ctypes.c_uint32, ctypes.c_void_p
+)
+
 iokit.IORegisterForSystemPower.argtypes = [
     ctypes.c_void_p,
     ctypes.POINTER(ctypes.c_void_p),
@@ -111,12 +127,36 @@ iokit.IORegisterForSystemPower.argtypes = [
 iokit.IORegisterForSystemPower.restype = ctypes.c_uint32
 iokit.IOAllowPowerChange.argtypes = [ctypes.c_uint32, ctypes.c_void_p]
 iokit.IOAllowPowerChange.restype = ctypes.c_int32
+iokit.IONotificationPortCreate.argtypes = [ctypes.c_uint32]
+iokit.IONotificationPortCreate.restype = ctypes.c_void_p
 iokit.IONotificationPortGetRunLoopSource.argtypes = [ctypes.c_void_p]
 iokit.IONotificationPortGetRunLoopSource.restype = ctypes.c_void_p
+iokit.IOServiceAddInterestNotification.argtypes = [
+    ctypes.c_void_p,
+    ctypes.c_uint32,
+    ctypes.c_char_p,
+    INTEREST_CB,
+    ctypes.c_void_p,
+    ctypes.POINTER(ctypes.c_uint32),
+]
+iokit.IOServiceAddInterestNotification.restype = ctypes.c_int32
 
 cf.CFRunLoopGetCurrent.restype = ctypes.c_void_p
 cf.CFRunLoopAddSource.argtypes = [ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p]
 cf.CFRunLoopRun.restype = None
+cf.CFStringCreateWithCString.argtypes = [
+    ctypes.c_void_p,
+    ctypes.c_char_p,
+    ctypes.c_uint32,
+]
+cf.CFStringCreateWithCString.restype = ctypes.c_void_p
+cf.CFBooleanGetValue.argtypes = [ctypes.c_void_p]
+cf.CFBooleanGetValue.restype = ctypes.c_bool
+cf.CFGetTypeID.argtypes = [ctypes.c_void_p]
+cf.CFGetTypeID.restype = ctypes.c_ulong
+cf.CFBooleanGetTypeID.argtypes = []
+cf.CFBooleanGetTypeID.restype = ctypes.c_ulong
+cf.CFRelease.argtypes = [ctypes.c_void_p]
 libc.mach_task_self.restype = ctypes.c_uint32
 
 K_CF_RUN_LOOP_DEFAULT_MODE = ctypes.c_void_p.in_dll(cf, "kCFRunLoopDefaultMode")
@@ -212,6 +252,38 @@ def write_key(conn, k, val):
     for i, b in enumerate(payload):
         inp.bytes[i] = b
     smc_call(conn, inp)
+
+
+def read_pm_bool(pm_svc, key_bytes):
+    if not pm_svc:
+        return None
+    cf_key = cf.CFStringCreateWithCString(None, key_bytes, K_CF_STRING_ENCODING_UTF8)
+    if not cf_key:
+        return None
+    val = iokit.IORegistryEntryCreateCFProperty(pm_svc, cf_key, None, 0)
+    cf.CFRelease(cf_key)
+    if not val:
+        return None
+    try:
+        if cf.CFGetTypeID(val) == cf.CFBooleanGetTypeID():
+            return bool(cf.CFBooleanGetValue(val))
+        return None
+    finally:
+        cf.CFRelease(val)
+
+
+def should_suspend_fans(pm_svc, system_sleeping):
+    if system_sleeping:
+        return True, "system-sleep"
+    clamshell_closed = read_pm_bool(pm_svc, b"AppleClamshellState")
+    if clamshell_closed is True:
+        causes_sleep = read_pm_bool(pm_svc, b"AppleClamshellCausesSleep")
+        if causes_sleep is not False:
+            return True, "clamshell-closed"
+    full_wake = read_pm_bool(pm_svc, b"IOPMUserTriggeredFullWake")
+    if full_wake is False:
+        return True, "dark-wake"
+    return False, "active"
 `;
 
 const DAEMON_LOOP = `
@@ -224,6 +296,30 @@ def load_state():
         return None
     fans = data.get("fans")
     return fans if isinstance(fans, dict) else None
+
+
+def release_manual_fans_to_auto(reason):
+    for attempt in range(4):
+        conn = None
+        try:
+            conn = smc_open()
+            count = int(read_key(conn, "FNum"))
+            released = []
+            for idx in range(count):
+                if int(read_key(conn, f"F{idx}md")) != 0:
+                    write_key(conn, f"F{idx}md", 0)
+                    released.append(f"F{idx}=auto")
+            if released:
+                log(f"{reason}: released {', '.join(released)}")
+            return
+        except Exception as exc:
+            if attempt == 3:
+                log(f"{reason}: failed to release manual fans: {exc}")
+            else:
+                time.sleep(0.1)
+        finally:
+            if conn is not None and conn.value:
+                iokit.IOServiceClose(conn)
 
 
 def apply_saved_state(reason):
@@ -286,17 +382,56 @@ def apply_saved_state(reason):
 
 def main():
     log(f"fan-daemon started (state={STATE_PATH})")
-    apply_saved_state("boot")
+    pm_svc = iokit.IOServiceGetMatchingService(
+        0, iokit.IOServiceMatching(b"IOPMrootDomain")
+    )
+    runtime = {"system_sleeping": False, "suspended": False, "root_port": 0}
 
-    root_port_holder = [0]
+    init_suspend, init_reason = should_suspend_fans(pm_svc, False)
+    runtime["suspended"] = init_suspend
+    if init_suspend:
+        release_manual_fans_to_auto(f"boot-{init_reason}")
+    else:
+        apply_saved_state("boot")
+
+    def reconcile(trigger, force_check_on_wake=False):
+        want_suspend, reason = should_suspend_fans(
+            pm_svc, runtime["system_sleeping"]
+        )
+        if want_suspend and not runtime["suspended"]:
+            runtime["suspended"] = True
+            release_manual_fans_to_auto(f"{trigger}:{reason}")
+        elif not want_suspend and runtime["suspended"]:
+            runtime["suspended"] = False
+            apply_saved_state(trigger)
+        elif want_suspend and force_check_on_wake:
+            release_manual_fans_to_auto(f"{trigger}:{reason}")
 
     @POWER_CB
     def on_power(_refcon, _service, msg_type, msg_arg):
-        if msg_type in (K_IO_MSG_CAN_SYSTEM_SLEEP, K_IO_MSG_SYSTEM_WILL_SLEEP):
-            iokit.IOAllowPowerChange(root_port_holder[0], msg_arg)
-        elif msg_type == K_IO_MSG_SYSTEM_HAS_POWERED_ON:
-            time.sleep(1.0)
-            apply_saved_state("wake")
+        try:
+            if msg_type == K_IO_MSG_CAN_SYSTEM_SLEEP:
+                iokit.IOAllowPowerChange(runtime["root_port"], msg_arg)
+            elif msg_type == K_IO_MSG_SYSTEM_WILL_SLEEP:
+                runtime["system_sleeping"] = True
+                try:
+                    reconcile("sleep")
+                finally:
+                    iokit.IOAllowPowerChange(runtime["root_port"], msg_arg)
+            elif msg_type == K_IO_MSG_SYSTEM_HAS_POWERED_ON:
+                runtime["system_sleeping"] = False
+                time.sleep(0.5)
+                reconcile("wake", force_check_on_wake=True)
+        except Exception as exc:
+            log(f"on_power error: {exc}")
+
+    @INTEREST_CB
+    def on_interest(_refcon, _service, _msg_type, _msg_arg):
+        try:
+            if not runtime["system_sleeping"]:
+                reconcile("pm-state")
+        except Exception as exc:
+            log(f"on_interest error: {exc}")
 
     notify_port = ctypes.c_void_p()
     notifier = ctypes.c_uint32()
@@ -306,11 +441,37 @@ def main():
     if not root_port or not notify_port.value:
         log("IORegisterForSystemPower failed; exiting")
         sys.exit(1)
-    root_port_holder[0] = root_port
-    source = iokit.IONotificationPortGetRunLoopSource(notify_port)
+    runtime["root_port"] = root_port
+
+    run_loop = cf.CFRunLoopGetCurrent()
     cf.CFRunLoopAddSource(
-        cf.CFRunLoopGetCurrent(), source, K_CF_RUN_LOOP_DEFAULT_MODE
+        run_loop,
+        iokit.IONotificationPortGetRunLoopSource(notify_port),
+        K_CF_RUN_LOOP_DEFAULT_MODE,
     )
+
+    interest_port = None
+    interest_notifier = ctypes.c_uint32()
+    if pm_svc:
+        interest_port = iokit.IONotificationPortCreate(0)
+        if interest_port:
+            kr = iokit.IOServiceAddInterestNotification(
+                interest_port,
+                pm_svc,
+                b"IOGeneralInterest",
+                on_interest,
+                None,
+                ctypes.byref(interest_notifier),
+            )
+            if kr == 0:
+                cf.CFRunLoopAddSource(
+                    run_loop,
+                    iokit.IONotificationPortGetRunLoopSource(interest_port),
+                    K_CF_RUN_LOOP_DEFAULT_MODE,
+                )
+            else:
+                log(f"IOServiceAddInterestNotification failed: {hex(kr)}")
+
     cf.CFRunLoopRun()
 
 

@@ -2,6 +2,7 @@
  * `@iyowei/fan` 核心编排器 (`createFanController`):
  * 负责风扇索引校验、RPM/百分比解析与跨风扇夹逼、持久化状态自动记住/恢复、Macs Fan Control 冲突提示与底层传输委托。
  */
+import { ensurePersistDaemon } from './daemon.ts';
 import { FanError } from './errors.ts';
 import { createAppleSmcTransport } from './smc-apple.ts';
 import { parseSpeedSpec, resolveTargetRpm } from './speed.ts';
@@ -16,6 +17,7 @@ import type {
   FanTransport,
   FanWarning,
   FanWriteRequest,
+  PersistDaemonAction,
   PersistedFanEntry,
   SetSpeedOptions,
   SpeedSpec,
@@ -81,6 +83,7 @@ function buildReport(
     extraWarnings?: FanWarning[];
     persisted?: FanPersistedState | null;
     didPersist?: boolean;
+    daemonAction?: PersistDaemonAction;
   } = {},
 ): FanStatusReport {
   const macsFanControlRunning = transport.isMacsFanControlRunning();
@@ -102,6 +105,9 @@ function buildReport(
   }
   if (options.didPersist !== undefined) {
     report.didPersist = options.didPersist;
+  }
+  if (options.daemonAction !== undefined) {
+    report.daemonAction = options.daemonAction;
   }
   return report;
 }
@@ -127,11 +133,22 @@ export function createFanController(
   options: FanControllerOptions = {},
 ): FanController {
   const transport = options.transport ?? createAppleSmcTransport();
+  const isRealDarwinDefault =
+    options.transport === undefined && process.platform === 'darwin';
   const stateStore =
     options.stateStore ??
-    (options.transport === undefined && process.platform === 'darwin'
-      ? createMacOsFanStateStore()
-      : undefined);
+    (isRealDarwinDefault ? createMacOsFanStateStore() : undefined);
+  let ensureDaemon: (() => { action: PersistDaemonAction }) | undefined;
+  if (options.ensureDaemon !== false) {
+    if (options.ensureDaemon !== undefined) {
+      ensureDaemon = options.ensureDaemon;
+    } else if (isRealDarwinDefault) {
+      ensureDaemon = () =>
+        ensurePersistDaemon(
+          stateStore !== undefined ? { statePath: stateStore.path } : {},
+        );
+    }
+  }
 
   return {
     status(opts: TargetFanOptions = {}): FanStatusReport {
@@ -180,9 +197,11 @@ export function createFanController(
 
       const updated = transport.applyWrites(requests);
       const saved = saveUpdates(stateStore, opts.persist, updates);
+      const daemonSync = ensureDaemon?.();
       return buildReport(filterFans(updated, opts.fanIndex), transport, {
         extraWarnings: warnings,
         ...saved,
+        daemonAction: daemonSync?.action,
       });
     },
 
@@ -207,7 +226,11 @@ export function createFanController(
 
       const updated = transport.applyWrites(requests);
       const saved = saveUpdates(stateStore, opts.persist, updates);
-      return buildReport(filterFans(updated, opts.fanIndex), transport, saved);
+      const daemonSync = ensureDaemon?.();
+      return buildReport(filterFans(updated, opts.fanIndex), transport, {
+        ...saved,
+        daemonAction: daemonSync?.action,
+      });
     },
 
     min(opts: TargetFanOptions = {}): FanStatusReport {
@@ -231,7 +254,11 @@ export function createFanController(
 
       const updated = transport.applyWrites(requests);
       const saved = saveUpdates(stateStore, opts.persist, updates);
-      return buildReport(filterFans(updated, opts.fanIndex), transport, saved);
+      const daemonSync = ensureDaemon?.();
+      return buildReport(filterFans(updated, opts.fanIndex), transport, {
+        ...saved,
+        daemonAction: daemonSync?.action,
+      });
     },
 
     auto(opts: TargetFanOptions = {}): FanStatusReport {
