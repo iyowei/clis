@@ -3,6 +3,7 @@
  */
 import { describe, expect, test } from 'bun:test';
 
+import { spawnSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
 
 import { isFanError } from './errors.ts';
@@ -62,10 +63,41 @@ describe('createAppleSmcTransport (注入)', () => {
     expect(calls[1]?.cmd).toBe('/usr/bin/sudo');
     expect(calls[1]?.args[0]).toBe(MACOS_PYTHON3_BIN);
   });
+
+  test('只读超时 (ETIMEDOUT) 转换为结构化 SMC_UNAVAILABLE', () => {
+    const transport = createAppleSmcTransport({
+      platform: 'darwin',
+      exists: () => true,
+      readTimeoutMs: 50,
+      spawnSyncFn: (() => ({
+        pid: 1,
+        output: ['', '', ''],
+        stdout: '',
+        stderr: '',
+        status: null,
+        signal: null,
+        error: Object.assign(new Error('spawnSync ETIMEDOUT'), {
+          code: 'ETIMEDOUT',
+        }),
+      })) as never,
+    });
+    try {
+      transport.readFans();
+      throw new Error('Expected SMC_UNAVAILABLE');
+    } catch (err) {
+      expect(isFanError(err)).toBe(true);
+      if (isFanError(err)) expect(err.code).toBe('SMC_UNAVAILABLE');
+    }
+  });
 });
 
 const hasAppleSmcHost =
-  process.platform === 'darwin' && existsSync(MACOS_PYTHON3_BIN);
+  process.platform === 'darwin' &&
+  existsSync(MACOS_PYTHON3_BIN) &&
+  spawnSync(MACOS_PYTHON3_BIN, ['-c', 'import ctypes'], {
+    stdio: ['ignore', 'pipe', 'pipe'],
+    timeout: 3000,
+  }).status === 0;
 
 describe('AppleSMC 真机只读冒烟 (仅 macOS)', () => {
   test.skipIf(!hasAppleSmcHost)(
@@ -90,5 +122,6 @@ describe('AppleSMC 真机只读冒烟 (仅 macOS)', () => {
         }
       }
     },
+    15_000,
   );
 });

@@ -21,6 +21,7 @@ export interface AppleSmcDeps {
   geteuid?: () => number;
   exists?: (path: string) => boolean;
   spawnSyncFn?: typeof spawnSync;
+  readTimeoutMs?: number;
 }
 
 function assertSupportedHost(
@@ -82,13 +83,20 @@ function runSmcPayload(
 
   const result = deps.spawnSyncFn(command, args, {
     encoding: 'utf8',
-    stdio: ['inherit', 'pipe', 'pipe'],
+    stdio: [needsSudo ? 'inherit' : 'ignore', 'pipe', 'pipe'],
+    ...(needsSudo ? {} : { timeout: deps.readTimeoutMs }),
   });
 
   if (result.error !== undefined) {
+    const errCode = (result.error as NodeJS.ErrnoException).code;
+    const isTimeout =
+      errCode === 'ETIMEDOUT' ||
+      /ETIMEDOUT|timed out/i.test(result.error.message);
     throw new FanError(
-      'SMC_COMMAND_FAILED',
-      `执行 ${command} 失败: ${result.error.message}`,
+      isTimeout ? 'SMC_UNAVAILABLE' : 'SMC_COMMAND_FAILED',
+      isTimeout
+        ? `读取 AppleSMC 超时 (${deps.readTimeoutMs}ms)`
+        : `执行 ${command} 失败: ${result.error.message}`,
       { cause: result.error },
     );
   }
@@ -130,6 +138,7 @@ export function createAppleSmcTransport(
       (() => (typeof process.geteuid === 'function' ? process.geteuid() : 0)),
     exists: overrides.exists ?? existsSync,
     spawnSyncFn: overrides.spawnSyncFn ?? spawnSync,
+    readTimeoutMs: overrides.readTimeoutMs ?? 10_000,
   };
 
   return {

@@ -23,8 +23,9 @@ const RUNNER_AVAILABILITY = RUNNERS.map((runner) => ({
 function runSubprocess(runner: string, args: string[]) {
   return spawnSync(runner, [CLI, ...args], {
     encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'pipe'],
     env: { ...process.env, NO_COLOR: '1' },
-    timeout: 10_000,
+    timeout: 15_000,
   });
 }
 
@@ -78,7 +79,12 @@ for (const { runner, available } of RUNNER_AVAILABILITY) {
     );
 
     const canReadAppleSmc =
-      process.platform === 'darwin' && existsSync('/usr/bin/python3');
+      process.platform === 'darwin' &&
+      existsSync('/usr/bin/python3') &&
+      spawnSync('/usr/bin/python3', ['-c', 'import ctypes'], {
+        stdio: ['ignore', 'pipe', 'pipe'],
+        timeout: 3000,
+      }).status === 0;
 
     test.skipIf(!canReadAppleSmc)(
       'macOS 真机 status --json 只读冒烟 (无物理 SMC 宿主机保持结构化报错)',
@@ -90,8 +96,9 @@ for (const { runner, available } of RUNNER_AVAILABILITY) {
           return;
         }
         expect(res.status).toBe(1);
-        expect(res.stderr).toMatch(/AppleSMC|FNum|IOServiceOpen/i);
+        expect(res.stderr).toMatch(/AppleSMC|FNum|IOServiceOpen|超时/i);
       },
+      20_000,
     );
 
     test.skipIf(process.platform === 'darwin')(
