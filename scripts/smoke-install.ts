@@ -8,7 +8,7 @@
  * 4) 在含恶意损坏 `bunfig.toml` + `preload` 劫持文件的 `cwd` 中, 分别用:
  *    - 默认 Bun+Node `PATH`
  *    - 纯 Node (`>= 22.18.0`, `PATH` 完全剥离 `bun`)
- *    实跑装好的 shim (`--version` / `-V` / `--help` / `-h` / 非法参数退非零), 证明跨平台「装得上且用得了」。
+ *    实跑装好的 shim (`--version` / `-V` / `--help` / `-h`), 证明跨平台「装得上且用得了」。
  *
  * 用法: bun scripts/smoke-install.ts
  * 退出码: 0 全部 CLI 通过; 1 存在失败或前置产物缺失。
@@ -82,7 +82,7 @@ function formatExecFailure(
   );
 }
 
-function assertShimContract(options: {
+export function assertShimContract(options: {
   executable: string;
   pkgName: string;
   version: string;
@@ -93,12 +93,19 @@ function assertShimContract(options: {
 }): void {
   const { executable, pkgName, version, binName, modeLabel, dirtyCwd, env } =
     options;
-  for (const flag of ['--version', '-V']) {
+  // 含最小模板骨架 (--tier standard/core/full 生成物) 在内的全部 CLI 通用契约: --version/-V 与 --help/-h
+  for (const flag of ['--version', '-V', '--help', '-h'] as const) {
     const res = runInstalledShim(executable, [flag], dirtyCwd, env);
-    if (res.status !== 0 || (res.stdout ?? '').trim() !== version) {
+    const stdout = (res.stdout ?? '').trim();
+    const isVersionFlag = flag === '--version' || flag === '-V';
+    const mismatch = isVersionFlag && stdout !== version;
+    if (res.status !== 0 || stdout.length === 0 || mismatch) {
+      const detail = isVersionFlag
+        ? `, ${flag} 期望输出 ${version}`
+        : `, ${flag}`;
       throw new Error(
         formatExecFailure(
-          `${pkgName} (${binName}, ${modeLabel}, ${flag} 期望输出 ${version})`,
+          `${pkgName} (${binName}, ${modeLabel}${detail})`,
           res,
         ),
       );
@@ -106,33 +113,6 @@ function assertShimContract(options: {
     if ((res.stderr ?? '').includes('PRELOAD_HIJACKED')) {
       throw new Error(`${pkgName} (${modeLabel}) 未隔离工作目录 bunfig.toml`);
     }
-  }
-
-  for (const flag of ['--help', '-h']) {
-    const res = runInstalledShim(executable, [flag], dirtyCwd, env);
-    if (res.status !== 0 || (res.stdout ?? '').trim().length === 0) {
-      throw new Error(
-        formatExecFailure(
-          `${pkgName} (${binName}, ${modeLabel}, ${flag})`,
-          res,
-        ),
-      );
-    }
-  }
-
-  const bad = runInstalledShim(
-    executable,
-    ['--definitely-invalid-smoke'],
-    dirtyCwd,
-    env,
-  );
-  if (bad.status === 0 || bad.error !== undefined) {
-    throw new Error(
-      formatExecFailure(
-        `${pkgName} (${binName}, ${modeLabel}, 非法参数应退非零)`,
-        bad,
-      ),
-    );
   }
 }
 

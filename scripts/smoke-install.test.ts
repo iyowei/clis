@@ -2,12 +2,14 @@
  * `smoke-install.ts` 纯函数与工作区发现单测:
  * 验证 bin 字段解析、纯 Node PATH 剥离 bun、跨 OS npm/bun 装包路径定位，以及工作区 CLI 枚举。
  */
-import { describe, expect, test } from 'bun:test';
+import { afterEach, describe, expect, test } from 'bun:test';
 
+import { chmodSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 
 import {
   buildNodeOnlyPath,
+  preparePoisonedCwd,
   resolveBinEntries,
   resolveBunLocalShim,
   resolveCliPackages,
@@ -15,7 +17,9 @@ import {
   resolveNpmInstalledPackageDir,
   splitPathList,
 } from './lib/smoke-install-paths.ts';
+import { makeTmpRoot } from './lib/tmp-root.ts';
 import type { WorkspacePackage } from './lib/workspace.ts';
+import { assertShimContract } from './smoke-install.ts';
 
 function fakePkg(
   name: string,
@@ -135,5 +139,119 @@ describe('真实工作区 CLI 发现', () => {
       expect(target.bins.length).toBeGreaterThanOrEqual(1);
       expect(target.version.length).toBeGreaterThan(0);
     }
+  });
+});
+
+const tempRoots: string[] = [];
+afterEach(() => {
+  for (const dir of tempRoots.splice(0)) {
+    rmSync(dir, {
+      recursive: true,
+      force: true,
+      maxRetries: 5,
+      retryDelay: 100,
+    });
+  }
+});
+
+function createStubShim(dir: string, scriptBody: string): string {
+  mkdirSync(dir, { recursive: true });
+  const scriptPath = join(dir, 'stub.mjs');
+  writeFileSync(scriptPath, `#!/usr/bin/env node\n${scriptBody}\n`);
+  if (process.platform === 'win32') {
+    const cmdPath = join(dir, 'stub.cmd');
+    writeFileSync(cmdPath, `@echo off\r\nnode "${scriptPath}" %*\r\n`);
+    return cmdPath;
+  }
+  chmodSync(scriptPath, 0o755);
+  return scriptPath;
+}
+
+describe('assertShimContract 最小模板与异常守卫', () => {
+  test('最小模板风格 CLI (--version/-V/--help/-h 合法且未知参数退 0) 放行', () => {
+    const sandbox = makeTmpRoot('smoke-contract-ok-');
+    tempRoots.push(sandbox);
+    const dirtyCwd = preparePoisonedCwd(sandbox);
+    const executable = createStubShim(
+      join(sandbox, 'bin'),
+      [
+        "const arg = process.argv[2] ?? '';",
+        "if (arg === '--version' || arg === '-V') console.log('1.2.3');",
+        "else if (arg === '--help' || arg === '-h') console.log('usage: stub');",
+        "else console.log('Hello, world!');",
+      ].join('\n'),
+    );
+    expect(() =>
+      assertShimContract({
+        executable,
+        pkgName: 'stub-cli',
+        version: '1.2.3',
+        binName: 'stub',
+        modeLabel: 'node',
+        dirtyCwd,
+        env: process.env,
+      }),
+    ).not.toThrow();
+  });
+
+  test('版本失配、帮助为空或检测到 bunfig 劫持 stderr 时抛错', () => {
+    const sandbox = makeTmpRoot('smoke-contract-bad-');
+    tempRoots.push(sandbox);
+    const dirtyCwd = preparePoisonedCwd(sandbox);
+    const wrongVer = createStubShim(
+      join(sandbox, 'wrong-ver'),
+      "console.log('9.9.9');",
+    );
+    expect(() =>
+      assertShimContract({
+        executable: wrongVer,
+        pkgName: 'stub-cli',
+        version: '1.2.3',
+        binName: 'stub',
+        modeLabel: 'node',
+        dirtyCwd,
+        env: process.env,
+      }),
+    ).toThrow(/期望输出 1\.2\.3/);
+
+    const emptyHelp = createStubShim(
+      join(sandbox, 'empty-help'),
+      [
+        "const arg = process.argv[2] ?? '';",
+        "if (arg === '--version' || arg === '-V') console.log('1.2.3');",
+      ].join('\n'),
+    );
+    expect(() =>
+      assertShimContract({
+        executable: emptyHelp,
+        pkgName: 'stub-cli',
+        version: '1.2.3',
+        binName: 'stub',
+        modeLabel: 'node',
+        dirtyCwd,
+        env: process.env,
+      }),
+    ).toThrow();
+
+    const hijacked = createStubShim(
+      join(sandbox, 'hijacked'),
+      [
+        "const arg = process.argv[2] ?? '';",
+        "console.error('PRELOAD_HIJACKED');",
+        "if (arg === '--version' || arg === '-V') console.log('1.2.3');",
+        "else console.log('usage: stub');",
+      ].join('\n'),
+    );
+    expect(() =>
+      assertShimContract({
+        executable: hijacked,
+        pkgName: 'stub-cli',
+        version: '1.2.3',
+        binName: 'stub',
+        modeLabel: 'node',
+        dirtyCwd,
+        env: process.env,
+      }),
+    ).toThrow(/未隔离工作目录/);
   });
 });

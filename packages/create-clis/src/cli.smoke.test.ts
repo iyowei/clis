@@ -5,10 +5,20 @@
 import { describe, expect, test } from 'bun:test';
 
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+
+import { preparePoisonedCwd } from '../../../scripts/lib/smoke-install-paths.ts';
+import { assertShimContract } from '../../../scripts/smoke-install.ts';
 
 const CLI = fileURLToPath(new URL('./cli.ts', import.meta.url));
 const BIN_MJS = fileURLToPath(
@@ -145,3 +155,88 @@ for (const runner of ['bun', 'node']) {
     );
   });
 }
+
+const bunAvailable =
+  spawnSync('bun', ['--version'], { encoding: 'utf8' }).status === 0;
+
+describe('生成物最小 CLI 骨架与 smoke:install 契约协同', () => {
+  test.skipIf(!bunAvailable || !hasBuiltArtifacts)(
+    '离线打包生成物 smoke-kit-cli 后通过 assertShimContract 与 bunfig 隔离校验',
+    () => {
+      const sandbox = mkdtempSync(join(tmpdir(), 'create-clis-contract-'));
+      const target = join(sandbox, 'smoke-kit');
+      try {
+        const gen = spawnSync(
+          'bun',
+          [
+            BIN_MJS,
+            target,
+            '--name',
+            'smoke-kit',
+            '--scope',
+            '@smoke',
+            '--owner',
+            'smoke-owner',
+            '--repo',
+            'https://github.com/smoke-owner/smoke-kit',
+            '--tier',
+            'core',
+            '--yes',
+            '--no-git',
+            '--no-install',
+          ],
+          { cwd: sandbox, encoding: 'utf8', timeout: 30_000 },
+        );
+        expect(gen.status, `${gen.stdout}\n${gen.stderr}`).toBe(0);
+
+        // 仅写入工作区内 API 包索引映射, 让离线 bun build 可解析 @smoke/smoke-kit
+        const depDir = join(target, 'node_modules', '@smoke', 'smoke-kit');
+        mkdirSync(depDir, { recursive: true });
+        writeFileSync(
+          join(depDir, 'package.json'),
+          `${JSON.stringify({
+            name: '@smoke/smoke-kit',
+            type: 'module',
+            main: '../../../packages/smoke-kit/src/index.ts',
+          })}\n`,
+        );
+
+        const cliPkgDir = join(target, 'packages', 'smoke-kit-cli');
+        const build = spawnSync('bun', ['run', 'build'], {
+          cwd: cliPkgDir,
+          encoding: 'utf8',
+          timeout: 30_000,
+        });
+        expect(build.status, `${build.stdout}\n${build.stderr}`).toBe(0);
+
+        const binMjs = join(cliPkgDir, 'bin', 'smoke-kit.mjs');
+        const shim =
+          process.platform === 'win32'
+            ? join(sandbox, 'smoke-kit-shim.cmd')
+            : binMjs;
+        if (process.platform === 'win32') {
+          writeFileSync(shim, `@echo off\r\nnode "${binMjs}" %*\r\n`);
+        }
+
+        const dirtyCwd = preparePoisonedCwd(sandbox);
+        assertShimContract({
+          executable: shim,
+          pkgName: '@smoke/smoke-kit-cli',
+          version: '0.0.0',
+          binName: 'smoke-kit',
+          modeLabel: 'offline-template',
+          dirtyCwd,
+          env: process.env,
+        });
+      } finally {
+        rmSync(sandbox, {
+          recursive: true,
+          force: true,
+          maxRetries: 5,
+          retryDelay: 100,
+        });
+      }
+    },
+    30_000,
+  );
+});
