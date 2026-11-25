@@ -11,8 +11,8 @@ env:
   TURBO_TELEMETRY_DISABLED: '1'
 
 jobs:
-  # 发布前置门禁 (单一事实来源): 直接复用 ci.yml 的全套三路检查 (verify / verify-windows /
-  # conformance), 既确保 main 推送零双跑、不白烧双倍 macOS runner, 又把 Windows 兼容正式纳入发版硬门禁。
+  # 发布前置门禁 (单一事实来源): 直接复用 ci.yml 的全套检查 (verify / verify-windows / verify-macos / conformance),
+  # 既确保 main 推送零双跑, 又把三平台兼容性与真实装包冒烟正式纳入发版硬门禁。
   checks:
     uses: ./.github/workflows/ci.yml
 

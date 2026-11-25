@@ -1,22 +1,23 @@
 /**
  * 本地 CI 预演 (闸门清单的单一事实来源): 全部步骤在此一处定义, 其余消费方
- * (手动全链、lefthook pre-push、CI 三路 job (Linux / Windows / macOS) 与 Release 前置门禁)
+ * (手动全链、lefthook pre-push、CI 多平台 job (Linux / Windows / macOS) 与 Release 前置门禁)
  * 一律经本入口调用, 不再各自枚举。
  *
  * 分组:
- * - `--verify`         验证组 (ubuntu 权威全量): build -> typecheck -> test -> 只读闸门并行 (+ 可移植验收);
- * - `--verify-windows` Windows OS 兼容组: build -> 限并发 test:windows -> test:scripts;
+ * - `--verify`         验证组 (ubuntu 权威全量): build -> typecheck -> test -> smoke:install -> 只读闸门并行 (+ 可移植验收);
+ * - `--verify-windows` Windows OS 兼容组: build -> 限并发 test:windows -> test:scripts -> smoke:install;
+ * - `--verify-macos`   macOS OS 兼容组: build -> test -> smoke:install;
  * - `--conformance`    验收组 (语料为 macOS 口径): build -> conformance (bun + node 双 target);
  * - (无旗标)           全链 = 验证组 + 验收组 (重复步骤去重);
  * - `--only <step>`    单步执行 (步骤名见 `--help`);
  * - `--help`           列出步骤与分组。
  *
- * 用法: bun scripts/ci.ts [--verify | --verify-windows | --conformance | --only <step> | --help]
+ * 用法: bun scripts/ci.ts [--verify | --verify-windows | --verify-macos | --conformance | --only <step> | --help]
  * 退出码: 0 全绿; 2 参数非法; 其余为首个失败步骤的退出码。
  */
 import { spawn, spawnSync } from 'node:child_process';
 import * as fs from 'node:fs';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 
 import { makeTmpRoot } from './lib/tmp-root.ts';
 
@@ -46,6 +47,7 @@ const STEPS: Readonly<Record<string, Step>> = {
   build: { command: 'bun', args: ['run', 'build'] },
   typecheck: { command: 'bun', args: ['run', 'typecheck'] },
   test: { command: 'bun', args: ['run', 'test'], isolatedHome: true },
+  'smoke:install': { command: 'bun', args: ['scripts/smoke-install.ts'] },
   'test:windows': {
     command: 'bun',
     args: [
@@ -156,6 +158,7 @@ const VERIFY_GROUP: readonly string[] = [
   'build',
   'typecheck',
   'test',
+  'smoke:install',
   'lint',
   'format-check',
   'lint:refs',
@@ -168,11 +171,19 @@ const VERIFY_GROUP: readonly string[] = [
   'conformance:portable',
 ];
 
-/** Windows OS 兼容组 (跳过 OS 无关静态检查与已在 Linux 全量校验的重复 npm pack) */
+/** Windows OS 兼容组 (跳过 OS 无关静态检查与已在 Linux 全量校验的并发包内 npm pack; 末尾串行执行跨包管理器装包冒烟) */
 const VERIFY_WINDOWS_GROUP: readonly string[] = [
   'build',
   'test:windows',
   'test:scripts',
+  'smoke:install',
+];
+
+/** macOS OS 兼容组 (真实运行工作区全量单测、启动器 E2E 与跨包管理器装包冒烟) */
+const VERIFY_MACOS_GROUP: readonly string[] = [
+  'build',
+  'test',
+  'smoke:install',
 ];
 
 /**
@@ -198,9 +209,48 @@ function prepareIsolatedHome(home: string): void {
   }
 }
 
+/** 在真实 HOME 下解析宿主机 node 的实际二进制目录 (避免隔离 HOME 后版本管理器 shim 丢失信任状态) */
+let cachedNodeBinDir: string | null | undefined;
+
+function resolveHostNodeBinDir(): string | null {
+  if (cachedNodeBinDir !== undefined) return cachedNodeBinDir;
+  const probe = spawnSync(
+    'node',
+    ['-e', 'process.stdout.write(process.execPath)'],
+    {
+      encoding: 'utf8',
+      timeout: 5000,
+    },
+  );
+  if (probe.status === 0) {
+    const execPath = (probe.stdout ?? '').trim();
+    if (execPath !== '' && fs.existsSync(execPath)) {
+      cachedNodeBinDir = dirname(execPath);
+      return cachedNodeBinDir;
+    }
+  }
+  cachedNodeBinDir = null;
+  return null;
+}
+
+/** 将实际 node/npm 二进制目录置顶到 PATH, 防止版本管理器 shim 在隔离 HOME 下触发信任/重解析错误 */
+function prependNodeBinDirToPath(
+  env: NodeJS.ProcessEnv,
+  nodeBinDir: string | null,
+): void {
+  if (nodeBinDir === null) return;
+  const sep = process.platform === 'win32' ? ';' : ':';
+  const current = env.PATH ?? env.Path ?? '';
+  for (const key of Object.keys(env)) {
+    if (key.toUpperCase() === 'PATH') delete env[key];
+  }
+  env.PATH = current === '' ? nodeBinDir : `${nodeBinDir}${sep}${current}`;
+}
+
 /** 组装单步环境变量 (可选叠加隔离 HOME / XDG / AppData / Turbo 配置路径与步骤专有 env) */
 function buildStepEnv(step: Step, home: string | undefined): NodeJS.ProcessEnv {
   const env: NodeJS.ProcessEnv = { ...process.env, ...step.env };
+  prependNodeBinDirToPath(env, resolveHostNodeBinDir());
   if (home !== undefined) {
     const configDir = join(home, '.config');
     env.HOME = home;
@@ -337,6 +387,7 @@ const HELP_TEXT = [
   '用法: bun scripts/ci.ts [选项]',
   '  --verify           验证组 (Linux 全量): ' + VERIFY_GROUP.join(' → '),
   '  --verify-windows   Windows 兼容组: ' + VERIFY_WINDOWS_GROUP.join(' → '),
+  '  --verify-macos     macOS 兼容组: ' + VERIFY_MACOS_GROUP.join(' → '),
   '  --conformance      验收组 (macOS 口径): ' + CONFORMANCE_GROUP.join(' → '),
   '  (无旗标)           全链 = 验证组 + 验收组 (去重)',
   '  --only <step>      单步执行',
@@ -355,6 +406,7 @@ function resolveSteps(argv: string[]): string[] {
     if (
       arg === '--verify' ||
       arg === '--verify-windows' ||
+      arg === '--verify-macos' ||
       arg === '--conformance'
     ) {
       modes.push(arg);
@@ -386,6 +438,7 @@ function resolveSteps(argv: string[]): string[] {
   if (onlyStep !== undefined) return [onlyStep];
   if (modes[0] === '--verify') return [...VERIFY_GROUP];
   if (modes[0] === '--verify-windows') return [...VERIFY_WINDOWS_GROUP];
+  if (modes[0] === '--verify-macos') return [...VERIFY_MACOS_GROUP];
   if (modes[0] === '--conformance') return [...CONFORMANCE_GROUP];
   // 全链: 验证组 + 验收组中未出现过的步骤 (build 去重)
   return [

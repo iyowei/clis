@@ -299,14 +299,38 @@ const escapeWin32BatchArg = (arg: string): string => {
   return out;
 };
 
-/** 构造搭配 cmd.exe /d /s /c + windowsVerbatimArguments: true 的单串命令 */
-const buildNpmBatchCommandLine = (args: readonly string[]): string => {
+/** 构造搭配 cmd.exe /d /s /c + windowsVerbatimArguments: true 的单串批处理命令行 */
+export const buildWin32BatchCommandLine = (
+  executable: string,
+  args: readonly string[],
+): string => {
   const escapedArgs = args.map(escapeWin32BatchArg);
+  const exeSegment = wrapCmdDoubleQuotes(executable);
   const inner =
     escapedArgs.length === 0
-      ? '"npm.cmd"'
-      : `"npm.cmd" ${escapedArgs.join(' ')}`;
+      ? exeSegment
+      : `${exeSegment} ${escapedArgs.join(' ')}`;
   return `"${inner}"`;
+};
+
+/**
+ * 在 Windows 下安全调用 `.cmd` / `.bat` shim (绕开 Node/Bun shell 转义陷阱),
+ * `.exe` 等原生可执行文件保持直接启动。
+ */
+export const resolveWin32BatchInvocation = (
+  executable: string,
+  args: readonly string[],
+  env: NodeJS.ProcessEnv = process.env,
+): NpmCommandInvocation => {
+  if (!/\.(?:cmd|bat)$/i.test(executable)) {
+    return { command: executable, args: [...args] };
+  }
+  const comspec = env.ComSpec ?? env.COMSPEC ?? 'cmd.exe';
+  return {
+    command: comspec,
+    args: ['/d', '/s', '/c', buildWin32BatchCommandLine(executable, args)],
+    windowsVerbatimArguments: true,
+  };
 };
 
 /**
@@ -345,12 +369,7 @@ export const resolveNpmCommand = (
       args: [npmCli, ...args],
     };
   }
-  const comspec = env.ComSpec ?? env.COMSPEC ?? 'cmd.exe';
-  return {
-    command: comspec,
-    args: ['/d', '/s', '/c', buildNpmBatchCommandLine(args)],
-    windowsVerbatimArguments: true,
-  };
+  return resolveWin32BatchInvocation('npm.cmd', args, env);
 };
 
 /**
