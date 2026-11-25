@@ -57,6 +57,9 @@ const DETACH_RETRY_DELAY_MS = 200;
  * 且挂载失败即整条用例失去现场, 容错预算比卸载侧给得更宽 */
 const ATTACH_ATTEMPTS = 3;
 const ATTACH_RETRY_DELAY_MS = 500;
+/** hdiutil 挂载/卸载及双映像用例在虚拟化 macOS CI 并行负载下易超过 Bun 5s 默认限时 */
+const HOOK_TIMEOUT_MS = 60_000;
+const TEST_TIMEOUT_MS = 60_000;
 
 const sleep = (ms: number) =>
   new Promise<void>((resolve) => {
@@ -92,7 +95,7 @@ afterEach(async () => {
     );
   }
   await cleanup();
-});
+}, HOOK_TIMEOUT_MS);
 
 afterAll(async () => {
   // afterEach 未卸载掉的挂载点再试一次: 瞬态占用 (索引 / 进程退出) 过后多半可卸
@@ -121,7 +124,7 @@ afterAll(async () => {
       `[Warning] 设备边界面 ${envSkips.length} 条用例因环境跳过 (断言未验证): ${envSkips.join('; ')}\n`,
     );
   }
-});
+}, HOOK_TIMEOUT_MS);
 
 /** 映像文件全程只建一次 (create 约 1s, 是本组用例的主要成本), 逐用例现挂现卸 */
 let imageDir: string | null = null;
@@ -334,6 +337,7 @@ function defineCrossDeviceCases(runner: string, available: boolean): void {
         expect(existsSync(join(vol, 'other.txt'))).toBe(true);
         expect(existsSync(join(onnm, 'host.js'))).toBe(true);
       },
+      TEST_TIMEOUT_MS,
     );
 
     test.skipIf(!available || !MOUNT_READY)(
@@ -362,6 +366,7 @@ function defineCrossDeviceCases(runner: string, available: boolean): void {
         expect(existsSync(join(vol, 'other.txt'))).toBe(true);
         expect(existsSync(join(onnm, 'host.js'))).toBe(true);
       },
+      TEST_TIMEOUT_MS,
     );
   });
 }
