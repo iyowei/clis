@@ -112,6 +112,7 @@ describe('runMigrationFlow · TTY 确认与取消流程', () => {
       interactive: true,
       colors: { stdout: false, stderr: false },
       home,
+      env,
       ...col,
       createIO: ioStub.createIO,
       now: () => FIXED_DATE,
@@ -188,6 +189,7 @@ describe('runMigrationFlow · TTY 确认与取消流程', () => {
       interactive: true,
       colors: { stdout: false, stderr: false },
       home,
+      env,
       ...col,
       createIO: ioStub.createIO,
       now: () => FIXED_DATE,
@@ -289,6 +291,7 @@ describe('runMigrationFlow · 显式 `sweep migrate` 的 none / 幂等 / 错误�
       interactive: false,
       colors: { stdout: false, stderr: false },
       home,
+      env,
       ...col,
     });
 

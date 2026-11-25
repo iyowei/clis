@@ -44,6 +44,7 @@ export interface MigrationFlowOptions {
   colors: { stdout: boolean; stderr: boolean };
   home: string;
   platform?: NodeJS.Platform;
+  env?: Record<string, string | undefined>;
   print(line: string): void;
   warn(line: string): void;
   notice(line: string): void;
@@ -96,6 +97,7 @@ export async function runMigrationFlow(
   const detected = await detectMigration(resolved, {
     homedir: home,
     platform,
+    env: options.env,
   });
 
   if (detected.state === 'none') {

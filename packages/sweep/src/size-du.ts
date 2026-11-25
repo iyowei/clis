@@ -140,12 +140,16 @@ interface DuRunResult {
   spawnError: Error | null;
 }
 
-/** 构造固定 C locale 的 du 环境变量 (单次调用复用一份干净拷贝) */
-function createDuEnv(): NodeJS.ProcessEnv {
-  const env: NodeJS.ProcessEnv = { ...process.env, LC_ALL: 'C', LANG: 'C' };
-  delete env.QUOTING_STYLE;
-  delete env.LANGUAGE;
-  return env;
+/** macOS BSD du 设 UTF-8 + LC_MESSAGES=C 防路径被替换成 `?`, 其余保持 LC_ALL=C */
+function createDuEnv(bin: string): NodeJS.ProcessEnv {
+  const env: NodeJS.ProcessEnv = { ...process.env, LANG: 'C' };
+  for (const key of ['QUOTING_STYLE', 'LANGUAGE', 'LC_ALL']) delete env[key];
+  return Object.assign(
+    env,
+    process.platform === 'darwin' && DU_PROBES.includes(bin)
+      ? { LC_MESSAGES: 'C', LC_CTYPE: 'UTF-8' }
+      : { LC_ALL: 'C' },
+  );
 }
 
 /** spawn 一次 `du -sk --` 汇总本批 target, 固定 C locale 并按 UTF-8 收回 stdout / stderr */
@@ -313,7 +317,7 @@ async function measureDuBatches(
     safeTargets,
     maxBatchBytes,
   );
-  const env = createDuEnv();
+  const env = createDuEnv(bin);
   let nextIdx = 0;
   let cancelledBeforeSpawn = false;
   let firstError: unknown;
