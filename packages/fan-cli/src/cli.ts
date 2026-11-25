@@ -218,12 +218,10 @@ export async function runCli(
     }
 
     let extraHint: string | undefined;
-    if (
-      report.didPersist === true &&
-      !options.json &&
-      (deps.transport === undefined || deps.persistOps !== undefined) &&
-      process.platform === 'darwin'
-    ) {
+    const shouldCheckDaemon =
+      deps.persistOps !== undefined ||
+      (deps.transport === undefined && process.platform === 'darwin');
+    if (report.didPersist === true && !options.json && shouldCheckDaemon) {
       const daemon = persistOps.getStatus();
       if (!daemon.installed) {
         extraHint =
