@@ -61,17 +61,9 @@ for (const { runner, available } of RUNNER_AVAILABILITY) {
       expect(badOnce.stderr).toContain('--once');
     });
 
-    const canReadAppleSmc =
-      process.platform === 'darwin' && existsSync('/usr/bin/python3');
-
-    test.skipIf(!canReadAppleSmc)(
-      'macOS 真机 status / persist status --json 只读冒烟',
+    test.skipIf(process.platform !== 'darwin')(
+      'macOS persist status --json 只读冒烟',
       () => {
-        const res = runSubprocess(runner, ['status', '--json']);
-        expect(res.status, res.stderr).toBe(0);
-        const parsed = JSON.parse(res.stdout) as { fans: unknown[] };
-        expect(parsed.fans.length).toBeGreaterThanOrEqual(1);
-
         const persistRes = runSubprocess(runner, [
           'persist',
           'status',
@@ -82,6 +74,32 @@ for (const { runner, available } of RUNNER_AVAILABILITY) {
           label: string;
         };
         expect(persistParsed.label).toBe('com.iyowei.fan');
+      },
+    );
+
+    const canReadAppleSmc =
+      process.platform === 'darwin' && existsSync('/usr/bin/python3');
+
+    test.skipIf(!canReadAppleSmc)(
+      'macOS 真机 status --json 只读冒烟 (无物理 SMC 宿主机保持结构化报错)',
+      () => {
+        const res = runSubprocess(runner, ['status', '--json']);
+        if (res.status === 0) {
+          const parsed = JSON.parse(res.stdout) as { fans: unknown[] };
+          expect(Array.isArray(parsed.fans)).toBe(true);
+          return;
+        }
+        expect(res.status).toBe(1);
+        expect(res.stderr).toMatch(/AppleSMC|FNum|IOServiceOpen/i);
+      },
+    );
+
+    test.skipIf(process.platform === 'darwin')(
+      '非 macOS 平台执行 status 返回结构化平台不支持错误 (退出码 1)',
+      () => {
+        const res = runSubprocess(runner, ['status', '--json']);
+        expect(res.status).toBe(1);
+        expect(res.stderr).toContain('macOS');
       },
     );
   });

@@ -5,12 +5,20 @@
 import { describe, expect, test } from 'bun:test';
 
 import { spawnSync } from 'node:child_process';
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const CLI = fileURLToPath(new URL('./cli.ts', import.meta.url));
+const BIN_MJS = fileURLToPath(
+  new URL('../bin/create-clis.mjs', import.meta.url),
+);
 const DIST_CLI = fileURLToPath(
   new URL('../dist/create-clis.js', import.meta.url),
+);
+const ASSETS_MANIFEST = fileURLToPath(
+  new URL('../assets/manifest.json', import.meta.url),
 );
 const PKG_VERSION = (
   JSON.parse(
@@ -70,3 +78,70 @@ describe('产物轻量化与惰性加载守卫 (CREATE-P0-1)', () => {
     },
   );
 });
+
+const hasBuiltArtifacts = existsSync(DIST_CLI) && existsSync(ASSETS_MANIFEST);
+
+for (const runner of ['bun', 'node']) {
+  const available =
+    spawnSync(runner, ['--version'], { encoding: 'utf8' }).status === 0;
+
+  describe(`打包入口 bin/create-clis.mjs 双运行时冒烟 [${runner}]`, () => {
+    test.skipIf(!available || !hasBuiltArtifacts)(
+      '经 dist/create-clis.js 输出版本并用内置模板资产与 prettier 生成 core 档项目',
+      () => {
+        const ver = spawnSync(runner, [BIN_MJS, '-V'], {
+          encoding: 'utf8',
+          timeout: TIMEOUT_MS,
+        });
+        expect(ver.status, ver.stderr).toBe(0);
+        expect(ver.stdout.trim()).toBe(PKG_VERSION);
+
+        const sandbox = mkdtempSync(
+          join(tmpdir(), `create-clis-bin-${runner}-`),
+        );
+        const target = join(sandbox, 'smoke-kit');
+        try {
+          const gen = spawnSync(
+            runner,
+            [
+              BIN_MJS,
+              target,
+              '--name',
+              'smoke-kit',
+              '--owner',
+              'smoke-owner',
+              '--repo',
+              'https://github.com/smoke-owner/smoke-kit',
+              '--tier',
+              'core',
+              '--yes',
+              '--no-git',
+              '--no-install',
+            ],
+            {
+              cwd: sandbox,
+              encoding: 'utf8',
+              timeout: 30_000,
+            },
+          );
+          expect(gen.status, `${gen.stdout}\n${gen.stderr}`).toBe(0);
+          expect(existsSync(join(target, 'package.json'))).toBe(true);
+          expect(existsSync(join(target, '.gitignore'))).toBe(true);
+          expect(
+            existsSync(
+              join(target, 'packages/smoke-kit-cli/bin/smoke-kit.mjs'),
+            ),
+          ).toBe(true);
+        } finally {
+          rmSync(sandbox, {
+            recursive: true,
+            force: true,
+            maxRetries: 5,
+            retryDelay: 100,
+          });
+        }
+      },
+      30_000,
+    );
+  });
+}
