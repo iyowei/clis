@@ -1,3 +1,10 @@
+## @iyowei/fan [1.0.1](https://github.com/iyowei/clis/compare/@iyowei/fan@1.0.0...@iyowei/fan@1.0.1) (2026-11-25)
+
+
+### Bug Fixes
+
+* **fan:** 合盖睡眠与暗唤醒自动释放手动转速并支持按需同步守护服务 ([e2dce90](https://github.com/iyowei/clis/commit/e2dce9000c67d73cc9541a8102bd193752e740ce))
+
 # @iyowei/fan 1.0.0 (2026-11-25)
 
 
