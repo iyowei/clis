@@ -1,3 +1,15 @@
+# @iyowei/fan-cli [1.1.0](https://github.com/iyowei/clis/compare/@iyowei/fan-cli@1.0.0...@iyowei/fan-cli@1.1.0) (2026-11-25)
+
+
+### Features
+
+* **fan-cli:** 重构渐变矩阵终端界面并支持转速实时追踪到位与守护自动同步 ([4a77a54](https://github.com/iyowei/clis/commit/4a77a54c33adb2b059a5e3b996e7dadce3521a63))
+
+
+### Dependencies
+
+* **@iyowei/fan:** upgraded to 1.0.1
+
 # @iyowei/fan-cli 1.0.0 (2026-11-25)
 
 
