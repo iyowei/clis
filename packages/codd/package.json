@@ -1,6 +1,6 @@
 {
   "name": "@iyowei/codd",
-  "version": "1.3.0",
+  "version": "1.4.0",
   "description": "Programmable API and template assets for MongoDB 9.0 provisioning on Podman (Linux / macOS) and Kubernetes (Helm): deterministic hardware sizing formulas and 100% collision-free fingerprint isolation. 模板化 MongoDB 9.0 部署装配可编程 API 与模板资产包。",
   "keywords": [
     "mongodb",
