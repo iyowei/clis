@@ -1,3 +1,10 @@
+## create-clis [1.4.1](https://github.com/iyowei/clis/compare/create-clis@1.4.0...create-clis@1.4.1) (2026-11-25)
+
+
+### Bug Fixes
+
+* **ci,create-clis:** 兼容最小模板 CLI 未知参数返回码并补齐契约回归测试 ([b351f43](https://github.com/iyowei/clis/commit/b351f436a2aeecddd1bb5a57d20b9ae267260f75))
+
 # create-clis [1.4.0](https://github.com/iyowei/clis/compare/create-clis@1.3.0...create-clis@1.4.0) (2026-11-25)
 
 
