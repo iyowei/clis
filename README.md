@@ -14,6 +14,8 @@ A collection of command-line tools for my day-to-day development, managed as a m
 - **`@iyowei/sweep`** _(pre-release, `private: true`)_: the programmable API package behind `sweep`, for scanning, measuring, trashing, and safely removing workspace artifacts across multiple toolchains from your own programs or scripts; usage is documented in its [README](packages/sweep/README.md).
 - **`@iyowei/codd-cli`**: the `codd` command-line tool, a template-driven MongoDB 9.0 provisioning generator for Podman (Linux & macOS) and Kubernetes (Helm) with an interactive terminal wizard and collision-free deployment bundles; usage is documented in its [README](packages/codd-cli/README.md).
 - **`@iyowei/codd`**: the programmable API and template asset package behind `codd`, exposing hardware sizing formulas, manifest validation, state management, and bundle generation for programmatic integration; usage is documented in its [README](packages/codd/README.md).
+- **`@iyowei/fan-cli`**: the `fan` command-line tool for reading and manually controlling Apple Silicon / Mac fan speeds via AppleSMC IOKit with persistence across reboots and wakeups and zero third-party runtime dependencies; usage is documented in its [README](packages/fan-cli/README.md).
+- **`@iyowei/fan`**: the programmable API behind `fan` for AppleSMC fan telemetry, speed control, and LaunchDaemon persistence; usage is documented in its [README](packages/fan/README.md).
 - **`@iyowei/cli-updater`** _(private shared library)_: zero-dependency cross-package-manager self-update engine (`bun` / `npm` / `pnpm` / `yarn` / `volta`) bundled into every CLI's `update` subcommand; usage is documented in its [README](packages/cli-updater/README.md).
 
 ## Documentation
@@ -21,4 +23,5 @@ A collection of command-line tools for my day-to-day development, managed as a m
 - [Engineering documentation index](docs/README.md): repository-level governance, scaffolding design, repo ADRs, and links to every package's docs;
 - [Development guide](docs/development.md): environment setup, common commands, dual-runtime verification, release chain, and commit hooks;
 - [sweep docs](packages/sweep/docs/README.md): API surface, product designs, safety guardrails, transcription conformance kit, and product ADRs;
-- [codd docs](packages/codd/docs/README.md): hardware sizing formulas, Podman & Kubernetes runbooks, visual board (`BOARD.html`), and product ADRs.
+- [codd docs](packages/codd/docs/README.md): hardware sizing formulas, Podman & Kubernetes runbooks, visual board (`BOARD.html`), and product ADRs;
+- [fan docs](packages/fan/docs/README.md): AppleSMC key contracts, API surface, and CLI surface (`packages/fan-cli/docs/README.md`).

@@ -24,6 +24,8 @@ The repository is a monorepo whose packages live under `packages/`:
 - `packages/sweep`: the programmable API behind `sweep` (`@iyowei/sweep`, pre-release `private: true`).
 - `packages/codd-cli`: the `codd` MongoDB 9.0 provisioning CLI, published as `@iyowei/codd-cli`.
 - `packages/codd`: the programmable API and template asset package behind `codd`, published as `@iyowei/codd`.
+- `packages/fan-cli`: the `fan` Apple Silicon / Mac fan control CLI, published as `@iyowei/fan-cli`.
+- `packages/fan`: the programmable API behind `fan`, published as `@iyowei/fan`.
 - `packages/cli-updater`: zero-dependency cross-package-manager self-update engine bundled into every CLI's `update` subcommand (`@iyowei/cli-updater`, internal shared library, `private: true`).
 
 turbo orchestrates the build, typecheck, and test tasks across all workspace packages. The code treats bun and node as first-class runtimes (bun when available, node otherwise, identical behavior), runs on Windows, macOS, and Linux, and keeps runtime dependencies minimal (zero third-party runtime dependencies for `sweep` and `codd`; `prettier` only for `create-clis` scaffold formatting).

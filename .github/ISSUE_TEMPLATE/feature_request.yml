@@ -25,6 +25,8 @@ body:
         - Programmable API (@iyowei/sweep)
         - CLI (codd)
         - Programmable API (@iyowei/codd)
+        - CLI (fan)
+        - Programmable API (@iyowei/fan)
         - Documentation / Governance
         - Other
     validations:

@@ -48,6 +48,21 @@
         "@iyowei/cli-updater": "1.0.0",
       },
     },
+    "packages/fan": {
+      "name": "@iyowei/fan",
+      "version": "1.0.0",
+    },
+    "packages/fan-cli": {
+      "name": "@iyowei/fan-cli",
+      "version": "1.0.0",
+      "bin": {
+        "fan": "bin/fan.mjs",
+      },
+      "devDependencies": {
+        "@iyowei/cli-updater": "1.0.0",
+        "@iyowei/fan": "1.0.0",
+      },
+    },
     "packages/sweep": {
       "name": "@iyowei/sweep",
       "version": "1.0.0",
@@ -100,6 +115,10 @@
     "@iyowei/codd": ["@iyowei/codd@workspace:packages/codd"],
 
     "@iyowei/codd-cli": ["@iyowei/codd-cli@workspace:packages/codd-cli"],
+
+    "@iyowei/fan": ["@iyowei/fan@workspace:packages/fan"],
+
+    "@iyowei/fan-cli": ["@iyowei/fan-cli@workspace:packages/fan-cli"],
 
     "@iyowei/sweep": ["@iyowei/sweep@workspace:packages/sweep"],
 

@@ -15,6 +15,9 @@
 - **`codd` (MongoDB 9.0 部署装配器, 双包)**:
   - 主包 / API 包 (`@iyowei/codd`): [主包文档入口](../packages/codd/docs/README.md) (含公式设计、Podman / Kubernetes 运维分册、可视化看板 `BOARD.html` 与产品 ADR `0012-0018`);
   - CLI 薄壳包 (`@iyowei/codd-cli`): [CLI 包文档入口](../packages/codd-cli/docs/README.md) (命令面、向导交互、退出码与状态文件契约)。
+- **`fan` (macOS 风扇转速控制器, 双包)**:
+  - 主包 / API 包 (`@iyowei/fan`, `packages/fan`): [主包文档入口](../packages/fan/docs/README.md) (含 AppleSMC 键值契约与 API 面设计);
+  - CLI 薄壳包 (`@iyowei/fan-cli`, `packages/fan-cli`, 命令 `fan`): [CLI 包文档入口](../packages/fan-cli/docs/README.md) (命令面、选项与渲染契约)。
 - **`@iyowei/cli-updater` (仓内私有共享库)**: 为仓内全部 CLI 提供统一 `update` 自更新引擎 (跨 `bun` / `npm` / `pnpm` / `yarn` / `volta` 识别安装源并隔离执行更新, 源码位于 `packages/cli-updater/`, 不对外发布; 见 [README](../packages/cli-updater/README.md))。
 
 ## 仓库级决策 (ADR)

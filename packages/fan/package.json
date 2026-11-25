@@ -1,0 +1,54 @@
+{
+  "name": "@iyowei/fan",
+  "version": "1.0.0",
+  "description": "Programmable API for reading and manually controlling Apple Silicon / Mac fans via AppleSMC IOKit with zero third-party runtime dependencies. Mac 风扇读取与手动控制的可编程 API。",
+  "keywords": [
+    "fan",
+    "smc",
+    "applesmc",
+    "iokit",
+    "macos",
+    "apple-silicon",
+    "rpm",
+    "thermal",
+    "bun",
+    "node"
+  ],
+  "author": "iTonyYo (https://github.com/iTonyYo)",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/iyowei/clis.git"
+  },
+  "homepage": "https://github.com/iyowei/clis#readme",
+  "bugs": {
+    "url": "https://github.com/iyowei/clis/issues"
+  },
+  "type": "module",
+  "sideEffects": false,
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "engines": {
+    "node": ">=22.18.0"
+  },
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  },
+  "scripts": {
+    "build": "bun scripts/build.ts",
+    "typecheck": "bun check",
+    "test": "bun test",
+    "verify:release": "bun scripts/verify-release.ts",
+    "prepublishOnly": "npm run build && npm run verify:release"
+  }
+}

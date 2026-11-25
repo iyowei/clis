@@ -1,0 +1,55 @@
+{
+  "name": "@iyowei/fan-cli",
+  "version": "1.0.0",
+  "description": "CLI to inspect and manually control Mac fan speeds via AppleSMC IOKit with zero third-party runtime dependencies. Mac 风扇转速查看与手动控制命令行工具。",
+  "keywords": [
+    "cli",
+    "cli-tool",
+    "fan",
+    "smc",
+    "applesmc",
+    "macos",
+    "apple-silicon",
+    "rpm",
+    "thermal",
+    "bun",
+    "node"
+  ],
+  "author": "iTonyYo (https://github.com/iTonyYo)",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/iyowei/clis.git"
+  },
+  "homepage": "https://github.com/iyowei/clis#readme",
+  "bugs": {
+    "url": "https://github.com/iyowei/clis/issues"
+  },
+  "type": "module",
+  "bin": {
+    "fan": "bin/fan.mjs"
+  },
+  "files": [
+    "bin/fan.mjs",
+    "bin/bunfig.toml",
+    "dist"
+  ],
+  "engines": {
+    "node": ">=22.18.0"
+  },
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  },
+  "devDependencies": {
+    "@iyowei/cli-updater": "1.0.0",
+    "@iyowei/fan": "1.0.0"
+  },
+  "scripts": {
+    "build": "bun build src/cli.ts --target=node --minify-whitespace --minify-syntax --outfile=dist/cli.js && bun scripts/write-dist-manifest.ts",
+    "prepublishOnly": "npm run build && npm run verify:release",
+    "verify:release": "bun scripts/verify-release.ts",
+    "typecheck": "bun check",
+    "test": "bun test"
+  }
+}

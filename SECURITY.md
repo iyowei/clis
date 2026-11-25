@@ -7,6 +7,7 @@ Security fixes are released as new versions; only the latest published release o
 - `create-clis`: the monorepo collection scaffold CLI;
 - `@iyowei/sweep-cli` / `@iyowei/sweep`: the `sweep` general multi-toolchain workspace cleaner CLI and programmable API (currently pre-release / `private: true`, tracked on `main`);
 - `@iyowei/codd-cli` / `@iyowei/codd`: the MongoDB 9.0 provisioning CLI and programmable API.
+- `@iyowei/fan-cli` / `@iyowei/fan`: the macOS AppleSMC fan control CLI and programmable API.
 
 Older releases do not receive fixes.
 
@@ -32,7 +33,7 @@ The project is maintained by one person; responses are best effort, and security
 
 Runtime dependency posture varies by package:
 
-- `@iyowei/sweep`, `@iyowei/sweep-cli`, `@iyowei/codd`, and `@iyowei/codd-cli` carry no third-party runtime dependencies and make no network calls on the run path;
+- `@iyowei/sweep`, `@iyowei/sweep-cli`, `@iyowei/codd`, `@iyowei/codd-cli`, `@iyowei/fan`, and `@iyowei/fan-cli` carry no third-party runtime dependencies and make no network calls on the run path;
 - `create-clis` bundles no network calls on the run path, and carries `prettier` plus `@trivago/prettier-plugin-sort-imports` as runtime dependencies solely to format newly generated scaffold files.
 
 Reports we treat as security issues include, for example:

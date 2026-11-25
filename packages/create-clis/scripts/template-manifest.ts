@@ -242,6 +242,14 @@ export const TEMPLATE_MANIFEST: readonly ManifestEntry[] = [
     'packages/codd-cli/',
     'MongoDB 模板化装配 CLI 包 (本仓领域工具); 不进模板',
   ),
+  excl(
+    'packages/fan/',
+    'macOS AppleSMC 风扇控制 API 主包与文档 (本仓领域工具); 不进模板',
+  ),
+  excl(
+    'packages/fan-cli/',
+    'macOS AppleSMC 风扇控制 CLI 包 (本仓领域工具); 不进模板',
+  ),
   ...[
     'docs/adrs/0005-engineering-gates-and-hooks.md',
     'docs/adrs/0006-dual-runtime-bun-first.md',

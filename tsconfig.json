@@ -14,6 +14,7 @@
       "@iyowei/sweep": ["./packages/sweep/src/index.ts"],
       "@iyowei/sweep/testing": ["./packages/sweep/src/fixtures.ts"],
       "@iyowei/codd": ["./packages/codd/src/index.ts"],
+      "@iyowei/fan": ["./packages/fan/src/index.ts"],
       "@iyowei/cli-updater": ["./packages/cli-updater/src/index.ts"]
     },
 

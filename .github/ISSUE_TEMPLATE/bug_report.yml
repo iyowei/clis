@@ -28,6 +28,8 @@ body:
         - '@iyowei/sweep (API)'
         - '@iyowei/codd-cli (codd)'
         - '@iyowei/codd (API)'
+        - '@iyowei/fan-cli (fan)'
+        - '@iyowei/fan (API)'
         - Repository infrastructure / docs
     validations:
       required: true

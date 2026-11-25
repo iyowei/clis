@@ -1,0 +1,3 @@
+# fan CLI 运行时隔离配置: 防止调用方工作目录中的损坏 bunfig.toml、.env 或 preload 干扰 CLI 启动
+env = false
+preload = []

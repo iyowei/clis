@@ -1,0 +1,55 @@
+#!/bin/sh
+# fan 启动器 (POSIX): 仅从绝对 PATH 目录挑选运行时 (Bun 优先, 其次 Node) 后交给 bin/fan.mjs。
+# 经 ~/.local/bin/fan 软链调用; 限制 40 跳防环; 清空 CDPATH 防切目录; 隔离 cwd bunfig.toml 与 .env。
+
+CDPATH=
+target="$0"
+hops=0
+while [ -L "$target" ]; do
+  hops=$((hops + 1))
+  if [ "$hops" -gt 40 ]; then
+    echo "fan: 符号链接解析超过 40 跳上限, 已中止" >&2
+    exit 1
+  fi
+  link=$(readlink "$target" 2>/dev/null) || break
+  case "$link" in
+    /*) target="$link" ;;
+    *) target="$(dirname "$target")/$link" ;;
+  esac
+done
+root=$(CDPATH= cd -- "$(dirname "$target")/.." && pwd)
+
+find_abs_exec() {
+  cmd=$1
+  rest="${PATH:-}:"
+  while [ -n "$rest" ]; do
+    dir=${rest%%:*}
+    rest=${rest#*:}
+    case "$dir" in
+      /*)
+        cand="${dir%/}/$cmd"
+        if [ -f "$cand" ] && [ -x "$cand" ]; then
+          printf '%s\n' "$cand"
+          return 0
+        fi
+        ;;
+    esac
+  done
+  return 1
+}
+
+if bun_bin=$(find_abs_exec bun); then
+  if [ ! -f "$root/bin/bunfig.toml" ]; then
+    echo "fan: 缺少启动器隔离配置 (bin/bunfig.toml), 为防工作目录 bunfig.toml 劫持已拒绝执行" >&2
+    exit 1
+  fi
+  export CLIS_BUN_ISOLATED=1
+  exec "$bun_bin" --config="$root/bin/bunfig.toml" --no-env-file "$root/bin/fan.mjs" "$@"
+fi
+
+if node_bin=$(find_abs_exec node); then
+  exec "$node_bin" "$root/bin/fan.mjs" "$@"
+fi
+
+echo "fan: 未找到 bun 或 node, 请至少安装其一" >&2
+exit 1
