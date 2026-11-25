@@ -352,3 +352,74 @@ describe('runCli liveSettle 动态追踪', () => {
     expect(maxFinal).not.toContain('99.7%');
   });
 });
+
+describe('runCli 双风扇百分比到位守卫', () => {
+  test('Fan 0 已达 90.1% 但 Fan 1 仍在 89.9% 时绝不提前退出, 须等双风扇均 >= 90.0%', async () => {
+    const pairSamples: [number, number][] = [
+      [5765, 6206],
+      [5765, 6206],
+      [5763, 6210],
+    ];
+    let pairIdx = 0;
+    const pairTransport: FanTransport = {
+      readFans: () => {
+        const [rpm0, rpm1] =
+          pairSamples[Math.min(pairIdx, pairSamples.length - 1)]!;
+        return [
+          {
+            index: 0,
+            actualRpm: rpm0,
+            targetRpm: 5760,
+            minRpm: 1350,
+            maxRpm: 6250,
+            mode: 'manual',
+            percent: Math.round(((rpm0 - 1350) / 4900) * 1000) / 10,
+          },
+          {
+            index: 1,
+            actualRpm: rpm1,
+            targetRpm: 6210,
+            minRpm: 1350,
+            maxRpm: 6750,
+            mode: 'manual',
+            percent: Math.round(((rpm1 - 1350) / 5400) * 1000) / 10,
+          },
+        ];
+      },
+      applyWrites() {
+        pairIdx = 0;
+        return this.readFans();
+      },
+      isMacsFanControlRunning: () => false,
+    };
+    const origPairRead = pairTransport.readFans.bind(pairTransport);
+    let pairPolls = 0;
+    pairTransport.readFans = () => {
+      const snap = origPairRead();
+      pairPolls += 1;
+      if (pairPolls >= 2) {
+        pairIdx += 1;
+      }
+      return snap;
+    };
+
+    const pairChunks: string[] = [];
+    const pairCode = await runCli(['set', '90%', '--once', '--lang', 'en'], {
+      transport: pairTransport,
+      stateStore: makeStubStateStore(),
+      persistOps: makeStubPersistOps(true),
+      stdoutColor: false,
+      stderrColor: false,
+      rawWrite: (c) => pairChunks.push(c),
+      liveSettle: true,
+      settleIntervalMs: 5,
+    });
+    expect(pairCode).toBe(0);
+    expect(pairChunks.some((c) => c.includes('89.9%'))).toBe(true);
+    expect(pairChunks.some((c) => c.includes('Ramping 6210 RPM'))).toBe(true);
+    const pairFinal = pairChunks[pairChunks.length - 1]!;
+    expect(pairFinal).toContain('90.1%');
+    expect(pairFinal).toContain('90.0%');
+    expect(pairFinal).not.toContain('89.9%');
+  });
+});

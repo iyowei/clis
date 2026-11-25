@@ -45,39 +45,48 @@ export const SETTLE_TOLERANCE_RPM = 35;
 /**
  * 判定手动模式风扇的实际转速是否已精确到达目标值:
  * - 100% 满速目标要求实际显示百分比真正达到 `100.0%` (绝不在 99.7% 提前退出);
- * - 0% 最低速目标要求 `0.0%` 且误差 `<= 5 RPM`;
- * - 其余中间档位要求百分比误差 `<= 0.1%` 或转速误差 `<= 5 RPM`。
+ * - 0% 最低速目标要求 `0.0%` 且实际转速进入 `minRpm ± 10 RPM` (防止从 0 RPM 静止态误判已到位);
+ * - 其余中间档位 (如 `90%`) 要求显示百分比达到 `[targetPct, targetPct + 0.1%]` (如 `90.0%` 或 `90.1%`,
+ *   绝不在 `89.9%` 尚未达标或高于 `targetPct + 0.1%` 尚未降速到位时提前退出; 整数十分位比较规避浮点误差)。
  */
 export function isManualFanSettled(fan: FanInfo): boolean {
-  const targetPct = computePercent(fan.targetRpm, fan.minRpm, fan.maxRpm);
-  if (targetPct >= 100) {
-    return fan.percent >= 100;
-  }
-  if (targetPct <= 0) {
-    return fan.percent <= 0 && Math.abs(fan.actualRpm - fan.targetRpm) <= 5;
-  }
-  return (
-    Math.abs(fan.percent - targetPct) <= 0.1 ||
-    Math.abs(fan.actualRpm - fan.targetRpm) <= 5
+  const targetTenths = Math.round(
+    computePercent(fan.targetRpm, fan.minRpm, fan.maxRpm) * 10,
   );
+  const actualTenths = Math.round(fan.percent * 10);
+  if (targetTenths >= 1000) {
+    return actualTenths >= 1000;
+  }
+  if (targetTenths <= 0) {
+    return actualTenths <= 0 && Math.abs(fan.actualRpm - fan.targetRpm) <= 10;
+  }
+  return actualTenths >= targetTenths && actualTenths <= targetTenths + 1;
 }
 
 function manualModeLabel(
   fan: FanInfo,
   locale: Locale,
+  settling = false,
 ): { text: string; sgr: string } {
   const rpmNum = Math.round(fan.actualRpm);
   const targetStr = `${String(Math.round(fan.targetRpm)).padStart(4)} RPM`;
   const diff = fan.targetRpm - fan.actualRpm;
+  const isRamping = settling
+    ? !isManualFanSettled(fan) && diff >= 0
+    : diff > SETTLE_TOLERANCE_RPM;
+  const isSlowing = settling
+    ? !isManualFanSettled(fan) && diff < 0
+    : diff < -SETTLE_TOLERANCE_RPM;
+
   if (locale === 'en') {
     // 4 类英文标签统一精确对齐 16 列 (`Target  ` / `Ramping ` / `Slowing ` / `Manual  ` + `XXXX RPM`)
     if (rpmNum === 0 && fan.targetRpm > 0) {
       return { text: `Target  ${targetStr}`, sgr: '33' };
     }
-    if (diff > SETTLE_TOLERANCE_RPM) {
+    if (isRamping) {
       return { text: `Ramping ${targetStr}`, sgr: '33' };
     }
-    if (diff < -SETTLE_TOLERANCE_RPM) {
+    if (isSlowing) {
       return { text: `Slowing ${targetStr}`, sgr: '36' };
     }
     return { text: `Manual  ${targetStr}`, sgr: '36' };
@@ -85,10 +94,10 @@ function manualModeLabel(
   if (rpmNum === 0 && fan.targetRpm > 0) {
     return { text: `目标 ${targetStr}`, sgr: '33' };
   }
-  if (diff > SETTLE_TOLERANCE_RPM) {
+  if (isRamping) {
     return { text: `提速 ${targetStr}`, sgr: '33' };
   }
-  if (diff < -SETTLE_TOLERANCE_RPM) {
+  if (isSlowing) {
     return { text: `降速 ${targetStr}`, sgr: '36' };
   }
   return { text: `手动 ${targetStr}`, sgr: '36' };
@@ -124,7 +133,7 @@ function formatFanLine(
 
   let modeStyled: string;
   if (fan.mode === 'manual') {
-    const { text: plain, sgr } = manualModeLabel(fan, locale);
+    const { text: plain, sgr } = manualModeLabel(fan, locale, settlingAuto);
     const pad = ' '.repeat(Math.max(0, modeColWidth - displayWidth(plain)));
     modeStyled = `${paint(plain, sgr, color)}${pad}`;
   } else {
