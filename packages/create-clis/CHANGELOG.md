@@ -1,3 +1,27 @@
+# create-clis [1.4.0](https://github.com/iyowei/clis/compare/create-clis@1.3.0...create-clis@1.4.0) (2026-11-25)
+
+
+### Bug Fixes
+
+* 加固 CLI 启动器隔离校验与入口判定 ([10e24df](https://github.com/iyowei/clis/commit/10e24df3da4e583034da568a7dfb46888dc30b9f))
+* 收窄模板禁词派生至领域包短名 ([fffad5d](https://github.com/iyowei/clis/commit/fffad5de5c7d2e51d6b294ff46eb29a52a388b02))
+* 档位裁剪补齐配置族死路径与设计索引联动 ([02b7a7e](https://github.com/iyowei/clis/commit/02b7a7e425cf6a8c9e174012d50118bb8dadb449))
+* 泛化反斜杠词汇并补启动器自证单测 ([78d2a47](https://github.com/iyowei/clis/commit/78d2a47b06a3e1512794506fb13ee40f2eeaa688))
+* 补 CLI 参数守卫与仓库地址归一化 ([001ffb1](https://github.com/iyowei/clis/commit/001ffb1fb2fa87bf7cd18abd30a7f2854134735f))
+* 词汇替换补反引号复合形态防占位残留 ([81d4bc0](https://github.com/iyowei/clis/commit/81d4bc001d425175971cbda431680bfca344dbf6))
+
+
+### Features
+
+* full 档预置可运行协议使开箱即绿 ([7c23fcf](https://github.com/iyowei/clis/commit/7c23fcf904d2db72d5e3385e3a4c144629ae5623))
+* 扩面增强档裁剪规则并物理化文档摘除 ([a4d0996](https://github.com/iyowei/clis/commit/a4d0996e617d9c00102826078390b9f21d63583e))
+* 支持复合形态词表替换并复核模板词汇 ([c5601f1](https://github.com/iyowei/clis/commit/c5601f10933c17d537adeb97acc0118618d5dbc3))
+* 新增 fan macOS 风扇转速控制双包 ([0a74234](https://github.com/iyowei/clis/commit/0a742341aa1ff0089f9c6fd8903c0f077b97b2f3))
+* 模板清单纳入转写引擎与协议骨架并补档位端到端验证 ([a31647c](https://github.com/iyowei/clis/commit/a31647c05e7b7ed26b445738467524ef9ea1fc61))
+* 模板骨架预置行为契约、金样本与变异目标 ([d5b3e5d](https://github.com/iyowei/clis/commit/d5b3e5d583320f4ce30e62762156bbccdedb0261))
+* 补齐模板转写差分模糊测试与档位裁剪 ([0f03699](https://github.com/iyowei/clis/commit/0f036991be1a2e0cd0fc01e2a9cab27e35f985fe))
+* 重量级冒烟补 full 档端到端并拆分断言辅助模块 ([0b5c380](https://github.com/iyowei/clis/commit/0b5c380383b7879f4fec26f96ed42a8dc7e01a72))
+
 # create-clis [1.3.0](https://github.com/iyowei/clis/compare/create-clis@1.2.0...create-clis@1.3.0) (2026-11-20)
 
 
