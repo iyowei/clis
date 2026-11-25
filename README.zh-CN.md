@@ -10,13 +10,9 @@
 ## 包
 
 - **`create-clis`**: 集合仓生成器, 从本仓骨架快照生成一个独立的新集合仓 (带能力档位、通用词汇与开箱全绿的 CI); 用法见 [README](packages/create-clis/README.zh-CN.md)。
-- **`@iyowei/sweep-cli`** _(待首发, `private: true`)_: `sweep` 命令行工具, 通用多技术栈工作区清理器 (内置 6 大带锚点校验预设 `node` / `rust` / `python` / `java` / `cpp` / `os-junk` 与自定义 `rules`, 支持零依赖三端回收站、配置 v2 `SWEEP_CONFIG` / 默认 `~/.config/sweep/config.json` 及自动 `init` / `migrate`); 安装、使用、配置与安全防护见 [README](packages/sweep-cli/README.zh-CN.md)。
-- **`@iyowei/sweep`** _(待首发, `private: true`)_: `sweep` 背后的可编程 API 包, 供自己的程序或脚本调用以跨多技术栈扫描、统计、移入回收站与安全清理工作区产物; 用法见 [README](packages/sweep/README.zh-CN.md)。
-- **`@iyowei/codd-cli`**: `codd` 命令行工具, 面向 Podman (Linux / macOS) 与 Kubernetes (Helm) 的模板化 MongoDB 9.0 部署装配 CLI (带交互式终端向导, 一键导出零命名冲突的上线部署包); 用法见 [README](packages/codd-cli/README.zh-CN.md)。
-- **`@iyowei/codd`**: `codd` 背后的可编程 API 与模板资产包, 暴露硬件配额公式、清单校验、状态管理与部署包生成接口, 便于被其他程序编程集成; 用法见 [README](packages/codd/README.zh-CN.md)。
-- **`@iyowei/fan-cli`**: `fan` 命令行工具, 通过 AppleSMC IOKit 查看与手动控制 Apple Silicon / Mac 风扇转速 (默认记住并支持开机及睡眠唤醒自动恢复), 零第三方运行时依赖; 用法见 [README](packages/fan-cli/README.zh-CN.md)。
-- **`@iyowei/fan`**: `fan` 背后的可编程 API 包, 封装 AppleSMC 风扇读写、转速限幅、持久化配置与 LaunchDaemon 恢复接口; 用法见 [README](packages/fan/README.zh-CN.md)。
-- **`@iyowei/cli-updater`** _(仓内私有共享库)_: 零外部依赖的跨包管理器自更新引擎 (`bun` / `npm` / `pnpm` / `yarn` / `volta`), 内联打包进仓内每个 CLI 的 `update` 子命令; 设计与用法见 [README](packages/cli-updater/README.md)。
+- **`@iyowei/sweep-cli`** _(待首发, `private: true`)_: `sweep` 命令行工具, 通用多技术栈工作区清理器 (内置 6 大带锚点校验预设 `node` / `rust` / `python` / `java` / `cpp` / `os-junk` 与自定义 `rules`, 支持零依赖三端回收站、配置 v2 `SWEEP_CONFIG` / 默认 `~/.config/sweep/config.json` 及自动 `init` / `migrate`); 安装、使用、配置与安全防护见 [README](packages/sweep-cli/README.zh-CN.md) (可编程 API 见 [`@iyowei/sweep`](packages/sweep/README.zh-CN.md))。
+- **`@iyowei/codd-cli`**: `codd` 命令行工具, 面向 Podman (Linux / macOS) 与 Kubernetes (Helm) 的模板化 MongoDB 9.0 部署装配 CLI (带交互式终端向导, 一键导出零命名冲突的上线部署包); 用法见 [README](packages/codd-cli/README.zh-CN.md) (可编程 API 见 [`@iyowei/codd`](packages/codd/README.zh-CN.md))。
+- **`@iyowei/fan-cli`**: `fan` 命令行工具, 通过 AppleSMC IOKit 查看与手动控制 Apple Silicon / Mac 风扇转速 (默认记住并支持开机及睡眠唤醒自动恢复), 零第三方运行时依赖; 用法见 [README](packages/fan-cli/README.zh-CN.md) (可编程 API 见 [`@iyowei/fan`](packages/fan/README.zh-CN.md))。
 
 ## 文档
 

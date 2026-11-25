@@ -38,7 +38,7 @@ packages/<name>/
 - **仓级登记与消费切换** (若当前仓库包含以下配置文件):
   1. 根 `tsconfig.json` `compilerOptions.paths` 新增 `"@iyowei/<name>": ["./packages/<name>/src/index.ts"]`;
   2. `packages/create-clis/scripts/template-manifest.ts` 用 `exclInfra('packages/<name>/', '<本质说明>')` 登记;
-  3. 根 `README.md`、`README.zh-CN.md` 与 `docs/README.md` 各补一行共享库说明, 且当新包存在 `README.md` (无独立 `docs/README.md`) 时, `docs/README.md` (及公开包的根 `README*.md`) 须包含指向该包 `README` 的 Markdown 链接 (如 `[README](../packages/<name>/README.md)` / `[README](packages/<name>/README.md)`), 防止产生零入链孤儿文档;
+  3. 在 `docs/README.md` 补一行共享库说明 (private 仓内共享库不必写入根目录 `README.md` / `README.zh-CN.md`; 仅非 private 的公开库才同步登记根目录 `README*.md`), 且当新包存在 `README.md` (无独立 `docs/README.md`) 时, `docs/README.md` (及公开包的根 `README*.md`) 须包含指向该包 `README` 的 Markdown 链接 (如 `[README](../packages/<name>/README.md)`), 防止产生零入链孤儿文档;
   4. 各消费包写精确版本号 `"1.0.0"` (禁止 `workspace:*` / `^` / `~` / `file:`): 由于新抽离共享库标 `"private": true` (`private-lib`), 根据仓库 `docs/designs/dependency-direction.md` 与 `scripts/lint-dependency-direction.ts`, 不仅打包为单文件的 CLI 消费包须写入 `devDependencies` (维持零运行时依赖), **公开库 / 双包 API 主包在构建期打包私有共享库时也必须写入 `devDependencies` (严禁写入运行期 `dependencies` / `peerDependencies` / `optionalDependencies`, 否则发布 npm 后无法解析且会被 `lint:deps` 拦截)**, 仅同为仓内不发布的私有库间引用可按需写入 `dependencies` 或 `devDependencies`; **删净原重复函数**, 执行 `bun install && bun fmt` 后再跑 `verify-round`。
 
 ### 3. 加法完整命令序列

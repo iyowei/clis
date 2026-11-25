@@ -260,8 +260,12 @@ function checkRootDocRegistrations(
   const needsReadmeLink =
     existsSync(join(repoRoot, cleanPkgDir, 'README.md')) &&
     !existsSync(join(repoRoot, cleanPkgDir, 'docs', 'README.md'));
+  // 私有内部共享库仅在工程文档总索引 (docs/README.md) 登记, 不强求写入根目录 README
+  const docFiles = isPrivate
+    ? ['docs/README.md']
+    : ['README.md', 'README.zh-CN.md', 'docs/README.md'];
 
-  for (const docFile of ['README.md', 'README.zh-CN.md', 'docs/README.md']) {
+  for (const docFile of docFiles) {
     const docAbs = join(repoRoot, docFile);
     if (!existsSync(docAbs)) continue;
     const text = readFileSync(docAbs, 'utf8');
@@ -269,10 +273,8 @@ function checkRootDocRegistrations(
       violations.push(`${docFile} 尚未登记共享库 ${pkgName}`);
       continue;
     }
-    const reqLink =
-      needsReadmeLink && (docFile === 'docs/README.md' || !isPrivate);
     if (
-      reqLink &&
+      needsReadmeLink &&
       !hasMarkdownLinkToPkgReadme(text, docFile, cleanPkgDir, repoRoot)
     ) {
       const rel =
