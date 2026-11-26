@@ -5,6 +5,7 @@
  * 告警插队前 `suspend()` 擦行暂停帧刷新, `stop()` 幂等清行不留残影。
  */
 import { type Locale, t } from '@iyowei/cli-i18n';
+import { renderShimmerText } from '@iyowei/cli-updater';
 import {
   type SweepPhase,
   type SweepProgressEvent,
@@ -249,10 +250,18 @@ export function createSweepProgress(
     const bodyPlain = detail === '' ? action : `${action} · ${detail}`;
     const fittedBody = clipLine(bodyPlain, maxCols - 4);
     const splitIdx = fittedBody.indexOf(' · ');
+    const actionPart =
+      splitIdx === -1 ? fittedBody : fittedBody.slice(0, splitIdx);
+    const detailPart = splitIdx === -1 ? '' : fittedBody.slice(splitIdx);
+    const styledAction = renderShimmerText(
+      actionPart,
+      frameIndex,
+      options.color,
+    );
     const styledBody =
-      splitIdx === -1
-        ? paint(fittedBody, '1', options.color)
-        : `${paint(fittedBody.slice(0, splitIdx), '1', options.color)}${paint(fittedBody.slice(splitIdx), '2', options.color)}`;
+      detailPart === ''
+        ? styledAction
+        : `${styledAction}${paint(detailPart, '2', options.color)}`;
     const styledFrame = paint(frame, '36', options.color);
     const line =
       prefixPlain.length <= maxCols
@@ -271,7 +280,7 @@ export function createSweepProgress(
   const startTimer = (): void => {
     if (timer !== undefined) return;
     timer = setTimer(() => {
-      frameIndex = (frameIndex + 1) % FRAMES.length;
+      frameIndex += 1;
       renderFrame();
     }, FRAME_INTERVAL_MS);
     timer.unref?.();

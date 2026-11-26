@@ -76,9 +76,13 @@ describe('createSweepProgress', () => {
     });
     expect(stripAnsi(chunks.at(-1)!)).toBe('\r  ⠋ 扫描中 · 已发现 1 处 · 0.3s');
 
-    // 定时器推动帧旋转
+    // 定时器推动帧旋转与跑马灯流光步进
+    const frame0 = chunks.at(-1)!;
     tick?.();
-    expect(stripAnsi(chunks.at(-1)!)).toBe('\r  ⠙ 扫描中 · 已发现 1 处 · 0.3s');
+    const frame1 = chunks.at(-1)!;
+    expect(stripAnsi(frame1)).toBe('\r  ⠙ 扫描中 · 已发现 1 处 · 0.3s');
+    expect(frame1).not.toBe(frame0);
+    expect(frame1).not.toContain('38;2;');
 
     clock = 2200;
     progress.update({ kind: 'phase', phase: 'measure', status: 'start' });

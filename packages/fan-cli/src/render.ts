@@ -236,6 +236,7 @@ export function renderReport(
     json: boolean;
     title?: string;
     extraHint?: string;
+    extraHintPrestyled?: boolean;
     settlingAuto?: boolean;
     locale?: Locale;
   },
@@ -348,7 +349,11 @@ export function renderReport(
     );
   }
   if (options.extraHint !== undefined) {
-    footers.push(neutralLine(options.extraHint, options.color));
+    footers.push(
+      options.extraHintPrestyled === true
+        ? `  ${paint(NEUTRAL_BLOCK, '2', options.color)} ${options.extraHint}`
+        : neutralLine(options.extraHint, options.color),
+    );
   }
 
   if (footers.length > 0) {

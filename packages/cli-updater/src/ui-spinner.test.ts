@@ -12,6 +12,7 @@ import {
 import {
   createUpdateUi,
   displayWidth,
+  renderShimmerText,
   sanitizeMultilineTail,
   stripAnsi,
 } from './ui.ts';
@@ -144,6 +145,18 @@ describe('createUpdateSpinner TTY 实时进度', () => {
     tickCallback?.();
     expect(chunks.length).toBe(2);
     expect(stripAnsi(chunks[1]!)).toContain('⠙');
+    expect(chunks[1]).not.toMatch(/38;2;|48;2;/);
+
+    // 跑马灯流光跨步变化, 且关色态严格零 ANSI 等价
+    expect(renderShimmerText('正在检查最新版本', 0, false)).toBe(
+      '正在检查最新版本',
+    );
+    const waveA = renderShimmerText('正在检查最新版本', 1, true);
+    const waveB = renderShimmerText('正在检查最新版本', 5, true);
+    expect(stripAnsi(waveA)).toBe('正在检查最新版本');
+    expect(stripAnsi(waveB)).toBe('正在检查最新版本');
+    expect(waveA).not.toBe(waveB);
+    expect(waveA).not.toMatch(/38;2;|48;2;/);
 
     spinner.stop();
     spinner.stop(); // 幂等

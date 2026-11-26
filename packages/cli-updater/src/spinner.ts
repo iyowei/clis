@@ -4,7 +4,12 @@
  * 与 sweep 主视图进度指示器共用同一套标准 ANSI SGR 视觉语言 (`36` 青点阵 + `1` 粗白动作 + `2` 压暗细节/耗时),
  * 用于接管「检查远端版本」与「静默执行包管理器升级」两段等待期, 结束后彻底擦除不留残影。
  */
-import { displayWidth, formatElapsedMs, paint } from './ui.ts';
+import {
+  displayWidth,
+  formatElapsedMs,
+  paint,
+  renderShimmerText,
+} from './ui.ts';
 
 const FRAMES = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'] as const;
 const FRAME_INTERVAL_MS = 80;
@@ -104,10 +109,17 @@ export function createUpdateSpinner(
     const maxCols = Math.max(12, columns() - 1);
     const fitted = clipToWidth(bodyPlain, maxCols - 4);
     const splitIdx = fitted.indexOf(' · ');
+    const actionPart = splitIdx === -1 ? fitted : fitted.slice(0, splitIdx);
+    const detailPart = splitIdx === -1 ? '' : fitted.slice(splitIdx);
+    const styledAction = renderShimmerText(
+      actionPart,
+      frameIndex,
+      options.color,
+    );
     const styledBody =
-      splitIdx === -1
-        ? paint(fitted, '1', options.color)
-        : `${paint(fitted.slice(0, splitIdx), '1', options.color)}${paint(fitted.slice(splitIdx), '2', options.color)}`;
+      detailPart === ''
+        ? styledAction
+        : `${styledAction}${paint(detailPart, '2', options.color)}`;
     const styledFrame = paint(frame, '36', options.color);
     write(`${CLEAR_LINE}  ${styledFrame} ${styledBody}`);
     visible = true;
@@ -135,7 +147,7 @@ export function createUpdateSpinner(
         frameIndex = 0;
         renderFrame();
         timer = setTimer(() => {
-          frameIndex = (frameIndex + 1) % FRAMES.length;
+          frameIndex += 1;
           renderFrame();
         }, FRAME_INTERVAL_MS);
         timer.unref?.();

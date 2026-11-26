@@ -57,11 +57,13 @@ export {
 export {
   BAR_BLOCK,
   type ColorChannels,
+  type ShimmerSgrPalette,
   type UpdateUi,
   createUpdateUi,
   detectColorChannels,
   formatElapsedMs,
   paint,
+  renderShimmerText,
   sanitizeMultilineTail,
   sanitizeText,
   stderrSupportsSpinner,

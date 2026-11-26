@@ -2,6 +2,7 @@
  * `@iyowei/fan-cli` 实时轮询、物理转速爬升原地追踪与双语错误转换辅助。
  */
 import { type Locale, t } from '@iyowei/cli-i18n';
+import { renderShimmerText } from '@iyowei/cli-updater';
 import {
   type FanController,
   type FanInfo,
@@ -12,6 +13,7 @@ import {
 import {
   displayWidth,
   isManualFanSettled,
+  paint,
   renderReport,
   renderWatchLine,
 } from './render.ts';
@@ -239,18 +241,15 @@ export async function renderWithLiveSettle(options: {
     current.fans.some((f) => f.mode === 'auto' && Math.round(f.actualRpm) > 0);
   const spinHint = () => {
     const glyph = SPINNER_FRAMES[tick % SPINNER_FRAMES.length]!;
-    if (hasAutoSpinning()) {
-      return t(
-        locale,
-        `${glyph} 正在等待风扇降速停转… (Ctrl+C 跳过等待)`,
-        `${glyph} Waiting for fans to spin down… (Ctrl+C to skip)`,
-      );
-    }
-    return t(
-      locale,
-      `${glyph} 物理风扇正在响应目标转速… (Ctrl+C 跳过等待)`,
-      `${glyph} Waiting for fans to reach target speed… (Ctrl+C to skip)`,
-    );
+    const activeMsg = hasAutoSpinning()
+      ? t(locale, '正在等待风扇降速停转…', 'Waiting for fans to spin down…')
+      : t(
+          locale,
+          '物理风扇正在响应目标转速…',
+          'Waiting for fans to reach target speed…',
+        );
+    const skipHint = t(locale, '(Ctrl+C 跳过等待)', '(Ctrl+C to skip)');
+    return `${paint(glyph, '36', color)} ${renderShimmerText(activeMsg, tick, color)} ${paint(skipHint, '2', color)}`;
   };
 
   let frame = renderReport(current, {
@@ -259,6 +258,7 @@ export async function renderWithLiveSettle(options: {
     title,
     locale,
     extraHint: spinHint(),
+    extraHintPrestyled: true,
     settlingAuto: true,
   });
   writeRaw(`${frame}\n`);
@@ -305,6 +305,7 @@ export async function renderWithLiveSettle(options: {
         title,
         locale,
         extraHint: spinHint(),
+        extraHintPrestyled: true,
         settlingAuto: true,
       });
       writeRaw(`\u001B[${String(prevLines)}A\r\u001B[0J${frame}\n`);

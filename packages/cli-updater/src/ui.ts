@@ -160,6 +160,73 @@ export function displayWidth(text: string): number {
   return width;
 }
 
+/** 跑马灯流光渐进调色配置 (仅使用标准 ANSI SGR, 零 24-bit RGB 硬编码) */
+export interface ShimmerSgrPalette {
+  /** 静默背景字符 SGR (默认 `'2'` 压暗灰) */
+  base: string;
+  /** 光斑过渡边缘 SGR (默认 `'34'` 柔和蓝) */
+  shoulder: string;
+  /** 光斑高光核心 SGR (默认 `'1;94'` 亮蓝加粗) */
+  peak: string;
+}
+
+const DEFAULT_SHIMMER_PALETTE: ShimmerSgrPalette = {
+  base: '2',
+  shoulder: '34',
+  peak: '1;94',
+};
+
+/**
+ * 跑马灯流光渲染 (零 24-bit RGB 硬编码, `enabled=false` 时原样返回零 ANSI 文本):
+ * 按终端显示列宽推进光斑中心使中英文保持视觉等速平滑扫过, 合并连续同色片段减少控制符开销。
+ */
+export function renderShimmerText(
+  text: string,
+  step: number,
+  enabled: boolean,
+  palette: ShimmerSgrPalette = DEFAULT_SHIMMER_PALETTE,
+): string {
+  if (!enabled || text === '') return text;
+  const chars = Array.from(text);
+  const widths = chars.map((ch) => Math.max(1, displayWidth(ch)));
+  const starts: number[] = [];
+  let totalWidth = 0;
+  for (const w of widths) {
+    starts.push(totalWidth);
+    totalWidth += w;
+  }
+
+  const pauseCols = 6;
+  const cycle = Math.max(1, totalWidth + pauseCols);
+  const pos = ((Math.trunc(step) % cycle) + cycle) % cycle;
+  const centerCol = pos - 1;
+
+  const pickSgr = (colCenter: number): string => {
+    const dist = Math.abs(colCenter - centerCol);
+    if (dist <= 1.1) return palette.peak;
+    if (dist <= 2.6) return palette.shoulder;
+    return palette.base;
+  };
+
+  const parts: string[] = [];
+  let runSgr = '';
+  let runText = '';
+  for (let i = 0; i < chars.length; i += 1) {
+    const ch = chars[i]!;
+    const colCenter = starts[i]! + widths[i]! / 2;
+    const sgr = pickSgr(colCenter);
+    if (sgr === runSgr) {
+      runText += ch;
+    } else {
+      if (runText !== '') parts.push(paint(runText, runSgr, true));
+      runSgr = sgr;
+      runText = ch;
+    }
+  }
+  if (runText !== '') parts.push(paint(runText, runSgr, true));
+  return parts.join('');
+}
+
 const KV_LABEL_COLS = 10;
 
 /** 统一自更新渲染器 (受控标准 SGR, 全部外部文本强制经 sanitizeText 净化, 全文左对齐) */
