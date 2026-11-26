@@ -1,7 +1,7 @@
 /**
  * 发布前置闸门 (`@iyowei/fan` API 包): 复用仓根共享判定库 + API `.d.ts` specifier 复查。
  */
-import { readFileSync, readdirSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 
 import {
@@ -55,6 +55,7 @@ const DTS_TS_SPECIFIER_RE =
   /(?:from\s+['"]|import\s+['"]|import\(\s*['"])\.[^'"]+\.ts['"]/;
 
 const dtsHits = (distDir: string): string[] => {
+  if (!existsSync(distDir)) return [];
   const hits: string[] = [];
   const walk = (dir: string, prefix: string): void => {
     for (const entry of readdirSync(dir, { withFileTypes: true })) {
@@ -68,11 +69,7 @@ const dtsHits = (distDir: string): string[] => {
       }
     }
   };
-  try {
-    walk(distDir, '');
-  } catch {
-    // dist 缺失时交由判定层报出
-  }
+  walk(distDir, '');
   return hits.sort();
 };
 
