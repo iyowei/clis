@@ -162,19 +162,19 @@ export function displayWidth(text: string): number {
 
 const KV_LABEL_COLS = 10;
 
-/** 统一自更新渲染器 (受控标准 SGR, 全部外部文本强制经 sanitizeText 净化) */
+/** 统一自更新渲染器 (受控标准 SGR, 全部外部文本强制经 sanitizeText 净化, 全文左对齐) */
 export interface UpdateUi {
   /** 顶栏: ▍ <BIN>   自更新 */
   header(binName: string): string;
-  /** 键值信息行: `  <压暗标签>  <内容>` */
+  /** 键值信息行: `<压暗标签>  <内容>` */
   kv(
     label: string,
     value: string,
     tone?: 'plain' | 'bold' | 'cyan' | 'dim',
   ): string;
-  /** 正文缩进行 */
+  /** 正文行 */
   body(text: string): string;
-  /** 柔和提示缩进行 (2 格缩进 + 压暗) */
+  /** 柔和提示行 (压暗) */
   hint(text: string): string;
   /** 黄色警示行 */
   warn(text: string): string;
@@ -184,9 +184,9 @@ export interface UpdateUi {
   foundUpdate(fromVer: string, toVer: string, registry: string): string;
   /** 错误首行 (stderr 着色时带红色 ✗ 前缀) */
   error(text: string): string;
-  /** 错误补充缩进行 */
+  /** 错误补充行 */
   errorHint(text: string): string;
-  /** 失败时展示的捕获日志单行 (`    │ <line>`) */
+  /** 失败时展示的捕获日志单行 (`│ <line>`) */
   errorLogLine(line: string): string;
 }
 
@@ -212,23 +212,23 @@ export function createUpdateUi(
       if (tone === 'bold') styledValue = paint(safeValue, '1', out);
       else if (tone === 'cyan') styledValue = paint(safeValue, '36', out);
       else if (tone === 'dim') styledValue = paint(safeValue, '2', out);
-      return `  ${paint(safeLabel, '2', out)}${pad}${styledValue}`;
+      return `${paint(safeLabel, '2', out)}${pad}${styledValue}`;
     },
     body(text: string): string {
-      return `  ${text}`;
+      return text;
     },
     hint(text: string): string {
-      return `  ${paint(text, '2', out)}`;
+      return paint(text, '2', out);
     },
     warn(text: string): string {
-      return `  ${paint(text, '33', out)}`;
+      return paint(text, '33', out);
     },
     success(text: string, suffix?: string): string {
       const tail =
         suffix !== undefined && suffix !== ''
           ? ` ${paint(suffix, '2', out)}`
           : '';
-      return `  ${text}${tail} ${paint('✓', '1;32', out)}`;
+      return `${text}${tail} ${paint('✓', '1;32', out)}`;
     },
     foundUpdate(fromVer: string, toVer: string, registry: string): string {
       const safeFrom = sanitizeText(fromVer);
@@ -238,10 +238,10 @@ export function createUpdateUi(
       const target = paint(`v${safeTo}`, '1;36', out);
       if (locale === 'en') {
         const src = paint(`(${safeReg})`, '2', out);
-        return `  Update available: v${safeFrom} ${arrow} ${target} ${src}`;
+        return `Update available: v${safeFrom} ${arrow} ${target} ${src}`;
       }
       const src = paint(`(源: ${safeReg})`, '2', out);
-      return `  发现新版本: v${safeFrom} ${arrow} ${target} ${src}`;
+      return `发现新版本: v${safeFrom} ${arrow} ${target} ${src}`;
     },
     error(text: string): string {
       const safe = sanitizeText(text);
@@ -249,11 +249,11 @@ export function createUpdateUi(
     },
     errorHint(text: string): string {
       const safe = sanitizeText(text);
-      return `  ${paint(safe, '2', err)}`;
+      return paint(safe, '2', err);
     },
     errorLogLine(line: string): string {
       const bar = paint('│', '2', err);
-      return `    ${bar} ${line}`;
+      return `${bar} ${line}`;
     },
   };
 }

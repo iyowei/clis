@@ -116,8 +116,8 @@ export async function handleNonGlobalOrigin(ctx: {
       ui.hint(
         t(
           locale,
-          '  请在仓库根目录运行: git pull && bun install && bun run build',
-          '  Update in repository root: git pull && bun install && bun run build',
+          '请在仓库根目录运行: git pull && bun install && bun run build',
+          'Update in repository root: git pull && bun install && bun run build',
         ),
       ),
     );
@@ -125,8 +125,8 @@ export async function handleNonGlobalOrigin(ctx: {
       ui.hint(
         t(
           locale,
-          '  若要通过包管理器安装全局发布版, 可显式指定 --pm <bun|npm|pnpm|yarn|volta>',
-          '  To install a global published copy instead, pass --pm <bun|npm|pnpm|yarn|volta>',
+          '若要通过包管理器安装全局发布版, 可显式指定 --pm <bun|npm|pnpm|yarn|volta>',
+          'To install a global published copy instead, pass --pm <bun|npm|pnpm|yarn|volta>',
         ),
       ),
     );
@@ -148,8 +148,8 @@ export async function handleNonGlobalOrigin(ctx: {
       ui.hint(
         t(
           locale,
-          `  下次获取最新版请运行: ${sanitize(ephemeralHintCommand(origin.runner, meta.name))}`,
-          `  Run the latest release anytime with: ${sanitize(ephemeralHintCommand(origin.runner, meta.name))}`,
+          `下次获取最新版请运行: ${sanitize(ephemeralHintCommand(origin.runner, meta.name))}`,
+          `Run the latest release anytime with: ${sanitize(ephemeralHintCommand(origin.runner, meta.name))}`,
         ),
       ),
     );
@@ -157,8 +157,8 @@ export async function handleNonGlobalOrigin(ctx: {
       ui.hint(
         t(
           locale,
-          '  若希望改为全局安装, 可运行带 --pm <bun|npm|pnpm|yarn|volta> 的 update 或直接全局安装',
-          '  To install globally, pass --pm <bun|npm|pnpm|yarn|volta>',
+          '若希望改为全局安装, 可运行带 --pm <bun|npm|pnpm|yarn|volta> 的 update 或直接全局安装',
+          'To install globally, pass --pm <bun|npm|pnpm|yarn|volta>',
         ),
       ),
     );
@@ -179,8 +179,8 @@ export async function handleNonGlobalOrigin(ctx: {
     ui.hint(
       t(
         locale,
-        `  请在项目目录执行: ${sanitize(localProjectHintCommand(origin.suggestedPm, meta.name))}`,
-        `  Upgrade inside the project directory: ${sanitize(localProjectHintCommand(origin.suggestedPm, meta.name))}`,
+        `请在项目目录执行: ${sanitize(localProjectHintCommand(origin.suggestedPm, meta.name))}`,
+        `Upgrade inside the project directory: ${sanitize(localProjectHintCommand(origin.suggestedPm, meta.name))}`,
       ),
     ),
   );

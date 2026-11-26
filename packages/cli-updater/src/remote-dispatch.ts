@@ -194,8 +194,8 @@ export async function dispatchRemoteVersion(ctx: {
       ui.hint(
         t(
           locale,
-          `  若确认需要安装远端版本, 请加 --force 重试 (例如: ${sanitize(binName)} update --force)`,
-          `  Pass --force to install anyway (e.g. ${sanitize(binName)} update --force)`,
+          `若确认需要安装远端版本, 请加 --force 重试 (例如: ${sanitize(binName)} update --force)`,
+          `Pass --force to install anyway (e.g. ${sanitize(binName)} update --force)`,
         ),
       ),
     );

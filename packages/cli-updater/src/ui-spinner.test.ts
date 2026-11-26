@@ -60,6 +60,24 @@ describe('update UI 标准 SGR 配色与防注入净化', () => {
         uiColor.foundUpdate('0.5.1', '0.6.0', 'https://registry.npmjs.org'),
       ),
     ).toBe(uiPlain.foundUpdate('0.5.1', '0.6.0', 'https://registry.npmjs.org'));
+
+    const flushLeftLines = [
+      uiPlain.header('fan'),
+      uiPlain.kv('当前版本', 'a@1.0.0', 'bold'),
+      uiPlain.body('正文提示'),
+      uiPlain.hint('补充提示'),
+      uiPlain.warn('注意: 阴影'),
+      uiPlain.success('已更新', '(1.0s)'),
+      uiPlain.foundUpdate('0.5.1', '0.6.0', 'https://registry.npmjs.org'),
+      uiPlain.error('失败原因'),
+      uiPlain.errorHint('手动命令'),
+      uiPlain.errorLogLine('日志行'),
+    ];
+    for (const line of flushLeftLines) {
+      expect(line.startsWith(' ')).toBe(false);
+    }
+    expect(uiPlain.kv('当前版本', 'a@1.0.0')).toBe('当前版本  a@1.0.0');
+    expect(uiPlain.errorLogLine('日志行')).toBe('│ 日志行');
   });
 
   test('sanitizeMultilineTail 剥离 ANSI 颜色码与控制字符并保留末尾报错行', () => {

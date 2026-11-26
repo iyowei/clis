@@ -213,6 +213,9 @@ describe('runSelfUpdate 非全局与异常边界', () => {
       },
     });
     expect(srcCode).toBe(0);
+    for (const line of out1) {
+      expect(line.startsWith(' ')).toBe(false);
+    }
     expect(out1.join('\n')).toContain('本地源码工作树');
     expect(out1.join('\n')).toContain(
       'git pull && bun install && bun run build',
