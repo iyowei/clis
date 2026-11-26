@@ -248,7 +248,8 @@ def apply_saved_state(reason, should_abort=None):
                 kind = entry.get("kind")
                 val = float(entry.get("value", 0))
                 if kind == "percent":
-                    target = round(mn + (val / 100.0) * (mx - mn))
+                    pct = max(0.0, min(100.0, val))
+                    target = int(mn + (pct / 100.0) * (mx - mn) + 0.5)
                 else:
                     target = max(mn, min(mx, val))
                 cur_mode = read_fan_mode(conn, idx)
