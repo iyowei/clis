@@ -300,12 +300,21 @@ export async function runCli(
     const shouldLiveSettle =
       !options.json &&
       isMutatingTuneCmd &&
-      (deps.liveSettle ??
-        (deps.out === undefined && process.stdout.isTTY === true));
+      (deps.liveSettle ?? (deps.out === undefined && stdoutColor));
 
     if (shouldLiveSettle) {
       const writeRaw =
-        deps.rawWrite ?? ((chunk: string) => process.stdout.write(chunk));
+        deps.rawWrite ??
+        (deps.out !== undefined
+          ? (chunk: string) =>
+              deps.out!(chunk.endsWith('\n') ? chunk.slice(0, -1) : chunk)
+          : (chunk: string) => process.stdout.write(chunk));
+      const columns =
+        deps.rawWrite === undefined &&
+        deps.out === undefined &&
+        process.stdout.isTTY === true
+          ? process.stdout.columns
+          : undefined;
       await renderWithLiveSettle({
         initialReport: report,
         controller,
@@ -316,6 +325,7 @@ export async function runCli(
         writeRaw,
         intervalMs: deps.settleIntervalMs ?? 80,
         maxMs: deps.settleMaxMs,
+        columns,
       });
       return 0;
     }

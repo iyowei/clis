@@ -1,6 +1,7 @@
 /**
  * `cli.ts` 与 `cli-helpers.ts` 边界覆盖:
  * - 注入 `platform !== 'darwin'` 的快速拒绝与错误信息本地化
+ * - `NO_COLOR=1` 禁用默认 `liveSettle`、`rawWrite` 缺失时回落 `out`
  * - `STATE_CORRUPT` 告警展示与 `persist status` `stateError` 提示
  * - `localizeFanError` 英文/中文错误映射与 `runWatchLoop` `SIGINT` 及时中断
  */
@@ -123,6 +124,51 @@ describe('runCli 跨平台注入与输出边界', () => {
     });
     expect(codePersist).toBe(1);
     expect(errPersist.join('\n')).toContain('current: win32');
+  });
+
+  test('NO_COLOR=1 时关闭颜色且默认不启用 liveSettle', async () => {
+    let reads = 0;
+    const out: string[] = [];
+    const code = await runCli(['set', '2820', '--once'], {
+      transport: makeSimpleTransport({
+        rpm: 0,
+        onRead: () => {
+          reads += 1;
+        },
+      }),
+      stateStore: {
+        path: '/stub/state.json',
+        read: () => null,
+        write: () => {},
+      },
+      homedir: makeIsolatedHome(),
+      env: { NO_COLOR: '1', CLIS_TEST_OS_LOCALE: 'zh-CN' },
+      out: (line) => out.push(line),
+      err: () => {},
+    });
+    expect(code).toBe(0);
+    expect(reads).toBe(1);
+    expect(out.join('\n')).not.toContain('\u001B[');
+  });
+
+  test('liveSettle=true 且未提供 rawWrite 时回 fallback 到 out', async () => {
+    const out: string[] = [];
+    const code = await runCli(['set', '2820', '--once'], {
+      transport: makeSimpleTransport({ rpm: 2820 }),
+      stateStore: {
+        path: '/stub/state.json',
+        read: () => null,
+        write: () => {},
+      },
+      homedir: makeIsolatedHome(),
+      env: { CLIS_TEST_OS_LOCALE: 'zh-CN' },
+      stdoutColor: false,
+      liveSettle: true,
+      out: (line) => out.push(line),
+      err: () => {},
+    });
+    expect(code).toBe(0);
+    expect(out.join('\n')).toContain('手动 2820 RPM');
   });
 
   test('STATE_CORRUPT 在只读命令给出告警、在 persist status 展示 stateError', async () => {
