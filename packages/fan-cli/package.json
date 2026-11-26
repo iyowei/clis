@@ -1,6 +1,6 @@
 {
   "name": "@iyowei/fan-cli",
-  "version": "1.2.1",
+  "version": "1.3.0",
   "description": "CLI to inspect and manually control Mac fan speeds via AppleSMC IOKit with zero third-party runtime dependencies. Mac 风扇转速查看与手动控制命令行工具。",
   "keywords": [
     "cli",
@@ -44,7 +44,7 @@
   "devDependencies": {
     "@iyowei/cli-i18n": "1.0.0",
     "@iyowei/cli-updater": "1.0.0",
-    "@iyowei/fan": "1.0.2"
+    "@iyowei/fan": "1.1.0"
   },
   "scripts": {
     "build": "bun build src/cli.ts --target=node --minify-whitespace --minify-syntax --outfile=dist/cli.js && bun scripts/write-dist-manifest.ts",

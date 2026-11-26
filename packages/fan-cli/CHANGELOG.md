@@ -1,3 +1,28 @@
+# @iyowei/fan-cli [1.3.0](https://github.com/iyowei/clis/compare/@iyowei/fan-cli@1.2.1...@iyowei/fan-cli@1.3.0) (2026-11-26)
+
+
+### Bug Fixes
+
+* 修复 fan-cli liveSettle 未随 NO_COLOR 关闭及输出流回退 ([063d971](https://github.com/iyowei/clis/commit/063d971ed1a11dc4675a452308cae5a77c7fb74c))
+* 修复 fan-cli 中 -w 后接无效数字轮询间隔未报错的问题 ([d104c4a](https://github.com/iyowei/clis/commit/d104c4a9b80af0c8c64f7f0a397afcb269cefdd9))
+* 修复 fan-cli 入口未透传注入平台与自定义 statePath 的问题 ([816af8d](https://github.com/iyowei/clis/commit/816af8dd047dc7f12fbaa37721feace9c294f0c1))
+* 修复 fan-cli 实时刷新在窄终端换行残影与告警丢失问题 ([7790e6a](https://github.com/iyowei/clis/commit/7790e6a99f9660af7712c0d187a63c22c4b4a72a))
+* 修复 fan-cli 英文平台错误未按注入平台本地化的问题 ([4be1339](https://github.com/iyowei/clis/commit/4be13390127ec81fff13c9a0737b9717e5d049bd))
+* 修复 watch 模式收到 SIGINT 后需等待周期结束才退出的问题 ([412ddf9](https://github.com/iyowei/clis/commit/412ddf9706d71981c4bfab13e2c2f7dd102946da))
+* 修复跨包启动器 win32 下空 PATH 未回退读取 Path 的问题 ([1c0c716](https://github.com/iyowei/clis/commit/1c0c7165c5b807d8bb463ef5aeb6a8db7c2d3954))
+* 修正 fan-cli 中 update 与 lang 后接帮助选项无法生效的问题 ([7ba917b](https://github.com/iyowei/clis/commit/7ba917b153327c34371ae7c92eca16a83b416a63))
+
+
+### Features
+
+* 为 fan-cli persist 状态面板补充状态文件损坏诊断展示 ([8ca0497](https://github.com/iyowei/clis/commit/8ca0497814d1e23c321ad933b786f0919f8a5aad))
+* 为 fan-cli 报告渲染补充 STATE_CORRUPT 英文告警提示 ([522076e](https://github.com/iyowei/clis/commit/522076ec032d2343a5c62f2c980436487cbeffac))
+
+
+### Dependencies
+
+* **@iyowei/fan:** upgraded to 1.1.0
+
 ## @iyowei/fan-cli [1.2.1](https://github.com/iyowei/clis/compare/@iyowei/fan-cli@1.2.0...@iyowei/fan-cli@1.2.1) (2026-11-26)
 
 
