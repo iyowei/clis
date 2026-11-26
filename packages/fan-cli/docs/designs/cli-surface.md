@@ -9,7 +9,7 @@
 - `fan set <speed>`: 手动设定全部风扇或 `--fan <index>` 指定风扇的目标转速 (支持绝对 RPM 如 `4000` 或百分比如 `60%`), 默认自动记住并确保后台守护就绪 (接管无外接屏合盖/睡眠停转与开盖/重启恢复)。
 - `fan max`: 将目标风扇切为手动模式并设为各自最大转速 (`maxRpm`), 默认自动记住并确保后台守护就绪。
 - `fan min`: 将目标风扇切为手动模式并设为各自最小转速 (`minRpm`), 默认自动记住并确保后台守护就绪。
-- `fan auto`: 恢复目标风扇为系统自动温控 (`F{i}md = 0`), 并更新持久化状态为 `auto`。
+- `fan auto`: 将目标风扇恢复为系统自动温控 (按代际重置 `F{i}md` / `F{i}Md` + `Ftst` 或 `FS! `), 并更新持久化状态为 `auto`。
 - `fan apply`: 立即读取 `/Library/Application Support/iyowei-fan/state.json` 并应用至全部对应风扇。
 - `fan persist [status|install|uninstall]`: 查看、安装或卸载系统级 `LaunchDaemon` (`com.iyowei.fan`), 负责开机/唤醒恢复与合盖/睡眠自动停转。
 - `fan lang [system|en|zh]`: 查看或独立持久化 `fan` 的显示语言偏好 (`~/.config/fan/lang.json`, 默认 `system` 自动探测 macOS 系统首选语言)。
