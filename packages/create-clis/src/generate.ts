@@ -21,7 +21,8 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { createRequire } from 'node:module';
-import { dirname, join, win32 } from 'node:path';
+import { dirname, join, resolve, win32 } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 import type * as Prettier from 'prettier';
 
@@ -502,12 +503,50 @@ export function createGitInitHook(
 }
 
 /**
+ * 解析独立脚本安装或当前 Bun 宿主下的兜底 Bun 可执行文件:
+ * 当用户在无全局 Bun 的裸机通过一键脚本安装 `create-clis` 时, 优先回退当前 Bun 进程自身 (`process.execPath`)
+ * 或相邻隔离目录 `<dataDir>/runtime/bun(.exe)`, 确保默认 `bun install` 收尾开箱可用。
+ */
+export function resolveFallbackBunExecutable(
+  options: {
+    isBunProcess?: boolean;
+    execPath?: string;
+    moduleUrl?: string;
+    platform?: NodeJS.Platform;
+    fileProbe?: (candidate: string) => boolean;
+  } = {},
+): string | null {
+  const isBunProc =
+    options.isBunProcess ?? typeof process.versions.bun === 'string';
+  const execPath = options.execPath ?? process.execPath;
+  const probe = options.fileProbe ?? isFileAt;
+  if (isBunProc && typeof execPath === 'string' && probe(execPath)) {
+    return execPath;
+  }
+  const platform = options.platform ?? process.platform;
+  const bunBin = platform === 'win32' ? 'bun.exe' : 'bun';
+  try {
+    const selfPath = fileURLToPath(options.moduleUrl ?? import.meta.url);
+    const pkgRoot = dirname(dirname(selfPath));
+    const siblingRuntimeBun = resolve(pkgRoot, '..', '..', 'runtime', bunBin);
+    if (probe(siblingRuntimeBun)) {
+      return siblingRuntimeBun;
+    }
+  } catch {
+    // 非 file: URL 场景忽略
+  }
+  return null;
+}
+
+/**
  * 依赖安装收尾 hook (默认收尾): 产物是 bun 工程 (packageManager 声明 bun), 用 bun install。
- * 清洗 npm_execpath / npm_lifecycle_* 环境变量, 兼容 Windows .exe/.com/.cmd, 缺 bun 给出清晰指引。
+ * 清洗 npm_execpath / npm_lifecycle_* 环境变量, 兼容 Windows .exe/.com/.cmd,
+ * 全局 PATH 无 bun 时自动回退当前/隔离私有 Bun, 仍缺失再给出清晰指引。
  * 外部副作用: 在 targetDir 安装依赖 (stdio 透传给用户看进度)。
  */
 export function createInstallHook(
   spawner: HookSpawner = defaultSpawner,
+  fallbackResolver: () => string | null = () => resolveFallbackBunExecutable(),
 ): (targetDir: string) => void {
   return (targetDir) => {
     process.stdout.write('  安装依赖 (bun install) ...\n');
@@ -522,12 +561,26 @@ export function createInstallHook(
           args: ['install'],
           windowsVerbatimArguments: false,
         };
-    const result = spawner(invocation.command, invocation.args, {
+    let result = spawner(invocation.command, invocation.args, {
       cwd: targetDir,
       stdio: 'inherit',
       env,
       windowsVerbatimArguments: invocation.windowsVerbatimArguments,
     });
+    if (
+      result.error !== undefined &&
+      (result.error as NodeJS.ErrnoException).code === 'ENOENT'
+    ) {
+      const fallbackBun = fallbackResolver();
+      if (fallbackBun !== null && fallbackBun !== invocation.command) {
+        result = spawner(fallbackBun, ['install'], {
+          cwd: targetDir,
+          stdio: 'inherit',
+          env,
+          windowsVerbatimArguments: false,
+        });
+      }
+    }
     if (result.error !== undefined) {
       const code = (result.error as NodeJS.ErrnoException).code;
       if (code === 'ENOENT') {

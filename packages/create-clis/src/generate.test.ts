@@ -251,9 +251,23 @@ describe('createInstallHook 加固 (CREATE-P0-4)', () => {
     });
     const missingBun: HookSpawner = () =>
       fakeResult({ status: null, error: enoent });
-    expect(() => createInstallHook(missingBun)('/tmp/new-proj')).toThrow(
-      /--no-install/,
+    const runNoFallback = createInstallHook(missingBun, () => null);
+    expect(() => runNoFallback('/tmp/new-proj')).toThrow(/--no-install/);
+
+    const attemptedCmds: string[] = [];
+    const fallbackSpawner: HookSpawner = (cmd) => {
+      attemptedCmds.push(cmd);
+      if (cmd === '/isolated/runtime/bun') {
+        return fakeResult({ status: 0 });
+      }
+      return fakeResult({ status: null, error: enoent });
+    };
+    const runWithFallback = createInstallHook(
+      fallbackSpawner,
+      () => '/isolated/runtime/bun',
     );
+    expect(() => runWithFallback('/tmp/new-proj')).not.toThrow();
+    expect(attemptedCmds).toContain('/isolated/runtime/bun');
   });
 });
 
