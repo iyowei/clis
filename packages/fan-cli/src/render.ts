@@ -373,8 +373,10 @@ export function renderPersistStatus(
   }
   const locale = options.locale ?? 'zh';
   const stateSummary =
-    formatPersistedSummary(status.state, locale) ??
-    t(locale, '暂无已存预设', 'None');
+    status.stateError !== undefined
+      ? t(locale, '状态文件损坏/不可读', 'Corrupted / unreadable')
+      : (formatPersistedSummary(status.state, locale) ??
+        t(locale, '暂无已存预设', 'None'));
   const dot = status.running
     ? paint('●', '32', options.color)
     : paint('○', '2', options.color);
@@ -422,9 +424,21 @@ export function renderPersistStatus(
       return `  ${paint(paddedKey, '1', options.color)}${valStyled}`;
     }),
   ];
+  const persistFooters: string[] = [];
+  if (status.stateError !== undefined) {
+    persistFooters.push(
+      warnNoteLine(
+        t(
+          locale,
+          `状态文件异常: ${status.stateError}`,
+          `State file error: ${status.stateError}`,
+        ),
+        options.color,
+      ),
+    );
+  }
   if (!status.installed) {
-    lines.push(
-      '',
+    persistFooters.push(
       neutralLine(
         t(
           locale,
@@ -434,6 +448,9 @@ export function renderPersistStatus(
         options.color,
       ),
     );
+  }
+  if (persistFooters.length > 0) {
+    lines.push('', ...persistFooters);
   }
   lines.push('');
   return lines.join('\n');

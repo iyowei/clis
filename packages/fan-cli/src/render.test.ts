@@ -202,6 +202,27 @@ describe('renderReport & renderPersistStatus & renderWatchLine', () => {
     expect(
       JSON.parse(renderPersistStatus(status, { color: false, json: true })),
     ).toEqual(status);
+
+    const corruptStatus: PersistDaemonStatus = {
+      ...status,
+      state: null,
+      stateError:
+        '持久化状态文件损坏: /Library/Application Support/iyowei-fan/state.json',
+    };
+    const corruptZh = renderPersistStatus(corruptStatus, {
+      color: false,
+      json: false,
+      locale: 'zh',
+    });
+    const corruptEn = renderPersistStatus(corruptStatus, {
+      color: false,
+      json: false,
+      locale: 'en',
+    });
+    expect(corruptZh).toContain('状态文件损坏/不可读');
+    expect(corruptZh).toContain('状态文件异常');
+    expect(corruptEn).toContain('Corrupted / unreadable');
+    expect(corruptEn).toContain('State file error');
   });
 
   test('STATE_CORRUPT 告警支持中英文渲染', () => {
