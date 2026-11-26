@@ -234,6 +234,7 @@ export function parseArgs(
   let lang: LangPreference | undefined;
   let help = false;
   let version = false;
+  const hasHelpFlag = argv.includes('-h') || argv.includes('--help');
 
   let i = 0;
   while (i < argv.length) {
@@ -317,7 +318,7 @@ export function parseArgs(
       }
       watchSeconds = parsed;
     } else if (arg === 'update' || arg === 'lang') {
-      if (!help) {
+      if (!hasHelpFlag) {
         return {
           ok: false,
           message:

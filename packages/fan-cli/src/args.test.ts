@@ -85,6 +85,10 @@ describe('parseArgs 正常路由', () => {
     expect(parseArgs(['-h']).ok && parseArgs(['-h'])).toMatchObject({
       options: { help: true },
     });
+    expect(parseArgs(['status', 'update', '-h'])).toMatchObject({
+      ok: true,
+      options: { help: true },
+    });
   });
 });
 
