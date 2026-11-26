@@ -107,6 +107,32 @@ describe('@iyowei/fan 持久化状态与守护构建', () => {
     });
   });
 
+  test('createMacOsFanStateStore 支持可写嵌套新目录免 sudo 直写与空 FAN_STATE_PATH 回退', () => {
+    withTempDir((dir) => {
+      const nestedState = join(dir, 'nested', 'sub', 'state.json');
+      const store = createMacOsFanStateStore({
+        statePath: nestedState,
+        platform: 'darwin',
+        geteuid: () => 501,
+        sudoBin: join(dir, 'missing-sudo-must-not-run'),
+      });
+      const sample = mergePersistedState(
+        null,
+        { '0': { mode: 'manual', kind: 'percent', value: 40 } },
+        '2026-11-26T00:00:00.000Z',
+      );
+      store.write(sample);
+      expect(readPersistedState(nestedState)).toEqual(sample);
+
+      const defaultPathStore = createMacOsFanStateStore({
+        env: { FAN_STATE_PATH: '   ' },
+      });
+      expect(defaultPathStore.path).toContain('iyowei-fan');
+    });
+  });
+});
+
+describe('@iyowei/fan LaunchDaemon 与守护生命周期', () => {
   test('buildLaunchDaemonPlist 与 buildDaemonPythonScript 生成合法内容', () => {
     const plist = buildLaunchDaemonPlist({
       label: FAN_DAEMON_LABEL,

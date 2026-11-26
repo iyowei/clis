@@ -10,6 +10,7 @@ import {
   mkdirSync,
   readFileSync,
   renameSync,
+  rmSync,
   writeFileSync,
 } from 'node:fs';
 import { dirname, join } from 'node:path';
@@ -141,23 +142,40 @@ os.chmod(tmp, 0o644)
 os.replace(tmp, path)
 `;
 
-function canWriteDirectly(statePath: string): boolean {
-  if (typeof process.geteuid === 'function' && process.geteuid() === 0) {
+function nearestExistingAncestor(
+  targetDir: string,
+  existsFn: (path: string) => boolean,
+): string | null {
+  let cur = targetDir;
+  while (!existsFn(cur)) {
+    const up = dirname(cur);
+    if (up === cur) return null;
+    cur = up;
+  }
+  return cur;
+}
+
+function canWriteDirectly(
+  statePath: string,
+  geteuid: () => number,
+  existsFn: (path: string) => boolean,
+): boolean {
+  if (geteuid() === 0) return true;
+  const probeDir = nearestExistingAncestor(dirname(statePath), existsFn);
+  if (probeDir === null) return false;
+  const probe = join(
+    probeDir,
+    `.write-probe-${String(process.pid)}-${String(Date.now())}`,
+  );
+  try {
+    writeFileSync(probe, '');
+    renameSync(probe, probe);
     return true;
+  } catch {
+    return false;
+  } finally {
+    rmSync(probe, { force: true });
   }
-  const parent = dirname(statePath);
-  if (existsSync(parent)) {
-    try {
-      const probe = join(parent, `.write-probe-${String(process.pid)}`);
-      writeFileSync(probe, '');
-      renameSync(probe, probe);
-      spawnSync('/bin/rm', ['-f', probe], { stdio: 'ignore' });
-      return true;
-    } catch {
-      return false;
-    }
-  }
-  return false;
 }
 
 export interface MacOsStateStoreDeps {
@@ -165,17 +183,33 @@ export interface MacOsStateStoreDeps {
   platform?: NodeJS.Platform;
   python3Bin?: string;
   sudoBin?: string;
+  env?: Record<string, string | undefined>;
+  geteuid?: () => number;
+  exists?: (path: string) => boolean;
+  spawnSyncFn?: typeof spawnSync;
+  writeTimeoutMs?: number;
 }
 
 /** 创建默认 macOS 状态存储 (读免提权; 写目录受 root 保护时自动经 `/usr/bin/sudo` 原子落盘) */
 export function createMacOsFanStateStore(
   deps: MacOsStateStoreDeps = {},
 ): FanStateStore {
+  const env = deps.env ?? process.env;
+  const rawEnvPath = env.FAN_STATE_PATH?.trim();
   const statePath =
-    deps.statePath ?? process.env.FAN_STATE_PATH ?? DEFAULT_FAN_STATE_PATH;
+    deps.statePath ??
+    (rawEnvPath !== undefined && rawEnvPath !== ''
+      ? rawEnvPath
+      : DEFAULT_FAN_STATE_PATH);
   const platform = deps.platform ?? process.platform;
   const python3Bin = deps.python3Bin ?? MACOS_PYTHON3_BIN;
   const sudoBin = deps.sudoBin ?? MACOS_SUDO_BIN;
+  const geteuid =
+    deps.geteuid ??
+    (() => (typeof process.geteuid === 'function' ? process.geteuid() : -1));
+  const existsFn = deps.exists ?? existsSync;
+  const spawnSyncFn = deps.spawnSyncFn ?? spawnSync;
+  const writeTimeoutMs = deps.writeTimeoutMs ?? 30_000;
 
   return {
     path: statePath,
@@ -185,18 +219,39 @@ export function createMacOsFanStateStore(
     write(state: FanPersistedState): void {
       assertNoSymlinkPath(statePath);
       const serialized = `${JSON.stringify(state, null, 2)}\n`;
-      if (canWriteDirectly(statePath) || platform !== 'darwin') {
+      if (
+        canWriteDirectly(statePath, geteuid, existsFn) ||
+        platform !== 'darwin'
+      ) {
         mkdirSync(dirname(statePath), { recursive: true, mode: 0o755 });
         const tmp = `${statePath}.tmp.${String(process.pid)}`;
         writeFileSync(tmp, serialized, { encoding: 'utf8', mode: 0o644 });
         renameSync(tmp, statePath);
         return;
       }
-      const res = spawnSync(
+      if (!existsFn(sudoBin)) {
+        throw new FanError(
+          'PERMISSION_DENIED',
+          `写入持久化状态需要 root 权限, 但找不到 ${sudoBin}`,
+        );
+      }
+      // 保留 stdin='inherit' 供 sudo 交互式密码/Touch ID 提示, 内容经 argv 传递 (无机密)
+      const res = spawnSyncFn(
         sudoBin,
         [python3Bin, '-c', PRIVILEGED_WRITE_PY, statePath, serialized],
-        { encoding: 'utf8', stdio: ['inherit', 'pipe', 'pipe'] },
+        {
+          encoding: 'utf8',
+          stdio: ['inherit', 'pipe', 'pipe'],
+          ...(geteuid() === 0 ? { timeout: writeTimeoutMs } : {}),
+        },
       );
+      if (res.error !== undefined) {
+        throw new FanError(
+          'DAEMON_FAILED',
+          `写入持久化状态进程失败: ${res.error.message}`,
+          { cause: res.error },
+        );
+      }
       if (res.status !== 0) {
         const msg = (res.stderr ?? '').trim();
         throw new FanError(
