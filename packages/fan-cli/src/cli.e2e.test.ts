@@ -1,10 +1,12 @@
 /**
  * `@iyowei/fan-cli` 双运行时 (Bun + Node) 端到端契约测试。
  */
-import { describe, expect, test } from 'bun:test';
+import { afterAll, describe, expect, test } from 'bun:test';
 
 import { spawnSync } from 'node:child_process';
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const CLI = fileURLToPath(new URL('./cli.ts', import.meta.url));
@@ -14,34 +16,70 @@ const CLI_VERSION = (
   ) as { version: string }
 ).version;
 
+const ISOLATED_HOME = mkdtempSync(join(tmpdir(), 'fan-cli-e2e-home-'));
+afterAll(() => {
+  rmSync(ISOLATED_HOME, { recursive: true, force: true });
+});
+
+function isolatedSubprocessEnv(): Record<string, string | undefined> {
+  const env: Record<string, string | undefined> = {
+    ...process.env,
+    NO_COLOR: '1',
+    HOME: ISOLATED_HOME,
+    USERPROFILE: ISOLATED_HOME,
+    APPDATA: join(ISOLATED_HOME, 'AppData', 'Roaming'),
+    LOCALAPPDATA: join(ISOLATED_HOME, 'AppData', 'Local'),
+    XDG_CONFIG_HOME: join(ISOLATED_HOME, '.config'),
+    CLIS_TEST_OS_LOCALE: 'zh-CN',
+  };
+  delete env.FAN_LANG;
+  delete env.CLIS_LANG;
+  return env;
+}
+
+function resolveRunnerExec(runner: string): string | null {
+  const res = spawnSync(
+    runner,
+    ['-e', 'process.stdout.write(process.execPath)'],
+    {
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'pipe'],
+      timeout: 10_000,
+    },
+  );
+  if (res.status !== 0) return null;
+  const execPath = res.stdout.trim();
+  return execPath !== '' ? execPath : null;
+}
+
 const RUNNERS = ['bun', 'node'] as const;
 const RUNNER_AVAILABILITY = RUNNERS.map((runner) => ({
   runner,
-  available: spawnSync(runner, ['-v'], { timeout: 10_000 }).status === 0,
+  execPath: resolveRunnerExec(runner),
 }));
 
-function runSubprocess(runner: string, args: string[]) {
-  return spawnSync(runner, [CLI, ...args], {
+function runSubprocess(execPath: string, args: string[]) {
+  return spawnSync(execPath, [CLI, ...args], {
     encoding: 'utf8',
     stdio: ['ignore', 'pipe', 'pipe'],
-    env: { ...process.env, NO_COLOR: '1' },
-    timeout: 15_000,
+    env: isolatedSubprocessEnv(),
+    timeout: 20_000,
   });
 }
 
-for (const { runner, available } of RUNNER_AVAILABILITY) {
-  if (!available) {
+for (const { runner, execPath } of RUNNER_AVAILABILITY) {
+  if (execPath === null) {
     console.warn(`[Skip] 未检测到运行时 ${runner}, 跳过对应 e2e 用例`);
     continue;
   }
 
   describe(`fan-cli 双运行时 e2e [${runner}]`, () => {
     test('--version / -V 与 --help / -h', () => {
-      const ver = runSubprocess(runner, ['-V']);
+      const ver = runSubprocess(execPath, ['-V']);
       expect(ver.status, ver.stderr).toBe(0);
       expect(ver.stdout.trim()).toBe(CLI_VERSION);
 
-      const help = runSubprocess(runner, ['--help']);
+      const help = runSubprocess(execPath, ['--help']);
       expect(help.status, help.stderr).toBe(0);
       expect(help.stdout).toContain('FAN');
       expect(help.stdout).toContain('apply');
@@ -50,14 +88,14 @@ for (const { runner, available } of RUNNER_AVAILABILITY) {
     });
 
     test('update --help 与非法参数退 1', () => {
-      const upd = runSubprocess(runner, ['update', '--help']);
+      const upd = runSubprocess(execPath, ['update', '--help']);
       expect(upd.status, upd.stderr).toBe(0);
 
-      const bad = runSubprocess(runner, ['set']);
+      const bad = runSubprocess(execPath, ['set']);
       expect(bad.status).toBe(1);
       expect(bad.stderr).toContain('缺少目标转速');
 
-      const badOnce = runSubprocess(runner, ['status', '--once']);
+      const badOnce = runSubprocess(execPath, ['status', '--once']);
       expect(badOnce.status).toBe(1);
       expect(badOnce.stderr).toContain('--once');
     });
@@ -65,7 +103,7 @@ for (const { runner, available } of RUNNER_AVAILABILITY) {
     test.skipIf(process.platform !== 'darwin')(
       'macOS persist status --json 只读冒烟',
       () => {
-        const persistRes = runSubprocess(runner, [
+        const persistRes = runSubprocess(execPath, [
           'persist',
           'status',
           '--json',
@@ -89,7 +127,7 @@ for (const { runner, available } of RUNNER_AVAILABILITY) {
     test.skipIf(!canReadAppleSmc)(
       'macOS 真机 status --json 只读冒烟 (无物理 SMC 宿主机保持结构化报错)',
       () => {
-        const res = runSubprocess(runner, ['status', '--json']);
+        const res = runSubprocess(execPath, ['status', '--json']);
         if (res.status === 0) {
           const parsed = JSON.parse(res.stdout) as { fans: unknown[] };
           expect(Array.isArray(parsed.fans)).toBe(true);
@@ -104,7 +142,7 @@ for (const { runner, available } of RUNNER_AVAILABILITY) {
     test.skipIf(process.platform === 'darwin')(
       '非 macOS 平台执行 status 返回结构化平台不支持错误 (退出码 1)',
       () => {
-        const res = runSubprocess(runner, ['status', '--json']);
+        const res = runSubprocess(execPath, ['status', '--json']);
         expect(res.status).toBe(1);
         expect(res.stderr).toContain('macOS');
       },
