@@ -307,6 +307,20 @@ describe('@iyowei/fan LaunchDaemon 与守护生命周期', () => {
         expect(isFanError(err)).toBe(true);
         if (isFanError(err)) expect(err.code).toBe('UNSUPPORTED_PLATFORM');
       }
+
+      // uninstallPersistDaemon 在 darwin 下缺少 python3Bin 时抛 SMC_UNAVAILABLE
+      try {
+        uninstallPersistDaemon({
+          platform: 'darwin',
+          python3Bin: join(dir, 'missing-python3'),
+          plistPath,
+          daemonScriptPath,
+        });
+        throw new Error('Expected SMC_UNAVAILABLE');
+      } catch (err) {
+        expect(isFanError(err)).toBe(true);
+        if (isFanError(err)) expect(err.code).toBe('SMC_UNAVAILABLE');
+      }
     });
   });
 });

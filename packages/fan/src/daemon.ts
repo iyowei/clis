@@ -271,12 +271,7 @@ export function uninstallPersistDaemon(
   opts: DaemonPaths = {},
 ): PersistDaemonStatus {
   const paths = resolvePaths(opts);
-  if (paths.platform !== 'darwin') {
-    throw new FanError(
-      'UNSUPPORTED_PLATFORM',
-      `macOS LaunchDaemon 仅支持 darwin 平台 (当前: ${paths.platform})`,
-    );
-  }
+  assertDarwin(paths.platform, paths.python3Bin, paths.exists);
   runPrivilegedPython(paths, UNINSTALL_DAEMON_PY, [
     paths.plistPath,
     paths.daemonScriptPath,
