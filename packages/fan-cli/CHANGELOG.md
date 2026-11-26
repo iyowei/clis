@@ -1,3 +1,17 @@
+# @iyowei/fan-cli [1.4.0](https://github.com/iyowei/clis/compare/@iyowei/fan-cli@1.3.0...@iyowei/fan-cli@1.4.0) (2026-11-26)
+
+
+### Bug Fixes
+
+* 统一各 CLI 帮助面板的章节高亮与说明压暗层级 ([fa343a3](https://github.com/iyowei/clis/commit/fa343a3008404fb7f690440ed30f490a0cb40cbb))
+
+
+### Features
+
+* 为 CLI 进度指示器引入标准 SGR 流光跑马灯渲染 ([bdfb04a](https://github.com/iyowei/clis/commit/bdfb04a9d5543578756e43ba9870187ec34341c4))
+* 为 fan-cli 帮助信息补充文档与源码地址 ([afa53d4](https://github.com/iyowei/clis/commit/afa53d4b10964e782163bc762f4025dc2f0ec553))
+* 新增跨平台一键安装脚本与各 CLI 独立安装入口 ([59fc608](https://github.com/iyowei/clis/commit/59fc608b82984519e15c9a5aad455dee68a01822))
+
 # @iyowei/fan-cli [1.3.0](https://github.com/iyowei/clis/compare/@iyowei/fan-cli@1.2.1...@iyowei/fan-cli@1.3.0) (2026-11-26)
 
 
