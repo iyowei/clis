@@ -49,6 +49,7 @@ describe('create-clis 英文排版与独立语言偏好', () => {
       ...process.env,
       HOME: home,
       USERPROFILE: home,
+      APPDATA: join(home, 'AppData', 'Roaming'),
       NO_COLOR: '1',
       CLIS_TEST_OS_LOCALE: 'zh-Hans-CN',
     };

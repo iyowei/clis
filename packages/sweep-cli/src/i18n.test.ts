@@ -8,6 +8,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { displayWidth } from '@iyowei/cli-i18n';
+import { POSIX_STYLE, WIN32_STYLE } from '@iyowei/sweep';
 
 import {
   RUNNER_AVAILABILITY,
@@ -55,6 +56,7 @@ describe('sweep-cli 英文排版与独立语言切换', () => {
       mode: 'preview',
       roots: ['/Users/demo/dev'],
       home: '/Users/demo',
+      pathStyle: POSIX_STYLE,
       color: false,
       locale: 'en',
       entries: [
@@ -73,6 +75,7 @@ describe('sweep-cli 英文排版与独立语言切换', () => {
       mode: 'execute',
       roots: ['/Users/demo/dev'],
       home: '/Users/demo',
+      pathStyle: POSIX_STYLE,
       color: false,
       locale: 'en',
       releasedBytes: 104_857_600,
@@ -91,6 +94,24 @@ describe('sweep-cli 英文排版与独立语言切换', () => {
     expect(executed).toContain(
       'Summary  1 cleaned (1 trashed) · freed 100 MB · 0 failed',
     );
+
+    const winPreview = render({
+      mode: 'preview',
+      roots: ['C:\\Users\\demo\\dev'],
+      home: 'C:\\Users\\demo',
+      pathStyle: WIN32_STYLE,
+      color: false,
+      locale: 'en',
+      entries: [
+        {
+          target: 'C:\\Users\\demo\\dev\\app\\node_modules',
+          bytes: 104_857_600,
+          project: 'app',
+          suspect: false,
+        },
+      ],
+    });
+    expect(winPreview).toContain('▍ SWEEP  Preview · 1 root: ~\\dev');
   });
 
   const bunAvailable =
