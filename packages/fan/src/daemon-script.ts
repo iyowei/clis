@@ -206,7 +206,7 @@ def release_manual_fans_to_auto(reason):
                 iokit.IOServiceClose(conn)
 
 
-def apply_saved_state(reason):
+def apply_saved_state(reason, should_abort=None):
     try:
         fans_cfg = load_state()
     except Exception as exc:
@@ -221,6 +221,10 @@ def apply_saved_state(reason):
         return
 
     for attempt in range(10):
+        if should_abort is not None and should_abort():
+            log(f"{reason}: aborted restore because system entered sleep/clamshell")
+            release_manual_fans_to_auto(f"{reason}-abort")
+            return
         conn = None
         try:
             conn = smc_open()
@@ -278,13 +282,16 @@ def main():
         0, iokit.IOServiceMatching(b"IOPMrootDomain")
     )
     runtime = {"system_sleeping": False, "suspended": False, "root_port": 0}
+    should_abort_restore = (
+        lambda: runtime["system_sleeping"] or should_suspend_fans(pm_svc, False)[0]
+    )
 
     init_suspend, init_reason = should_suspend_fans(pm_svc, False)
     runtime["suspended"] = init_suspend
     if init_suspend:
         release_manual_fans_to_auto(f"boot-{init_reason}")
     else:
-        apply_saved_state("boot")
+        apply_saved_state("boot", should_abort_restore)
 
     def reconcile(trigger, force_check_on_wake=False):
         want_suspend, reason = should_suspend_fans(
@@ -295,7 +302,7 @@ def main():
             release_manual_fans_to_auto(f"{trigger}:{reason}")
         elif not want_suspend and runtime["suspended"]:
             runtime["suspended"] = False
-            apply_saved_state(trigger)
+            apply_saved_state(trigger, should_abort_restore)
         elif want_suspend and force_check_on_wake:
             release_manual_fans_to_auto(f"{trigger}:{reason}")
 
