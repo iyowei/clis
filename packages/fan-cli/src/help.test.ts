@@ -39,6 +39,7 @@ describe('helpText', () => {
       '-h, --help',
       '--check',
       'fan set 60%',
+      'https://github.com/iyowei/clis/tree/main/packages/fan-cli',
     ]) {
       expect(plain).toContain(token);
     }
@@ -85,6 +86,9 @@ describe('helpText', () => {
     const colored = helpText(true, 'en');
     expect(plain).not.toContain('\u001B');
     expect(stripAnsi(colored)).toBe(plain);
+    expect(plain).toContain(
+      'https://github.com/iyowei/clis/tree/main/packages/fan-cli',
+    );
 
     const alignedSections = new Set([
       'Commands',

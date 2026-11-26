@@ -42,6 +42,7 @@ interface HelpCatalog {
     examples: string;
     notes: string;
     exitCodes: string;
+    docs: string;
   };
   subcommands: readonly CommandRow[];
   options: readonly OptionRow[];
@@ -50,6 +51,8 @@ interface HelpCatalog {
   envNotes: readonly NoteRow[];
   exitCodes: readonly NoteRow[];
 }
+
+const GITHUB_URL = 'https://github.com/iyowei/clis/tree/main/packages/fan-cli';
 
 const CATALOG_ZH: HelpCatalog = {
   subtitle: 'macOS 风扇查看与手动控制器',
@@ -63,6 +66,7 @@ const CATALOG_ZH: HelpCatalog = {
     examples: '示例',
     notes: '环境与持久化',
     exitCodes: '退出码',
+    docs: '文档与源码',
   },
   subcommands: [
     { name: 'status', desc: '查看风扇当前转速、范围与控制模式 (默认动作)' },
@@ -202,6 +206,7 @@ const CATALOG_EN: HelpCatalog = {
     examples: 'Examples',
     notes: 'Persistence & Safety',
     exitCodes: 'Exit Codes',
+    docs: 'Docs & Source',
   },
   subcommands: [
     {
@@ -429,6 +434,9 @@ export function helpText(color: boolean, locale: Locale = 'zh'): string {
     '',
     `  ${s.dim(cat.sections.exitCodes)}`,
     ...cat.exitCodes.map(formatNote),
+    '',
+    `  ${s.dim(cat.sections.docs)}`,
+    `    ${s.token(GITHUB_URL)}`,
     '',
   ].join('\n');
 }
