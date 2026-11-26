@@ -59,18 +59,18 @@
     },
     "packages/fan": {
       "name": "@iyowei/fan",
-      "version": "1.0.1",
+      "version": "1.0.2",
     },
     "packages/fan-cli": {
       "name": "@iyowei/fan-cli",
-      "version": "1.2.0",
+      "version": "1.2.1",
       "bin": {
         "fan": "bin/fan.mjs",
       },
       "devDependencies": {
         "@iyowei/cli-i18n": "1.0.0",
         "@iyowei/cli-updater": "1.0.0",
-        "@iyowei/fan": "1.0.1",
+        "@iyowei/fan": "1.0.2",
       },
     },
     "packages/sweep": {
