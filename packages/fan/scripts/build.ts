@@ -37,16 +37,26 @@ const bundle = spawnSync(
     '--target=node',
     `--outfile=${join(DIST, 'index.js')}`,
   ],
-  { stdio: 'inherit' },
+  { stdio: ['ignore', 'inherit', 'inherit'], timeout: 60_000 },
 );
-if (bundle.status !== 0) process.exit(bundle.status ?? 1);
+if (bundle.error !== undefined || bundle.status !== 0) {
+  if (bundle.error !== undefined) {
+    process.stderr.write(`bun build 失败: ${bundle.error.message}\n`);
+  }
+  process.exit(bundle.status ?? 1);
+}
 
 const types = spawnSync(
   'bun',
   ['x', '--no-install', 'tsc', '-p', join(ROOT, 'tsconfig.build.json')],
-  { stdio: 'inherit' },
+  { stdio: ['ignore', 'inherit', 'inherit'], timeout: 60_000 },
 );
-if (types.status !== 0) process.exit(types.status ?? 1);
+if (types.error !== undefined || types.status !== 0) {
+  if (types.error !== undefined) {
+    process.stderr.write(`tsc 失败: ${types.error.message}\n`);
+  }
+  process.exit(types.status ?? 1);
+}
 
 for (const file of INTERNAL_DTS_FILES) {
   rmSync(join(DIST, file), { force: true });
@@ -76,9 +86,13 @@ const gitText = (args: string[]): string | null => {
   const result = spawnSync('git', args, {
     cwd: ROOT,
     encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'ignore'],
+    timeout: 10_000,
     env: cleanGitEnv(),
   });
-  return result.status === 0 ? result.stdout.trim() : null;
+  return result.error === undefined && result.status === 0
+    ? result.stdout.trim()
+    : null;
 };
 
 const head = gitText(['rev-parse', 'HEAD']);
