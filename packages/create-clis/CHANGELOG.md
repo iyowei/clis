@@ -1,3 +1,10 @@
+## create-clis [1.5.1](https://github.com/iyowei/clis/compare/create-clis@1.5.0...create-clis@1.5.1) (2026-11-26)
+
+
+### Bug Fixes
+
+* 修复跨包启动器 win32 下空 PATH 未回退读取 Path 的问题 ([1c0c716](https://github.com/iyowei/clis/commit/1c0c7165c5b807d8bb463ef5aeb6a8db7c2d3954))
+
 # create-clis [1.5.0](https://github.com/iyowei/clis/compare/create-clis@1.4.1...create-clis@1.5.0) (2026-11-26)
 
 
