@@ -22,6 +22,7 @@ export interface AppleSmcDeps {
   exists?: (path: string) => boolean;
   spawnSyncFn?: typeof spawnSync;
   readTimeoutMs?: number;
+  writeTimeoutMs?: number;
 }
 
 function assertSupportedHost(
@@ -81,10 +82,12 @@ function runSmcPayload(
     ? [deps.python3Bin, '-c', SMC_PY_SCRIPT, serialized]
     : ['-c', SMC_PY_SCRIPT, serialized];
 
+  const timeoutMs = elevate ? deps.writeTimeoutMs : deps.readTimeoutMs;
   const result = deps.spawnSyncFn(command, args, {
     encoding: 'utf8',
     stdio: [needsSudo ? 'inherit' : 'ignore', 'pipe', 'pipe'],
-    ...(needsSudo ? {} : { timeout: deps.readTimeoutMs }),
+    // 需交互输入 sudo 密码时不可加短超时, 其余非交互路径均限制超时防挂死
+    ...(needsSudo ? {} : { timeout: timeoutMs }),
   });
 
   if (result.error !== undefined) {
@@ -95,7 +98,7 @@ function runSmcPayload(
     throw new FanError(
       isTimeout ? 'SMC_UNAVAILABLE' : 'SMC_COMMAND_FAILED',
       isTimeout
-        ? `读取 AppleSMC 超时 (${deps.readTimeoutMs}ms)`
+        ? `${elevate ? '写入' : '读取'} AppleSMC 超时 (${timeoutMs}ms)`
         : `执行 ${command} 失败: ${result.error.message}`,
       { cause: result.error },
     );
@@ -139,6 +142,7 @@ export function createAppleSmcTransport(
     exists: overrides.exists ?? existsSync,
     spawnSyncFn: overrides.spawnSyncFn ?? spawnSync,
     readTimeoutMs: overrides.readTimeoutMs ?? 10_000,
+    writeTimeoutMs: overrides.writeTimeoutMs ?? 30_000,
   };
 
   return {
@@ -154,6 +158,7 @@ export function createAppleSmcTransport(
       }
       const res = deps.spawnSyncFn(deps.pgrepBin, ['-x', 'Macs Fan Control'], {
         stdio: 'ignore',
+        timeout: deps.readTimeoutMs,
       });
       return res.status === 0;
     },

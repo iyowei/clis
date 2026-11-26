@@ -111,6 +111,57 @@ describe('createAppleSmcTransport (注入)', () => {
       if (isFanError(err)) expect(err.code).toBe('SMC_UNAVAILABLE');
     }
   });
+
+  test('root 写操作与 pgrep 冲突探测均附带非交互 stdio 与超时守卫', () => {
+    const optsSeen: Array<{
+      cmd: string;
+      stdio: unknown;
+      timeout: number | undefined;
+    }> = [];
+    const fakeFans = JSON.stringify([
+      {
+        index: 0,
+        actualRpm: 4000,
+        targetRpm: 4000,
+        minRpm: 1350,
+        maxRpm: 6250,
+        mode: 'manual',
+        percent: 54.1,
+      },
+    ]);
+    const transport = createAppleSmcTransport({
+      platform: 'darwin',
+      geteuid: () => 0,
+      exists: () => true,
+      readTimeoutMs: 4321,
+      writeTimeoutMs: 12_345,
+      spawnSyncFn: ((
+        cmd: string,
+        _args: string[],
+        opts: { stdio?: unknown; timeout?: number },
+      ) => {
+        optsSeen.push({ cmd, stdio: opts.stdio, timeout: opts.timeout });
+        return {
+          pid: 1,
+          output: ['', fakeFans, ''],
+          stdout: fakeFans,
+          stderr: '',
+          status: 0,
+          signal: null,
+        };
+      }) as never,
+    });
+
+    transport.applyWrites([{ kind: 'manual', fanIndex: 0, targetRpm: 4000 }]);
+    expect(transport.isMacsFanControlRunning()).toBe(true);
+    expect(optsSeen[0]).toEqual({
+      cmd: MACOS_PYTHON3_BIN,
+      stdio: ['ignore', 'pipe', 'pipe'],
+      timeout: 12_345,
+    });
+    expect(optsSeen[1]?.timeout).toBe(4321);
+    expect(optsSeen[1]?.stdio).toBe('ignore');
+  });
 });
 
 describe('SMC_PY_STRUCTS_AND_CORE 跨代协议仿真 (M5 / M1-M2 / M3-M4 Ftst / Intel FS! / 无风扇)', () => {
