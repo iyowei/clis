@@ -229,6 +229,32 @@ export const TEMPLATE_MANIFEST: readonly ManifestEntry[] = [
   ),
 
   // exclude: 本仓私有包、领域内容与历史记录 (packages/* 自动派生构建期禁词)
+  excl('install.sh', '本仓多产品一键安装脚本; 不进脚手架模板'),
+  excl('install.ps1', '本仓 Windows 一键安装脚本; 不进脚手架模板'),
+  excl(
+    'scripts/install.test.ts',
+    '本仓一键安装 E2E 测试; 随 install.sh / install.ps1 不进脚手架模板',
+  ),
+  excl(
+    'scripts/install-flows.test.ts',
+    '本仓一键安装产品与自定义源 E2E 测试; 随 install.sh / install.ps1 不进脚手架模板',
+  ),
+  excl(
+    'scripts/install-guards.test.ts',
+    '本仓一键安装非静默冲突与提示机制 E2E 测试; 随 install.sh / install.ps1 不进脚手架模板',
+  ),
+  excl(
+    'scripts/lib/install-test-fixtures.ts',
+    '本仓一键安装 E2E 测试夹具; 随 install.sh / install.ps1 不进脚手架模板',
+  ),
+  excl(
+    'packages/sweep-cli/install.sh',
+    '本仓 sweep 产品独立一键安装封装; 不进脚手架模板',
+  ),
+  excl(
+    'packages/sweep-cli/install.ps1',
+    '本仓 sweep 产品 Windows 独立一键安装封装; 不进脚手架模板',
+  ),
   excl('.agents/', '本仓 AI 工作流 Skill 与确定性性能引擎; 不进脚手架模板'),
   excl('.mailmap', '维护者个人提交映射; 不进模板'),
   excl('bun.lock', '锁文件生成物; 新项目 bun install 重建'),

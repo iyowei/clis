@@ -20,7 +20,33 @@ This package is a thin CLI shell (argument parser, interactive 4-step terminal w
 
 ## Installation
 
-### 1. Zero install (quick trial)
+### 1. One-click script (no Node / Bun prerequisite)
+
+Automatically picks existing `bun` or `node >= 22.18.0`, or installs an isolated private Bun runtime:
+
+**macOS / Linux**:
+
+```shell
+curl -fsSL https://raw.githubusercontent.com/iyowei/clis/main/packages/codd-cli/install.sh | sh
+# or with wget
+wget -qO- https://raw.githubusercontent.com/iyowei/clis/main/packages/codd-cli/install.sh | sh
+# with custom remote URLs (--installer-url / --bun-url / --registry / --from-tarball, or CODD_* env vars):
+curl -fsSL https://gh-proxy.com/https://raw.githubusercontent.com/iyowei/clis/main/packages/codd-cli/install.sh | \
+  sh -s -- \
+  --installer-url https://gh-proxy.com/https://raw.githubusercontent.com/iyowei/clis/main/install.sh \
+  --bun-url https://gh-proxy.com/https://github.com/oven-sh/bun/releases/latest/download \
+  --registry https://registry.npmmirror.com
+```
+
+**Windows (PowerShell)**:
+
+```powershell
+irm https://raw.githubusercontent.com/iyowei/clis/main/packages/codd-cli/install.ps1 | iex
+# or with custom remote URLs (CODD_INSTALLER_URL / CODD_BUN_URL / CODD_REGISTRY):
+# $env:CODD_INSTALLER_URL="https://gh-proxy.com/https://raw.githubusercontent.com/iyowei/clis/main/install.ps1"; $env:CODD_BUN_URL="https://gh-proxy.com/https://github.com/oven-sh/bun/releases/latest/download"; $env:CODD_REGISTRY="https://registry.npmmirror.com"; irm https://gh-proxy.com/https://raw.githubusercontent.com/iyowei/clis/main/packages/codd-cli/install.ps1 | iex
+```
+
+### 2. Zero install (quick trial)
 
 ```shell
 # with bun
@@ -30,14 +56,14 @@ bunx @iyowei/codd-cli
 npx @iyowei/codd-cli
 ```
 
-### 2. Global install (recommended)
+### 3. Global install (recommended)
 
 ```shell
 npm install -g @iyowei/codd-cli
 bun install -g @iyowei/codd-cli
 ```
 
-### 3. From source (development or bun-only without node)
+### 4. From source (development or bun-only without node)
 
 **macOS / Linux**:
 

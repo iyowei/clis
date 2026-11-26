@@ -34,6 +34,11 @@ npx create-clis
 
 # yarn Berry 没有 create 约定, dlx 是等价入口
 yarn dlx create-clis
+
+# 或一键脚本独立安装 (无需预装 Node / Bun, 缺失时自动安装隔离私有 Bun)
+curl -fsSL https://raw.githubusercontent.com/iyowei/clis/main/packages/create-clis/install.sh | sh
+# PowerShell:
+# irm https://raw.githubusercontent.com/iyowei/clis/main/packages/create-clis/install.ps1 | iex
 ```
 
 这些入口等价; 目标目录缺省是当前目录下以项目名命名的子目录:
@@ -75,7 +80,7 @@ npm create clis -- my-tool --tier core
 - **`-V`, `--version`**: 打印版本号;
 - **`-h`, `--help`**: 打印帮助;
 - **`create-clis lang [system|en|zh]`**: 查看或独立保存显示语言偏好 (`~/.config/create-clis/lang.json` / `%APPDATA%\create-clis\lang.json`);
-- **`create-clis update [--check] [--pm <管理器>] [--registry <url>] [--force] [--verbose]`**: 全局安装场景下自动识别安装器 (bun / npm / pnpm / yarn / volta) 并原地自更新 (`--check` 仅检查)。
+- **`create-clis update [--check] [--pm <管理器>] [--registry <url>] [--force] [--verbose]`**: 一键脚本独立安装或全局安装 (bun / npm / pnpm / yarn / volta) 场景下自动识别安装来源并原地自更新 (`--check` 仅检查)。
 
 经 `npm create` 调用时, 旗标要写在 `--` 后面 (`npm create clis -- --tier core`), 该首层 `--` 由 npm 按生态约定剥离; 生成器自身也支持 `--` 终止选项解析, 将其后的参数视作目标目录 (用于逃逸以 `-` 开头或名为 `update` 的目录参数, 如 `create-clis -- update`)。各变量的取值在收集那一刻就校验 (项目名 kebab-case、bin 名命令行可用、scope / owner / 仓库地址形态), 不合法当场给原因。
 

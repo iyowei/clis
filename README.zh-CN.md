@@ -13,6 +13,40 @@
 - **`@iyowei/codd-cli`**: `codd` 命令行工具, 面向 Podman (Linux / macOS) 与 Kubernetes (Helm) 的模板化 MongoDB 9.0 部署装配 CLI (带交互式终端向导, 一键导出零命名冲突的上线部署包); 用法见 [README](packages/codd-cli/README.zh-CN.md) (可编程 API 见 [`@iyowei/codd`](packages/codd/README.zh-CN.md))。
 - **`@iyowei/fan-cli`**: `fan` 命令行工具, 通过 AppleSMC IOKit 查看与手动控制 Apple Silicon / Mac 风扇转速 (默认记住并支持开机及睡眠唤醒自动恢复), 零第三方运行时依赖; 用法见 [README](packages/fan-cli/README.zh-CN.md) (可编程 API 见 [`@iyowei/fan`](packages/fan/README.zh-CN.md))。
 
+## 一键安装
+
+各 CLI 均支持跨平台一键脚本安装 (**macOS / Linux / Windows**), 无需用户预先安装 Node.js 或 Bun: 脚本优先探测系统 `bun` 或 `node >= 22.18.0`, 未满足时默认下载并校验 (SHA-256) 官方 Bun 至隔离目录 (`~/.local/share/clis/runtime` 或 `%LOCALAPPDATA%\clis\runtime`), 不污染全局环境, 并支持通过 `<cli> update` 在线升级或 `--uninstall` 清理卸载。
+
+**macOS / Linux (`curl` 或 `wget`)**:
+
+```shell
+# 单工具入口: codd | create-clis | fan (仅 macOS) | sweep (发布前可配 --from-tarball)
+curl -fsSL https://raw.githubusercontent.com/iyowei/clis/main/packages/codd-cli/install.sh | sh
+wget -qO- https://raw.githubusercontent.com/iyowei/clis/main/packages/codd-cli/install.sh | sh
+
+# 或调用根目录统一安装脚本
+curl -fsSL https://raw.githubusercontent.com/iyowei/clis/main/install.sh | sh -s -- codd
+
+# 无直连海外网络时, 默认只连官方源; 可显式传 --installer-url / --bun-url / --registry / --from-tarball 或设对应前缀环境变量 (CODD_* / CREATE_CLIS_* / SWEEP_* / FAN_*)
+curl -fsSL https://gh-proxy.com/https://raw.githubusercontent.com/iyowei/clis/main/packages/codd-cli/install.sh | \
+  sh -s -- \
+  --installer-url https://gh-proxy.com/https://raw.githubusercontent.com/iyowei/clis/main/install.sh \
+  --bun-url https://gh-proxy.com/https://github.com/oven-sh/bun/releases/latest/download \
+  --registry https://registry.npmmirror.com
+```
+
+**Windows (PowerShell)**:
+
+```powershell
+irm https://raw.githubusercontent.com/iyowei/clis/main/packages/codd-cli/install.ps1 | iex
+
+# 或通过 CLIS_TOOL 调用统一安装脚本
+$env:CLIS_TOOL="codd"; irm https://raw.githubusercontent.com/iyowei/clis/main/install.ps1 | iex
+
+# 无直连海外网络时显式自定义各下载源 (亦可用 -InstallerUrl / -BunUrl / -Registry / -FromTarball)
+$env:CODD_INSTALLER_URL="https://gh-proxy.com/https://raw.githubusercontent.com/iyowei/clis/main/install.ps1"; $env:CODD_BUN_URL="https://gh-proxy.com/https://github.com/oven-sh/bun/releases/latest/download"; $env:CODD_REGISTRY="https://registry.npmmirror.com"; irm https://gh-proxy.com/https://raw.githubusercontent.com/iyowei/clis/main/packages/codd-cli/install.ps1 | iex
+```
+
 ## 文档
 
 - [工程技术文档总索引](docs/README.md): 仓库级入口 (集合仓治理、脚手架设计、仓级 ADR 与全部包文档入口);

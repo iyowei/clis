@@ -20,7 +20,23 @@
 
 ## 安装
 
-### 1. 免安装体验
+### 1. 一键脚本安装 (macOS, 无需预装 Node / Bun)
+
+自动探测本机 `bun` 或 `node >= 22.18.0`; 若均未安装, 默认下载校验后装入 `~/.local/share/clis/runtime` 隔离私有 Bun (不污染全局环境):
+
+```shell
+curl -fsSL https://raw.githubusercontent.com/iyowei/clis/main/packages/fan-cli/install.sh | sh
+# 或使用 wget
+wget -qO- https://raw.githubusercontent.com/iyowei/clis/main/packages/fan-cli/install.sh | sh
+# 无法直连海外网络时显式传自定义 URL (亦可设环境变量 FAN_INSTALLER_URL / FAN_BUN_URL / FAN_REGISTRY):
+curl -fsSL https://gh-proxy.com/https://raw.githubusercontent.com/iyowei/clis/main/packages/fan-cli/install.sh | \
+  sh -s -- \
+  --installer-url https://gh-proxy.com/https://raw.githubusercontent.com/iyowei/clis/main/install.sh \
+  --bun-url https://gh-proxy.com/https://github.com/oven-sh/bun/releases/latest/download \
+  --registry https://registry.npmmirror.com
+```
+
+### 2. 免安装体验
 
 ```shell
 # 使用 bun
@@ -30,7 +46,7 @@ bunx @iyowei/fan-cli
 npx @iyowei/fan-cli
 ```
 
-### 2. 全局安装 (日常使用推荐)
+### 3. 全局安装 (日常使用推荐)
 
 ```shell
 npm install -g @iyowei/fan-cli
@@ -40,7 +56,7 @@ bun install -g @iyowei/fan-cli
 fan persist install
 ```
 
-### 3. 本地源码运行 (开发或纯 Bun 无 Node 环境)
+### 4. 本地源码运行 (开发或纯 Bun 无 Node 环境)
 
 ```shell
 cd "<克隆位置>/clis"

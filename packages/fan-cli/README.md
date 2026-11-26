@@ -20,7 +20,23 @@ This CLI is a thin parsing and rendering shell over [`@iyowei/fan`](https://www.
 
 ## Installation
 
-### 1. Zero install (quick trial)
+### 1. One-click script (macOS, no Node / Bun prerequisite)
+
+Detects existing `bun` or `node >= 22.18.0` automatically; falls back to an isolated private Bun runtime under `~/.local/share/clis/runtime`:
+
+```shell
+curl -fsSL https://raw.githubusercontent.com/iyowei/clis/main/packages/fan-cli/install.sh | sh
+# or with wget
+wget -qO- https://raw.githubusercontent.com/iyowei/clis/main/packages/fan-cli/install.sh | sh
+# with custom remote URLs (--installer-url / --bun-url / --registry / --from-tarball, or FAN_* env vars):
+curl -fsSL https://gh-proxy.com/https://raw.githubusercontent.com/iyowei/clis/main/packages/fan-cli/install.sh | \
+  sh -s -- \
+  --installer-url https://gh-proxy.com/https://raw.githubusercontent.com/iyowei/clis/main/install.sh \
+  --bun-url https://gh-proxy.com/https://github.com/oven-sh/bun/releases/latest/download \
+  --registry https://registry.npmmirror.com
+```
+
+### 2. Zero install (quick trial)
 
 ```shell
 # with bun
@@ -30,7 +46,7 @@ bunx @iyowei/fan-cli
 npx @iyowei/fan-cli
 ```
 
-### 2. Global install (recommended)
+### 3. Global install (recommended)
 
 ```shell
 npm install -g @iyowei/fan-cli
@@ -40,7 +56,7 @@ bun install -g @iyowei/fan-cli
 fan persist install
 ```
 
-### 3. From source (development or bun-only without node)
+### 4. From source (development or bun-only without node)
 
 ```shell
 cd "<your clone>/clis"

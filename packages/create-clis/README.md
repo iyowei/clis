@@ -34,6 +34,11 @@ npx create-clis
 
 # yarn Berry has no create convention; dlx is the equivalent
 yarn dlx create-clis
+
+# or one-click standalone install (no Node / Bun prerequisite; auto-installs isolated Bun if absent)
+curl -fsSL https://raw.githubusercontent.com/iyowei/clis/main/packages/create-clis/install.sh | sh
+# PowerShell:
+# irm https://raw.githubusercontent.com/iyowei/clis/main/packages/create-clis/install.ps1 | iex
 ```
 
 These entry points are equivalent. The target directory defaults to a subdirectory of the current directory named after the project:
@@ -75,7 +80,7 @@ The remaining flags:
 - **`-V`, `--version`**: print version;
 - **`-h`, `--help`**: print help;
 - **`create-clis lang [system|en|zh]`**: inspect or save your independent display language preference (`~/.config/create-clis/lang.json` / `%APPDATA%\create-clis\lang.json`);
-- **`create-clis update [--check] [--pm <pm>] [--registry <url>] [--force] [--verbose]`**: when installed globally via bun / npm / pnpm / yarn / volta, detect the active package manager and self-update (or inspect the latest version with `--check`).
+- **`create-clis update [--check] [--pm <pm>] [--registry <url>] [--force] [--verbose]`**: when installed via the standalone one-click script or globally via bun / npm / pnpm / yarn / volta, detect the install origin and self-update in place (or inspect the latest version with `--check`).
 
 Under `npm create`, flags go after `--` (`npm create clis -- --tier core`), where npm strips that first `--` as standard npm behavior. The generator itself also supports `--` to stop option parsing and treat a following argument as the target directory (escaping directory names starting with `-` or named `update`, e.g. `create-clis -- update`). Values are validated the moment they are collected (kebab-case name, command-safe bin name, well-formed scope, owner, and repo URL), failing on the spot with the reason.
 

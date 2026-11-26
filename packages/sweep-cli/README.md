@@ -47,6 +47,14 @@ $bin = "$env:USERPROFILE\tools\clis\packages\sweep-cli\bin"
 
 - **Bun or Node**: the source launcher (`bin/sweep` / `bin/sweep.cmd`) automatically picks Bun when available and falls back to Node.js (`>= 22.18.0`) using built artifacts (`bun install && bun run build`).
 
+> **One-click script installer**: Once `@iyowei/sweep-cli` is published (or via `--registry` / `SWEEP_REGISTRY` / `--from-tarball <path|url>`), `packages/sweep-cli/install.sh` (macOS / Linux) and `packages/sweep-cli/install.ps1` (Windows) detect `bun` / `node >= 22.18.0` or install an isolated private Bun automatically:
+>
+> ```shell
+> # From a local tarball before public npm release
+> ./packages/sweep-cli/install.sh --from-tarball ./sweep-cli.tgz
+> # PowerShell: .\packages\sweep-cli\install.ps1 -FromTarball .\sweep-cli.tgz
+> ```
+
 ## Usage
 
 ```shell

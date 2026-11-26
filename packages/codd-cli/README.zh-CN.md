@@ -20,7 +20,33 @@
 
 ## 安装
 
-### 1. 免安装体验
+### 1. 一键脚本安装 (无需预装 Node / Bun)
+
+自动探测系统 `bun` 或 `node >= 22.18.0`; 若均缺失则自动安装隔离私有 Bun:
+
+**macOS / Linux**:
+
+```shell
+curl -fsSL https://raw.githubusercontent.com/iyowei/clis/main/packages/codd-cli/install.sh | sh
+# 或使用 wget
+wget -qO- https://raw.githubusercontent.com/iyowei/clis/main/packages/codd-cli/install.sh | sh
+# 无法直连海外网络时显式传自定义 URL (亦可设环境变量 CODD_INSTALLER_URL / CODD_BUN_URL / CODD_REGISTRY):
+curl -fsSL https://gh-proxy.com/https://raw.githubusercontent.com/iyowei/clis/main/packages/codd-cli/install.sh | \
+  sh -s -- \
+  --installer-url https://gh-proxy.com/https://raw.githubusercontent.com/iyowei/clis/main/install.sh \
+  --bun-url https://gh-proxy.com/https://github.com/oven-sh/bun/releases/latest/download \
+  --registry https://registry.npmmirror.com
+```
+
+**Windows (PowerShell)**:
+
+```powershell
+irm https://raw.githubusercontent.com/iyowei/clis/main/packages/codd-cli/install.ps1 | iex
+# 或设环境变量自定义地址 (CODD_INSTALLER_URL / CODD_BUN_URL / CODD_REGISTRY):
+# $env:CODD_INSTALLER_URL="https://gh-proxy.com/https://raw.githubusercontent.com/iyowei/clis/main/install.ps1"; $env:CODD_BUN_URL="https://gh-proxy.com/https://github.com/oven-sh/bun/releases/latest/download"; $env:CODD_REGISTRY="https://registry.npmmirror.com"; irm https://gh-proxy.com/https://raw.githubusercontent.com/iyowei/clis/main/packages/codd-cli/install.ps1 | iex
+```
+
+### 2. 免安装体验
 
 ```shell
 # 使用 bun
@@ -30,14 +56,14 @@ bunx @iyowei/codd-cli
 npx @iyowei/codd-cli
 ```
 
-### 2. 全局安装 (日常使用推荐)
+### 3. 全局安装 (日常使用推荐)
 
 ```shell
 npm install -g @iyowei/codd-cli
 bun install -g @iyowei/codd-cli
 ```
 
-### 3. 本地源码运行 (开发或纯 Bun 无 Node 环境)
+### 4. 本地源码运行 (开发或纯 Bun 无 Node 环境)
 
 **macOS / Linux**:
 
