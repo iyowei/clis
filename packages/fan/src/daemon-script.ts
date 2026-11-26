@@ -282,6 +282,8 @@ def main():
     pm_svc = iokit.IOServiceGetMatchingService(
         0, iokit.IOServiceMatching(b"IOPMrootDomain")
     )
+    if not pm_svc:
+        log("warning: IOPMrootDomain service not found; clamshell/DarkWake monitoring disabled")
     runtime = {"system_sleeping": False, "suspended": False, "root_port": 0}
     should_abort_restore = (
         lambda: runtime["system_sleeping"] or should_suspend_fans(pm_svc, False)[0]
