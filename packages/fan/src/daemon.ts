@@ -147,10 +147,12 @@ export function getPersistDaemonStatus(
     running = res.error === undefined && res.status === 0;
   }
   let state = null;
+  let stateError: string | undefined;
   try {
     state = readPersistedState(paths.statePath);
-  } catch {
+  } catch (error) {
     state = null;
+    stateError = error instanceof Error ? error.message : String(error);
   }
   return {
     installed,
@@ -161,6 +163,7 @@ export function getPersistDaemonStatus(
     statePath: paths.statePath,
     logPath: paths.logPath,
     state,
+    ...(stateError !== undefined ? { stateError } : {}),
   };
 }
 

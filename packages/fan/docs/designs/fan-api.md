@@ -31,6 +31,6 @@
 - `createFanController({ transport?, stateStore?, ensureDaemon?, platform? })`: 返回 `{ status, set, max, min, auto, apply }`, 所有方法返回结构化 `FanStatusReport` (`{ fans, macsFanControlRunning, warnings, persisted?, didPersist?, daemonAction? }`, 其中 `warnings[].code` 含 `FAN_CLAMPED` / `MACS_FAN_CONTROL_RUNNING` / `STATE_CORRUPT`)。
 - `createAppleSmcTransport(overrides?)`: 默认使用 macOS `/usr/bin/python3` 与 `/usr/bin/sudo` 通过 `IOKit` 访问 `AppleSMC`。
 - `readPersistedState` / `mergePersistedState` / `createMacOsFanStateStore`: 无符号链接校验、跨风扇合并读写 `/Library/Application Support/iyowei-fan/state.json` (`v1`)。
-- `ensurePersistDaemon` / `getPersistDaemonStatus` / `installPersistDaemon` / `uninstallPersistDaemon` / `buildLaunchDaemonPlist`: 管理并幂等同步 `/Library/LaunchDaemons/com.iyowei.fan.plist` 守护服务。
+- `ensurePersistDaemon` / `getPersistDaemonStatus` / `installPersistDaemon` / `uninstallPersistDaemon` / `buildLaunchDaemonPlist`: 管理并幂等同步 `/Library/LaunchDaemons/com.iyowei.fan.plist` 守护服务 (`PersistDaemonStatus` 在读取 `state.json` 失败时通过 `stateError` 暴露诊断信息)。
 - `parseSpeedSpec` / `resolveTargetRpm` / `computePercent`: 纯函数转速解析与区间夹逼。
 - `FanError` / `isFanError`: 统一结构化错误, 错误码包括 `UNSUPPORTED_PLATFORM`、`SMC_UNAVAILABLE`、`SMC_COMMAND_FAILED`、`INVALID_FAN_INDEX`、`INVALID_SPEED`、`PERMISSION_DENIED`、`STATE_CORRUPT`、`DAEMON_FAILED`。

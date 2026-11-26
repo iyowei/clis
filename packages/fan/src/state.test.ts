@@ -308,6 +308,17 @@ describe('@iyowei/fan LaunchDaemon 与守护生命周期', () => {
         if (isFanError(err)) expect(err.code).toBe('UNSUPPORTED_PLATFORM');
       }
 
+      // 损坏的 state.json 在 getPersistDaemonStatus 中必须暴露 stateError 而非静默掩盖
+      writeFileSync(statePath, '{broken', 'utf8');
+      const corruptStatus = getPersistDaemonStatus({
+        plistPath,
+        daemonScriptPath,
+        statePath,
+        launchctlBin: join(dir, 'no-launchctl'),
+      });
+      expect(corruptStatus.state).toBeNull();
+      expect(corruptStatus.stateError).toContain('损坏');
+
       // uninstallPersistDaemon 在 darwin 下缺少 python3Bin 时抛 SMC_UNAVAILABLE
       try {
         uninstallPersistDaemon({
