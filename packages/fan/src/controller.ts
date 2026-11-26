@@ -3,7 +3,7 @@
  * 负责风扇索引校验、RPM/百分比解析与跨风扇夹逼、持久化状态自动记住/恢复、Macs Fan Control 冲突提示与底层传输委托。
  */
 import { ensurePersistDaemon } from './daemon.ts';
-import { FanError } from './errors.ts';
+import { FanError, isFanError } from './errors.ts';
 import { createAppleSmcTransport } from './smc-apple.ts';
 import { parseSpeedSpec, resolveTargetRpm } from './speed.ts';
 import { createMacOsFanStateStore, mergePersistedState } from './state.ts';
@@ -65,14 +65,19 @@ function filterFans(
   return found;
 }
 
-function safeReadPersisted(
-  store: FanStateStore | undefined,
-): FanPersistedState | null {
-  if (store === undefined) return null;
+function inspectPersisted(store: FanStateStore | undefined): {
+  persisted: FanPersistedState | null;
+  warning?: FanWarning;
+} {
+  if (store === undefined) return { persisted: null };
   try {
-    return store.read();
-  } catch {
-    return null;
+    return { persisted: store.read() };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return {
+      persisted: null,
+      warning: { code: 'STATE_CORRUPT', message },
+    };
   }
 }
 
@@ -112,20 +117,115 @@ function buildReport(
   return report;
 }
 
-function saveUpdates(
-  store: FanStateStore | undefined,
-  persistFlag: boolean | undefined,
+function buildRollbackRequests(targets: readonly FanInfo[]): FanWriteRequest[] {
+  return targets.map((fan) =>
+    fan.mode === 'auto'
+      ? { kind: 'auto', fanIndex: fan.index }
+      : { kind: 'manual', fanIndex: fan.index, targetRpm: fan.targetRpm },
+  );
+}
+
+function persistWithRollback(
+  store: FanStateStore,
+  existing: FanPersistedState | null,
   updates: Readonly<Record<string, PersistedFanEntry>>,
-): { persisted: FanPersistedState | null; didPersist: boolean } {
-  if (store === undefined || persistFlag === false) {
-    return {
-      persisted: safeReadPersisted(store),
-      didPersist: false,
-    };
+  transport: FanTransport,
+  targets: readonly FanInfo[],
+): { persisted: FanPersistedState; didPersist: boolean } {
+  try {
+    const next = mergePersistedState(existing, updates);
+    store.write(next);
+    return { persisted: next, didPersist: true };
+  } catch (error) {
+    const isPermDenied =
+      isFanError(error) && error.code === 'PERMISSION_DENIED';
+    let rollbackNote = '';
+    if (!isPermDenied) {
+      try {
+        transport.applyWrites(buildRollbackRequests(targets));
+        rollbackNote = ' (已回滚硬件风扇状态)';
+      } catch (rbErr) {
+        const rbMsg = rbErr instanceof Error ? rbErr.message : String(rbErr);
+        rollbackNote = ` (硬件转速已改变但回滚失败: ${rbMsg})`;
+      }
+    } else {
+      rollbackNote = ' (硬件转速已改变但持久化提权失败, 未写入配置)';
+    }
+    const baseMsg = error instanceof Error ? error.message : String(error);
+    const code = isFanError(error) ? error.code : 'DAEMON_FAILED';
+    throw new FanError(code, `${baseMsg}${rollbackNote}`, { cause: error });
   }
-  const next = mergePersistedState(safeReadPersisted(store), updates);
-  store.write(next);
-  return { persisted: next, didPersist: true };
+}
+
+function syncDaemonSafe(
+  ensureDaemon: (() => { action: PersistDaemonAction }) | undefined,
+): PersistDaemonAction | undefined {
+  if (ensureDaemon === undefined) return undefined;
+  try {
+    return ensureDaemon().action;
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : String(error);
+    const code = isFanError(error) ? error.code : 'DAEMON_FAILED';
+    throw new FanError(
+      code,
+      `硬件与持久化配置已更新, 但后台守护同步失败: ${msg}`,
+      { cause: error },
+    );
+  }
+}
+
+interface MutationDeps {
+  transport: FanTransport;
+  stateStore: FanStateStore | undefined;
+  ensureDaemon: (() => { action: PersistDaemonAction }) | undefined;
+}
+
+function executeMutation(
+  deps: MutationDeps,
+  input: {
+    targets: readonly FanInfo[];
+    requests: readonly FanWriteRequest[];
+    updates: Readonly<Record<string, PersistedFanEntry>>;
+    fanIndex: number | undefined;
+    persist: boolean | undefined;
+    syncDaemon: boolean;
+    extraWarnings?: FanWarning[];
+  },
+): FanStatusReport {
+  const { transport, stateStore, ensureDaemon } = deps;
+  const shouldPersist = input.persist !== false && stateStore !== undefined;
+  // 持久化写前先验读 state.json: 损坏时在改写硬件前直接抛 STATE_CORRUPT 阻断
+  const existingState = shouldPersist ? stateStore.read() : null;
+  const updated = transport.applyWrites(input.requests);
+
+  const warnings = [...(input.extraWarnings ?? [])];
+  let persisted: FanPersistedState | null;
+  let didPersist = false;
+  if (shouldPersist) {
+    const saved = persistWithRollback(
+      stateStore,
+      existingState,
+      input.updates,
+      transport,
+      input.targets,
+    );
+    persisted = saved.persisted;
+    didPersist = saved.didPersist;
+  } else {
+    const inspected = inspectPersisted(stateStore);
+    persisted = inspected.persisted;
+    if (inspected.warning !== undefined) warnings.push(inspected.warning);
+  }
+
+  const daemonAction = input.syncDaemon
+    ? syncDaemonSafe(ensureDaemon)
+    : undefined;
+  return buildReport(filterFans(updated, input.fanIndex), transport, {
+    extraWarnings: warnings,
+    persisted,
+    didPersist,
+    daemonAction,
+  });
 }
 
 /** 创建风扇控制器 (默认直连 macOS AppleSMC 与系统级状态存储; 传自定义 `transport` 时不碰磁盘除非显式传 `stateStore`) */
@@ -154,13 +254,16 @@ export function createFanController(
         });
     }
   }
+  const mutationDeps: MutationDeps = { transport, stateStore, ensureDaemon };
 
   return {
     status(opts: TargetFanOptions = {}): FanStatusReport {
       const allFans = transport.readFans();
       const selected = selectTargets(allFans, opts.fanIndex);
+      const { persisted, warning } = inspectPersisted(stateStore);
       return buildReport(selected, transport, {
-        persisted: safeReadPersisted(stateStore),
+        extraWarnings: warning !== undefined ? [warning] : undefined,
+        persisted,
       });
     },
 
@@ -200,13 +303,14 @@ export function createFanController(
             : { mode: 'manual', kind: 'rpm', value: targetRpm };
       }
 
-      const updated = transport.applyWrites(requests);
-      const saved = saveUpdates(stateStore, opts.persist, updates);
-      const daemonSync = ensureDaemon?.();
-      return buildReport(filterFans(updated, opts.fanIndex), transport, {
+      return executeMutation(mutationDeps, {
+        targets,
+        requests,
+        updates,
+        fanIndex: opts.fanIndex,
+        persist: opts.persist,
+        syncDaemon: true,
         extraWarnings: warnings,
-        ...saved,
-        daemonAction: daemonSync?.action,
       });
     },
 
@@ -229,12 +333,13 @@ export function createFanController(
         };
       }
 
-      const updated = transport.applyWrites(requests);
-      const saved = saveUpdates(stateStore, opts.persist, updates);
-      const daemonSync = ensureDaemon?.();
-      return buildReport(filterFans(updated, opts.fanIndex), transport, {
-        ...saved,
-        daemonAction: daemonSync?.action,
+      return executeMutation(mutationDeps, {
+        targets,
+        requests,
+        updates,
+        fanIndex: opts.fanIndex,
+        persist: opts.persist,
+        syncDaemon: true,
       });
     },
 
@@ -257,12 +362,13 @@ export function createFanController(
         };
       }
 
-      const updated = transport.applyWrites(requests);
-      const saved = saveUpdates(stateStore, opts.persist, updates);
-      const daemonSync = ensureDaemon?.();
-      return buildReport(filterFans(updated, opts.fanIndex), transport, {
-        ...saved,
-        daemonAction: daemonSync?.action,
+      return executeMutation(mutationDeps, {
+        targets,
+        requests,
+        updates,
+        fanIndex: opts.fanIndex,
+        persist: opts.persist,
+        syncDaemon: true,
       });
     },
 
@@ -277,9 +383,14 @@ export function createFanController(
         updates[String(fan.index)] = { mode: 'auto' };
       }
 
-      const updated = transport.applyWrites(requests);
-      const saved = saveUpdates(stateStore, opts.persist, updates);
-      return buildReport(filterFans(updated, opts.fanIndex), transport, saved);
+      return executeMutation(mutationDeps, {
+        targets,
+        requests,
+        updates,
+        fanIndex: opts.fanIndex,
+        persist: opts.persist,
+        syncDaemon: false,
+      });
     },
 
     apply(): FanStatusReport {

@@ -8,7 +8,7 @@
 1. 在 Bun 与 Node.js (`>= 22.18.0`) 下提供完全一致的可编程风扇控制 API, 且保持零第三方运行时依赖。
 2. 通过可注入的 `FanTransport` 与 `FanStateStore` 抽象把 macOS AppleSMC 真机交互与纯 TypeScript 编排逻辑解耦, 确保单测可在 Linux / Windows / macOS 确定性通过。
 3. 最小化权限边界: 读取风扇状态与 `state.json` 无需 root; 仅写入、持久化落盘与守护安装经 `/usr/bin/sudo` 调用 `/usr/bin/python3`; 写入后轮询确认 SMC 目标键刷新 (最多 1 秒) 再返回状态。
-4. 默认自动记住与守护联动: `set` / `max` / `min` / `auto` 默认将配置按风扇粒度合并写入 `/Library/Application Support/iyowei-fan/state.json` (传入 `persist: false` 则跳过写盘); 执行 `set` / `max` / `min` 时默认幂等确保 `com.iyowei.fan` `LaunchDaemon` 已安装并同步为最新脚本 (已一致且运行中则免 `sudo` 短路): 在开机 (`RunAtLoad`) 与真实唤醒 (`FullWake` / 开盖) 时恢复设定, 在无外接显示器合盖 (`AppleClamshellState && AppleClamshellCausesSleep`)、系统睡眠 (`kIOMessageSystemWillSleep`) 与后台维护唤醒 (`DarkWake`) 期间自动将手动风扇临时切回 `auto` 停转 (外接显示器合盖办公保留手动转速), 醒着开盖期间边沿驱动零轮询。
+4. 默认自动记住、失败回滚与守护联动: `set` / `max` / `min` / `auto` 默认先预检并读取合并 `/Library/Application Support/iyowei-fan/state.json` (若磁盘 `state.json` 已损坏, 持久化写入前置拒绝且不修改硬件或覆盖配置; 只读 `status` 与 `persist: false` 则保留硬件读数并上浮 `STATE_CORRUPT` 告警); 硬件写入成功后若写盘失败且错误非 `PERMISSION_DENIED`, 会尽最大努力回滚写入前的风扇快照并抛出带回滚状态说明的 `FanError`; 执行 `set` / `max` / `min` 时默认幂等确保 `com.iyowei.fan` `LaunchDaemon` 已安装并同步为最新脚本 (已一致且运行中则免 `sudo` 短路; 若守护同步失败则保留已更新的硬件与持久化配置并抛 `FanError` 明确提示): 在开机 (`RunAtLoad`) 与真实唤醒 (`FullWake` / 开盖) 时恢复设定, 在无外接显示器合盖 (`AppleClamshellState && AppleClamshellCausesSleep`)、系统睡眠 (`kIOMessageSystemWillSleep`) 与后台维护唤醒 (`DarkWake`) 期间自动将手动风扇临时切回 `auto` 停转 (外接显示器合盖办公保留手动转速), 醒着开盖期间边沿驱动零轮询。
 
 ## 2. AppleSMC 跨代键值契约
 
@@ -28,7 +28,7 @@
 
 ## 3. 公开 API
 
-- `createFanController({ transport?, stateStore?, ensureDaemon?, platform? })`: 返回 `{ status, set, max, min, auto, apply }`, 所有方法返回结构化 `FanStatusReport` (`{ fans, macsFanControlRunning, warnings, persisted?, didPersist?, daemonAction? }`)。
+- `createFanController({ transport?, stateStore?, ensureDaemon?, platform? })`: 返回 `{ status, set, max, min, auto, apply }`, 所有方法返回结构化 `FanStatusReport` (`{ fans, macsFanControlRunning, warnings, persisted?, didPersist?, daemonAction? }`, 其中 `warnings[].code` 含 `FAN_CLAMPED` / `MACS_FAN_CONTROL_RUNNING` / `STATE_CORRUPT`)。
 - `createAppleSmcTransport(overrides?)`: 默认使用 macOS `/usr/bin/python3` 与 `/usr/bin/sudo` 通过 `IOKit` 访问 `AppleSMC`。
 - `readPersistedState` / `mergePersistedState` / `createMacOsFanStateStore`: 无符号链接校验、跨风扇合并读写 `/Library/Application Support/iyowei-fan/state.json` (`v1`)。
 - `ensurePersistDaemon` / `getPersistDaemonStatus` / `installPersistDaemon` / `uninstallPersistDaemon` / `buildLaunchDaemonPlist`: 管理并幂等同步 `/Library/LaunchDaemons/com.iyowei.fan.plist` 守护服务。

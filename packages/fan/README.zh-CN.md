@@ -8,7 +8,7 @@
 
 [English](README.md) | **中文**
 
-用于读取与手动控制 Apple Silicon / Mac 风扇转速的可编程 API, 通过 AppleSMC IOKit 实现且零第三方运行时依赖, 无需安装 Macs Fan Control 等软件。变更操作 (`set` / `max` / `min` / `auto`) 默认自动将目标写入 `/Library/Application Support/iyowei-fan/state.json` (除非传入 `persist: false`), 手动调速 (`set` / `max` / `min`) 默认自动确保内置 `LaunchDaemon` (`com.iyowei.fan`) 安装并保持最新: 在无外接显示器合盖、进入系统睡眠与后台 `DarkWake` 期间自动将风扇交还系统 `auto` 停转 (外接屏合盖办公保留手动转速), 开盖/唤醒与重启后自动恢复。
+用于读取与手动控制 Apple Silicon / Mac 风扇转速的可编程 API, 通过 AppleSMC IOKit 实现且零第三方运行时依赖, 无需安装 Macs Fan Control 等软件。变更操作 (`set` / `max` / `min` / `auto`) 默认预检并自动将目标写入 `/Library/Application Support/iyowei-fan/state.json` (若持久化文件已损坏则快速失败且不改写硬件, 写入失败则在非权限拒绝错误时尝试回滚硬件状态; 传入 `persist: false` 则仅临时调速并通过 `STATE_CORRUPT` 告警提示损坏), 手动调速 (`set` / `max` / `min`) 默认自动确保内置 `LaunchDaemon` (`com.iyowei.fan`) 安装并保持最新: 在无外接显示器合盖、进入系统睡眠与后台 `DarkWake` 期间自动将风扇交还系统 `auto` 停转 (外接屏合盖办公保留手动转速), 开盖/唤醒与重启后自动恢复。
 
 本包是**纯编程 API 库** (不提供 `bin` 命令); 如需直接使用 `fan` 命令行工具 (`fan max`、`fan set 4000`、`fan set 30%` 或 `fan auto`), 请安装配套包 [`@iyowei/fan-cli`](https://www.npmjs.com/package/@iyowei/fan-cli)。
 
