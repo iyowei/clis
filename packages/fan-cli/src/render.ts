@@ -42,25 +42,30 @@ const MODE_COL_WIDTH_EN = 16;
 /** 手动模式稳态展示容差 (RPM): 在 <= 35 RPM 传感器正常微波动内显示「手动 / Manual」 */
 export const SETTLE_TOLERANCE_RPM = 35;
 
+function rawPercentTenths(fan: FanInfo): number {
+  const span = fan.maxRpm - fan.minRpm;
+  if (span <= 0) return 0;
+  return Math.round(((fan.actualRpm - fan.minRpm) / span) * 1000);
+}
+
 /**
- * 判定手动模式风扇的实际转速是否已精确到达目标值:
- * - 100% 满速目标要求实际显示百分比真正达到 `100.0%` (绝不在 99.7% 提前退出);
- * - 0% 最低速目标要求 `0.0%` 且实际转速进入 `minRpm ± 10 RPM` (防止从 0 RPM 静止态误判已到位);
- * - 其余中间档位 (如 `90%`) 要求显示百分比达到 `[targetPct, targetPct + 0.1%]` (如 `90.0%` 或 `90.1%`,
- *   绝不在 `89.9%` 尚未达标或高于 `targetPct + 0.1%` 尚未降速到位时提前退出; 整数十分位比较规避浮点误差)。
+ * 通用手动到位判定 (零硬编码特定档位分支):
+ * 每个受控风扇的展示百分比十分位 (`Math.round(fan.percent * 10)`) 必须严格等于其目标转速对应的
+ * 目标百分比十分位 (`targetTenths`); 在 `0.0%` (`minRpm`) 处同时要求未夹逼原始十分位亦为 `0`,
+ * 防止从 `0 RPM` 静止态因下限夹逼到 `0.0%` 而误判已起转到位。
+ * 无论升速 (`35.9% -> 36.0%`、`89.9% -> 90.0%`、`99.7% -> 100.0%`) 还是降速 (`36.1% -> 36.0%`),
+ * 均须所有受控风扇精确收敛到各自目标十分位后才退出。
  */
 export function isManualFanSettled(fan: FanInfo): boolean {
+  if (fan.maxRpm <= fan.minRpm) return true;
   const targetTenths = Math.round(
     computePercent(fan.targetRpm, fan.minRpm, fan.maxRpm) * 10,
   );
   const actualTenths = Math.round(fan.percent * 10);
-  if (targetTenths >= 1000) {
-    return actualTenths >= 1000;
+  if (actualTenths !== targetTenths) {
+    return false;
   }
-  if (targetTenths <= 0) {
-    return actualTenths <= 0 && Math.abs(fan.actualRpm - fan.targetRpm) <= 10;
-  }
-  return actualTenths >= targetTenths && actualTenths <= targetTenths + 1;
+  return targetTenths === 0 ? rawPercentTenths(fan) === 0 : true;
 }
 
 function manualModeLabel(
@@ -70,12 +75,17 @@ function manualModeLabel(
 ): { text: string; sgr: string } {
   const rpmNum = Math.round(fan.actualRpm);
   const targetStr = `${String(Math.round(fan.targetRpm)).padStart(4)} RPM`;
+  const targetTenths = Math.round(
+    computePercent(fan.targetRpm, fan.minRpm, fan.maxRpm) * 10,
+  );
+  const rawTenths = rawPercentTenths(fan);
+  const settled = isManualFanSettled(fan);
   const diff = fan.targetRpm - fan.actualRpm;
   const isRamping = settling
-    ? !isManualFanSettled(fan) && diff >= 0
+    ? !settled && rawTenths < targetTenths
     : diff > SETTLE_TOLERANCE_RPM;
   const isSlowing = settling
-    ? !isManualFanSettled(fan) && diff < 0
+    ? !settled && rawTenths > targetTenths
     : diff < -SETTLE_TOLERANCE_RPM;
 
   if (locale === 'en') {

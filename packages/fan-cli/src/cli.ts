@@ -295,7 +295,7 @@ export async function runCli(
         locale,
         title,
         writeRaw,
-        intervalMs: deps.settleIntervalMs ?? 200,
+        intervalMs: deps.settleIntervalMs ?? 80,
         maxMs: deps.settleMaxMs,
       });
       return 0;

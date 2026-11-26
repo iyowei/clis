@@ -353,73 +353,94 @@ describe('runCli liveSettle 动态追踪', () => {
   });
 });
 
-describe('runCli 双风扇百分比到位守卫', () => {
-  test('Fan 0 已达 90.1% 但 Fan 1 仍在 89.9% 时绝不提前退出, 须等双风扇均 >= 90.0%', async () => {
-    const pairSamples: [number, number][] = [
-      [5765, 6206],
-      [5765, 6206],
-      [5763, 6210],
-    ];
-    let pairIdx = 0;
-    const pairTransport: FanTransport = {
-      readFans: () => {
-        const [rpm0, rpm1] =
-          pairSamples[Math.min(pairIdx, pairSamples.length - 1)]!;
-        return [
-          {
-            index: 0,
-            actualRpm: rpm0,
-            targetRpm: 5760,
-            minRpm: 1350,
-            maxRpm: 6250,
-            mode: 'manual',
-            percent: Math.round(((rpm0 - 1350) / 4900) * 1000) / 10,
-          },
-          {
-            index: 1,
-            actualRpm: rpm1,
-            targetRpm: 6210,
-            minRpm: 1350,
-            maxRpm: 6750,
-            mode: 'manual',
-            percent: Math.round(((rpm1 - 1350) / 5400) * 1000) / 10,
-          },
-        ];
-      },
-      applyWrites() {
-        pairIdx = 0;
-        return this.readFans();
-      },
-      isMacsFanControlRunning: () => false,
-    };
-    const origPairRead = pairTransport.readFans.bind(pairTransport);
-    let pairPolls = 0;
-    pairTransport.readFans = () => {
-      const snap = origPairRead();
-      pairPolls += 1;
-      if (pairPolls >= 2) {
-        pairIdx += 1;
-      }
-      return snap;
+describe('runCli 双风扇百分比精确十分位守卫 (零硬编码通用规则)', () => {
+  test('升速 (89.9%/90.1% -> 90.0%) 与降速 (36.0%/36.1% -> 36.0%) 均须双风扇精确落到目标十分位才退出', async () => {
+    const runPairScenario = async (
+      arg: string,
+      targets: [number, number],
+      samples: [number, number][],
+    ) => {
+      let idx = 0;
+      let polls = 0;
+      const transport: FanTransport = {
+        readFans: () => {
+          const [rpm0, rpm1] = samples[Math.min(idx, samples.length - 1)]!;
+          const snap: FanInfo[] = [
+            {
+              index: 0,
+              actualRpm: rpm0,
+              targetRpm: targets[0],
+              minRpm: 1350,
+              maxRpm: 6250,
+              mode: 'manual',
+              percent: Math.round(((rpm0 - 1350) / 4900) * 1000) / 10,
+            },
+            {
+              index: 1,
+              actualRpm: rpm1,
+              targetRpm: targets[1],
+              minRpm: 1350,
+              maxRpm: 6750,
+              mode: 'manual',
+              percent: Math.round(((rpm1 - 1350) / 5400) * 1000) / 10,
+            },
+          ];
+          polls += 1;
+          if (polls >= 2) idx += 1;
+          return snap;
+        },
+        applyWrites() {
+          idx = 0;
+          polls = 0;
+          return this.readFans();
+        },
+        isMacsFanControlRunning: () => false,
+      };
+      const chunks: string[] = [];
+      const code = await runCli(['set', arg, '--once', '--lang', 'en'], {
+        transport,
+        stateStore: makeStubStateStore(),
+        persistOps: makeStubPersistOps(true),
+        stdoutColor: false,
+        stderrColor: false,
+        rawWrite: (c) => chunks.push(c),
+        liveSettle: true,
+        settleIntervalMs: 5,
+      });
+      expect(code).toBe(0);
+      return chunks;
     };
 
-    const pairChunks: string[] = [];
-    const pairCode = await runCli(['set', '90%', '--once', '--lang', 'en'], {
-      transport: pairTransport,
-      stateStore: makeStubStateStore(),
-      persistOps: makeStubPersistOps(true),
-      stdoutColor: false,
-      stderrColor: false,
-      rawWrite: (c) => pairChunks.push(c),
-      liveSettle: true,
-      settleIntervalMs: 5,
-    });
-    expect(pairCode).toBe(0);
-    expect(pairChunks.some((c) => c.includes('89.9%'))).toBe(true);
-    expect(pairChunks.some((c) => c.includes('Ramping 6210 RPM'))).toBe(true);
-    const pairFinal = pairChunks[pairChunks.length - 1]!;
-    expect(pairFinal).toContain('90.1%');
-    expect(pairFinal).toContain('90.0%');
-    expect(pairFinal).not.toContain('89.9%');
+    // 1. 升速 90%: 89.9% 或 90.1% 均不提前退出, 直到双风扇同为 90.0%
+    const upChunks = await runPairScenario(
+      '90%',
+      [5760, 6210],
+      [
+        [5765, 6206], // 90.1% & 89.9% -> 继续等
+        [5763, 6210], // 90.1% & 90.0% -> 仍不提前退出
+        [5760, 6210], // 90.0% & 90.0% -> 精确收敛退出
+      ],
+    );
+    expect(upChunks.some((c) => c.includes('89.9%'))).toBe(true);
+    expect(upChunks.some((c) => c.includes('Ramping 6210 RPM'))).toBe(true);
+    const upFinal = upChunks[upChunks.length - 1]!;
+    expect(upFinal).toContain('90.0%');
+    expect(upFinal).not.toContain('89.9%');
+    expect(upFinal).not.toContain('90.1%');
+
+    // 2. 降速 36%: Fan 0=36.0% 但 Fan 1=36.1% (3297/3294) 时绝不提前退出, 直到双风扇同为 36.0%
+    const downChunks = await runPairScenario(
+      '36%',
+      [3114, 3294],
+      [
+        [3112, 3297], // 36.0% & 36.1% -> Fan 1 仍在降速, 绝不提前退出
+        [3114, 3295], // 36.0% & 36.0% -> 双风扇精确 36.0% 退出
+      ],
+    );
+    expect(downChunks.some((c) => c.includes('36.1%'))).toBe(true);
+    expect(downChunks.some((c) => c.includes('Slowing 3294 RPM'))).toBe(true);
+    const downFinal = downChunks[downChunks.length - 1]!;
+    expect(downFinal).toContain('36.0%');
+    expect(downFinal).not.toContain('36.1%');
   });
 });
