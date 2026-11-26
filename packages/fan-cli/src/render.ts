@@ -222,6 +222,9 @@ function formatWarningMessage(
       return `Fan ${String(fan.index)} target clamped to ${String(Math.round(fan.targetRpm))} RPM (allowed ${String(Math.round(fan.minRpm))}-${String(Math.round(fan.maxRpm))})`;
     }
   }
+  if (warning.code === 'STATE_CORRUPT') {
+    return `Persisted state file is corrupted or unreadable (${warning.message})`;
+  }
   return warning.message;
 }
 

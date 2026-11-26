@@ -204,6 +204,24 @@ describe('renderReport & renderPersistStatus & renderWatchLine', () => {
     ).toEqual(status);
   });
 
+  test('STATE_CORRUPT 告警支持中英文渲染', () => {
+    const withCorrupt = {
+      ...SAMPLE_REPORT,
+      warnings: [
+        {
+          code: 'STATE_CORRUPT' as const,
+          message: '持久化状态文件损坏 (非合法 JSON)',
+        },
+      ],
+    };
+    expect(
+      renderReport(withCorrupt, { color: false, json: false, locale: 'zh' }),
+    ).toContain('持久化状态文件损坏');
+    expect(
+      renderReport(withCorrupt, { color: false, json: false, locale: 'en' }),
+    ).toContain('Persisted state file is corrupted or unreadable');
+  });
+
   test('json 模式输出合法 JSON, watch 行格式正确且着色降级一致', () => {
     const jsonOut = renderReport(SAMPLE_REPORT, { color: false, json: true });
     expect(JSON.parse(jsonOut)).toEqual(SAMPLE_REPORT);
