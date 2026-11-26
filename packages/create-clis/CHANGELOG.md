@@ -1,3 +1,10 @@
+# create-clis [1.5.0](https://github.com/iyowei/clis/compare/create-clis@1.4.1...create-clis@1.5.0) (2026-11-26)
+
+
+### Features
+
+* 新增 cli-i18n 共享库并为全仓 CLI 接入中英双语与系统语言自适应 ([c6432d2](https://github.com/iyowei/clis/commit/c6432d2ce0d4f64b5fc8462ff6aa7c574d5fb64b))
+
 ## create-clis [1.4.1](https://github.com/iyowei/clis/compare/create-clis@1.4.0...create-clis@1.4.1) (2026-11-25)
 
 
