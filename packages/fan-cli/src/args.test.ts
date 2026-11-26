@@ -104,5 +104,12 @@ describe('parseArgs 错误拦截', () => {
     expect(parseArgs(['--fan', 'abc']).ok).toBe(false);
     expect(parseArgs(['--unknown']).ok).toBe(false);
     expect(parseArgs(['status', 'update']).ok).toBe(false);
+
+    const badWatchZero = parseArgs(['status', '-w', '0']);
+    const badWatchEqZero = parseArgs(['status', '--watch=0']);
+    const badWatchNeg = parseArgs(['status', '-w', '-1']);
+    expect(badWatchZero).toEqual(badWatchEqZero);
+    expect(badWatchZero.ok).toBe(false);
+    expect(badWatchNeg.ok).toBe(false);
   });
 });

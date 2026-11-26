@@ -291,16 +291,23 @@ export function parseArgs(
       fanIndex = res.value;
     } else if (arg === '-w' || arg === '--watch') {
       const next = argv[i + 1];
-      if (
-        next !== undefined &&
-        !next.startsWith('-') &&
-        !SUBCOMMANDS.has(next) &&
-        !isFlagToken(next) &&
-        parseWatchInterval(next) !== null
-      ) {
-        watchSeconds = parseWatchInterval(next)!;
-        i += 2;
-        continue;
+      if (next !== undefined && !SUBCOMMANDS.has(next) && !isFlagToken(next)) {
+        const parsedWatch = parseWatchInterval(next);
+        if (parsedWatch !== null) {
+          watchSeconds = parsedWatch;
+          i += 2;
+          continue;
+        }
+        if (/^-?\d+(?:\.\d+)?$/.test(next)) {
+          return {
+            ok: false,
+            message: t(
+              locale,
+              `无效的轮询间隔: ${next}`,
+              `Invalid watch interval: ${next}`,
+            ),
+          };
+        }
       }
       watchSeconds = 1.0;
     } else if (arg.startsWith('--watch=')) {
