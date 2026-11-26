@@ -35,17 +35,33 @@ export async function runWatchLoop(options: {
   const { controller, fanIndex, intervalSec, color, locale, out } = options;
   const intervalMs = Math.max(200, Math.round(intervalSec * 1000));
   let stopped = false;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  let wake: (() => void) | undefined;
   const onSigint = () => {
     stopped = true;
+    if (timer !== undefined) {
+      clearTimeout(timer);
+      timer = undefined;
+    }
+    wake?.();
   };
   process.on('SIGINT', onSigint);
   try {
     while (!stopped) {
       const report = controller.status({ fanIndex });
       out(renderWatchLine(report, formatTime(), color, locale));
-      await new Promise((resolve) => setTimeout(resolve, intervalMs));
+      if (stopped) break;
+      await new Promise<void>((resolve) => {
+        wake = resolve;
+        timer = setTimeout(() => {
+          timer = undefined;
+          wake = undefined;
+          resolve();
+        }, intervalMs);
+      });
     }
   } finally {
+    if (timer !== undefined) clearTimeout(timer);
     process.off('SIGINT', onSigint);
   }
   return 0;

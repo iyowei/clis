@@ -1,14 +1,14 @@
 /**
  * `cli-helpers.ts` 边界覆盖:
- * - `localizeFanError` 英文/中文错误映射
+ * - `localizeFanError` 英文/中文错误映射与 `runWatchLoop` `SIGINT` 及时中断
  */
 import { describe, expect, test } from 'bun:test';
 
 import { FanError } from '@iyowei/fan';
 
-import { localizeFanError } from './cli-helpers.ts';
+import { localizeFanError, runWatchLoop } from './cli-helpers.ts';
 
-describe('cli-helpers 本地化', () => {
+describe('cli-helpers 本地化与 watch 中断', () => {
   test('localizeFanError 正确覆盖 STATE_CORRUPT 与注入 platform', () => {
     const errState = new FanError('STATE_CORRUPT', 'invalid syntax');
     expect(localizeFanError(errState, 'en')).toBe(
@@ -23,5 +23,50 @@ describe('cli-helpers 本地化', () => {
     expect(localizeFanError(errPlatform, 'en', 'darwin')).toContain(
       'current: freebsd',
     );
+  });
+
+  test('runWatchLoop 收到 SIGINT 后无需等待长周期立即返回 0', async () => {
+    const lines: string[] = [];
+    const timer = setTimeout(() => {
+      process.emit('SIGINT');
+    }, 15);
+    const start = Date.now();
+    try {
+      const code = await runWatchLoop({
+        controller: {
+          status: () => ({
+            fans: [],
+            macsFanControlRunning: false,
+            warnings: [],
+            persisted: null,
+          }),
+          set: () => {
+            throw new Error('unused');
+          },
+          max: () => {
+            throw new Error('unused');
+          },
+          min: () => {
+            throw new Error('unused');
+          },
+          auto: () => {
+            throw new Error('unused');
+          },
+          apply: () => {
+            throw new Error('unused');
+          },
+        },
+        fanIndex: undefined,
+        intervalSec: 30,
+        color: false,
+        locale: 'en',
+        out: (line) => lines.push(line),
+      });
+      expect(code).toBe(0);
+      expect(Date.now() - start).toBeLessThan(1000);
+      expect(lines.length).toBeGreaterThanOrEqual(1);
+    } finally {
+      clearTimeout(timer);
+    }
   });
 });
