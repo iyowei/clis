@@ -28,7 +28,7 @@
 
 ## 3. 公开 API
 
-- `createFanController({ transport?, stateStore?, ensureDaemon? })`: 返回 `{ status, set, max, min, auto, apply }`, 所有方法返回结构化 `FanStatusReport` (`{ fans, macsFanControlRunning, warnings, persisted?, didPersist?, daemonAction? }`)。
+- `createFanController({ transport?, stateStore?, ensureDaemon?, platform? })`: 返回 `{ status, set, max, min, auto, apply }`, 所有方法返回结构化 `FanStatusReport` (`{ fans, macsFanControlRunning, warnings, persisted?, didPersist?, daemonAction? }`)。
 - `createAppleSmcTransport(overrides?)`: 默认使用 macOS `/usr/bin/python3` 与 `/usr/bin/sudo` 通过 `IOKit` 访问 `AppleSMC`。
 - `readPersistedState` / `mergePersistedState` / `createMacOsFanStateStore`: 无符号链接校验、跨风扇合并读写 `/Library/Application Support/iyowei-fan/state.json` (`v1`)。
 - `ensurePersistDaemon` / `getPersistDaemonStatus` / `installPersistDaemon` / `uninstallPersistDaemon` / `buildLaunchDaemonPlist`: 管理并幂等同步 `/Library/LaunchDaemons/com.iyowei.fan.plist` 守护服务。

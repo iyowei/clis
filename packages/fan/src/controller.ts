@@ -132,21 +132,26 @@ function saveUpdates(
 export function createFanController(
   options: FanControllerOptions = {},
 ): FanController {
-  const transport = options.transport ?? createAppleSmcTransport();
+  const hostPlatform = options.platform ?? process.platform;
+  const transport =
+    options.transport ?? createAppleSmcTransport({ platform: hostPlatform });
   const isRealDarwinDefault =
-    options.transport === undefined && process.platform === 'darwin';
+    options.transport === undefined && hostPlatform === 'darwin';
   const stateStore =
     options.stateStore ??
-    (isRealDarwinDefault ? createMacOsFanStateStore() : undefined);
+    (isRealDarwinDefault
+      ? createMacOsFanStateStore({ platform: hostPlatform })
+      : undefined);
   let ensureDaemon: (() => { action: PersistDaemonAction }) | undefined;
   if (options.ensureDaemon !== false) {
     if (options.ensureDaemon !== undefined) {
       ensureDaemon = options.ensureDaemon;
     } else if (isRealDarwinDefault) {
       ensureDaemon = () =>
-        ensurePersistDaemon(
-          stateStore !== undefined ? { statePath: stateStore.path } : {},
-        );
+        ensurePersistDaemon({
+          ...(stateStore !== undefined ? { statePath: stateStore.path } : {}),
+          platform: hostPlatform,
+        });
     }
   }
 

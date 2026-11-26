@@ -27,7 +27,7 @@ export interface FanPersistedState {
 
 /** 告警条目 (结构化判别码 + 人类可读提示) */
 export interface FanWarning {
-  code: 'FAN_CLAMPED' | 'MACS_FAN_CONTROL_RUNNING';
+  code: 'FAN_CLAMPED' | 'MACS_FAN_CONTROL_RUNNING' | 'STATE_CORRUPT';
   message: string;
   fanIndex?: number;
 }
@@ -96,6 +96,8 @@ export interface PersistDaemonStatus {
   statePath: string;
   logPath: string;
   state: FanPersistedState | null;
+  /** 读取持久化状态失败时的错误说明 (文件损坏或遇符号链接) */
+  stateError?: string;
 }
 
 /** 控制器构造选项 */
@@ -104,6 +106,8 @@ export interface FanControllerOptions {
   stateStore?: FanStateStore;
   /** 手动设定转速 (set/max/min) 时自动确保后台守护就绪并同步至最新脚本 (传 false 禁用) */
   ensureDaemon?: (() => PersistDaemonSyncResult) | false;
+  /** 宿主平台覆盖 (供跨平台测试注入, 默认取 `process.platform`) */
+  platform?: NodeJS.Platform;
 }
 
 /** 编排层风扇控制器接口 */
