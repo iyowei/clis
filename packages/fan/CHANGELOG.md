@@ -1,3 +1,10 @@
+## @iyowei/fan [1.0.2](https://github.com/iyowei/clis/compare/@iyowei/fan@1.0.1...@iyowei/fan@1.0.2) (2026-11-26)
+
+
+### Bug Fixes
+
+* **fan:** 兼容跨代 Mac 的 F0Md、Ftst 温控延迟解锁与 Intel FS! 位掩码协议 ([2d15314](https://github.com/iyowei/clis/commit/2d15314b1f982161661f0e12cf574ebfad23314a))
+
 ## @iyowei/fan [1.0.1](https://github.com/iyowei/clis/compare/@iyowei/fan@1.0.0...@iyowei/fan@1.0.1) (2026-11-25)
 
 
