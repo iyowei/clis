@@ -30,6 +30,12 @@ export interface DaemonPaths {
   sudoBin?: string;
   launchctlBin?: string;
   platform?: NodeJS.Platform;
+  env?: Record<string, string | undefined>;
+  geteuid?: () => number;
+  exists?: (path: string) => boolean;
+  spawnSyncFn?: typeof spawnSync;
+  statusTimeoutMs?: number;
+  writeTimeoutMs?: number;
 }
 
 function escapeXml(value: string): string {
@@ -80,27 +86,43 @@ export function buildLaunchDaemonPlist(options: {
 }
 
 function resolvePaths(opts: DaemonPaths = {}) {
+  const env = opts.env ?? process.env;
+  const envStatePath = env.FAN_STATE_PATH?.trim();
   return {
     plistPath: opts.plistPath ?? DEFAULT_PLIST_PATH,
     daemonScriptPath: opts.daemonScriptPath ?? DEFAULT_DAEMON_SCRIPT_PATH,
     statePath:
-      opts.statePath ?? process.env.FAN_STATE_PATH ?? DEFAULT_FAN_STATE_PATH,
+      opts.statePath ??
+      (envStatePath !== undefined && envStatePath !== ''
+        ? envStatePath
+        : DEFAULT_FAN_STATE_PATH),
     logPath: opts.logPath ?? DEFAULT_DAEMON_LOG_PATH,
     python3Bin: opts.python3Bin ?? MACOS_PYTHON3_BIN,
     sudoBin: opts.sudoBin ?? MACOS_SUDO_BIN,
     launchctlBin: opts.launchctlBin ?? MACOS_LAUNCHCTL_BIN,
     platform: opts.platform ?? process.platform,
+    geteuid:
+      opts.geteuid ??
+      (() => (typeof process.geteuid === 'function' ? process.geteuid() : -1)),
+    exists: opts.exists ?? existsSync,
+    spawnSyncFn: opts.spawnSyncFn ?? spawnSync,
+    statusTimeoutMs: opts.statusTimeoutMs ?? 5_000,
+    writeTimeoutMs: opts.writeTimeoutMs ?? 30_000,
   };
 }
 
-function assertDarwin(platform: NodeJS.Platform, python3Bin: string): void {
+function assertDarwin(
+  platform: NodeJS.Platform,
+  python3Bin: string,
+  existsFn: (path: string) => boolean,
+): void {
   if (platform !== 'darwin') {
     throw new FanError(
       'UNSUPPORTED_PLATFORM',
       `macOS LaunchDaemon 仅支持 darwin 平台 (当前: ${platform})`,
     );
   }
-  if (!existsSync(python3Bin)) {
+  if (!existsFn(python3Bin)) {
     throw new FanError(
       'SMC_UNAVAILABLE',
       `缺少系统 Python 运行时 (${python3Bin})`,
@@ -114,15 +136,15 @@ export function getPersistDaemonStatus(
 ): PersistDaemonStatus {
   const paths = resolvePaths(opts);
   const installed =
-    existsSync(paths.plistPath) && existsSync(paths.daemonScriptPath);
+    paths.exists(paths.plistPath) && paths.exists(paths.daemonScriptPath);
   let running = false;
-  if (paths.platform === 'darwin' && existsSync(paths.launchctlBin)) {
-    const res = spawnSync(
+  if (paths.platform === 'darwin' && paths.exists(paths.launchctlBin)) {
+    const res = paths.spawnSyncFn(
       paths.launchctlBin,
       ['print', `system/${FAN_DAEMON_LABEL}`],
-      { stdio: 'ignore' },
+      { stdio: 'ignore', timeout: paths.statusTimeoutMs },
     );
-    running = res.status === 0;
+    running = res.error === undefined && res.status === 0;
   }
   let state = null;
   try {
@@ -179,21 +201,34 @@ for path in (plist_path, script_path):
 `;
 
 function runPrivilegedPython(
-  sudoBin: string,
-  python3Bin: string,
+  paths: ReturnType<typeof resolvePaths>,
   script: string,
   args: string[],
 ): void {
-  const isRoot =
-    typeof process.geteuid === 'function' && process.geteuid() === 0;
-  const cmd = isRoot ? python3Bin : sudoBin;
+  const isRoot = paths.geteuid() === 0;
+  if (!isRoot && !paths.exists(paths.sudoBin)) {
+    throw new FanError(
+      'PERMISSION_DENIED',
+      `管理 LaunchDaemon 需要 root 权限, 但找不到 ${paths.sudoBin}`,
+    );
+  }
+  const cmd = isRoot ? paths.python3Bin : paths.sudoBin;
   const cmdArgs = isRoot
     ? ['-c', script, ...args]
-    : [python3Bin, '-c', script, ...args];
-  const res = spawnSync(cmd, cmdArgs, {
+    : [paths.python3Bin, '-c', script, ...args];
+  // 保留 stdin='inherit' 供 sudo 交互式密码/Touch ID 提示, 内容经 argv 传递 (无机密)
+  const res = paths.spawnSyncFn(cmd, cmdArgs, {
     encoding: 'utf8',
-    stdio: ['inherit', 'pipe', 'pipe'],
+    stdio: [isRoot ? 'ignore' : 'inherit', 'pipe', 'pipe'],
+    ...(isRoot ? { timeout: paths.writeTimeoutMs } : {}),
   });
+  if (res.error !== undefined) {
+    throw new FanError(
+      'DAEMON_FAILED',
+      `执行 ${cmd} 失败: ${res.error.message}`,
+      { cause: res.error },
+    );
+  }
   if (res.status !== 0) {
     const msg = (res.stderr ?? '').trim();
     throw new FanError(
@@ -212,7 +247,7 @@ export function installPersistDaemon(
   opts: DaemonPaths = {},
 ): PersistDaemonStatus {
   const paths = resolvePaths(opts);
-  assertDarwin(paths.platform, paths.python3Bin);
+  assertDarwin(paths.platform, paths.python3Bin, paths.exists);
   const daemonBody = buildDaemonPythonScript(paths.statePath);
   const plistBody = buildLaunchDaemonPlist({
     label: FAN_DAEMON_LABEL,
@@ -220,7 +255,7 @@ export function installPersistDaemon(
     daemonScriptPath: paths.daemonScriptPath,
     logPath: paths.logPath,
   });
-  runPrivilegedPython(paths.sudoBin, paths.python3Bin, INSTALL_DAEMON_PY, [
+  runPrivilegedPython(paths, INSTALL_DAEMON_PY, [
     paths.plistPath,
     plistBody,
     paths.daemonScriptPath,
@@ -242,7 +277,7 @@ export function uninstallPersistDaemon(
       `macOS LaunchDaemon 仅支持 darwin 平台 (当前: ${paths.platform})`,
     );
   }
-  runPrivilegedPython(paths.sudoBin, paths.python3Bin, UNINSTALL_DAEMON_PY, [
+  runPrivilegedPython(paths, UNINSTALL_DAEMON_PY, [
     paths.plistPath,
     paths.daemonScriptPath,
     FAN_DAEMON_LABEL,
@@ -251,9 +286,12 @@ export function uninstallPersistDaemon(
   return getPersistDaemonStatus(opts);
 }
 
-function readSafeText(filePath: string): string | null {
+function readSafeText(
+  filePath: string,
+  existsFn: (path: string) => boolean,
+): string | null {
   try {
-    if (!existsSync(filePath) || lstatSync(filePath).isSymbolicLink()) {
+    if (!existsFn(filePath) || lstatSync(filePath).isSymbolicLink()) {
       return null;
     }
     return readFileSync(filePath, 'utf8');
@@ -271,7 +309,7 @@ export function ensurePersistDaemon(
   opts: DaemonPaths = {},
 ): PersistDaemonSyncResult {
   const paths = resolvePaths(opts);
-  assertDarwin(paths.platform, paths.python3Bin);
+  assertDarwin(paths.platform, paths.python3Bin, paths.exists);
 
   const expectedScript = buildDaemonPythonScript(paths.statePath);
   const expectedPlist = buildLaunchDaemonPlist({
@@ -281,8 +319,8 @@ export function ensurePersistDaemon(
     logPath: paths.logPath,
   });
 
-  const currentScript = readSafeText(paths.daemonScriptPath);
-  const currentPlist = readSafeText(paths.plistPath);
+  const currentScript = readSafeText(paths.daemonScriptPath, paths.exists);
+  const currentPlist = readSafeText(paths.plistPath, paths.exists);
   const currentStatus = getPersistDaemonStatus(opts);
 
   if (
