@@ -42,6 +42,7 @@ clis 统一一键安装脚本 (Windows PowerShell)
   create-clis  create-clis           在 iyowei/clis 仓内生成标准化 TypeScript + Bun CLI 包
   sweep        @iyowei/sweep-cli     通用多技术栈磁盘清理与缓存治理器
   fan          @iyowei/fan-cli       仅支持 macOS (Windows 将直接提示不支持并中止)
+  wake         @iyowei/wake-cli      跨网段 Wake-on-LAN 与 SSH 中继远程唤醒器
 
 选项:
   -Tool <name>                要安装的 CLI 工具名 (或设环境变量 CLIS_TOOL)
@@ -55,7 +56,7 @@ clis 统一一键安装脚本 (Windows PowerShell)
   -Yes                        非交互自动确认
   -Help                       显示帮助
 
-环境变量 (<TOOL> 可为 CODD / CREATE_CLIS / SWEEP / FAN, 亦兼容 CLIS_* / NPM_CONFIG_REGISTRY):
+环境变量 (<TOOL> 可为 CODD / CREATE_CLIS / SWEEP / FAN / WAKE, 亦兼容 CLIS_* / NPM_CONFIG_REGISTRY):
   <TOOL>_INSTALLER_URL / <TOOL>_BUN_URL / <TOOL>_REGISTRY / NPM_CONFIG_REGISTRY /
   <TOOL>_VERSION / <TOOL>_INSTALL_HOME / <TOOL>_BIN_DIR / <TOOL>_NO_MODIFY_PATH
 '@ | Write-Output
@@ -124,8 +125,19 @@ function Resolve-ToolSpec {
         OnlyOs = 'all'
       }
     }
+    { $_ -in @('wake', 'wake-cli', '@iyowei/wake-cli') } {
+      return @{
+        Key = 'wake'
+        EnvPrefix = 'WAKE'
+        PackageName = '@iyowei/wake-cli'
+        BinName = 'wake'
+        EntryFile = 'wake.mjs'
+        DistFile = 'cli.js'
+        OnlyOs = 'all'
+      }
+    }
     default {
-      Fail-Install "不支持的工具: $RawTool (可选: codd, create-clis, sweep, fan)"
+      Fail-Install "不支持的工具: $RawTool (可选: codd, create-clis, sweep, fan, wake)"
     }
   }
 }
@@ -161,7 +173,8 @@ function Prompt-ToolIfNeeded {
         Write-Host '  2) create-clis  (monorepo 包脚手架生成)'
         Write-Host '  3) sweep        (多技术栈磁盘清理器)'
         Write-Host '  4) fan          (仅 macOS 可用)'
-        $choice = Read-Host '输入序号 [1-4]'
+        Write-Host '  5) wake         (跨网段 Wake-on-LAN 与 SSH 中继唤醒器)'
+        $choice = Read-Host '输入序号 [1-5]'
         switch ($choice.Trim()) {
           '1' { return 'codd' }
           'codd' { return 'codd' }
@@ -171,6 +184,8 @@ function Prompt-ToolIfNeeded {
           'sweep' { return 'sweep' }
           '4' { return 'fan' }
           'fan' { return 'fan' }
+          '5' { return 'wake' }
+          'wake' { return 'wake' }
           default { Fail-Install "无效选择: $choice" }
         }
       }

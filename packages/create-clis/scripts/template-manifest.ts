@@ -287,6 +287,14 @@ export const TEMPLATE_MANIFEST: readonly ManifestEntry[] = [
     'packages/fan-cli/',
     'macOS AppleSMC 风扇控制 CLI 包 (本仓领域工具); 不进模板',
   ),
+  excl(
+    'packages/wake/',
+    '跨网段 Wake-on-LAN 远程唤醒 API 主包与文档 (本仓领域工具); 不进模板',
+  ),
+  excl(
+    'packages/wake-cli/',
+    '跨网段 Wake-on-LAN 远程唤醒 CLI 包 (本仓领域工具); 不进模板',
+  ),
   ...[
     'docs/adrs/0005-engineering-gates-and-hooks.md',
     'docs/adrs/0006-dual-runtime-bun-first.md',

@@ -44,6 +44,7 @@ clis 统一一键安装脚本 (macOS / Linux)
   create-clis  create-clis           生成标准化 TypeScript + Bun CLI 仓库
   sweep        @iyowei/sweep-cli     通用多技术栈工作区清理器
   fan          @iyowei/fan-cli       macOS 风扇查看与手动控制器 (仅 macOS)
+  wake         @iyowei/wake-cli      跨网段 Wake-on-LAN 与 SSH 中继远程唤醒器
 
 选项:
   --tool <name>             要安装的 CLI 工具名 (也可直接作为首参数, 如 install.sh codd)
@@ -57,7 +58,7 @@ clis 统一一键安装脚本 (macOS / Linux)
   -y, --yes                 非交互自动确认
   -h, --help                显示此帮助信息
 
-环境变量 (支持 <TOOL> 为 CODD / CREATE_CLIS / SWEEP / FAN, 亦兼容共享 CLIS_* / NPM_CONFIG_REGISTRY):
+环境变量 (支持 <TOOL> 为 CODD / CREATE_CLIS / SWEEP / FAN / WAKE, 亦兼容共享 CLIS_* / NPM_CONFIG_REGISTRY):
   <TOOL>_INSTALLER_URL / <TOOL>_BUN_URL / <TOOL>_REGISTRY / NPM_CONFIG_REGISTRY /
   <TOOL>_VERSION / <TOOL>_INSTALL_HOME / <TOOL>_BIN_DIR / <TOOL>_NO_MODIFY_PATH
 EOF
@@ -169,7 +170,8 @@ prompt_tool_if_needed() {
       printf '  2) codd         (全栈开发环境编排器)\n'
       printf '  3) create-clis  (monorepo 包脚手架生成)\n'
       printf '  4) sweep        (多技术栈磁盘清理器)\n'
-      printf '输入序号 [1-4]: '
+      printf '  5) wake         (跨网段 Wake-on-LAN 与 SSH 中继唤醒器)\n'
+      printf '输入序号 [1-5]: '
       read -r _choice || true
     elif [ -r /dev/tty ]; then
       printf '\n请选择要安装的 CLI 工具:\n' >/dev/tty
@@ -177,7 +179,8 @@ prompt_tool_if_needed() {
       printf '  2) codd         (全栈开发环境编排器)\n' >/dev/tty
       printf '  3) create-clis  (monorepo 包脚手架生成)\n' >/dev/tty
       printf '  4) sweep        (多技术栈磁盘清理器)\n' >/dev/tty
-      printf '输入序号 [1-4]: ' >/dev/tty
+      printf '  5) wake         (跨网段 Wake-on-LAN 与 SSH 中继唤醒器)\n' >/dev/tty
+      printf '输入序号 [1-5]: ' >/dev/tty
       read -r _choice </dev/tty || true
     else
       _choice=""
@@ -188,6 +191,7 @@ prompt_tool_if_needed() {
       2|codd) TOOL_ARG="codd" ;;
       3|create-clis) TOOL_ARG="create-clis" ;;
       4|sweep) TOOL_ARG="sweep" ;;
+      5|wake) TOOL_ARG="wake" ;;
       "") ;;
       *) die "无效选择: $_choice" ;;
     esac
@@ -195,7 +199,7 @@ prompt_tool_if_needed() {
 
   if [ -z "$TOOL_ARG" ]; then
     _hint_url="${EXPLICIT_INSTALLER_URL:-${CLIS_INSTALLER_URL:-$DEFAULT_INSTALLER_URL}}"
-    die "未指定工具名称。请传 --tool <fan|codd|create-clis|sweep>，例如:
+    die "未指定工具名称。请传 --tool <fan|codd|create-clis|sweep|wake>，例如:
   curl -fsSL ${_hint_url} | sh -s -- --tool codd"
   fi
 }
@@ -238,8 +242,17 @@ resolve_tool_spec() {
       DIST_FILE="cli.js"
       ONLY_OS="all"
       ;;
+    wake|wake-cli|@iyowei/wake-cli)
+      TOOL_KEY="wake"
+      TOOL_PREFIX="WAKE"
+      PKG_NAME="@iyowei/wake-cli"
+      BIN_NAME="wake"
+      ENTRY_FILE="wake.mjs"
+      DIST_FILE="cli.js"
+      ONLY_OS="all"
+      ;;
     *)
-      die "不支持的工具: $TOOL_ARG (可选: fan, codd, create-clis, sweep)"
+      die "不支持的工具: $TOOL_ARG (可选: fan, codd, create-clis, sweep, wake)"
       ;;
   esac
 }
@@ -251,34 +264,42 @@ get_tool_env() {
     codd:INSTALLER_URL)          printf '%s' "${CODD_INSTALLER_URL:-${CLIS_INSTALLER_URL:-}}" ;;
     create-clis:INSTALLER_URL)   printf '%s' "${CREATE_CLIS_INSTALLER_URL:-${CLIS_INSTALLER_URL:-}}" ;;
     sweep:INSTALLER_URL)         printf '%s' "${SWEEP_INSTALLER_URL:-${CLIS_INSTALLER_URL:-}}" ;;
+    wake:INSTALLER_URL)          printf '%s' "${WAKE_INSTALLER_URL:-${CLIS_INSTALLER_URL:-}}" ;;
     fan:BUN_URL)                 printf '%s' "${FAN_BUN_URL:-${CLIS_BUN_URL:-}}" ;;
     codd:BUN_URL)                printf '%s' "${CODD_BUN_URL:-${CLIS_BUN_URL:-}}" ;;
     create-clis:BUN_URL)         printf '%s' "${CREATE_CLIS_BUN_URL:-${CLIS_BUN_URL:-}}" ;;
     sweep:BUN_URL)               printf '%s' "${SWEEP_BUN_URL:-${CLIS_BUN_URL:-}}" ;;
+    wake:BUN_URL)                printf '%s' "${WAKE_BUN_URL:-${CLIS_BUN_URL:-}}" ;;
     fan:BUN_VERSION)             printf '%s' "${FAN_BUN_VERSION:-${CLIS_BUN_VERSION:-}}" ;;
     codd:BUN_VERSION)            printf '%s' "${CODD_BUN_VERSION:-${CLIS_BUN_VERSION:-}}" ;;
     create-clis:BUN_VERSION)     printf '%s' "${CREATE_CLIS_BUN_VERSION:-${CLIS_BUN_VERSION:-}}" ;;
     sweep:BUN_VERSION)           printf '%s' "${SWEEP_BUN_VERSION:-${CLIS_BUN_VERSION:-}}" ;;
+    wake:BUN_VERSION)            printf '%s' "${WAKE_BUN_VERSION:-${CLIS_BUN_VERSION:-}}" ;;
     fan:REGISTRY)                printf '%s' "${FAN_REGISTRY:-${CLIS_REGISTRY:-${NPM_CONFIG_REGISTRY:-}}}" ;;
     codd:REGISTRY)               printf '%s' "${CODD_REGISTRY:-${CLIS_REGISTRY:-${NPM_CONFIG_REGISTRY:-}}}" ;;
     create-clis:REGISTRY)        printf '%s' "${CREATE_CLIS_REGISTRY:-${CLIS_REGISTRY:-${NPM_CONFIG_REGISTRY:-}}}" ;;
     sweep:REGISTRY)              printf '%s' "${SWEEP_REGISTRY:-${CLIS_REGISTRY:-${NPM_CONFIG_REGISTRY:-}}}" ;;
+    wake:REGISTRY)               printf '%s' "${WAKE_REGISTRY:-${CLIS_REGISTRY:-${NPM_CONFIG_REGISTRY:-}}}" ;;
     fan:VERSION)                 printf '%s' "${FAN_VERSION:-${CLIS_VERSION:-}}" ;;
     codd:VERSION)                printf '%s' "${CODD_VERSION:-${CLIS_VERSION:-}}" ;;
     create-clis:VERSION)         printf '%s' "${CREATE_CLIS_VERSION:-${CLIS_VERSION:-}}" ;;
     sweep:VERSION)               printf '%s' "${SWEEP_VERSION:-${CLIS_VERSION:-}}" ;;
+    wake:VERSION)                printf '%s' "${WAKE_VERSION:-${CLIS_VERSION:-}}" ;;
     fan:INSTALL_HOME)            printf '%s' "${FAN_INSTALL_HOME:-${CLIS_INSTALL_HOME:-}}" ;;
     codd:INSTALL_HOME)           printf '%s' "${CODD_INSTALL_HOME:-${CLIS_INSTALL_HOME:-}}" ;;
     create-clis:INSTALL_HOME)    printf '%s' "${CREATE_CLIS_INSTALL_HOME:-${CLIS_INSTALL_HOME:-}}" ;;
     sweep:INSTALL_HOME)          printf '%s' "${SWEEP_INSTALL_HOME:-${CLIS_INSTALL_HOME:-}}" ;;
+    wake:INSTALL_HOME)           printf '%s' "${WAKE_INSTALL_HOME:-${CLIS_INSTALL_HOME:-}}" ;;
     fan:BIN_DIR)                 printf '%s' "${FAN_BIN_DIR:-${CLIS_BIN_DIR:-}}" ;;
     codd:BIN_DIR)                printf '%s' "${CODD_BIN_DIR:-${CLIS_BIN_DIR:-}}" ;;
     create-clis:BIN_DIR)         printf '%s' "${CREATE_CLIS_BIN_DIR:-${CLIS_BIN_DIR:-}}" ;;
     sweep:BIN_DIR)               printf '%s' "${SWEEP_BIN_DIR:-${CLIS_BIN_DIR:-}}" ;;
+    wake:BIN_DIR)                printf '%s' "${WAKE_BIN_DIR:-${CLIS_BIN_DIR:-}}" ;;
     fan:NO_MODIFY_PATH)          printf '%s' "${FAN_NO_MODIFY_PATH:-${CLIS_NO_MODIFY_PATH:-}}" ;;
     codd:NO_MODIFY_PATH)         printf '%s' "${CODD_NO_MODIFY_PATH:-${CLIS_NO_MODIFY_PATH:-}}" ;;
     create-clis:NO_MODIFY_PATH)  printf '%s' "${CREATE_CLIS_NO_MODIFY_PATH:-${CLIS_NO_MODIFY_PATH:-}}" ;;
     sweep:NO_MODIFY_PATH)        printf '%s' "${SWEEP_NO_MODIFY_PATH:-${CLIS_NO_MODIFY_PATH:-}}" ;;
+    wake:NO_MODIFY_PATH)         printf '%s' "${WAKE_NO_MODIFY_PATH:-${CLIS_NO_MODIFY_PATH:-}}" ;;
   esac
 }
 

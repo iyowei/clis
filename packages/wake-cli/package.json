@@ -1,0 +1,57 @@
+{
+  "name": "@iyowei/wake-cli",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Zero-dependency dual-runtime CLI for Wake-on-LAN with subnet-aware UDP broadcast and SSH relay failover",
+  "keywords": [
+    "cli",
+    "wol",
+    "wake-on-lan",
+    "magic-packet",
+    "ssh-relay",
+    "bun",
+    "node"
+  ],
+  "homepage": "https://github.com/iyowei/clis/tree/main/packages/wake-cli",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/iyowei/clis.git",
+    "directory": "packages/wake-cli"
+  },
+  "bugs": {
+    "url": "https://github.com/iyowei/clis/issues"
+  },
+  "license": "MIT",
+  "author": "iTonyYo",
+  "type": "module",
+  "bin": {
+    "wake": "bin/wake.mjs"
+  },
+  "files": [
+    "bin/wake",
+    "bin/wake.cmd",
+    "bin/wake.mjs",
+    "bin/bunfig.toml",
+    "dist/cli.js",
+    "dist/manifest.json",
+    "README.md",
+    "README.zh-CN.md",
+    "LICENSE",
+    "CHANGELOG.md"
+  ],
+  "engines": {
+    "node": ">=22.18.0"
+  },
+  "devDependencies": {
+    "@iyowei/cli-i18n": "1.0.0",
+    "@iyowei/cli-updater": "1.0.0",
+    "@iyowei/wake": "1.0.0"
+  },
+  "scripts": {
+    "build": "rm -rf dist && bun build src/cli.ts --target=node --outfile=dist/cli.js && bun scripts/write-dist-manifest.ts",
+    "prepublishOnly": "bun run build && bun run verify:release",
+    "verify:release": "bun scripts/verify-release.ts",
+    "typecheck": "bun check",
+    "test": "bun test"
+  }
+}

@@ -1,0 +1,43 @@
+#!/bin/sh
+# wake 启动器: 按优先级选择运行时并把控制权交给 bin/wake.mjs
+set -eu
+
+resolve_self() {
+  target=$1
+  while [ -L "$target" ]; do
+    dir=$(CDPATH= cd -- "$(dirname -- "$target")" && pwd)
+    link=$(readlink "$target")
+    case "$link" in
+      /*) target=$link ;;
+      *) target="$dir/$link" ;;
+    esac
+  done
+  dir=$(CDPATH= cd -- "$(dirname -- "$target")" && pwd)
+  printf '%s\n' "$dir/$(basename -- "$target")"
+}
+
+SELF=$(resolve_self "$0")
+ROOT=$(CDPATH= cd -- "$(dirname -- "$SELF")/.." && pwd)
+ENTRY="$ROOT/bin/wake.mjs"
+BUNFIG="$ROOT/bin/bunfig.toml"
+
+if [ ! -f "$ENTRY" ]; then
+  printf 'wake: missing %s\n' "$ENTRY" >&2
+  exit 1
+fi
+
+if command -v bun >/dev/null 2>&1; then
+  if [ ! -f "$BUNFIG" ]; then
+    printf 'wake: 缺少启动器隔离配置 (%s), 为防工作目录 bunfig.toml 劫持已拒绝执行\n' "$BUNFIG" >&2
+    exit 1
+  fi
+  export CLIS_BUN_ISOLATED=1
+  exec bun "--config=$BUNFIG" --no-env-file "$ENTRY" "$@"
+fi
+
+if command -v node >/dev/null 2>&1; then
+  exec node "$ENTRY" "$@"
+fi
+
+printf 'wake: bun or node not found in PATH\n' >&2
+exit 1

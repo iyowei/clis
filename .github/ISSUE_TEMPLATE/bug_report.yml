@@ -30,6 +30,8 @@ body:
         - '@iyowei/codd (API)'
         - '@iyowei/fan-cli (fan)'
         - '@iyowei/fan (API)'
+        - '@iyowei/wake-cli (wake)'
+        - '@iyowei/wake (API)'
         - Repository infrastructure / docs
     validations:
       required: true

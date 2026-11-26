@@ -1,0 +1,53 @@
+{
+  "name": "@iyowei/wake",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Zero-dependency dual-runtime Wake-on-LAN API with subnet-aware UDP broadcast and SSH relay failover",
+  "keywords": [
+    "wol",
+    "wake-on-lan",
+    "magic-packet",
+    "ssh-relay",
+    "networking",
+    "bun",
+    "node"
+  ],
+  "homepage": "https://github.com/iyowei/clis/tree/main/packages/wake",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/iyowei/clis.git",
+    "directory": "packages/wake"
+  },
+  "bugs": {
+    "url": "https://github.com/iyowei/clis/issues"
+  },
+  "license": "MIT",
+  "author": "iTonyYo",
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist/index.js",
+    "dist/**/*.d.ts",
+    "dist/manifest.json",
+    "README.md",
+    "README.zh-CN.md",
+    "LICENSE",
+    "CHANGELOG.md"
+  ],
+  "engines": {
+    "node": ">=22.18.0"
+  },
+  "scripts": {
+    "build": "bun scripts/build.ts",
+    "prepublishOnly": "bun run build && bun run verify:release",
+    "verify:release": "bun scripts/verify-release.ts",
+    "typecheck": "bun check",
+    "test": "bun test"
+  }
+}

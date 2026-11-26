@@ -8,6 +8,7 @@
 > - 产品与包级 ADR 随各自产品主包内聚存放, 分别由各主包 `docs/README.md` 索引:
 >   - `sweep` 产品 ADR (`0001-0004`, `0007-0008`, `0021-0024`): 见 [packages/sweep/docs/README.md](../../packages/sweep/docs/README.md) (目录 [packages/sweep/docs/adrs/](../../packages/sweep/docs/adrs/))
 >   - `codd` 产品 ADR (`0012-0018`): 见 [packages/codd/docs/README.md](../../packages/codd/docs/README.md)
+>   - `wake` 产品 ADR (`0025`): 见 [packages/wake/docs/README.md](../../packages/wake/docs/README.md) (目录 [packages/wake/docs/adrs/](../../packages/wake/docs/adrs/))
 
 | 编号                                         | 标题                                              | 状态   | 日期       |
 | -------------------------------------------- | ------------------------------------------------- | ------ | ---------- |

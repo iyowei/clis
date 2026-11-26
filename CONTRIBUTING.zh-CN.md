@@ -26,6 +26,8 @@
 - `packages/codd`: `codd` 的可编程 API 与模板资产包, 发布为 `@iyowei/codd`。
 - `packages/fan-cli`: `fan` Apple Silicon / Mac 风扇控制命令行工具, 发布为 `@iyowei/fan-cli`。
 - `packages/fan`: `fan` 的可编程 API 包, 发布为 `@iyowei/fan`。
+- `packages/wake-cli`: `wake` 跨网段 Wake-on-LAN 远程唤醒命令行工具, 发布为 `@iyowei/wake-cli`。
+- `packages/wake`: `wake` 的可编程 API 包, 发布为 `@iyowei/wake`。
 - `packages/cli-updater`: 零外部依赖的跨包管理器自更新引擎, 内联打包进各 CLI 的 `update` 子命令 (`@iyowei/cli-updater`, 仓内私有共享库, `private: true`)。
 
 turbo 跨工作区各包编排构建、类型检查与测试任务。代码对 bun 与 node 一视同仁 (有 bun 走 bun, 否则走 node, 行为一致), 支持 Windows / macOS / Linux; 运行时依赖极简 (`sweep` 与 `codd` 全线零第三方运行时依赖, `create-clis` 仅携带 `prettier` 用于生成物格式化)。

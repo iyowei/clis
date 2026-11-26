@@ -41,6 +41,7 @@ describe('全仓 CLI 一键安装脚本封装一致性与跨平台静态合同',
       'create-clis': 'CREATE_CLIS',
       fan: 'FAN',
       sweep: 'SWEEP',
+      wake: 'WAKE',
     };
 
     for (const target of cliPackages) {
@@ -92,6 +93,7 @@ describe('全仓 CLI 一键安装脚本封装一致性与跨平台静态合同',
     expect(rootSh).toContain('--from-tarball');
     expect(rootSh).toContain('CODD_INSTALLER_URL');
     expect(rootSh).toContain('FAN_INSTALLER_URL');
+    expect(rootSh).toContain('WAKE_INSTALLER_URL');
     expect(rootSh).toContain('SWEEP_INSTALLER_URL');
     expect(rootSh).toContain('CREATE_CLIS_INSTALLER_URL');
     expect(rootSh).not.toContain('gh-proxy.com');

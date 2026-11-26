@@ -12,6 +12,7 @@
 - **`@iyowei/sweep-cli`** _(待首发, `private: true`)_: `sweep` 命令行工具, 通用多技术栈工作区清理器 (内置 6 大带锚点校验预设 `node` / `rust` / `python` / `java` / `cpp` / `os-junk` 与自定义 `rules`, 支持零依赖三端回收站、配置 v2 `SWEEP_CONFIG` / 默认 `~/.config/sweep/config.json` 及自动 `init` / `migrate`); 安装、使用、配置与安全防护见 [README](packages/sweep-cli/README.zh-CN.md) (可编程 API 见 [`@iyowei/sweep`](packages/sweep/README.zh-CN.md))。
 - **`@iyowei/codd-cli`**: `codd` 命令行工具, 面向 Podman (Linux / macOS) 与 Kubernetes (Helm) 的模板化 MongoDB 9.0 部署装配 CLI (带交互式终端向导, 一键导出零命名冲突的上线部署包); 用法见 [README](packages/codd-cli/README.zh-CN.md) (可编程 API 见 [`@iyowei/codd`](packages/codd/README.zh-CN.md))。
 - **`@iyowei/fan-cli`**: `fan` 命令行工具, 通过 AppleSMC IOKit 查看与手动控制 Apple Silicon / Mac 风扇转速 (默认记住并支持开机及睡眠唤醒自动恢复), 零第三方运行时依赖; 用法见 [README](packages/fan-cli/README.zh-CN.md) (可编程 API 见 [`@iyowei/fan`](packages/fan/README.zh-CN.md))。
+- **`@iyowei/wake-cli`**: `wake` 命令行工具, 支持本机子网定向 Wake-on-LAN 广播、SSH 中继按序故障转移与就绪轮询, 零第三方运行时依赖; 用法见 [README](packages/wake-cli/README.zh-CN.md) (可编程 API 见 [`@iyowei/wake`](packages/wake/README.zh-CN.md))。
 
 ## 一键安装
 
@@ -22,7 +23,7 @@
 默认仅连接官方源; 无直连海外网络时可显式传 `--installer-url`、`--bun-url`、`--registry`、`--from-tarball`, 或设置对应工具前缀环境变量 (`CODD_*` / `CREATE_CLIS_*` / `SWEEP_*` / `FAN_*`):
 
 ```shell
-# 使用 curl 直接安装单工具 (codd | create-clis | fan | sweep)
+# 使用 curl 直接安装单工具 (codd | create-clis | fan | sweep | wake)
 curl \
   -fsSL \
   https://raw.githubusercontent.com/iyowei/clis/main/packages/codd-cli/install.sh \
@@ -88,3 +89,4 @@ irm `
 - [sweep 文档入口](packages/sweep/docs/README.md): API 契约、产品设计、安全防护总账、转写契约套件与产品 ADR;
 - [codd 文档入口](packages/codd/docs/README.md): 公式设计、Podman / Kubernetes 部署运维分册、可视化看板 (`BOARD.html`) 与产品 ADR;
 - [fan 文档入口](packages/fan/docs/README.md): AppleSMC 键值契约、API 面设计与 CLI 命令面 ([fan-cli 文档](packages/fan-cli/docs/README.md))。
+- [wake 文档入口](packages/wake/docs/README.md): 网络传输设计、架构 ADR 0025 与 CLI 命令面 ([wake-cli 文档](packages/wake-cli/docs/README.md))。
