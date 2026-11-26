@@ -3,7 +3,7 @@
  * 执行真实打包产物 (`dist/cli.js`), 覆盖 `--help` / `-V` / 非法参数退出码、
  * 清单 SHA-256 完整性防篡改与工作目录 `bunfig.toml` / `preload` 隔离。
  */
-import { describe, expect, test } from 'bun:test';
+import { afterAll, describe, expect, test } from 'bun:test';
 
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
@@ -31,14 +31,52 @@ const PKG_VERSION = (
 
 const realpathNative = realpathSync.native ?? realpathSync;
 
+const ISOLATED_HOME = mkdtempSync(join(tmpdir(), 'fan-smoke-home-'));
+afterAll(() => {
+  rmSync(ISOLATED_HOME, { recursive: true, force: true });
+});
+
+function isolatedEnv(base: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv {
+  const env: NodeJS.ProcessEnv = {
+    ...base,
+    NO_COLOR: '1',
+    HOME: ISOLATED_HOME,
+    USERPROFILE: ISOLATED_HOME,
+    APPDATA: join(ISOLATED_HOME, 'AppData', 'Roaming'),
+    LOCALAPPDATA: join(ISOLATED_HOME, 'AppData', 'Local'),
+    XDG_CONFIG_HOME: join(ISOLATED_HOME, '.config'),
+    CLIS_TEST_OS_LOCALE: 'zh-CN',
+  };
+  delete env.FAN_LANG;
+  delete env.CLIS_LANG;
+  return env;
+}
+
 const run = (...args: string[]) =>
   spawnSync(process.execPath, [LAUNCHER, ...args], {
     encoding: 'utf8',
-    env: { ...process.env, NO_COLOR: '1' },
+    stdio: ['ignore', 'pipe', 'pipe'],
+    env: isolatedEnv(),
+    timeout: 20_000,
   });
 
 const sha256 = (filePath: string) =>
   createHash('sha256').update(readFileSync(filePath)).digest('hex');
+
+function resolveRunnerExec(runner: string): string | null {
+  const res = spawnSync(
+    runner,
+    ['-e', 'process.stdout.write(process.execPath)'],
+    {
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'pipe'],
+      timeout: 10_000,
+    },
+  );
+  if (res.status !== 0) return null;
+  const execPath = res.stdout.trim();
+  return execPath !== '' ? execPath : null;
+}
 
 describe('npm 启动器 · fan 基础契约', () => {
   test('透传 -V / --help 与 update --help 且零退出', () => {
@@ -64,12 +102,13 @@ describe('npm 启动器 · fan 基础契约', () => {
     '构建态产物 dist/cli.js 经 node 与 bun 运行 bin/fan.mjs 均输出版本号',
     () => {
       for (const runner of ['bun', 'node']) {
-        if (spawnSync(runner, ['-v'], { timeout: 10_000 }).status !== 0) {
-          continue;
-        }
-        const res = spawnSync(runner, [LAUNCHER, '--version'], {
+        const execPath = resolveRunnerExec(runner);
+        if (execPath === null) continue;
+        const res = spawnSync(execPath, [LAUNCHER, '--version'], {
           encoding: 'utf8',
-          timeout: 10_000,
+          stdio: ['ignore', 'pipe', 'pipe'],
+          env: isolatedEnv(),
+          timeout: 20_000,
         });
         expect(res.status, `${runner}: ${res.stderr}`).toBe(0);
         expect(res.stdout.trim(), runner).toBe(PKG_VERSION);
@@ -149,6 +188,9 @@ describe('npm 启动器 · 产物自证与工作目录隔离', () => {
       );
       const ok = spawnSync(process.execPath, [pkg.launcher, '--help'], {
         encoding: 'utf8',
+        stdio: ['ignore', 'pipe', 'pipe'],
+        env: isolatedEnv(),
+        timeout: 20_000,
       });
       expect(ok.status).toBe(6);
       expect(ok.stdout).toContain('FAN-OK');
@@ -156,6 +198,9 @@ describe('npm 启动器 · 产物自证与工作目录隔离', () => {
       writeFileSync(pkg.cliPath, "process.stdout.write('TAMPERED\\n');\n");
       const tampered = spawnSync(process.execPath, [pkg.launcher], {
         encoding: 'utf8',
+        stdio: ['ignore', 'pipe', 'pipe'],
+        env: isolatedEnv(),
+        timeout: 20_000,
       });
       expect(tampered.status).toBe(1);
       expect(tampered.stdout).not.toContain('TAMPERED');
@@ -166,6 +211,9 @@ describe('npm 启动器 · 产物自证与工作目录隔离', () => {
       });
       const badSchema = spawnSync(process.execPath, [pkg.launcher], {
         encoding: 'utf8',
+        stdio: ['ignore', 'pipe', 'pipe'],
+        env: isolatedEnv(),
+        timeout: 20_000,
       });
       expect(badSchema.status).toBe(1);
       expect(badSchema.stderr).toContain('schemaVersion');
@@ -173,6 +221,9 @@ describe('npm 启动器 · 产物自证与工作目录隔离', () => {
       rmSync(pkg.manifestPath, { force: true });
       const missingManifest = spawnSync(process.execPath, [pkg.launcher], {
         encoding: 'utf8',
+        stdio: ['ignore', 'pipe', 'pipe'],
+        env: isolatedEnv(),
+        timeout: 20_000,
       });
       expect(missingManifest.status).toBe(1);
       expect(missingManifest.stderr).toContain('缺少产物清单');
@@ -189,26 +240,25 @@ describe('npm 启动器 · 产物自证与工作目录隔离', () => {
         'process.stdout.write(`ARGV1=${process.argv[1]}|ISO=${process.env.CLIS_BUN_ISOLATED ?? ""}\\n`);\n',
       );
 
-      const nodePathRes = spawnSync(
-        'node',
-        ['-e', 'process.stdout.write(process.execPath)'],
-        { encoding: 'utf8' },
-      );
-      if (nodePathRes.status === 0) {
-        const nodeExec = nodePathRes.stdout.trim();
+      const nodeExec = resolveRunnerExec('node');
+      if (nodeExec !== null) {
         const nodeRes = spawnSync(nodeExec, [pkg.launcher], {
           encoding: 'utf8',
-          env: stripPathEnv(process.env),
+          stdio: ['ignore', 'pipe', 'pipe'],
+          env: stripPathEnv(isolatedEnv()),
+          timeout: 20_000,
         });
         expect(nodeRes.status, nodeRes.stderr).toBe(0);
         expect(nodeRes.stdout).toContain(`ARGV1=${pkg.launcher}`);
       }
 
-      const bunEnv = stripPathEnv(process.env);
+      const bunEnv = stripPathEnv(isolatedEnv());
       delete bunEnv.CLIS_BUN_ISOLATED;
       const bunRes = spawnSync(process.execPath, [pkg.launcher], {
         encoding: 'utf8',
+        stdio: ['ignore', 'pipe', 'pipe'],
         env: bunEnv,
+        timeout: 20_000,
       });
       expect(bunRes.status, bunRes.stderr).toBe(0);
       expect(bunRes.stdout).toContain('ISO=1');
@@ -228,11 +278,16 @@ describe('npm 启动器 · 产物自证与工作目录隔离', () => {
         join(dirtyCwd, 'evil.js'),
         "throw new Error('PRELOAD_HIJACKED');\n",
       );
-      const viaNode = spawnSync('node', [LAUNCHER, '--version'], {
-        cwd: dirtyCwd,
-        encoding: 'utf8',
-      });
-      if (viaNode.error === undefined) {
+      const nodeExec = resolveRunnerExec('node');
+      if (nodeExec !== null) {
+        const viaNode = spawnSync(nodeExec, [LAUNCHER, '--version'], {
+          cwd: dirtyCwd,
+          encoding: 'utf8',
+          stdio: ['ignore', 'pipe', 'pipe'],
+          env: isolatedEnv(),
+          timeout: 20_000,
+        });
+        expect(viaNode.error).toBeUndefined();
         expect(viaNode.status, viaNode.stderr).toBe(0);
         expect(viaNode.stdout.trim()).toBe(PKG_VERSION);
         expect(viaNode.stderr).not.toContain('PRELOAD_HIJACKED');
@@ -242,6 +297,9 @@ describe('npm 启动器 · 产物自证与工作目录隔离', () => {
         const viaSh = spawnSync('/bin/sh', [join(ROOT, 'bin', 'fan'), '-V'], {
           cwd: dirtyCwd,
           encoding: 'utf8',
+          stdio: ['ignore', 'pipe', 'pipe'],
+          env: isolatedEnv(),
+          timeout: 20_000,
         });
         expect(viaSh.status, viaSh.stderr).toBe(0);
         expect(viaSh.stdout.trim()).toBe(PKG_VERSION);
