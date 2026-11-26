@@ -1,3 +1,12 @@
+# @iyowei/codd-cli [1.5.0](https://github.com/iyowei/clis/compare/@iyowei/codd-cli@1.4.1...@iyowei/codd-cli@1.5.0) (2026-11-26)
+
+
+### Features
+
+* 为 cli-updater 增加独立脚本安装来源识别与在线自更新 ([c5448bc](https://github.com/iyowei/clis/commit/c5448bc2f1094d19091441e0f828fb52604c7e8d))
+* 为 codd-cli 帮助信息补充文档与源码地址 ([3ec8baa](https://github.com/iyowei/clis/commit/3ec8baa9ab2e712ccf83bc1614fe9ccba9d7575d))
+* 新增跨平台一键安装脚本与各 CLI 独立安装入口 ([59fc608](https://github.com/iyowei/clis/commit/59fc608b82984519e15c9a5aad455dee68a01822))
+
 ## @iyowei/codd-cli [1.4.1](https://github.com/iyowei/clis/compare/@iyowei/codd-cli@1.4.0...@iyowei/codd-cli@1.4.1) (2026-11-26)
 
 
