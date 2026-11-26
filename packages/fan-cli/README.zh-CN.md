@@ -100,7 +100,7 @@ fan update --check
 
 ## 退出码
 
-- `0`: 成功 (`status` / `set` / `max` / `min` / `auto` / `apply` / `persist` / `update` / `--version` / `--help`)
+- `0`: 成功 (`status` / `set` / `max` / `min` / `auto` / `apply` / `persist` / `lang` / `update` / `--version` / `--help`)
 - `1`: 失败 (参数非法、非 macOS 平台、SMC/守护异常或 `sudo` 提权被拒)
 
 ## 开发与文档

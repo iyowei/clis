@@ -100,7 +100,7 @@ fan update --check
 
 ## Exit codes
 
-- `0`: success (`status`, `set`, `max`, `min`, `auto`, `apply`, `persist`, `update`, `--version`, `--help`).
+- `0`: success (`status`, `set`, `max`, `min`, `auto`, `apply`, `persist`, `lang`, `update`, `--version`, `--help`).
 - `1`: failure (invalid arguments, unsupported platform, SMC/daemon failure, or `sudo` permission denied).
 
 ## Development & Documentation
