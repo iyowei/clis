@@ -238,7 +238,7 @@ export function formatHelpText(color: boolean, locale: Locale = 'zh'): string {
 
     return [
       '',
-      ` ${s.badge('CREATE-CLIS')}  ${s.title('CLI Monorepo Scaffolder')}`,
+      `  ${s.badge('CREATE-CLIS')}  ${s.title('CLI Monorepo Scaffolder')}`,
       `  ${s.muted('Scaffold a standalone dual-package CLI monorepo with green CI out of the box.')}`,
       `  ${s.rule('─'.repeat(RULE_WIDTH))}`,
       '',
@@ -276,7 +276,7 @@ export function formatHelpText(color: boolean, locale: Locale = 'zh'): string {
 
   return [
     '',
-    ` ${s.badge('CREATE-CLIS')}  ${s.title('clis 集合仓脚手架')}`,
+    `  ${s.badge('CREATE-CLIS')}  ${s.title('clis 集合仓脚手架')}`,
     `  ${s.muted('从 clis 集合仓骨架快照生成独立的新双包集合仓, 带能力档位与全绿 CI。')}`,
     `  ${s.rule('─'.repeat(RULE_WIDTH))}`,
     '',

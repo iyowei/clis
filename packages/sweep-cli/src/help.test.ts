@@ -85,6 +85,10 @@ describe('helpText 分层布局与主视图同源配色契约', () => {
     const plain = helpText(false);
 
     expect(colored).toContain('\u001b[1;7m▍ SWEEP \u001b[0m');
+    expect(colored).toContain('\u001b[1;34m子命令\u001b[0m');
+    expect(colored).toContain(
+      '\u001b[2m预览工作区内可清理的构建产物与缓存\u001b[0m',
+    );
     expect(colored).not.toContain('38;2;');
     expect(colored).not.toContain('48;2;');
     expect(stripAnsi(colored)).toBe(plain);

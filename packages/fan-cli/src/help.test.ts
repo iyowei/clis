@@ -18,6 +18,14 @@ describe('helpText', () => {
 
     expect(plain).not.toContain('\u001B');
     expect(stripAnsi(colored)).toBe(plain);
+    // 主次层级: 一级章节粗蓝高亮, 二级说明统一灰色压暗
+    expect(colored).toContain('\u001b[1;34m用法\u001b[0m');
+    expect(colored).toContain(
+      '\u001b[2m查看风扇当前转速、范围与控制模式 (默认动作)\u001b[0m',
+    );
+    expect(colored).toContain(
+      '\u001b[2m成功 (含 status/set/max/min/auto/apply/persist/lang/update/-V/-h)\u001b[0m',
+    );
     for (const token of [
       'status',
       'set',
@@ -86,6 +94,10 @@ describe('helpText', () => {
     const colored = helpText(true, 'en');
     expect(plain).not.toContain('\u001B');
     expect(stripAnsi(colored)).toBe(plain);
+    expect(colored).toContain('\u001b[1;34mUsage\u001b[0m');
+    expect(colored).toContain(
+      '\u001b[2mShow live fan speeds, ranges, and mode (default)\u001b[0m',
+    );
     expect(plain).toContain(
       'https://github.com/iyowei/clis/tree/main/packages/fan-cli',
     );

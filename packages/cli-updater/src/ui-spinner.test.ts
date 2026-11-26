@@ -46,6 +46,10 @@ describe('update UI 标准 SGR 配色与防注入净化', () => {
     const coloredHelp = formatUpdateHelp('sweep', bunMeta.name, true);
     expect(plainHelp).not.toContain('\u001b');
     expect(coloredHelp).toContain('\u001b[');
+    expect(coloredHelp).toContain('\u001b[1;34m用法\u001b[0m');
+    expect(coloredHelp).toContain(
+      '\u001b[2m仅检查最新版本与当前安装方式, 不执行更新\u001b[0m',
+    );
     expect(coloredHelp).not.toMatch(/38;2;|48;2;/);
     expect(stripAnsi(coloredHelp)).toBe(plainHelp);
     expect(plainHelp).toContain('--verbose');

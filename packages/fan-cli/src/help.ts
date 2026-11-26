@@ -365,6 +365,7 @@ export function helpText(color: boolean, locale: Locale = 'zh'): string {
   const descCol = computeDescColumn(cat);
   const s = {
     badge: (text: string) => paint(`${BAR_BLOCK} ${text} `, '1;7', color),
+    section: (text: string) => paint(text, '1;34', color),
     bold: (text: string) => paint(text, '1', color),
     dim: (text: string) => paint(text, '2', color),
     token: (text: string) => paint(text, '36', color),
@@ -377,8 +378,14 @@ export function helpText(color: boolean, locale: Locale = 'zh'): string {
     return `    ${styledLeft}${pad}${desc}`;
   };
 
+  const styleCommandName = (name: string): string => {
+    const sp = name.indexOf(' ');
+    if (sp === -1) return s.bold(name);
+    return `${s.bold(name.slice(0, sp))} ${s.dim(name.slice(sp + 1))}`;
+  };
+
   const commandRows = cat.subcommands.map((row) =>
-    alignRow(s.bold(row.name), row.name, row.desc),
+    alignRow(styleCommandName(row.name), row.name, s.dim(row.desc)),
   );
 
   const formatOpt = (row: OptionRow) => {
@@ -387,7 +394,7 @@ export function helpText(color: boolean, locale: Locale = 'zh'): string {
       row.arg === undefined
         ? s.token(row.flag)
         : `${s.token(row.flag)} ${s.dim(row.arg)}`;
-    return alignRow(styled, plain, row.desc);
+    return alignRow(styled, plain, s.dim(row.desc));
   };
 
   const formatEx = (row: ExampleRow) => {
@@ -406,7 +413,7 @@ export function helpText(color: boolean, locale: Locale = 'zh'): string {
   };
 
   const formatNote = (row: NoteRow) =>
-    alignRow(styleNoteLabel(row), row.label, row.desc);
+    alignRow(styleNoteLabel(row), row.label, s.dim(row.desc));
 
   return [
     '',
@@ -414,28 +421,28 @@ export function helpText(color: boolean, locale: Locale = 'zh'): string {
     `  ${s.dim(cat.summary)}`,
     `  ${s.dim('─'.repeat(RULE_WIDTH))}`,
     '',
-    `  ${s.dim(cat.sections.usage)}`,
+    `  ${s.section(cat.sections.usage)}`,
     `    ${s.bold('fan')} ${s.dim(cat.usageArgs[0])}`,
     `    ${s.bold('fan')} ${s.dim(cat.usageArgs[1])}`,
     '',
-    `  ${s.dim(cat.sections.subcommands)}`,
+    `  ${s.section(cat.sections.subcommands)}`,
     ...commandRows,
     '',
-    `  ${s.dim(cat.sections.options)}`,
+    `  ${s.section(cat.sections.options)}`,
     ...cat.options.map(formatOpt),
     '',
     ...cat.metaOptions.map(formatOpt),
     '',
-    `  ${s.dim(cat.sections.examples)}`,
+    `  ${s.section(cat.sections.examples)}`,
     ...cat.examples.map(formatEx),
     '',
-    `  ${s.dim(cat.sections.notes)}`,
+    `  ${s.section(cat.sections.notes)}`,
     ...cat.envNotes.map(formatNote),
     '',
-    `  ${s.dim(cat.sections.exitCodes)}`,
+    `  ${s.section(cat.sections.exitCodes)}`,
     ...cat.exitCodes.map(formatNote),
     '',
-    `  ${s.dim(cat.sections.docs)}`,
+    `  ${s.section(cat.sections.docs)}`,
     `    ${s.token(GITHUB_URL)}`,
     '',
   ].join('\n');

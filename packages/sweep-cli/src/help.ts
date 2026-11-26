@@ -12,7 +12,7 @@ function createStyler(color: boolean) {
     badge: (text: string) => paint(`${BAR_BLOCK} ${text} `, '1;7', color),
     bold: (s: string) => paint(s, '1', color),
     dim: (s: string) => paint(s, '2', color),
-    section: (s: string) => paint(s, '2', color),
+    section: (s: string) => paint(s, '1;34', color),
     token: (s: string) => paint(s, '36', color),
     green: (s: string) => paint(s, '1;32', color),
     red: (s: string) => paint(s, '1;31', color),
@@ -177,7 +177,7 @@ function formatOptionRow(
     row.arg === undefined
       ? s.token(row.flag)
       : `${s.token(row.flag)} ${s.dim(row.arg)}`;
-  return `    ${styledLeft}${pad}${row.desc}`;
+  return `    ${styledLeft}${pad}${s.dim(row.desc)}`;
 }
 
 function formatExampleRow(
@@ -203,7 +203,7 @@ export function helpText(color: boolean, locale: Locale = 'zh'): string {
   if (locale === 'en') {
     const commandRows = SUBCOMMANDS_EN.map((row) => {
       const pad = ' '.repeat(Math.max(2, LEFT_COL - row.name.length));
-      return `    ${s.bold(row.name)}${pad}${row.desc}`;
+      return `    ${s.bold(row.name)}${pad}${s.dim(row.desc)}`;
     });
     const actionRows = ACTION_OPTIONS_EN.map((row) => formatOptionRow(row, s));
     const metaRows = META_OPTIONS_EN.map((row) => formatOptionRow(row, s));
@@ -233,17 +233,17 @@ export function helpText(color: boolean, locale: Locale = 'zh'): string {
       `  ${s.section('Config & Safety')}`,
       `    ${s.bold('Default Config')}  ${s.token(configPath)}`,
       `                    ${s.dim("Run 'sweep config' when using --config or SWEEP_CONFIG")}`,
-      `    ${s.bold('Project Anchor')}  node / rust / python / java / cpp verify project anchors`,
+      `    ${s.bold('Project Anchor')}  ${s.dim('node / rust / python / java / cpp verify project anchors')}`,
       `                    ${s.dim('Custom rules default to trash; never falls back to rm')}`,
-      `    ${s.bold('Name Matching')}   --exclude / --include match exact dir names (case-sensitive)`,
+      `    ${s.bold('Name Matching')}   ${s.dim('--exclude / --include match exact dir names (case-sensitive)')}`,
       `                    ${s.dim('Exclude wins on conflict; 32 safety guardrails by default')}`,
-      `    ${s.bold('Real Anchors')}    --force only includes suspect trees; roots must be real dirs`,
+      `    ${s.bold('Real Anchors')}    ${s.dim('--force only includes suspect trees; roots must be real dirs')}`,
       `                    ${s.dim('Symlinked roots (/tmp, /var) reject --yes; use /private/tmp')}`,
-      `    ${s.bold('Plain Output')}    Auto-disables ANSI when NO_COLOR, TERM=dumb, or non-TTY`,
+      `    ${s.bold('Plain Output')}    ${s.dim('Auto-disables ANSI when NO_COLOR, TERM=dumb, or non-TTY')}`,
       '',
       `  ${s.section('Exit Codes')}`,
-      `    ${s.green('0')}         Success (preview, empty, init/migrate/config/lang/update, -V/-h)`,
-      `    ${s.red('1')}         Failure (failed/skipped/rejected, missing config, or bad args)`,
+      `    ${s.green('0')}         ${s.dim('Success (preview, empty, init/migrate/config/lang/update, -V/-h)')}`,
+      `    ${s.red('1')}         ${s.dim('Failure (failed/skipped/rejected, missing config, or bad args)')}`,
       '',
       `  ${s.section('Docs & Source')}`,
       `    ${s.token(GITHUB_URL)}`,
@@ -253,7 +253,7 @@ export function helpText(color: boolean, locale: Locale = 'zh'): string {
 
   const commandRows = SUBCOMMANDS_ZH.map((row) => {
     const pad = ' '.repeat(Math.max(2, LEFT_COL - row.name.length));
-    return `    ${s.bold(row.name)}${pad}${row.desc}`;
+    return `    ${s.bold(row.name)}${pad}${s.dim(row.desc)}`;
   });
   const actionRows = ACTION_OPTIONS_ZH.map((row) => formatOptionRow(row, s));
   const metaRows = META_OPTIONS_ZH.map((row) => formatOptionRow(row, s));
@@ -283,17 +283,17 @@ export function helpText(color: boolean, locale: Locale = 'zh'): string {
     `  ${s.section('配置与安全')}`,
     `    ${s.bold('默认配置')}  ${s.token(configPath)}`,
     `              ${s.dim('仅平台默认; 用了 --config / SWEEP_CONFIG 请跑 sweep config')}`,
-    `    ${s.bold('预设锚定')}  node / rust / python / java / cpp 均校验项目锚点防误删`,
+    `    ${s.bold('预设锚定')}  ${s.dim('node / rust / python / java / cpp 均校验项目锚点防误删')}`,
     `              ${s.dim('rules 默认进回收站; 回收站失败严禁静默降级永久删除')}`,
-    `    ${s.bold('名单口径')}  --exclude / --include 按目录名精确匹配 (区分大小写, 任一级命中)`,
+    `    ${s.bold('名单口径')}  ${s.dim('--exclude / --include 按目录名精确匹配 (区分大小写, 任一级命中)')}`,
     `              ${s.dim('同时命中 exclude 优先; 省略 exclude 启用三端默认安全护栏')}`,
-    `    ${s.bold('删除安全')}  --force 仅放行疑似安装树, 不放宽安全闸; 根及祖先链须为真实路径`,
+    `    ${s.bold('删除安全')}  ${s.dim('--force 仅放行疑似安装树, 不放宽安全闸; 根及祖先链须为真实路径')}`,
     `              ${s.dim('命中 /tmp、/var 软链时 --yes 整批拒绝, 改如 /private/tmp/x 即放行')}`,
-    `    ${s.bold('输出降级')}  设置 NO_COLOR、TERM=dumb 或非 TTY 时自动降级为无颜色纯文本`,
+    `    ${s.bold('输出降级')}  ${s.dim('设置 NO_COLOR、TERM=dumb 或非 TTY 时自动降级为无颜色纯文本')}`,
     '',
     `  ${s.section('退出码')}`,
-    `    ${s.green('0')}         成功 (预览、空结果、init/migrate/config/lang/update、-V/-h)`,
-    `    ${s.red('1')}         失败 (清理/回收站失败 / 跳过 / 拒绝 / 无配置非 TTY / 参数或配置错)`,
+    `    ${s.green('0')}         ${s.dim('成功 (预览、空结果、init/migrate/config/lang/update、-V/-h)')}`,
+    `    ${s.red('1')}         ${s.dim('失败 (清理/回收站失败 / 跳过 / 拒绝 / 无配置非 TTY / 参数或配置错)')}`,
     '',
     `  ${s.section('文档与源码')}`,
     `    ${s.token(GITHUB_URL)}`,
