@@ -19,7 +19,9 @@ import {
   type FanTransport,
   type PersistDaemonStatus,
   type PersistDaemonSyncResult,
+  createAppleSmcTransport,
   createFanController,
+  createMacOsFanStateStore,
   ensurePersistDaemon,
   getPersistDaemonStatus,
   installPersistDaemon,
@@ -202,11 +204,19 @@ export async function runCli(
     return 0;
   }
 
+  const hostPlatform = deps.platform ?? process.platform;
+  const daemonPaths = {
+    platform: hostPlatform,
+    env,
+    ...(deps.stateStore !== undefined
+      ? { statePath: deps.stateStore.path }
+      : {}),
+  };
   const persistOps: PersistDaemonOps = deps.persistOps ?? {
-    getStatus: () => getPersistDaemonStatus(),
-    install: () => installPersistDaemon(),
-    uninstall: () => uninstallPersistDaemon(),
-    ensure: () => ensurePersistDaemon(),
+    getStatus: () => getPersistDaemonStatus(daemonPaths),
+    install: () => installPersistDaemon(daemonPaths),
+    uninstall: () => uninstallPersistDaemon(daemonPaths),
+    ensure: () => ensurePersistDaemon(daemonPaths),
   };
 
   const ensureFromOps = (): PersistDaemonSyncResult => {
@@ -231,7 +241,7 @@ export async function runCli(
         deps: {
           env: env as NodeJS.ProcessEnv,
           homeDir: deps.homedir,
-          platform: deps.platform,
+          platform: hostPlatform,
         },
       });
     }
@@ -250,13 +260,22 @@ export async function runCli(
       return 0;
     }
 
+    const isDarwinHost = hostPlatform === 'darwin';
     const shouldManageDaemon =
       deps.persistOps !== undefined ||
-      (deps.transport === undefined && process.platform === 'darwin');
+      (deps.transport === undefined && isDarwinHost);
+    const resolvedTransport =
+      deps.transport ?? createAppleSmcTransport({ platform: hostPlatform });
+    const resolvedStateStore =
+      deps.stateStore ??
+      (deps.transport === undefined && isDarwinHost
+        ? createMacOsFanStateStore({ platform: hostPlatform, env })
+        : undefined);
     const controller = createFanController({
-      transport: deps.transport,
-      stateStore: deps.stateStore,
+      transport: resolvedTransport,
+      stateStore: resolvedStateStore,
       ensureDaemon: shouldManageDaemon ? ensureFromOps : false,
+      platform: hostPlatform,
     });
 
     if (options.command === 'status' && options.watchSeconds !== undefined) {
@@ -311,7 +330,7 @@ export async function runCli(
     );
     return 0;
   } catch (error) {
-    err(localizeFanError(error, locale));
+    err(localizeFanError(error, locale, hostPlatform));
     return 1;
   }
 }
