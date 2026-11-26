@@ -17,10 +17,13 @@ export {
   type InstallOrigin,
   type PackageManager,
   type ProjectPackageManager,
+  STANDALONE_MARKER_FILE,
+  type StandaloneInstallMarker,
   SUPPORTED_PACKAGE_MANAGERS,
   detectInstallOriginFromPath,
   isWithinDir,
   normalizeSlashes,
+  parseStandaloneInstallMarker,
   safeRealpath,
 } from './detect.ts';
 export {
@@ -93,6 +96,16 @@ export {
   isValidTargetSpec,
   parseSemver,
 } from './semver.ts';
+export {
+  DEFAULT_MAX_TARBALL_BYTES,
+  type TarballDownloadResult,
+  type TarballMetaResult,
+  downloadAndVerifyTarball,
+  extractNpmTarball,
+  fetchTarballMetadata,
+  parseNpmTarArchive,
+  verifyTarballDigest,
+} from './tarball.ts';
 export {
   type PackageMeta,
   type SelfUpdateRunOptions,

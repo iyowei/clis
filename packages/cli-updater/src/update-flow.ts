@@ -18,6 +18,7 @@ import {
   buildUpgradePlan,
   probeYarnVersion,
 } from './executor.ts';
+import { type FetchLike } from './registry.ts';
 import { type UpdateSpinner } from './spinner.ts';
 import {
   type ColorChannels,
@@ -37,8 +38,10 @@ import {
 export interface UpgradeFlowDeps {
   platform?: NodeJS.Platform;
   env?: NodeJS.ProcessEnv;
+  homeDir?: string;
   isFile?: (path: string) => boolean;
   readText?: (path: string) => string | null;
+  fetchFn?: FetchLike;
   probeYarn?: () => string | null;
   execPlan?: UpgradePlanExecutor;
   execPlanAsync?: (

@@ -269,7 +269,7 @@ export function formatUpdateHelp(
     return [
       '',
       `  ${badge}  ${bold('Self-Update')} ${dim(`(${safePkg})`)}`,
-      `  ${dim('Detects your installer (bun / npm / pnpm / yarn / volta) and upgrades in place.')}`,
+      `  ${dim('Detects install origin (script / bun / npm / pnpm / yarn / volta) and upgrades.')}`,
       `  ${dim('────────────────────────────────────────────────────────────────────────────')}`,
       '',
       `  ${section('Usage')}`,
@@ -297,7 +297,7 @@ export function formatUpdateHelp(
   return [
     '',
     `  ${badge}  ${bold(`自更新工具`)} ${dim(`(${safePkg})`)}`,
-    `  ${dim('自动识别当前安装器 (bun / npm / pnpm / yarn / volta) 并原地升级。')}`,
+    `  ${dim('自动识别当前安装来源 (一键脚本独立安装 / bun / npm / pnpm / yarn / volta) 并原地升级。')}`,
     `  ${dim('────────────────────────────────────────────────────────────────────────────')}`,
     '',
     `  ${section('用法')}`,

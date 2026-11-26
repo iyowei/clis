@@ -153,6 +153,8 @@ export function describeOrigin(
     switch (origin.kind) {
       case 'global':
         return `${origin.pm} global install (${translateOriginReason(origin.reason)})`;
+      case 'standalone':
+        return `standalone script install (${origin.packageRoot})`;
       case 'ephemeral':
         return `${origin.runner} temporary run (${translateOriginReason(origin.reason)})`;
       case 'source':
@@ -166,6 +168,8 @@ export function describeOrigin(
   switch (origin.kind) {
     case 'global':
       return `${origin.pm} 全局安装 (${origin.reason})`;
+    case 'standalone':
+      return `独立脚本安装 (${origin.packageRoot})`;
     case 'ephemeral':
       return `${origin.runner} 临时运行 (${origin.reason})`;
     case 'source':
@@ -192,6 +196,18 @@ export function warnCrossPmOverride(
           locale,
           `注意: 当前命令实际由 ${origin.pm} 全局安装, 改用 ${targetPm} 安装会在磁盘产生双份副本, PATH 靠前的旧副本可能遮蔽新版本!`,
           `Note: Currently installed globally via ${origin.pm}; installing via ${targetPm} creates a second copy that may be shadowed in PATH.`,
+        ),
+      ),
+    );
+    return;
+  }
+  if (origin.kind === 'standalone') {
+    io.out(
+      ui.warn(
+        t(
+          locale,
+          `注意: 当前运行在独立脚本安装目录 (${sanitize(origin.packageRoot)}), 通过 ${targetPm} 全局安装会产生独立全局副本, 请核对 PATH 优先级避免版本阴影!`,
+          `Note: Currently installed via standalone script (${sanitize(origin.packageRoot)}); installing globally via ${targetPm} creates a separate global copy.`,
         ),
       ),
     );
@@ -240,6 +256,7 @@ export function resolveOrigin(
     rawPaths,
     env,
     pathExists,
+    readText: deps.readText,
   });
 
   const needsDynamicProbe =

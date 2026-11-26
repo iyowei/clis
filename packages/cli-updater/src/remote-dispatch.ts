@@ -9,6 +9,7 @@ import { formatUpgradeDisplayCommand } from './executor.ts';
 import { type FetchVersionResult } from './registry.ts';
 import { compareSemver } from './semver.ts';
 import { type UpdateSpinner } from './spinner.ts';
+import { performStandaloneUpgrade } from './standalone-flow.ts';
 import { type ColorChannels, type UpdateUi, paint } from './ui.ts';
 import { type UpgradeFlowDeps, performUpgrade } from './update-flow.ts';
 import {
@@ -48,6 +49,46 @@ export async function handleFetchFailure(ctx: {
     deps,
     locale,
   } = ctx;
+
+  if (
+    opts.force &&
+    !opts.check &&
+    origin.kind === 'standalone' &&
+    opts.pm === undefined
+  ) {
+    io.err(
+      ui.error(
+        t(
+          locale,
+          `警示: 远端版本查询失败 (${sanitize(remote.message)})`,
+          `Warning: Version check failed (${sanitize(remote.message)})`,
+        ),
+      ),
+    );
+    io.out(
+      ui.body(
+        t(
+          locale,
+          `强制重装模式 (--force): 跳过远端版本校验, 将直接从注册表安装 ${sanitize(meta.name)}@latest (独立脚本安装)`,
+          `Force mode (--force): Skipping version check and installing ${sanitize(meta.name)}@latest (standalone)`,
+        ),
+      ),
+    );
+    return await performStandaloneUpgrade({
+      binName,
+      meta,
+      origin,
+      targetVersion: 'latest',
+      registry,
+      opts,
+      io,
+      color,
+      ui,
+      spinner,
+      deps,
+      locale,
+    });
+  }
 
   if (opts.force && !opts.check && targetPm !== undefined) {
     io.err(
@@ -239,7 +280,17 @@ export async function dispatchRemoteVersion(ctx: {
   }
 
   if (opts.check) {
-    if (targetPm !== undefined) {
+    if (origin.kind === 'standalone' && targetPm === undefined) {
+      io.out(
+        ui.hint(
+          t(
+            locale,
+            `运行 ${sanitize(binName)} update 即可在线升级 (独立脚本安装)`,
+            `Run '${sanitize(binName)} update' to upgrade (standalone install)`,
+          ),
+        ),
+      );
+    } else if (targetPm !== undefined) {
       const cmd = formatUpgradeDisplayCommand(
         targetPm,
         meta.name,
@@ -267,6 +318,23 @@ export async function dispatchRemoteVersion(ctx: {
       );
     }
     return 0;
+  }
+
+  if (origin.kind === 'standalone' && targetPm === undefined) {
+    return await performStandaloneUpgrade({
+      binName,
+      meta,
+      origin,
+      targetVersion: remote.version,
+      registry: remote.registry,
+      opts,
+      io,
+      color,
+      ui,
+      spinner,
+      deps,
+      locale,
+    });
   }
 
   if (targetPm === undefined) {

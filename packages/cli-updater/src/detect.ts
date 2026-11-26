@@ -9,6 +9,18 @@
 import { existsSync, realpathSync } from 'node:fs';
 import { posix, win32 } from 'node:path';
 
+import {
+  type StandaloneOrigin,
+  readTextOrNull,
+  resolveStandaloneOrigin,
+} from './standalone-marker.ts';
+
+export {
+  STANDALONE_MARKER_FILE,
+  type StandaloneInstallMarker,
+  parseStandaloneInstallMarker,
+} from './standalone-marker.ts';
+
 /** 支持自更新执行的包管理器 / 工具管理器 */
 export type PackageManager = 'bun' | 'npm' | 'pnpm' | 'yarn' | 'volta';
 
@@ -35,6 +47,7 @@ export type InstallOrigin =
       reason: string;
       packageRoot: string;
     }
+  | StandaloneOrigin
   | {
       kind: 'ephemeral';
       runner: EphemeralRunner;
@@ -72,6 +85,8 @@ export interface DetectOriginInput {
   env?: NodeJS.ProcessEnv;
   /** 文件存在探针 (默认 existsSync) */
   pathExists?: (path: string) => boolean;
+  /** 文本读取探针 (默认 readFileSync, 供独立脚本安装标记解析) */
+  readText?: (path: string) => string | null;
   /** 可选: 已实查到的自定义全局根目录映射 */
   globalRoots?: GlobalRootMap;
   /** 可选: realpath 解析器 (默认 safeRealpath, 便于跨平台单测覆盖 8.3 短路径展开) */
@@ -443,6 +458,7 @@ export function detectInstallOriginFromPath(
 ): InstallOrigin {
   const env = input.env ?? process.env;
   const pathExists = input.pathExists ?? existsSync;
+  const readText = input.readText ?? readTextOrNull;
   const realpath = input.realpath ?? safeRealpath;
   const packageRoot = normalizeSlashes(input.packageRoot);
   const foldedRoot = packageRoot.toLowerCase();
@@ -458,6 +474,17 @@ export function detectInstallOriginFromPath(
       reason: '包根目录位于本地源码工作树 (存在 src/cli.ts)',
       packageRoot,
     };
+  }
+
+  // 1b. 独立一键脚本安装态 (位于隔离 appDir 且存在合法 .clis-install.json)
+  if (!foldedRoot.includes('/node_modules/')) {
+    const standalone = resolveStandaloneOrigin(
+      input.packageRoot,
+      packageRoot,
+      readText,
+      joinForPath,
+    );
+    if (standalone !== null) return standalone;
   }
 
   // 2. 临时一次性运行器 (npx / bunx / pnpm dlx / yarn dlx / deno)

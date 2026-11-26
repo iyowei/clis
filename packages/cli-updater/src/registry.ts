@@ -55,6 +55,8 @@ export const DEFAULT_FETCH_TIMEOUT_MS = 10_000;
 
 export interface ResolveRegistryInput {
   packageName: string;
+  /** 可选工具短名 (如 codd / create-clis / fan / sweep, 用于匹配 <TOOL>_REGISTRY) */
+  toolName?: string;
   flagRegistry?: string;
   pm?: PackageManager;
   env?: NodeJS.ProcessEnv;
@@ -118,6 +120,14 @@ function defaultReadText(path: string): string | null {
  * Output: 去除末尾斜杠的规范 registry URL
  * ```
  */
+function deriveToolEnvPrefix(packageName: string, toolName?: string): string {
+  const raw =
+    toolName !== undefined && toolName.trim() !== ''
+      ? toolName.trim()
+      : packageName.replace(/^@[^/]+\//, '').replace(/-cli$/, '');
+  return raw.toUpperCase().replace(/[^A-Z0-9]+/g, '_');
+}
+
 export function resolveRegistry(input: ResolveRegistryInput): string {
   if (
     input.flagRegistry !== undefined &&
@@ -126,13 +136,22 @@ export function resolveRegistry(input: ResolveRegistryInput): string {
     return normalizeRegistryUrl(input.flagRegistry);
   }
   const env = input.env ?? process.env;
-  const upperReg = env.NPM_CONFIG_REGISTRY?.trim();
-  const envReg =
-    upperReg !== undefined && upperReg !== ''
-      ? upperReg
-      : env.npm_config_registry?.trim();
-  if (typeof envReg === 'string' && isValidRegistryUrl(envReg)) {
-    return normalizeRegistryUrl(envReg);
+  const toolPrefix = deriveToolEnvPrefix(input.packageName, input.toolName);
+  const envCandidates = [
+    toolPrefix !== '' ? env[`${toolPrefix}_REGISTRY`] : undefined,
+    env.CLIS_REGISTRY,
+    env.NPM_CONFIG_REGISTRY,
+    env.npm_config_registry,
+  ];
+  for (const cand of envCandidates) {
+    const trimmed = cand?.trim();
+    if (
+      trimmed !== undefined &&
+      trimmed !== '' &&
+      isValidRegistryUrl(trimmed)
+    ) {
+      return normalizeRegistryUrl(trimmed);
+    }
   }
 
   const home = input.homeDir ?? homedir();

@@ -335,3 +335,109 @@ describe('detectInstallOriginFromPath 本地项目与防误判回归', () => {
     );
   });
 });
+
+describe('detectInstallOriginFromPath 独立一键脚本安装与标记安全校验', () => {
+  const noFiles = (): boolean => false;
+
+  test('独立一键脚本安装 (.clis-install.json) 识别为 standalone 且不误吞 node_modules 与源码态', () => {
+    const markerJson = JSON.stringify({
+      schemaVersion: 1,
+      method: 'script',
+      tool: 'codd',
+      packageName: '@iyowei/codd-cli',
+      dataDir: '/Users/dev/.local/share/clis',
+      appDir: '/Users/dev/.local/share/clis/apps/codd',
+      runtimeDir: '/Users/dev/.local/share/clis/runtime',
+      binPath: '/Users/dev/.local/bin/codd',
+    });
+
+    expect(
+      detectInstallOriginFromPath({
+        packageRoot: '/Users/dev/.local/share/clis/apps/codd',
+        env: {},
+        pathExists: noFiles,
+        readText: (p) => (p.endsWith('.clis-install.json') ? markerJson : null),
+      }),
+    ).toMatchObject({
+      kind: 'standalone',
+      tool: 'codd',
+      packageName: '@iyowei/codd-cli',
+      runtimeDir: '/Users/dev/.local/share/clis/runtime',
+    });
+
+    // 若同时存在 src/cli.ts (源码工作树), 源码开发态优先生效
+    expect(
+      detectInstallOriginFromPath({
+        packageRoot: '/Users/dev/clis/packages/codd-cli',
+        env: {},
+        pathExists: (p) => p.endsWith('src/cli.ts'),
+        readText: () => markerJson,
+      }),
+    ).toMatchObject({ kind: 'source' });
+
+    // 位于 node_modules 内时即使存在标记文件也不触发 standalone
+    expect(
+      detectInstallOriginFromPath({
+        packageRoot:
+          'C:\\Users\\dev\\.bun\\install\\global\\node_modules\\@iyowei\\codd-cli',
+        env: {},
+        pathExists: noFiles,
+        readText: () => markerJson,
+      }),
+    ).toMatchObject({ kind: 'global', pm: 'bun' });
+
+    // 安全边界: 拦截含路径穿越的 tool、相对路径 runtimeDir (防 CWD 劫持) 或 appDir 与真实包根不一致的伪造标记
+    const badMarkers = [
+      {
+        schemaVersion: 1,
+        method: 'script',
+        tool: '../../evil',
+        packageName: '@iyowei/codd-cli',
+        dataDir: '/Users/dev/.local/share/clis',
+        appDir: '/Users/dev/.local/share/clis/apps/codd',
+        runtimeDir: '/Users/dev/.local/share/clis/runtime',
+        binPath: '/Users/dev/.local/bin/codd',
+      },
+      {
+        schemaVersion: 1,
+        method: 'script',
+        tool: 'codd',
+        packageName: '@iyowei/codd-cli',
+        dataDir: '/Users/dev/.local/share/clis',
+        appDir: '/Users/dev/.local/share/clis/apps/codd',
+        runtimeDir: './relative-cwd-hijack',
+        binPath: '/Users/dev/.local/bin/codd',
+      },
+      {
+        schemaVersion: 1,
+        method: 'script',
+        tool: 'codd',
+        packageName: '@iyowei/codd-cli',
+        dataDir: '/Users/dev/.local/share/clis',
+        appDir: '/Users/dev/.local/share/clis/apps/other-tool',
+        runtimeDir: '/Users/dev/.local/share/clis/runtime',
+        binPath: '/Users/dev/.local/bin/codd',
+      },
+      {
+        schemaVersion: 1,
+        method: 'script',
+        tool: 'codd',
+        packageName: '@iyowei/codd-cli',
+        dataDir: '/Users/dev/.local/share/clis',
+        appDir: '/Users/dev/.local/share/clis/apps/codd',
+        runtimeDir: '/tmp/outside-datadir/runtime',
+        binPath: '/Users/dev/.local/bin/codd',
+      },
+    ];
+    for (const bad of badMarkers) {
+      expect(
+        detectInstallOriginFromPath({
+          packageRoot: '/Users/dev/.local/share/clis/apps/codd',
+          env: {},
+          pathExists: noFiles,
+          readText: () => JSON.stringify(bad),
+        }).kind,
+      ).toBe('unknown');
+    }
+  });
+});

@@ -31,6 +31,7 @@ import {
 import { type CommandSpec, type SpawnLike } from './executor.ts';
 import { handleNonGlobalOrigin } from './non-global-flow.ts';
 import {
+  type FetchLike,
   type FetchVersionResult,
   fetchLatestVersion,
   resolveRegistry,
@@ -101,6 +102,7 @@ export interface SelfUpdateRunOptions {
     pathExists?: (path: string) => boolean;
     isFile?: (path: string) => boolean;
     readText?: (path: string) => string | null;
+    fetchFn?: FetchLike;
     fetchLatest?: (
       packageName: string,
       registry: string,
@@ -280,6 +282,7 @@ export async function runSelfUpdate(
 
   const registry = resolveRegistry({
     packageName: meta.name,
+    toolName: options.toolName ?? options.binName,
     flagRegistry: opts.registry,
     pm: targetPm,
     env: deps.env,

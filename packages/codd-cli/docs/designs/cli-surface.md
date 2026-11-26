@@ -11,7 +11,7 @@
 codd wizard                    打开 4 步交互式配置向导 (等效于 -i / --wizard)
 codd init                      导出 deploy.schema.json、deploy-2c2g.json 与安全 .gitignore (等效于 --init-schema)
 codd lang [system|en|zh]       查看或独立持久化显示语言偏好 (默认 system 自动跟随操作系统语言)
-codd update                    自动识别当前安装器 (bun/npm/pnpm/yarn/volta) 升级到最新版 (支持 --check / --pm / --registry / --force / --verbose)
+codd update                    自动识别当前安装来源 (一键脚本独立安装 / bun / npm / pnpm / yarn / volta) 升级到最新版 (支持 --check / --pm / --registry / --force / --verbose)
 codd [配置文件.json]            按指定 JSON 清单生成部署包 (缺省读 ./deploy.json)
 codd -c, --config <路径>       显式指定 JSON 清单文件路径 (与位置参数互斥)
 codd -o, --out <目录>          指定部署包输出目录 (缺省 ./dist)
