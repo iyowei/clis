@@ -111,6 +111,8 @@ describe('三入口静态防线与 POSIX 实跑对照', () => {
           cwd: dir,
           env: { ...process.env, PATH: `.:${process.env.PATH ?? ''}` },
           encoding: 'utf8',
+          stdio: ['ignore', 'pipe', 'pipe'],
+          timeout: 20_000,
         },
       );
       expect(res.status, res.stderr).toBe(0);

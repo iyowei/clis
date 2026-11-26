@@ -313,7 +313,12 @@ describe('三入口解析形态 (静态钉住)', () => {
       const res = spawnSync(
         process.execPath,
         [join(ROOT, 'bin', 'create-clis.mjs'), '--version'],
-        { encoding: 'utf8', env },
+        {
+          encoding: 'utf8',
+          env,
+          stdio: ['ignore', 'pipe', 'pipe'],
+          timeout: 20_000,
+        },
       );
       expect(res.status, res.stderr).toBe(0);
       expect(res.stdout.trim()).toMatch(/^\d+\.\d+\.\d+/);
@@ -338,6 +343,8 @@ describe('POSIX 实跑对照 (防 cwd 劫持与软链环拦截)', () => {
       const res = spawnSync(launcher, ['--version'], {
         cwd: dir,
         encoding: 'utf8',
+        stdio: ['ignore', 'pipe', 'pipe'],
+        timeout: 20_000,
         env: {
           ...process.env,
           PATH: `:.:./:${process.env.PATH ?? ''}`,

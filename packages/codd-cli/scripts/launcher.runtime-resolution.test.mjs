@@ -241,7 +241,12 @@ describe('POSIX 实跑对照 (当前目录不参与解析)', () => {
           '-e',
           `const r = require('node:child_process').spawnSync(${JSON.stringify(probeName)}, []); process.stdout.write(String(r.error?.code));`,
         ],
-        { cwd: dir, encoding: 'utf8' },
+        {
+          cwd: dir,
+          encoding: 'utf8',
+          stdio: ['ignore', 'pipe', 'pipe'],
+          timeout: 20_000,
+        },
       );
       expect(viaNode.stdout).toBe('ENOENT');
 
@@ -259,6 +264,8 @@ describe('POSIX 实跑对照 (当前目录不参与解析)', () => {
             PATH: `:${dir === '' ? '' : '.'}:${process.env.PATH ?? ''}`,
           },
           encoding: 'utf8',
+          stdio: ['ignore', 'pipe', 'pipe'],
+          timeout: 20_000,
         },
       );
       expect(viaLauncher.stdout).not.toContain('HIJACKED_BUN');

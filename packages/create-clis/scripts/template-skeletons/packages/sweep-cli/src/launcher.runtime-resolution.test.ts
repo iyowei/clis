@@ -282,6 +282,8 @@ describe('三入口解析形态与 POSIX 防劫持实跑', () => {
             cwd: dir,
             env: { ...process.env, PATH: badPath },
             encoding: 'utf8',
+            stdio: ['ignore', 'pipe', 'pipe'],
+            timeout: 20_000,
           },
         );
         expect(res.status, res.stderr).toBe(0);

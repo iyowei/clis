@@ -259,6 +259,8 @@ describe('POSIX 实跑对照 (PATH 含空段或相对条目不命中 cwd 恶意�
             cwd: dir,
             env: { ...process.env, PATH: badPath },
             encoding: 'utf8',
+            stdio: ['ignore', 'pipe', 'pipe'],
+            timeout: 20_000,
           },
         );
         expect(res.status, res.stderr).toBe(0);
