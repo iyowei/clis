@@ -1,3 +1,17 @@
+# create-clis [1.6.0](https://github.com/iyowei/clis/compare/create-clis@1.5.1...create-clis@1.6.0) (2026-11-26)
+
+
+### Bug Fixes
+
+* 统一各 CLI 帮助面板的章节高亮与说明压暗层级 ([fa343a3](https://github.com/iyowei/clis/commit/fa343a3008404fb7f690440ed30f490a0cb40cbb))
+
+
+### Features
+
+* 为 create-clis 帮助信息补充文档与源码地址 ([e74ff16](https://github.com/iyowei/clis/commit/e74ff16269d2df8739f6bcbaee4c07d005a909b9))
+* 支持 create-clis 缺失全局 Bun 时回退隔离私有运行时 ([6d350f6](https://github.com/iyowei/clis/commit/6d350f607e57e0b0b3f7436bb685584ccdacc4d2))
+* 新增跨平台一键安装脚本与各 CLI 独立安装入口 ([59fc608](https://github.com/iyowei/clis/commit/59fc608b82984519e15c9a5aad455dee68a01822))
+
 ## create-clis [1.5.1](https://github.com/iyowei/clis/compare/create-clis@1.5.0...create-clis@1.5.1) (2026-11-26)
 
 
