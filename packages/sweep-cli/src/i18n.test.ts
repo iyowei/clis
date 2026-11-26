@@ -44,6 +44,9 @@ describe('sweep-cli 英文排版与独立语言切换', () => {
     expect(plain).toContain('Multi-Stack Workspace Cleaner');
     expect(plain).toContain('lang');
     expect(plain).toContain('--lang <lang>');
+    expect(plain).toContain(
+      'https://github.com/iyowei/clis/tree/main/packages/sweep-cli',
+    );
 
     for (const line of plain.split('\n')) {
       if (line.includes('Default Config')) continue;

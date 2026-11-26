@@ -32,9 +32,20 @@ describe('helpText 分层布局与主视图同源配色契约', () => {
     expect(plain).toContain('SWEEP_CONFIG');
     expect(plain).toContain('init --default');
     expect(plain).toContain('migrate');
+    expect(plain).toContain(
+      'https://github.com/iyowei/clis/tree/main/packages/sweep-cli',
+    );
     expect(plain).not.toMatch(/sweep-nm/i);
 
-    const sections = ['用法', '子命令', '选项', '示例', '配置与安全', '退出码'];
+    const sections = [
+      '用法',
+      '子命令',
+      '选项',
+      '示例',
+      '配置与安全',
+      '退出码',
+      '文档与源码',
+    ];
     let cursor = -1;
     for (const sec of sections) {
       const idx = plain.indexOf(`  ${sec}\n`);

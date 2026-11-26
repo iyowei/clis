@@ -160,6 +160,8 @@ const EXAMPLES_EN: readonly ExampleRow[] = [
 const LEFT_COL = 20;
 const EXAMPLE_COL = 28;
 const RULE_WIDTH = 76;
+const GITHUB_URL =
+  'https://github.com/iyowei/clis/tree/main/packages/sweep-cli';
 
 function defaultConfigPath(): string {
   return resolveConfigPath({ env: {} }).path;
@@ -243,6 +245,9 @@ export function helpText(color: boolean, locale: Locale = 'zh'): string {
       `    ${s.green('0')}         Success (preview, empty, init/migrate/config/lang/update, -V/-h)`,
       `    ${s.red('1')}         Failure (failed/skipped/rejected, missing config, or bad args)`,
       '',
+      `  ${s.section('Docs & Source')}`,
+      `    ${s.token(GITHUB_URL)}`,
+      '',
     ].join('\n');
   }
 
@@ -289,6 +294,9 @@ export function helpText(color: boolean, locale: Locale = 'zh'): string {
     `  ${s.section('退出码')}`,
     `    ${s.green('0')}         成功 (预览、空结果、init/migrate/config/lang/update、-V/-h)`,
     `    ${s.red('1')}         失败 (清理/回收站失败 / 跳过 / 拒绝 / 无配置非 TTY / 参数或配置错)`,
+    '',
+    `  ${s.section('文档与源码')}`,
+    `    ${s.token(GITHUB_URL)}`,
     '',
   ].join('\n');
 }
