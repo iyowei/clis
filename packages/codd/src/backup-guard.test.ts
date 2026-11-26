@@ -329,9 +329,13 @@ describe('公式推导、清单校验、模板透传与 Makefile 原地日志轮
       const logFile = join(dir, 'backup.log');
       writeFileSync(logFile, 'x'.repeat(2048), 'utf8');
       const origIno = statSync(logFile).ino;
+      // macOS CI 隔离 HOME 下 /usr/bin/make (xcrun shim) 冷启动扫描 Xcode 可能超过 5s; 优先直调 CLT 原生 make
+      const cltMake = '/Library/Developer/CommandLineTools/usr/bin/make';
+      const makeBin =
+        process.platform === 'darwin' && existsSync(cltMake) ? cltMake : 'make';
 
       const rot = spawnSync(
-        'make',
+        makeBin,
         [
           '-C',
           bDir,
@@ -339,12 +343,12 @@ describe('公式推导、清单校验、模板透传与 Makefile 原地日志轮
           `BACKUP_LOG_FILE=${logFile}`,
           'BACKUP_LOG_MAX_BYTES=1024',
         ],
-        { encoding: 'utf8' },
+        { encoding: 'utf8', timeout: 25_000 },
       );
       expect(rot.status).toBe(0);
       expect(statSync(logFile).ino).toBe(origIno);
       expect(statSync(logFile).size).toBe(0);
       expect(statSync(`${logFile}.1`).size).toBe(2048);
     }
-  });
+  }, 30_000);
 });
