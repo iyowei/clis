@@ -73,7 +73,9 @@ for (const path of collectDtsFiles(DIST)) {
     .replace(/(import\(\s*['"])(\.[^'"]+)\.ts(['"]\s*\))/g, '$1$2.js$3');
   if (after !== before) writeFileSync(path, after);
   for (const stem of internalStems) {
-    if (new RegExp(`['"]\\./${stem}\\.(?:js|ts)['"]`).test(after)) {
+    if (
+      new RegExp(`['"]\\.(?:\\.|[^'"]*)?/${stem}\\.(?:js|ts)['"]`).test(after)
+    ) {
       process.stderr.write(
         `构建失败: ${path} 仍引用了被排除的内部模块 ${stem}\n`,
       );
