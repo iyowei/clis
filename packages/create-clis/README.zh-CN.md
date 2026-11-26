@@ -35,10 +35,19 @@ npx create-clis
 # yarn Berry 没有 create 约定, dlx 是等价入口
 yarn dlx create-clis
 
-# 或一键脚本独立安装 (无需预装 Node / Bun, 缺失时自动安装隔离私有 Bun)
-curl -fsSL https://raw.githubusercontent.com/iyowei/clis/main/packages/create-clis/install.sh | sh
-# PowerShell:
-# irm https://raw.githubusercontent.com/iyowei/clis/main/packages/create-clis/install.ps1 | iex
+# 或一键脚本独立安装 (macOS / Linux, 无需预装 Node / Bun)
+curl \
+  -fsSL \
+  https://raw.githubusercontent.com/iyowei/clis/main/packages/create-clis/install.sh \
+  | sh
+```
+
+Windows PowerShell 一键独立安装 (无需预装 Node / Bun):
+
+```powershell
+irm `
+  https://raw.githubusercontent.com/iyowei/clis/main/packages/create-clis/install.ps1 `
+  | iex
 ```
 
 这些入口等价; 目标目录缺省是当前目录下以项目名命名的子目录:

@@ -50,9 +50,17 @@ $bin = "$env:USERPROFILE\tools\clis\packages\sweep-cli\bin"
 > **一键脚本安装入口**: 包内已预置 `packages/sweep-cli/install.sh` (macOS / Linux) 与 `packages/sweep-cli/install.ps1` (Windows PowerShell), 自动探测本机 `bun` / `node >= 22.18.0` 或下载隔离私有 Bun; 当前包未公开发布 (`private: true`) 时支持经 `--from-tarball <path|url>` 或私有 `--registry` / `SWEEP_REGISTRY` 安装, 发布后可直接 `curl ... | sh` / `irm ... | iex`:
 >
 > ```shell
-> # 公开发布前可通过本地 tarball 离线体验一键封装安装
-> ./packages/sweep-cli/install.sh --from-tarball ./sweep-cli.tgz
-> # PowerShell: .\packages\sweep-cli\install.ps1 -FromTarball .\sweep-cli.tgz
+> # macOS / Linux (公开发布前通过本地压缩包安装)
+> ./packages/sweep-cli/install.sh \
+>   --from-tarball \
+>     ./sweep-cli.tgz
+> ```
+>
+> ```powershell
+> # Windows PowerShell
+> .\packages\sweep-cli\install.ps1 `
+>   -FromTarball `
+>     .\sweep-cli.tgz
 > ```
 
 ## 使用

@@ -35,10 +35,19 @@ npx create-clis
 # yarn Berry has no create convention; dlx is the equivalent
 yarn dlx create-clis
 
-# or one-click standalone install (no Node / Bun prerequisite; auto-installs isolated Bun if absent)
-curl -fsSL https://raw.githubusercontent.com/iyowei/clis/main/packages/create-clis/install.sh | sh
-# PowerShell:
-# irm https://raw.githubusercontent.com/iyowei/clis/main/packages/create-clis/install.ps1 | iex
+# or one-click standalone install (macOS / Linux)
+curl \
+  -fsSL \
+  https://raw.githubusercontent.com/iyowei/clis/main/packages/create-clis/install.sh \
+  | sh
+```
+
+On Windows PowerShell (no pre-installed Node / Bun required):
+
+```powershell
+irm `
+  https://raw.githubusercontent.com/iyowei/clis/main/packages/create-clis/install.ps1 `
+  | iex
 ```
 
 These entry points are equivalent. The target directory defaults to a subdirectory of the current directory named after the project:

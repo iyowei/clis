@@ -19,32 +19,66 @@ Each CLI tool supports cross-platform one-click installation (**macOS, Linux, Wi
 
 **macOS / Linux (`curl` or `wget`)**:
 
+Supports custom remote URLs via `--installer-url`, `--bun-url`, `--registry`, `--from-tarball`, or per-tool `CODD_*` / `CREATE_CLIS_*` / `SWEEP_*` / `FAN_*` environment variables:
+
 ```shell
-# Direct install for a tool: codd | create-clis | fan (macOS-only) | sweep (--from-tarball before release)
-curl -fsSL https://raw.githubusercontent.com/iyowei/clis/main/packages/codd-cli/install.sh | sh
-wget -qO- https://raw.githubusercontent.com/iyowei/clis/main/packages/codd-cli/install.sh | sh
+# install a tool directly with curl (codd | create-clis | fan | sweep)
+curl \
+  -fsSL \
+  https://raw.githubusercontent.com/iyowei/clis/main/packages/codd-cli/install.sh \
+  | sh
 
-# Or pick a tool interactively / via argument with the unified installer
-curl -fsSL https://raw.githubusercontent.com/iyowei/clis/main/install.sh | sh -s -- codd
+# or with wget
+wget \
+  -qO- \
+  https://raw.githubusercontent.com/iyowei/clis/main/packages/codd-cli/install.sh \
+  | sh
 
-# Custom remote URLs (--installer-url / --bun-url / --registry / --from-tarball; also per-tool CODD_* / CREATE_CLIS_* / SWEEP_* / FAN_* env vars)
-curl -fsSL https://gh-proxy.com/https://raw.githubusercontent.com/iyowei/clis/main/packages/codd-cli/install.sh | \
-  sh -s -- \
-  --installer-url https://gh-proxy.com/https://raw.githubusercontent.com/iyowei/clis/main/install.sh \
-  --bun-url https://gh-proxy.com/https://github.com/oven-sh/bun/releases/latest/download \
-  --registry https://registry.npmmirror.com
+# or pick a tool via the unified root installer
+curl \
+  -fsSL \
+  https://raw.githubusercontent.com/iyowei/clis/main/install.sh \
+  | sh \
+    -s -- \
+    --tool codd
+
+# with custom remote URLs
+curl \
+  -fsSL \
+  https://gh-proxy.com/https://raw.githubusercontent.com/iyowei/clis/main/packages/codd-cli/install.sh \
+  | sh \
+    -s -- \
+    --installer-url \
+      https://gh-proxy.com/https://raw.githubusercontent.com/iyowei/clis/main/install.sh \
+    --bun-url \
+      https://gh-proxy.com/https://github.com/oven-sh/bun/releases/latest/download \
+    --registry \
+      https://registry.npmmirror.com
 ```
 
 **Windows (PowerShell)**:
 
+Supports per-tool environment variables (`CODD_*` / `CREATE_CLIS_*` / `SWEEP_*` / `FAN_*`) or `-InstallerUrl`, `-BunUrl`, `-Registry`, `-FromTarball`:
+
 ```powershell
-irm https://raw.githubusercontent.com/iyowei/clis/main/packages/codd-cli/install.ps1 | iex
+# install a tool directly
+irm `
+  https://raw.githubusercontent.com/iyowei/clis/main/packages/codd-cli/install.ps1 `
+  | iex
 
-# Or pass CLIS_TOOL to the unified installer
-$env:CLIS_TOOL="codd"; irm https://raw.githubusercontent.com/iyowei/clis/main/install.ps1 | iex
+# or pass CLIS_TOOL to the unified root installer
+$env:CLIS_TOOL = "codd"
+irm `
+  https://raw.githubusercontent.com/iyowei/clis/main/install.ps1 `
+  | iex
 
-# Custom remote URLs (per-tool env vars such as CODD_INSTALLER_URL / CODD_BUN_URL / CODD_REGISTRY, or -InstallerUrl / -BunUrl / -Registry / -FromTarball)
-$env:CODD_INSTALLER_URL="https://gh-proxy.com/https://raw.githubusercontent.com/iyowei/clis/main/install.ps1"; $env:CODD_BUN_URL="https://gh-proxy.com/https://github.com/oven-sh/bun/releases/latest/download"; $env:CODD_REGISTRY="https://registry.npmmirror.com"; irm https://gh-proxy.com/https://raw.githubusercontent.com/iyowei/clis/main/packages/codd-cli/install.ps1 | iex
+# with custom remote URLs
+$env:CODD_INSTALLER_URL = "https://gh-proxy.com/https://raw.githubusercontent.com/iyowei/clis/main/install.ps1"
+$env:CODD_BUN_URL = "https://gh-proxy.com/https://github.com/oven-sh/bun/releases/latest/download"
+$env:CODD_REGISTRY = "https://registry.npmmirror.com"
+irm `
+  https://gh-proxy.com/https://raw.githubusercontent.com/iyowei/clis/main/packages/codd-cli/install.ps1 `
+  | iex
 ```
 
 ## Documentation

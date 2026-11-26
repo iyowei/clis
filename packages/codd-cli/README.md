@@ -22,28 +22,52 @@ This package is a thin CLI shell (argument parser, interactive 4-step terminal w
 
 ### 1. One-click script (no Node / Bun prerequisite)
 
-Automatically picks existing `bun` or `node >= 22.18.0`, or installs an isolated private Bun runtime:
+Automatically picks existing `bun` or `node >= 22.18.0`, or installs an isolated private Bun runtime. Supports custom remote URLs via `--installer-url`, `--bun-url`, `--registry`, `--from-tarball`, or `CODD_*` environment variables:
 
 **macOS / Linux**:
 
 ```shell
-curl -fsSL https://raw.githubusercontent.com/iyowei/clis/main/packages/codd-cli/install.sh | sh
-# or with wget
-wget -qO- https://raw.githubusercontent.com/iyowei/clis/main/packages/codd-cli/install.sh | sh
-# with custom remote URLs (--installer-url / --bun-url / --registry / --from-tarball, or CODD_* env vars):
-curl -fsSL https://gh-proxy.com/https://raw.githubusercontent.com/iyowei/clis/main/packages/codd-cli/install.sh | \
-  sh -s -- \
-  --installer-url https://gh-proxy.com/https://raw.githubusercontent.com/iyowei/clis/main/install.sh \
-  --bun-url https://gh-proxy.com/https://github.com/oven-sh/bun/releases/latest/download \
-  --registry https://registry.npmmirror.com
+# with curl
+curl \
+  -fsSL \
+  https://raw.githubusercontent.com/iyowei/clis/main/packages/codd-cli/install.sh \
+  | sh
+
+# with wget
+wget \
+  -qO- \
+  https://raw.githubusercontent.com/iyowei/clis/main/packages/codd-cli/install.sh \
+  | sh
+
+# with custom remote URLs
+curl \
+  -fsSL \
+  https://gh-proxy.com/https://raw.githubusercontent.com/iyowei/clis/main/packages/codd-cli/install.sh \
+  | sh \
+    -s -- \
+    --installer-url \
+      https://gh-proxy.com/https://raw.githubusercontent.com/iyowei/clis/main/install.sh \
+    --bun-url \
+      https://gh-proxy.com/https://github.com/oven-sh/bun/releases/latest/download \
+    --registry \
+      https://registry.npmmirror.com
 ```
 
 **Windows (PowerShell)**:
 
 ```powershell
-irm https://raw.githubusercontent.com/iyowei/clis/main/packages/codd-cli/install.ps1 | iex
-# or with custom remote URLs (CODD_INSTALLER_URL / CODD_BUN_URL / CODD_REGISTRY):
-# $env:CODD_INSTALLER_URL="https://gh-proxy.com/https://raw.githubusercontent.com/iyowei/clis/main/install.ps1"; $env:CODD_BUN_URL="https://gh-proxy.com/https://github.com/oven-sh/bun/releases/latest/download"; $env:CODD_REGISTRY="https://registry.npmmirror.com"; irm https://gh-proxy.com/https://raw.githubusercontent.com/iyowei/clis/main/packages/codd-cli/install.ps1 | iex
+# default
+irm `
+  https://raw.githubusercontent.com/iyowei/clis/main/packages/codd-cli/install.ps1 `
+  | iex
+
+# with custom remote URLs
+$env:CODD_INSTALLER_URL = "https://gh-proxy.com/https://raw.githubusercontent.com/iyowei/clis/main/install.ps1"
+$env:CODD_BUN_URL = "https://gh-proxy.com/https://github.com/oven-sh/bun/releases/latest/download"
+$env:CODD_REGISTRY = "https://registry.npmmirror.com"
+irm `
+  https://gh-proxy.com/https://raw.githubusercontent.com/iyowei/clis/main/packages/codd-cli/install.ps1 `
+  | iex
 ```
 
 ### 2. Zero install (quick trial)

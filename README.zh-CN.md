@@ -19,32 +19,66 @@
 
 **macOS / Linux (`curl` 或 `wget`)**:
 
+默认仅连接官方源; 无直连海外网络时可显式传 `--installer-url`、`--bun-url`、`--registry`、`--from-tarball`, 或设置对应工具前缀环境变量 (`CODD_*` / `CREATE_CLIS_*` / `SWEEP_*` / `FAN_*`):
+
 ```shell
-# 单工具入口: codd | create-clis | fan (仅 macOS) | sweep (发布前可配 --from-tarball)
-curl -fsSL https://raw.githubusercontent.com/iyowei/clis/main/packages/codd-cli/install.sh | sh
-wget -qO- https://raw.githubusercontent.com/iyowei/clis/main/packages/codd-cli/install.sh | sh
+# 使用 curl 直接安装单工具 (codd | create-clis | fan | sweep)
+curl \
+  -fsSL \
+  https://raw.githubusercontent.com/iyowei/clis/main/packages/codd-cli/install.sh \
+  | sh
+
+# 或使用 wget
+wget \
+  -qO- \
+  https://raw.githubusercontent.com/iyowei/clis/main/packages/codd-cli/install.sh \
+  | sh
 
 # 或调用根目录统一安装脚本
-curl -fsSL https://raw.githubusercontent.com/iyowei/clis/main/install.sh | sh -s -- codd
+curl \
+  -fsSL \
+  https://raw.githubusercontent.com/iyowei/clis/main/install.sh \
+  | sh \
+    -s -- \
+    --tool codd
 
-# 无直连海外网络时, 默认只连官方源; 可显式传 --installer-url / --bun-url / --registry / --from-tarball 或设对应前缀环境变量 (CODD_* / CREATE_CLIS_* / SWEEP_* / FAN_*)
-curl -fsSL https://gh-proxy.com/https://raw.githubusercontent.com/iyowei/clis/main/packages/codd-cli/install.sh | \
-  sh -s -- \
-  --installer-url https://gh-proxy.com/https://raw.githubusercontent.com/iyowei/clis/main/install.sh \
-  --bun-url https://gh-proxy.com/https://github.com/oven-sh/bun/releases/latest/download \
-  --registry https://registry.npmmirror.com
+# 自定义远程下载地址
+curl \
+  -fsSL \
+  https://gh-proxy.com/https://raw.githubusercontent.com/iyowei/clis/main/packages/codd-cli/install.sh \
+  | sh \
+    -s -- \
+    --installer-url \
+      https://gh-proxy.com/https://raw.githubusercontent.com/iyowei/clis/main/install.sh \
+    --bun-url \
+      https://gh-proxy.com/https://github.com/oven-sh/bun/releases/latest/download \
+    --registry \
+      https://registry.npmmirror.com
 ```
 
 **Windows (PowerShell)**:
 
+支持各工具专属前缀环境变量 (`CODD_*` / `CREATE_CLIS_*` / `SWEEP_*` / `FAN_*`), 本地调用亦支持 `-InstallerUrl`、`-BunUrl`、`-Registry`、`-FromTarball`:
+
 ```powershell
-irm https://raw.githubusercontent.com/iyowei/clis/main/packages/codd-cli/install.ps1 | iex
+# 直接安装单工具
+irm `
+  https://raw.githubusercontent.com/iyowei/clis/main/packages/codd-cli/install.ps1 `
+  | iex
 
 # 或通过 CLIS_TOOL 调用统一安装脚本
-$env:CLIS_TOOL="codd"; irm https://raw.githubusercontent.com/iyowei/clis/main/install.ps1 | iex
+$env:CLIS_TOOL = "codd"
+irm `
+  https://raw.githubusercontent.com/iyowei/clis/main/install.ps1 `
+  | iex
 
-# 无直连海外网络时显式自定义各下载源 (亦可用 -InstallerUrl / -BunUrl / -Registry / -FromTarball)
-$env:CODD_INSTALLER_URL="https://gh-proxy.com/https://raw.githubusercontent.com/iyowei/clis/main/install.ps1"; $env:CODD_BUN_URL="https://gh-proxy.com/https://github.com/oven-sh/bun/releases/latest/download"; $env:CODD_REGISTRY="https://registry.npmmirror.com"; irm https://gh-proxy.com/https://raw.githubusercontent.com/iyowei/clis/main/packages/codd-cli/install.ps1 | iex
+# 自定义远程下载地址
+$env:CODD_INSTALLER_URL = "https://gh-proxy.com/https://raw.githubusercontent.com/iyowei/clis/main/install.ps1"
+$env:CODD_BUN_URL = "https://gh-proxy.com/https://github.com/oven-sh/bun/releases/latest/download"
+$env:CODD_REGISTRY = "https://registry.npmmirror.com"
+irm `
+  https://gh-proxy.com/https://raw.githubusercontent.com/iyowei/clis/main/packages/codd-cli/install.ps1 `
+  | iex
 ```
 
 ## 文档
