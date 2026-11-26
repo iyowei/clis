@@ -9,7 +9,12 @@ import {
   isFanError,
 } from '@iyowei/fan';
 
-import { isManualFanSettled, renderReport, renderWatchLine } from './render.ts';
+import {
+  displayWidth,
+  isManualFanSettled,
+  renderReport,
+  renderWatchLine,
+} from './render.ts';
 
 function formatTime(): string {
   const now = new Date();
@@ -120,6 +125,37 @@ export function localizeFanError(
   }
 }
 
+const ANSI_CSI_RE = new RegExp(`${String.fromCharCode(27)}\\[[0-9;]*m`, 'g');
+
+function visualLineCount(frame: string, columns?: number): number {
+  const lines = frame.split('\n');
+  if (columns === undefined || columns <= 0) return lines.length;
+  let total = 0;
+  for (const line of lines) {
+    const plain = line.replace(ANSI_CSI_RE, '');
+    total += Math.max(1, Math.ceil(displayWidth(plain) / columns));
+  }
+  return total;
+}
+
+function mergeReportWarnings(
+  initial: FanStatusReport,
+  latest: FanStatusReport,
+): FanStatusReport['warnings'] {
+  const seen = new Set(
+    initial.warnings.map((w) => `${w.code}:${w.fanIndex ?? ''}`),
+  );
+  const merged = [...initial.warnings];
+  for (const w of latest.warnings) {
+    const key = `${w.code}:${w.fanIndex ?? ''}`;
+    if (!seen.has(key)) {
+      seen.add(key);
+      merged.push(w);
+    }
+  }
+  return merged;
+}
+
 const SPINNER_FRAMES = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
 const AUTO_PLATEAU_LIMIT = 8;
 const AUTO_PLATEAU_DELTA_RPM = 30;
@@ -171,6 +207,7 @@ export async function renderWithLiveSettle(options: {
     writeRaw,
     intervalMs,
     maxMs,
+    columns,
   } = options;
 
   let current: FanStatusReport = initialReport;
@@ -230,7 +267,12 @@ export async function renderWithLiveSettle(options: {
       tick += 1;
       const prevFans = current.fans;
       const latest = controller.status({ fanIndex });
-      current = { ...initialReport, fans: latest.fans };
+      current = {
+        ...initialReport,
+        fans: latest.fans,
+        macsFanControlRunning: latest.macsFanControlRunning,
+        warnings: mergeReportWarnings(initialReport, latest),
+      };
       if (!fansNeedSettle(current)) break;
 
       if (isAutoPlateau(prevFans, current.fans)) {
@@ -240,7 +282,7 @@ export async function renderWithLiveSettle(options: {
         autoPlateauTicks = 0;
       }
 
-      const prevLines = frame.split('\n').length;
+      const prevLines = visualLineCount(frame, columns);
       frame = renderReport(current, {
         color,
         json: false,
@@ -251,7 +293,7 @@ export async function renderWithLiveSettle(options: {
       });
       writeRaw(`\u001B[${String(prevLines)}A\r\u001B[0J${frame}\n`);
     }
-    const prevLines = frame.split('\n').length;
+    const prevLines = visualLineCount(frame, columns);
     const finalFrame = renderReport(current, {
       color,
       json: false,
