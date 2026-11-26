@@ -1,6 +1,6 @@
 # @iyowei/sweep-cli
 
-[![CI](https://github.com/iyowei/clis/actions/workflows/ci.yml/badge.svg)](https://github.com/iyowei/clis/actions/workflows/ci.yml)
+[![CI & Release](https://github.com/iyowei/clis/actions/workflows/release.yml/badge.svg)](https://github.com/iyowei/clis/actions/workflows/release.yml)
 ![private](https://img.shields.io/badge/npm-private%20workspace%20package-lightgrey)
 ![node](https://img.shields.io/badge/node-%3E%3D22.18.0-339933)
 ![bun](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Fiyowei%2Fclis%2Fmain%2Fpackage.json&query=%24.packageManager&label=bun)

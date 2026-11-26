@@ -1,6 +1,6 @@
 # @iyowei/codd-cli
 
-[![CI](https://github.com/iyowei/clis/actions/workflows/ci.yml/badge.svg)](https://github.com/iyowei/clis/actions/workflows/ci.yml)
+[![CI & Release](https://github.com/iyowei/clis/actions/workflows/release.yml/badge.svg)](https://github.com/iyowei/clis/actions/workflows/release.yml)
 [![npm version](https://img.shields.io/npm/v/@iyowei/codd-cli)](https://www.npmjs.com/package/@iyowei/codd-cli)
 [![npm downloads](https://img.shields.io/npm/dm/@iyowei/codd-cli)](https://www.npmjs.com/package/@iyowei/codd-cli)
 ![node](https://img.shields.io/node/v/@iyowei/codd-cli)

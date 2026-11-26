@@ -1,6 +1,6 @@
 # @iyowei/fan
 
-[![CI](https://github.com/iyowei/clis/actions/workflows/ci.yml/badge.svg)](https://github.com/iyowei/clis/actions/workflows/ci.yml)
+[![CI & Release](https://github.com/iyowei/clis/actions/workflows/release.yml/badge.svg)](https://github.com/iyowei/clis/actions/workflows/release.yml)
 [![npm version](https://img.shields.io/npm/v/@iyowei/fan)](https://www.npmjs.com/package/@iyowei/fan)
 [![npm downloads](https://img.shields.io/npm/dm/@iyowei/fan)](https://www.npmjs.com/package/@iyowei/fan)
 ![node](https://img.shields.io/node/v/%40iyowei%2Ffan)
