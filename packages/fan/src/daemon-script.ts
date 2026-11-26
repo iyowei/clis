@@ -5,8 +5,10 @@
  * 2. 无外接显示器合盖 (`AppleClamshellState && AppleClamshellCausesSleep`)、进入系统睡眠 (`kIOMessageSystemWillSleep`)
  *    以及合盖/息屏后台唤醒 (`DarkWake`, `IOPMUserTriggeredFullWake == False`) 期间, 自动将手动风扇临时交还系统 `auto` (停转),
  *    不改写 `state.json`; 外接显示器合盖办公模式 (`AppleClamshellCausesSleep == False`) 保留手动转速;
- * 3. 醒着正常开盖期间采用边沿状态机, 零定时轮询且不覆盖 `--once` 临时设定。
+ * 3. 醒着正常开盖期间采用边沿状态机, 零定时轮询且不覆盖 `--once` 临时设定;
+ * 4. 复用 `SMC_PY_STRUCTS_AND_CORE`, 统一兼容 Apple M5 (`F*md`)、M1–M4/T2 (`F*Md` + `Ftst`) 与经典 Intel (`FS! `)。
  */
+import { SMC_PY_STRUCTS_AND_CORE } from './smc-script.ts';
 
 function daemonPreamble(escapedStatePath: string): string {
   return `#!/usr/bin/python3
@@ -24,58 +26,11 @@ IOKIT_PATH = "/System/Library/Frameworks/IOKit.framework/IOKit"
 CF_PATH = "/System/Library/Frameworks/CoreFoundation.framework/CoreFoundation"
 LIBC_PATH = "/usr/lib/libc.dylib"
 
-K_SMC_HANDLE_YIELD = 2
-K_SMC_READ_KEY = 5
-K_SMC_WRITE_KEY = 6
-K_SMC_GET_KEY_INFO = 9
-
 K_IO_MSG_CAN_SYSTEM_SLEEP = 0xE0000270
 K_IO_MSG_SYSTEM_WILL_SLEEP = 0xE0000280
 K_IO_MSG_SYSTEM_HAS_POWERED_ON = 0xE0000300
 K_CF_STRING_ENCODING_UTF8 = 0x08000100
-
-
-class Vers(ctypes.Structure):
-    _fields_ = [
-        ("major", ctypes.c_uint8),
-        ("minor", ctypes.c_uint8),
-        ("build", ctypes.c_uint8),
-        ("reserved", ctypes.c_uint8),
-        ("release", ctypes.c_uint16),
-    ]
-
-
-class PLimitData(ctypes.Structure):
-    _fields_ = [
-        ("version", ctypes.c_uint16),
-        ("length", ctypes.c_uint16),
-        ("cpuPLimit", ctypes.c_uint32),
-        ("gpuPLimit", ctypes.c_uint32),
-        ("memPLimit", ctypes.c_uint32),
-    ]
-
-
-class KeyInfo(ctypes.Structure):
-    _fields_ = [
-        ("dataSize", ctypes.c_uint32),
-        ("dataType", ctypes.c_uint32),
-        ("dataAttributes", ctypes.c_uint8),
-    ]
-
-
-class SMCKeyData(ctypes.Structure):
-    _fields_ = [
-        ("key", ctypes.c_uint32),
-        ("vers", Vers),
-        ("pLimitData", PLimitData),
-        ("keyInfo", KeyInfo),
-        ("result", ctypes.c_uint8),
-        ("status", ctypes.c_uint8),
-        ("data8", ctypes.c_uint8),
-        ("data32", ctypes.c_uint32),
-        ("bytes", ctypes.c_uint8 * 32),
-    ]
-
+${SMC_PY_STRUCTS_AND_CORE}
 
 iokit = ctypes.CDLL(IOKIT_PATH)
 cf = ctypes.CDLL(CF_PATH)
@@ -170,14 +125,6 @@ def log(msg):
     sys.stdout.flush()
 
 
-def fourcc(k):
-    return struct.unpack(">I", k.encode("ascii"))[0]
-
-
-def unfoucc(v):
-    return struct.pack(">I", v).decode("ascii", errors="replace")
-
-
 def smc_open():
     svc = iokit.IOServiceGetMatchingService(0, iokit.IOServiceMatching(b"AppleSMC"))
     if not svc:
@@ -188,70 +135,6 @@ def smc_open():
     if kr != 0:
         raise RuntimeError(f"IOServiceOpen(AppleSMC) failed: {hex(kr)}")
     return conn
-
-
-def smc_call(conn, inp):
-    out = SMCKeyData()
-    sz = ctypes.c_size_t(ctypes.sizeof(out))
-    rc = iokit.IOConnectCallStructMethod(
-        conn.value,
-        K_SMC_HANDLE_YIELD,
-        ctypes.byref(inp),
-        ctypes.sizeof(inp),
-        ctypes.byref(out),
-        ctypes.byref(sz),
-    )
-    if rc != 0:
-        raise RuntimeError(f"IOConnectCallStructMethod failed: {hex(rc)}")
-    if out.result != 0:
-        raise RuntimeError(f"SMC error {out.result} for {unfoucc(inp.key)}")
-    return out
-
-
-def key_info(conn, k):
-    inp = SMCKeyData()
-    inp.key = fourcc(k)
-    inp.data8 = K_SMC_GET_KEY_INFO
-    out = smc_call(conn, inp)
-    return unfoucc(out.keyInfo.dataType), out.keyInfo.dataSize
-
-
-def read_key(conn, k):
-    dt, sz = key_info(conn, k)
-    inp = SMCKeyData()
-    inp.key = fourcc(k)
-    inp.keyInfo.dataSize = sz
-    inp.data8 = K_SMC_READ_KEY
-    out = smc_call(conn, inp)
-    raw = bytes(out.bytes[:sz])
-    if dt == "flt " and sz == 4:
-        return float(struct.unpack("<f", raw)[0])
-    if dt == "ui8 " and sz == 1:
-        return int(raw[0])
-    if dt == "ui16" and sz == 2:
-        return int(struct.unpack(">H", raw)[0])
-    if dt == "fpe2" and sz == 2:
-        return float(struct.unpack(">H", raw)[0] >> 2)
-    raise RuntimeError(f"Unsupported SMC read type {dt} for {k}")
-
-
-def write_key(conn, k, val):
-    dt, sz = key_info(conn, k)
-    if dt == "flt " and sz == 4:
-        payload = struct.pack("<f", float(val))
-    elif dt == "ui8 " and sz == 1:
-        payload = struct.pack("B", int(val))
-    elif dt == "fpe2" and sz == 2:
-        payload = struct.pack(">H", int(round(float(val) * 4)))
-    else:
-        raise RuntimeError(f"Unsupported SMC write type {dt} for {k}")
-    inp = SMCKeyData()
-    inp.key = fourcc(k)
-    inp.keyInfo.dataSize = sz
-    inp.data8 = K_SMC_WRITE_KEY
-    for i, b in enumerate(payload):
-        inp.bytes[i] = b
-    smc_call(conn, inp)
 
 
 def read_pm_bool(pm_svc, key_bytes):
@@ -303,13 +186,14 @@ def release_manual_fans_to_auto(reason):
         conn = None
         try:
             conn = smc_open()
-            count = int(read_key(conn, "FNum"))
+            count = read_fan_count(conn)
             released = []
             for idx in range(count):
-                if int(read_key(conn, f"F{idx}md")) != 0:
-                    write_key(conn, f"F{idx}md", 0)
+                if read_fan_mode(conn, idx) == "manual":
+                    set_fan_mode(conn, idx, False)
                     released.append(f"F{idx}=auto")
             if released:
+                sync_ftst_if_all_auto(conn, count)
                 log(f"{reason}: released {', '.join(released)}")
             return
         except Exception as exc:
@@ -340,16 +224,18 @@ def apply_saved_state(reason):
         conn = None
         try:
             conn = smc_open()
-            count = int(read_key(conn, "FNum"))
+            count = read_fan_count(conn)
             applied = []
+            any_auto_applied = False
             for idx in range(count):
                 entry = fans_cfg.get(str(idx))
                 if not isinstance(entry, dict):
                     continue
                 if entry.get("mode") == "auto":
-                    if int(read_key(conn, f"F{idx}md")) != 0:
-                        write_key(conn, f"F{idx}md", 0)
+                    if read_fan_mode(conn, idx) == "manual":
+                        set_fan_mode(conn, idx, False)
                         applied.append(f"F{idx}=auto")
+                        any_auto_applied = True
                     continue
                 if entry.get("mode") != "manual":
                     continue
@@ -361,12 +247,18 @@ def apply_saved_state(reason):
                     target = round(mn + (val / 100.0) * (mx - mn))
                 else:
                     target = max(mn, min(mx, val))
-                cur_md = int(read_key(conn, f"F{idx}md"))
-                cur_tg = float(read_key(conn, f"F{idx}Tg"))
-                if cur_md != 1 or abs(cur_tg - target) >= 1.0:
-                    write_key(conn, f"F{idx}md", 1)
+                cur_mode = read_fan_mode(conn, idx)
+                cur_tg = read_key_opt(conn, f"F{idx}Tg")
+                if (
+                    cur_mode != "manual"
+                    or cur_tg is None
+                    or abs(float(cur_tg) - target) >= 1.0
+                ):
+                    set_fan_mode(conn, idx, True)
                     write_key(conn, f"F{idx}Tg", float(target))
                     applied.append(f"F{idx}={int(target)}RPM")
+            if any_auto_applied:
+                sync_ftst_if_all_auto(conn, count)
             if applied:
                 log(f"{reason}: applied {', '.join(applied)}")
             return

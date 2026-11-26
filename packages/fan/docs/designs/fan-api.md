@@ -10,18 +10,21 @@
 3. 最小化权限边界: 读取风扇状态与 `state.json` 无需 root; 仅写入、持久化落盘与守护安装经 `/usr/bin/sudo` 调用 `/usr/bin/python3`; 写入后轮询确认 SMC 目标键刷新 (最多 1 秒) 再返回状态。
 4. 默认自动记住与守护联动: `set` / `max` / `min` / `auto` 默认将配置按风扇粒度合并写入 `/Library/Application Support/iyowei-fan/state.json` (传入 `persist: false` 则跳过写盘); 执行 `set` / `max` / `min` 时默认幂等确保 `com.iyowei.fan` `LaunchDaemon` 已安装并同步为最新脚本 (已一致且运行中则免 `sudo` 短路): 在开机 (`RunAtLoad`) 与真实唤醒 (`FullWake` / 开盖) 时恢复设定, 在无外接显示器合盖 (`AppleClamshellState && AppleClamshellCausesSleep`)、系统睡眠 (`kIOMessageSystemWillSleep`) 与后台维护唤醒 (`DarkWake`) 期间自动将手动风扇临时切回 `auto` 停转 (外接显示器合盖办公保留手动转速), 醒着开盖期间边沿驱动零轮询。
 
-## 2. AppleSMC 键值契约
+## 2. AppleSMC 跨代键值契约
 
-已在 Apple Silicon (MacBook Pro `Mac17,10`, Apple M5 Max) 实机探测验证的 SMC 键如下:
+不同代际 Mac 的 AppleSMC FourCC 键区分大小写且协议不同 (键不存在时 IOKit 返回 `result = 132` / `0x84` `kSMCKeyNotFound`), 驱动与 `LaunchDaemon` 统一按探测优先级自适应兼容:
 
-| 键       | 类型   | 方向 | 说明                                                     |
-| -------- | ------ | ---- | -------------------------------------------------------- |
-| `FNum`   | `ui8 ` | 只读 | 系统风扇数量                                             |
-| `F{i}Ac` | `flt ` | 只读 | 第 `i` 把风扇当前实际转速 (RPM)                          |
-| `F{i}Mn` | `flt ` | 只读 | 第 `i` 把风扇最小允许转速                                |
-| `F{i}Mx` | `flt ` | 只读 | 第 `i` 把风扇最大允许转速                                |
-| `F{i}Tg` | `flt ` | 读写 | 第 `i` 把风扇目标转速                                    |
-| `F{i}md` | `ui8 ` | 读写 | 控制模式: `0` = 系统自动 (`auto`), `1` = 手动 (`manual`) |
+| 键       | 类型                     | 方向 | 适用代际与说明                                                                                            |
+| -------- | ------------------------ | ---- | --------------------------------------------------------------------------------------------------------- |
+| `FNum`   | `ui8 `                   | 只读 | 系统风扇数量; 无风扇机型 (如 MacBook Air) 缺失 (`132`) 或为 `0` 时返回空列表并映射为 `SMC_UNAVAILABLE`    |
+| `F{i}Ac` | `flt ` / `fpe2`          | 只读 | 第 `i` 把风扇当前实际转速 (RPM, Apple Silicon 小端 `flt `, 经典 Intel 大端 14.2 定点 `fpe2`)              |
+| `F{i}Mn` | `flt ` / `fpe2`          | 只读 | 第 `i` 把风扇最小允许转速                                                                                 |
+| `F{i}Mx` | `flt ` / `fpe2`          | 只读 | 第 `i` 把风扇最大允许转速                                                                                 |
+| `F{i}Tg` | `flt ` / `fpe2`          | 读写 | 第 `i` 把风扇目标转速 (只读固件缺失 `F{i}Tg` 时读取回退为 `F{i}Ac`)                                       |
+| `F{i}md` | `ui8 `                   | 读写 | Apple M5 系列单扇模式键: `0` = 系统自动 (`auto`), `1` = 手动 (`manual`)                                   |
+| `F{i}Md` | `ui8 ` / `flag`          | 读写 | Apple M1–M4 及 T2 / 后期 Intel 单扇模式键: `0` 或 `3` (`thermalmonitord` 托管) = `auto`, `1` = `manual`   |
+| `Ftst`   | `ui8 ` / `flag`          | 读写 | M3/M4 等固件温控解锁键: `F{i}Md` 被锁定在 `3` 时先写 `Ftst = 1` 请求让权, 全部风扇恢复 `auto` 后写回 `0`  |
+| `FS! `   | `ui16` / `hex_` / `{fds` | 读写 | 经典 Intel Mac 全局强制风扇位掩码 (无 `F{i}md`/`F{i}Md` 时回退): 第 `i` 位 (`1 << i`) 为 `1` 表示手动模式 |
 
 ## 3. 公开 API
 
