@@ -1,3 +1,15 @@
+# @iyowei/fan-cli [1.2.0](https://github.com/iyowei/clis/compare/@iyowei/fan-cli@1.1.0...@iyowei/fan-cli@1.2.0) (2026-11-26)
+
+
+### Bug Fixes
+
+* **fan-cli:** 修复手动百分比调速实时追踪在双风扇未全达标时提前退出的问题 ([48fc7b1](https://github.com/iyowei/clis/commit/48fc7b140c3ff9b2bf8eabad687645862088c0bf))
+
+
+### Features
+
+* 新增 cli-i18n 共享库并为全仓 CLI 接入中英双语与系统语言自适应 ([c6432d2](https://github.com/iyowei/clis/commit/c6432d2ce0d4f64b5fc8462ff6aa7c574d5fb64b))
+
 # @iyowei/fan-cli [1.1.0](https://github.com/iyowei/clis/compare/@iyowei/fan-cli@1.0.0...@iyowei/fan-cli@1.1.0) (2026-11-25)
 
 
