@@ -138,7 +138,7 @@ export function createAppleSmcTransport(
     pgrepBin: overrides.pgrepBin ?? MACOS_PGREP_BIN,
     geteuid:
       overrides.geteuid ??
-      (() => (typeof process.geteuid === 'function' ? process.geteuid() : 0)),
+      (() => (typeof process.geteuid === 'function' ? process.geteuid() : -1)),
     exists: overrides.exists ?? existsSync,
     spawnSyncFn: overrides.spawnSyncFn ?? spawnSync,
     readTimeoutMs: overrides.readTimeoutMs ?? 10_000,
