@@ -1,7 +1,11 @@
 /**
  * `cli.ts` (`runCli`) 编排测试 (注入 `FanTransport` / `FanStateStore` / `PersistDaemonOps` 桩, 覆盖全部子命令与持久化)。
  */
-import { describe, expect, test } from 'bun:test';
+import { afterEach, describe, expect, test } from 'bun:test';
+
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 
 import type {
   FanInfo,
@@ -96,11 +100,27 @@ function makeStubPersistOps(installedInitial = false): PersistDaemonOps {
   };
 }
 
+const tempHomes: string[] = [];
+
+afterEach(() => {
+  for (const dir of tempHomes.splice(0)) {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+function makeIsolatedHome(): string {
+  const dir = mkdtempSync(join(tmpdir(), 'fan-cli-test-'));
+  tempHomes.push(dir);
+  return dir;
+}
+
 describe('runCli 编排', () => {
   test('status / max / set / --once / apply / min / auto 与 persist 全链路', async () => {
     const transport = makeStubTransport();
     const stateStore = makeStubStateStore();
     const persistOps = makeStubPersistOps(false);
+    const home = makeIsolatedHome();
+    const env = { CLIS_TEST_OS_LOCALE: 'zh-CN' };
     const run = async (argv: string[]) => {
       const out: string[] = [];
       const err: string[] = [];
@@ -108,6 +128,8 @@ describe('runCli 编排', () => {
         transport,
         stateStore,
         persistOps,
+        homedir: home,
+        env,
         stdoutColor: false,
         stderrColor: false,
         out: (l) => out.push(l),
@@ -173,6 +195,8 @@ describe('runCli 编排', () => {
     const code = await runCli(['set', '99999'], {
       transport,
       stateStore: makeStubStateStore(),
+      homedir: makeIsolatedHome(),
+      env: { CLIS_TEST_OS_LOCALE: 'zh-CN' },
       stdoutColor: false,
       stderrColor: false,
       out: (l) => out.push(l),
@@ -225,10 +249,14 @@ describe('runCli liveSettle 动态追踪', () => {
     };
 
     const chunks: string[] = [];
+    const home = makeIsolatedHome();
+    const env = { CLIS_TEST_OS_LOCALE: 'zh-CN' };
     const code = await runCli(['set', '2820', '--once'], {
       transport,
       stateStore: makeStubStateStore(),
       persistOps: makeStubPersistOps(true),
+      homedir: home,
+      env,
       stdoutColor: false,
       stderrColor: false,
       rawWrite: (c) => chunks.push(c),
@@ -283,6 +311,8 @@ describe('runCli liveSettle 动态追踪', () => {
       transport: autoTransport,
       stateStore: makeStubStateStore(),
       persistOps: makeStubPersistOps(true),
+      homedir: home,
+      env,
       stdoutColor: false,
       stderrColor: false,
       rawWrite: (c) => autoChunks.push(c),
@@ -339,6 +369,8 @@ describe('runCli liveSettle 动态追踪', () => {
       transport: maxTransport,
       stateStore: makeStubStateStore(),
       persistOps: makeStubPersistOps(true),
+      homedir: home,
+      env,
       stdoutColor: false,
       stderrColor: false,
       rawWrite: (c) => maxChunks.push(c),
@@ -401,6 +433,8 @@ describe('runCli 双风扇百分比精确十分位守卫 (零硬编码通用规�
         transport,
         stateStore: makeStubStateStore(),
         persistOps: makeStubPersistOps(true),
+        homedir: makeIsolatedHome(),
+        env: { CLIS_TEST_OS_LOCALE: 'zh-CN' },
         stdoutColor: false,
         stderrColor: false,
         rawWrite: (c) => chunks.push(c),
