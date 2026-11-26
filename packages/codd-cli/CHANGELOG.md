@@ -1,3 +1,10 @@
+# @iyowei/codd-cli [1.4.0](https://github.com/iyowei/clis/compare/@iyowei/codd-cli@1.3.1...@iyowei/codd-cli@1.4.0) (2026-11-26)
+
+
+### Features
+
+* 新增 cli-i18n 共享库并为全仓 CLI 接入中英双语与系统语言自适应 ([c6432d2](https://github.com/iyowei/clis/commit/c6432d2ce0d4f64b5fc8462ff6aa7c574d5fb64b))
+
 ## @iyowei/codd-cli [1.3.1](https://github.com/iyowei/clis/compare/@iyowei/codd-cli@1.3.0...@iyowei/codd-cli@1.3.1) (2026-11-25)
 
 
