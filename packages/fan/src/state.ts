@@ -33,11 +33,10 @@ function isValidEntry(value: unknown): value is PersistedFanEntry {
   if (record.mode !== 'manual') return false;
   const kind = record.kind;
   const num = record.value;
-  return (
-    (kind === 'rpm' || kind === 'percent') &&
-    typeof num === 'number' &&
-    Number.isFinite(num)
-  );
+  if (typeof num !== 'number' || !Number.isFinite(num)) return false;
+  if (kind === 'percent') return num >= 0 && num <= 100;
+  if (kind === 'rpm') return num > 0;
+  return false;
 }
 
 /** 从磁盘读取并校验 `state.json` v1; 不存在返回 `null`, 损坏或遇符号链接抛 `STATE_CORRUPT` */

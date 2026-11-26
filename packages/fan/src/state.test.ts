@@ -104,6 +104,42 @@ describe('@iyowei/fan 持久化状态与守护构建', () => {
         expect(isFanError(err)).toBe(true);
         if (isFanError(err)) expect(err.code).toBe('STATE_CORRUPT');
       }
+
+      const badRange = join(dir, 'bad-range.json');
+      writeFileSync(
+        badRange,
+        JSON.stringify({
+          version: 1,
+          updatedAt: '',
+          fans: { '0': { mode: 'manual', kind: 'percent', value: 150 } },
+        }),
+        'utf8',
+      );
+      try {
+        readPersistedState(badRange);
+        throw new Error('Expected STATE_CORRUPT for out-of-range percent');
+      } catch (err) {
+        expect(isFanError(err)).toBe(true);
+        if (isFanError(err)) expect(err.code).toBe('STATE_CORRUPT');
+      }
+
+      const badZeroRpm = join(dir, 'bad-rpm.json');
+      writeFileSync(
+        badZeroRpm,
+        JSON.stringify({
+          version: 1,
+          updatedAt: '',
+          fans: { '0': { mode: 'manual', kind: 'rpm', value: 0 } },
+        }),
+        'utf8',
+      );
+      try {
+        readPersistedState(badZeroRpm);
+        throw new Error('Expected STATE_CORRUPT for zero rpm');
+      } catch (err) {
+        expect(isFanError(err)).toBe(true);
+        if (isFanError(err)) expect(err.code).toBe('STATE_CORRUPT');
+      }
     });
   });
 
