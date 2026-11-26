@@ -90,9 +90,19 @@ export const resolvePosixExecutables = (name, pathEnv, fileProbe) => {
   return found;
 };
 
+const defaultPathEnv = (platform) => {
+  if (process.env.PATH !== undefined && process.env.PATH !== '') {
+    return process.env.PATH;
+  }
+  if (platform === 'win32' && process.env.Path !== undefined) {
+    return process.env.Path;
+  }
+  return '';
+};
+
 export const pickRuntime = ({
   platform = process.platform,
-  pathEnv = process.env.PATH ?? process.env.Path ?? '',
+  pathEnv = defaultPathEnv(platform),
   fileProbe = isFileAt,
   probe = available,
   names = ['bun', 'node'],

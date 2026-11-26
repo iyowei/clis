@@ -105,10 +105,20 @@ export const resolvePosixExecutables = (name, pathEnv, fileProbe) => {
   return found;
 };
 
+const defaultPathEnv = (platform) => {
+  if (process.env.PATH !== undefined && process.env.PATH !== '') {
+    return process.env.PATH;
+  }
+  if (platform === 'win32' && process.env.Path !== undefined) {
+    return process.env.Path;
+  }
+  return '';
+};
+
 /** 挑选运行时: 缺省 Bun 优先、其次 Node (>= 22.18); 皆无则 null */
 export const pickRuntime = ({
   platform = process.platform,
-  pathEnv = process.env.PATH ?? process.env.Path ?? '',
+  pathEnv = defaultPathEnv(platform),
   fileProbe = isFileAt,
   probe = available,
   names = ['bun', 'node'],

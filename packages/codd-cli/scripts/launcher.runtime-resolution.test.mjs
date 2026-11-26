@@ -150,6 +150,25 @@ describe('win32 / POSIX PATH 解析防劫持与 Node 版本校验', () => {
     expect(isSupportedNodeVersion('v22.17.9')).toBe(false);
     expect(isSupportedNodeVersion('v20.18.0')).toBe(false);
     expect(isSupportedNodeVersion('')).toBe(false);
+
+    const prevPATH = process.env.PATH;
+    const prevPath = process.env.Path;
+    process.env.PATH = '';
+    process.env.Path = 'C:\\tools';
+    try {
+      expect(
+        pickRuntime({
+          platform: 'win32',
+          fileProbe: (candidate) => candidate === 'C:\\tools\\bun.exe',
+          probe: () => true,
+        }),
+      ).toBe('C:\\tools\\bun.exe');
+    } finally {
+      if (prevPATH === undefined) delete process.env.PATH;
+      else process.env.PATH = prevPATH;
+      if (prevPath === undefined) delete process.env.Path;
+      else process.env.Path = prevPath;
+    }
   });
 });
 

@@ -195,6 +195,27 @@ describe('pickRuntime 的 win32 分支 (注入)', () => {
 
     expect(runtime).toBe('C:\\tools\\node.exe');
   });
+
+  test('win32: PATH 为空串时回退读取小写 Path 环境变量', () => {
+    const prevPATH = process.env.PATH;
+    const prevPath = process.env.Path;
+    process.env.PATH = '';
+    process.env.Path = 'C:\\tools';
+    try {
+      expect(
+        pickRuntime({
+          platform: 'win32',
+          fileProbe: (candidate) => candidate === 'C:\\tools\\bun.exe',
+          probe: () => true,
+        }),
+      ).toBe('C:\\tools\\bun.exe');
+    } finally {
+      if (prevPATH === undefined) delete process.env.PATH;
+      else process.env.PATH = prevPATH;
+      if (prevPath === undefined) delete process.env.Path;
+      else process.env.Path = prevPath;
+    }
+  });
 });
 
 describe('pickRuntime 的 POSIX 分支 (注入)', () => {
@@ -270,7 +291,8 @@ describe('三入口解析形态 (静态钉住)', () => {
     expect(source).toContain(
       'resolvePosixExecutables(name, pathEnv, fileProbe)',
     );
-    expect(source).toContain('process.env.PATH ?? process.env.Path');
+    expect(source).toContain('defaultPathEnv');
+    expect(source).toContain('process.env.Path');
     expect(source).toContain('isSupportedNodeVersion');
     expect(source).toContain('CLIS_BUN_ISOLATED');
     expect(source).toContain("{ CLIS_BUN_ISOLATED: '1' }");

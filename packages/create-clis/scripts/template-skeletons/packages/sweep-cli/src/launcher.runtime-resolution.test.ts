@@ -182,6 +182,27 @@ describe('pickRuntime 跨平台优先序与探测 (注入)', () => {
     expect(runtime).toBe('/second/bun');
     expect(probed).toEqual(['/first/bun', '/second/bun']);
   });
+
+  test('win32: PATH 为空串时自动回退读取小写 Path 环境变量', () => {
+    const prevPATH = process.env.PATH;
+    const prevPath = process.env.Path;
+    process.env.PATH = '';
+    process.env.Path = 'C:\\tools';
+    try {
+      expect(
+        pickRuntime({
+          platform: 'win32',
+          fileProbe: (candidate) => candidate === 'C:\\tools\\bun.exe',
+          probe: () => true,
+        }),
+      ).toBe('C:\\tools\\bun.exe');
+    } finally {
+      if (prevPATH === undefined) delete process.env.PATH;
+      else process.env.PATH = prevPATH;
+      if (prevPath === undefined) delete process.env.Path;
+      else process.env.Path = prevPath;
+    }
+  });
 });
 
 describe('isEntry 入口同源判定', () => {

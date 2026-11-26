@@ -57,6 +57,27 @@ describe('win32 & POSIX PATH 解析', () => {
       }),
     ).toBe('/usr/local/bin/node');
   });
+
+  test('win32: PATH 为空串时自动回退读取小写 Path 环境变量', () => {
+    const prevPATH = process.env.PATH;
+    const prevPath = process.env.Path;
+    process.env.PATH = '';
+    process.env.Path = 'C:\\tools';
+    try {
+      expect(
+        pickRuntime({
+          platform: 'win32',
+          fileProbe: (candidate) => candidate === 'C:\\tools\\bun.exe',
+          probe: () => true,
+        }),
+      ).toBe('C:\\tools\\bun.exe');
+    } finally {
+      if (prevPATH === undefined) delete process.env.PATH;
+      else process.env.PATH = prevPATH;
+      if (prevPath === undefined) delete process.env.Path;
+      else process.env.Path = prevPath;
+    }
+  });
 });
 
 describe('三入口静态防线与 POSIX 实跑对照', () => {
