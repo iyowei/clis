@@ -12,9 +12,19 @@ describe('create-clis formatHelpText', () => {
   test('无色态零 ANSI、子命令与模板变量 / 生成选项独立分区', () => {
     const plain = formatHelpText(false);
     expect(plain).not.toContain('\u001b');
-    for (const sec of ['用法', '子命令', '模板变量', '生成选项', '说明']) {
+    for (const sec of [
+      '用法',
+      '子命令',
+      '模板变量',
+      '生成选项',
+      '说明',
+      '文档与源码',
+    ]) {
       expect(plain).toContain(`  ${sec}\n`);
     }
+    expect(plain).toContain(
+      'https://github.com/iyowei/clis/tree/main/packages/create-clis',
+    );
     expect(plain).toContain('-V, --version');
     expect(plain).toContain('-h, --help');
     expect(plain).toContain('[目录]/--name');

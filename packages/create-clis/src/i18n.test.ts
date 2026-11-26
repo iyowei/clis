@@ -31,6 +31,9 @@ describe('create-clis 英文排版与独立语言偏好', () => {
     expect(plain).toContain('CLI Monorepo Scaffolder');
     expect(plain).toContain('lang');
     expect(plain).toContain('--lang <lang>');
+    expect(plain).toContain(
+      'https://github.com/iyowei/clis/tree/main/packages/create-clis',
+    );
 
     for (const line of plain.split('\n')) {
       expect(displayWidth(line), `过宽行: ${line}`).toBeLessThanOrEqual(80);

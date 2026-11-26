@@ -198,6 +198,8 @@ const META_OPTIONS_EN: readonly OptionRow[] = [
 
 const LEFT_COL = 20;
 const RULE_WIDTH = 76;
+const GITHUB_URL =
+  'https://github.com/iyowei/clis/tree/main/packages/create-clis';
 
 function displayWidth(text: string): number {
   let width = 0;
@@ -262,6 +264,9 @@ export function formatHelpText(color: boolean, locale: Locale = 'zh'): string {
       `    ${s.primary('npm create')}    ${s.muted('Pass flags after -- (e.g. npm create clis -- --tier core)')}`,
       `    ${s.primary('End of Opts')}   ${s.muted('Tokens after -- are treated literally as target directory')}`,
       '',
+      `  ${s.section('Docs & Source')}`,
+      `    ${s.token(GITHUB_URL)}`,
+      '',
     ].join('\n');
   }
 
@@ -296,6 +301,9 @@ export function formatHelpText(color: boolean, locale: Locale = 'zh'): string {
     `    ${s.primary('零交互态')}  ${s.muted('git user.name 未配置或含空格/非 ASCII 时, --yes 须传 --owner')}`,
     `    ${s.primary('调用约定')}  ${s.muted('npm create 传参置于 -- 后 (例: npm create clis -- --tier core)')}`,
     `    ${s.primary('选项终止')}  ${s.muted('-- 后参数均作目标目录 (可逃逸 - 开头或名为 update 的目录)')}`,
+    '',
+    `  ${s.section('文档与源码')}`,
+    `    ${s.token(GITHUB_URL)}`,
     '',
   ].join('\n');
 }
