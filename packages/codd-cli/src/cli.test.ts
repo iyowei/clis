@@ -142,6 +142,9 @@ describe('CLI 端到端行为 (源码直跑)', () => {
     expect(helpRes.stdout).toContain('--init-schema');
     expect(helpRes.stdout).toContain('终止选项解析');
     expect(helpRes.stdout).toContain('-V, -v, --version');
+    expect(helpRes.stdout).toContain(
+      'https://github.com/iyowei/clis/tree/main/packages/codd-cli',
+    );
 
     for (const flag of ['--version', '-V', '-v']) {
       const verRes = spawnSync('bun', [cliEntry, flag], {

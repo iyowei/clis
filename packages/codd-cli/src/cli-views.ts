@@ -51,6 +51,8 @@ const printHelpRows = (
   }
 };
 
+const GITHUB_URL = 'https://github.com/iyowei/clis/tree/main/packages/codd-cli';
+
 export const printUsage = (locale: Locale): void => {
   if (locale === 'en') {
     const EN_COL = 22;
@@ -139,6 +141,9 @@ export const printUsage = (locale: Locale): void => {
     console.log(
       `    ${palette.amber('130', true)}     ${palette.muted('Cancelled (interactive wizard interrupted via Ctrl+C or EOF)')}`,
     );
+
+    printHelpSection('Docs & Source');
+    console.log(`    ${palette.mono(GITHUB_URL)}`);
     console.log('');
     return;
   }
@@ -213,6 +218,9 @@ export const printUsage = (locale: Locale): void => {
   console.log(
     `    ${palette.amber('130', true)}     ${palette.muted('取消 (交互式向导被 Ctrl+C 或输入流关闭中断)')}`,
   );
+
+  printHelpSection('文档与源码');
+  console.log(`    ${palette.mono(GITHUB_URL)}`);
   console.log('');
 };
 

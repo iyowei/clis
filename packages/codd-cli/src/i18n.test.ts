@@ -66,6 +66,9 @@ describe('codd-cli 英文界面与独立语言偏好', () => {
     expect(r3.stdout).toContain('MongoDB 9.0 Provisioning Generator');
     expect(r3.stdout).toContain('Commands');
     expect(r3.stdout).toContain('--lang <lang>');
+    expect(r3.stdout).toContain(
+      'https://github.com/iyowei/clis/tree/main/packages/codd-cli',
+    );
 
     const rInit = spawnSync('bun', [CLI, 'init'], {
       cwd: work,
