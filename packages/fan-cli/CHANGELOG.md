@@ -1,3 +1,15 @@
+## @iyowei/fan-cli [1.2.1](https://github.com/iyowei/clis/compare/@iyowei/fan-cli@1.2.0...@iyowei/fan-cli@1.2.1) (2026-11-26)
+
+
+### Bug Fixes
+
+* **fan-cli:** 收紧手动百分比调速实时追踪为全扇精确十分位收敛 ([6339d5a](https://github.com/iyowei/clis/commit/6339d5a9ddf25879e629e3b4cd822ed3102503f1))
+
+
+### Dependencies
+
+* **@iyowei/fan:** upgraded to 1.0.2
+
 # @iyowei/fan-cli [1.2.0](https://github.com/iyowei/clis/compare/@iyowei/fan-cli@1.1.0...@iyowei/fan-cli@1.2.0) (2026-11-26)
 
 
