@@ -77,12 +77,19 @@ export function getPersistTitle(
   }
 }
 
-export function localizeFanError(error: unknown, locale: Locale): string {
+export function localizeFanError(
+  error: unknown,
+  locale: Locale,
+  platform: NodeJS.Platform = process.platform,
+): string {
   const msg = error instanceof Error ? error.message : String(error);
   if (locale === 'zh' || !isFanError(error)) return msg;
   switch (error.code) {
-    case 'UNSUPPORTED_PLATFORM':
-      return `macOS AppleSMC fan control is only supported on macOS (current: ${process.platform})`;
+    case 'UNSUPPORTED_PLATFORM': {
+      const m = /\((?:当前平台|当前):\s*([^)]+)\)/.exec(msg);
+      const current = m !== null ? m[1] : platform;
+      return `macOS AppleSMC fan control is only supported on macOS (current: ${current})`;
+    }
     case 'PERMISSION_DENIED':
       return 'Administrator privileges required (sudo authentication cancelled or denied)';
     case 'INVALID_FAN_INDEX': {
@@ -152,6 +159,7 @@ export async function renderWithLiveSettle(options: {
   writeRaw: (chunk: string) => void;
   intervalMs: number;
   maxMs: number | undefined;
+  columns?: number;
 }): Promise<void> {
   const {
     initialReport,

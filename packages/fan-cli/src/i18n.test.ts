@@ -9,13 +9,15 @@ import { mkdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import type {
-  FanInfo,
-  FanStateStore,
-  FanStatusReport,
-  FanTransport,
+import {
+  FanError,
+  type FanInfo,
+  type FanStateStore,
+  type FanStatusReport,
+  type FanTransport,
 } from '@iyowei/fan';
 
+import { localizeFanError } from './cli-helpers.ts';
 import { runCli } from './cli.ts';
 import { helpText } from './help.ts';
 import { BAR_BLOCK, displayWidth, renderReport } from './render.ts';
@@ -236,5 +238,43 @@ describe('fan-cli 英文 Apple 级等宽栅格与双语切换', () => {
       }),
     ).toBe(0);
     expect(out4.join('\n')).toContain('风扇状态');
+  });
+
+  test('英文 STATE_CORRUPT 警告渲染与 localizeFanError 映射一致', () => {
+    const report: FanStatusReport = {
+      fans: [
+        {
+          index: 0,
+          actualRpm: 0,
+          targetRpm: 0,
+          minRpm: 1350,
+          maxRpm: 6250,
+          mode: 'auto',
+          percent: 0,
+        },
+      ],
+      macsFanControlRunning: false,
+      warnings: [{ code: 'STATE_CORRUPT', message: 'bad json' }],
+      persisted: null,
+    };
+    const rendered = renderReport(report, {
+      color: false,
+      json: false,
+      locale: 'en',
+    });
+    expect(rendered).toContain(
+      'Persisted state file is corrupted or unreadable',
+    );
+    expect(rendered).toContain('bad json');
+    expect(
+      localizeFanError(new FanError('STATE_CORRUPT', 'bad json'), 'en'),
+    ).toBe('Corrupted fan state file: bad json');
+    expect(
+      localizeFanError(
+        new FanError('UNSUPPORTED_PLATFORM', 'unsupported'),
+        'en',
+        'linux',
+      ),
+    ).toContain('current: linux');
   });
 });
