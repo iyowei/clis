@@ -1,6 +1,6 @@
 {
   "name": "@iyowei/fan",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "Programmable API for reading and manually controlling Apple Silicon / Mac fans via AppleSMC IOKit with zero third-party runtime dependencies. Mac 风扇读取与手动控制的可编程 API。",
   "keywords": [
     "fan",

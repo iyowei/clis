@@ -1,3 +1,19 @@
+# @iyowei/fan [1.2.0](https://github.com/iyowei/clis/compare/@iyowei/fan@1.1.0...@iyowei/fan@1.2.0) (2026-11-27)
+
+
+### Bug Fixes
+
+* 修复 AppleSMC 模式切换异步回读延迟与关风扇重试 ([bc79015](https://github.com/iyowei/clis/commit/bc79015eb5eb25ccaca6e0b7e707c4dc09041961))
+* 修复守护进程对非 HID 唤醒升格与空闲息屏的误判 ([8e59dea](https://github.com/iyowei/clis/commit/8e59dea1d95ac738625f72e8f9b82c181913925f))
+* 加固 CLI 实时转速收敛、外部切回告警与中断退出 ([8306439](https://github.com/iyowei/clis/commit/8306439f3322f6b992fd49928a92c77664f96141))
+* 加固守护卸载归还自动温控、提权属主与状态键校验 ([7be53c2](https://github.com/iyowei/clis/commit/7be53c2f4ba3f51c2ca33a932f61f9fefd30a0f1))
+* 加固控制器临时覆盖避让守护、安装后漂移补写与极值边界 ([a38e149](https://github.com/iyowei/clis/commit/a38e149501586e5f8be2b6ea545a0f8e8ca67ce5))
+
+
+### Features
+
+* 新增默认保底下限温控策略与守护核心温度自适应闭环 ([5cf4d15](https://github.com/iyowei/clis/commit/5cf4d15fd7326a7880955b63bc52502ef3c81ee4))
+
 # @iyowei/fan [1.1.0](https://github.com/iyowei/clis/compare/@iyowei/fan@1.0.2...@iyowei/fan@1.1.0) (2026-11-26)
 
 
