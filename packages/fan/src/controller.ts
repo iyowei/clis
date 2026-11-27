@@ -217,10 +217,27 @@ function executeMutation(
     if (inspected.warning !== undefined) warnings.push(inspected.warning);
   }
 
-  const daemonAction = input.syncDaemon
-    ? syncDaemonSafe(ensureDaemon)
-    : undefined;
-  return buildReport(filterFans(updated, input.fanIndex), transport, {
+  // --once (persist=false) 不安装或重启持久化守护, 防 RunAtLoad 读取旧 state.json 覆盖临时设定
+  const daemonAction =
+    input.syncDaemon && shouldPersist
+      ? syncDaemonSafe(ensureDaemon)
+      : undefined;
+  let finalFans = updated;
+  if (daemonAction === 'installed' || daemonAction === 'updated') {
+    const postDaemonFans = transport.readFans();
+    const drifted = input.requests.some((req) => {
+      const fan = postDaemonFans.find((item) => item.index === req.fanIndex);
+      if (fan === undefined) return false;
+      if (req.kind === 'auto') return fan.mode !== 'auto';
+      return (
+        fan.mode !== 'manual' || Math.abs(fan.targetRpm - req.targetRpm) >= 5
+      );
+    });
+    finalFans = drifted
+      ? transport.applyWrites(input.requests)
+      : postDaemonFans;
+  }
+  return buildReport(filterFans(finalFans, input.fanIndex), transport, {
     extraWarnings: warnings,
     persisted,
     didPersist,
@@ -273,12 +290,17 @@ export function createFanController(
       const targets = selectTargets(allFans, opts.fanIndex);
 
       if (spec.kind === 'rpm') {
-        const minAllowed = Math.min(...targets.map((fan) => fan.minRpm));
-        const maxAllowed = Math.max(...targets.map((fan) => fan.maxRpm));
-        if (spec.rpm < minAllowed || spec.rpm > maxAllowed) {
+        const minAllowed = Math.round(
+          Math.min(...targets.map((fan) => fan.minRpm)),
+        );
+        const maxAllowed = Math.round(
+          Math.max(...targets.map((fan) => fan.maxRpm)),
+        );
+        const roundedInput = Math.round(spec.rpm);
+        if (roundedInput < minAllowed || roundedInput > maxAllowed) {
           throw new FanError(
             'INVALID_SPEED',
-            `目标转速 ${String(Math.round(spec.rpm))} RPM 超出允许范围 ${String(Math.round(minAllowed))}-${String(Math.round(maxAllowed))}`,
+            `目标转速 ${String(roundedInput)} RPM 超出允许范围 ${String(minAllowed)}-${String(maxAllowed)}`,
           );
         }
       }

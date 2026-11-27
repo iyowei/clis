@@ -240,6 +240,72 @@ describe('createFanController 契约', () => {
     const backAuto = fan.auto();
     expect(backAuto.daemonAction).toBeUndefined();
     expect(ensureCalls).toBe(3);
+
+    // --once (persist: false) 严禁触发 ensureDaemon 重启守护覆盖临时设定
+    const onceMax = fan.max({ persist: false });
+    expect(onceMax.daemonAction).toBeUndefined();
+    expect(ensureCalls).toBe(3);
+  });
+
+  test('守护首次安装或更新启动期间若扰动硬件风扇状态, executeMutation 自动复核并补写目标转速', () => {
+    const { transport, writes } = makeFakeTransport(DUAL_FANS, false);
+    const stateStore = makeMemoryStateStore();
+    const fan = createFanController({
+      transport,
+      stateStore,
+      ensureDaemon: () => {
+        // 模拟守护重载瞬间意外把硬件切回 auto 的竞态窗口
+        transport.applyWrites([
+          { kind: 'auto', fanIndex: 0 },
+          { kind: 'auto', fanIndex: 1 },
+        ]);
+        return {
+          action: 'updated',
+          status: {
+            installed: true,
+            running: true,
+            label: 'com.iyowei.fan',
+            plistPath: '/stub/plist',
+            daemonScriptPath: '/stub/daemon.py',
+            statePath: '/memory/state.json',
+            logPath: '/stub/fan.log',
+            state: null,
+          },
+        };
+      },
+    });
+
+    const res = fan.max();
+    expect(res.daemonAction).toBe('updated');
+    expect(res.fans.every((f) => f.mode === 'manual')).toBe(true);
+    expect(res.fans.map((f) => f.targetRpm)).toEqual([6250, 6750]);
+    // 第 1 次 max 写入 + 第 2 次模拟守护扰动 + 第 3 次自动补写恢复
+    expect(writes).toHaveLength(3);
+  });
+});
+
+describe('createFanController 极值取整边界契约', () => {
+  test('浮点极值按显示整数边界一致校验并夹逼至硬件极值', () => {
+    const floatFans: FanInfo[] = [
+      {
+        index: 0,
+        actualRpm: 2310,
+        targetRpm: 0,
+        minRpm: 2317.4,
+        maxRpm: 6799.6,
+        mode: 'auto',
+        percent: 0,
+      },
+    ];
+    const { transport } = makeFakeTransport(floatFans, false);
+    const fan = createFanController({ transport });
+
+    expect(
+      fan.set({ speed: '6800', persist: false }).fans[0]?.targetRpm,
+    ).toBeCloseTo(6799.6, 1);
+    expect(
+      fan.set({ speed: '2317', persist: false }).fans[0]?.targetRpm,
+    ).toBeCloseTo(2317.4, 1);
   });
 });
 
