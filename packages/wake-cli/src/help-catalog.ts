@@ -31,93 +31,116 @@ export interface HelpCatalog {
 }
 
 export const CATALOG_ZH: HelpCatalog = {
-  subtitle: '跨网段 Wake-on-LAN 远程唤醒工具',
+  subtitle: '远程开机工具 (Wake-on-LAN)',
   summary:
-    '自动识别局域网子网与 SSH 中继故障转移, 从休眠或关机态可靠唤醒目标主机。',
+    '同局域网可直接广播开机, 隔着外网或 VPN 也可借路家里其他常开机器 SSH 代发开机包。',
   usageArgs: ['<target> [选项]', '<command> [args] [选项]'],
   sections: {
     usage: '用法',
     subcommands: '子命令',
     options: '选项',
     examples: '示例',
-    notes: '网络与安全',
+    notes: '使用须知',
     exitCodes: '退出码',
     docs: '文档与源码',
   },
   subcommands: [
-    { name: '<target>', desc: '唤醒配置的目标主机 (省略时使用默认目标)' },
-    { name: 'list', desc: '查看已配置的目标主机、MAC、中继与默认目标' },
-    { name: 'init', desc: '通过交互向导或参数新增/更新目标主机配置' },
+    { name: '<target>', desc: '唤醒指定别名的电脑 (不填则唤醒默认电脑)' },
+    { name: 'list', desc: '查看已保存的电脑、MAC、跳板机与默认目标' },
+    { name: 'init', desc: '引导添加或更新电脑 (自动扫局域网设备少手敲 MAC)' },
     {
       name: 'doctor [<target>]',
-      desc: '只读排查本机网卡、配置、SSH 中继与目标状态',
+      desc: '只读检查配置、本机网卡和跳板机是否通畅 (不会开机)',
     },
-    { name: 'lang [lang]', desc: '查看或固定界面语言 (system | en | zh)' },
+    { name: 'lang [lang]', desc: '查看或固定显示语言 (system | en | zh)' },
     {
       name: 'update',
-      desc: '检查或执行跨包管理器在线自更新 (--check 仅检查)',
+      desc: '检查或升级 wake 到最新版 (--check 只检查不更新)',
     },
   ],
   options: [
     {
       flag: '-c, --config',
       arg: '<path>',
-      desc: '指定配置文件路径 (高于 WAKE_CONFIG)',
+      desc: '指定配置文件路径 (优先于环境变量 WAKE_CONFIG)',
     },
     {
       flag: '-m, --mac',
       arg: '<mac>',
-      desc: '直接指定 MAC 地址 (可重复或逗号分隔)',
+      desc: '目标网卡 MAC 地址 (可多次传入或逗号隔开)',
     },
     {
       flag: '-H, --host',
       arg: '<host>',
-      desc: '目标主机 IP 或域名 (用于预检与等待上线)',
+      desc: '目标 IP 或域名 (用于确认对方是否已经开机)',
     },
-    { flag: '-p, --port', arg: '<port>', desc: 'TCP 就绪探测端口 (默认 22)' },
+    {
+      flag: '-p, --port',
+      arg: '<port>',
+      desc: '检测开机就绪的 TCP 端口 (默认 22)',
+    },
     {
       flag: '-b, --broadcast',
       arg: '<ip>',
-      desc: '额外或显式定向广播 IPv4 (可重复)',
+      desc: '手动指定广播 IPv4 地址 (可多次传入)',
     },
     {
       flag: '-r, --relay',
       arg: '<ssh>',
-      desc: 'SSH 中继主机或别名, 按顺序故障转移 (可重复)',
+      desc: '用来代发开机包的跳板机 (填 SSH 别名或 user@host, 连不上自动换下一台)',
     },
     {
       flag: '-t, --timeout',
       arg: '<sec>',
-      desc: '等待目标端口上线的超时秒数 (默认 90)',
+      desc: '最多等几秒确认对方开机 (默认 90 秒)',
     },
-    { flag: '--no-wait', desc: '仅投递魔术包后立即返回, 不等待端口上线' },
+    {
+      flag: '--no-wait',
+      desc: '发完开机包立刻退出, 不等对方进系统',
+    },
     {
       flag: '--force',
-      desc: '目标已在线时仍强制重发魔术包; init 时覆盖同名目标',
+      desc: '就算检测到在线也再发一遍唤醒包; init 下允许覆盖同名配置',
     },
-    { flag: '--local-only', desc: '忽略配置的 SSH 中继, 仅本机局域网广播' },
+    {
+      flag: '--local-only',
+      desc: '不走跳板机, 直接从当前电脑发局域网广播',
+    },
     {
       flag: '--no-local-fallback',
-      desc: '中继全失败时直接报错, 不回退本机广播',
+      desc: '跳板机全连不上时直接报错, 不退回当前电脑发广播',
     },
     {
       flag: '--name',
       arg: '<target>',
-      desc: 'init 子命令非交互指定保存的目标名',
+      desc: '配合 wake init 免交互指定要保存的电脑别名',
     },
-    { flag: '--default', desc: 'init 子命令保存后设为默认唤醒目标' },
-    { flag: '--yes', desc: 'init 子命令跳过确认提示直接保存' },
-    { flag: '--json', desc: '以结构化 JSON 输出报告或目标清单' },
-    { flag: '--lang', arg: '<system|en|zh>', desc: '单次覆盖界面语言' },
-    { flag: '-V, --version', desc: '输出版本号并退出' },
+    {
+      flag: '--default',
+      desc: '配合 wake init 保存后设为默认开机目标',
+    },
+    {
+      flag: '--yes',
+      desc: '配合 wake init 跳过确认提示直接保存',
+    },
+    {
+      flag: '--json',
+      desc: '输出 JSON 结构化结果 (方便脚本解析)',
+    },
+    {
+      flag: '--lang',
+      arg: '<system|en|zh>',
+      desc: '仅本次运行临时切换显示语言',
+    },
+    { flag: '-V, --version', desc: '显示版本号并退出' },
     { flag: '-h, --help', desc: '显示本帮助信息并退出' },
   ],
   examples: [
-    { cmd: 'wake', desc: '唤醒默认配置目标并等待 SSH/端口就绪' },
+    { cmd: 'wake', desc: '开机默认电脑并等到 SSH/端口通畅' },
     {
       cmd: 'wake',
       tail: [['arg', 'workstation']],
-      desc: '按别名唤醒配置中的工作站',
+      desc: '唤醒已保存的 workstation',
     },
     {
       cmd: 'wake',
@@ -127,7 +150,7 @@ export const CATALOG_ZH: HelpCatalog = {
         ['flag', '--host'],
         ['arg', '192.0.2.10'],
       ],
-      desc: '无配置文件按 MAC 临时唤醒并等待就绪',
+      desc: '不写配置直接指定 MAC 临时开机',
     },
     {
       cmd: 'wake',
@@ -137,70 +160,73 @@ export const CATALOG_ZH: HelpCatalog = {
         ['arg', 'bastion-a'],
         ['flag', '--no-wait'],
       ],
-      desc: '经 SSH 中继节点发包并立即返回',
+      desc: '借跳板机 bastion-a 代发开机包后立即返回',
     },
-    { cmd: 'wake init', desc: '启动交互向导并扫描 ARP 邻接表辅助配置' },
-    { cmd: 'wake doctor', desc: '只读诊断本机局域网接口与中继 SSH 连通性' },
+    { cmd: 'wake init', desc: '打开向导录入新电脑 (会扫描本地 ARP 表)' },
+    { cmd: 'wake doctor', desc: '只读检查配置、本机网卡与各跳板机是否正常' },
   ],
   notes: [
     {
-      label: '配置位置',
-      desc: 'POSIX ~/.config/wake/config.json · Windows %APPDATA%\\wake\\config.json (WAKE_CONFIG 可覆盖)',
+      label: '配置文件',
+      desc: 'Mac/Linux 在 ~/.config/wake/config.json · Windows 在 %APPDATA%\\wake\\config.json',
     },
     {
-      label: '防劫持链路',
-      desc: 'SSH 中继禁用密码交互与 shell 注入, 全量经白名单校验参数无 shell 执行',
+      label: '跳板机前提',
+      desc: '须先配好免密 SSH 登录 (~/.ssh/config), 且跳板机 PATH 里能直接运行 wake',
     },
     {
-      label: '语言偏好',
-      desc: '默认跟随系统语言; wake lang <system|en|zh> 保存至 ~/.config/wake/lang.json',
+      label: '显示语言',
+      desc: '默认跟随系统语言; 运行 wake lang <system|en|zh> 可持久切换',
     },
     {
-      label: '输出降级',
-      desc: '设 NO_COLOR、TERM=dumb 或非 TTY 输出时自动禁用 ANSI 转义',
+      label: '纯文本模式',
+      desc: '设置 NO_COLOR、TERM=dumb 或管道输出时自动去掉 ANSI 颜色',
     },
   ],
   exitCodes: [
     {
       label: '0',
       tone: 'green',
-      desc: '已上线 / 成功唤醒 / 发包完成 / 只读检查与帮助',
+      desc: '已在线 / 唤醒成功 / 已发包 (--no-wait) / 只读检查与帮助',
     },
     {
       label: '1',
       tone: 'red',
-      desc: '参数错误、等待上线超时、配置缺失或中继/发包失败',
+      desc: '参数无效、等待开机超时、缺配置文件或跳板机与本地发包全失败',
     },
   ],
 };
 
 export const CATALOG_EN: HelpCatalog = {
-  subtitle: 'Subnet-Aware & SSH-Relay Wake-on-LAN CLI',
+  subtitle: 'Remote Power-On via Wake-on-LAN',
   summary:
-    'Send 102-byte WoL magic packets locally or fail over across SSH relays until the target comes online.',
+    'Send WoL magic packets directly on your LAN, or bounce via SSH jump hosts when remote.',
   usageArgs: ['<target> [options]', '<command> [args] [options]'],
   sections: {
     usage: 'Usage',
     subcommands: 'Commands',
     options: 'Options',
     examples: 'Examples',
-    notes: 'Network & Safety',
+    notes: 'Notes',
     exitCodes: 'Exit Codes',
     docs: 'Docs & Source',
   },
   subcommands: [
     {
       name: '<target>',
-      desc: 'Wake configured target (defaultTarget when omitted)',
+      desc: 'Wake saved target by alias (uses defaultTarget if omitted)',
     },
     {
       name: 'list',
-      desc: 'Show configured targets, MACs, relays, and default',
+      desc: 'Show saved targets, MACs, SSH jump hosts, and default',
     },
-    { name: 'init', desc: 'Create or update a target via wizard or flags' },
+    {
+      name: 'init',
+      desc: 'Add or update a target (scans LAN ARP table to prefill MAC)',
+    },
     {
       name: 'doctor [<target>]',
-      desc: 'Read-only check of NICs, config, SSH relays, and host',
+      desc: 'Read-only check of config, NICs, and SSH jump hosts (never wakes)',
     },
     {
       name: 'lang [lang]',
@@ -208,69 +234,78 @@ export const CATALOG_EN: HelpCatalog = {
     },
     {
       name: 'update',
-      desc: 'Upgrade CLI via detected package manager (--check only)',
+      desc: 'Upgrade CLI to latest version (--check only)',
     },
   ],
   options: [
     {
       flag: '-c, --config',
       arg: '<path>',
-      desc: 'Config file path override (over WAKE_CONFIG)',
+      desc: 'Use custom config file (overrides WAKE_CONFIG)',
     },
     {
       flag: '-m, --mac',
       arg: '<mac>',
-      desc: 'Target MAC address (repeatable or comma-separated)',
+      desc: 'Target NIC MAC address (repeatable or comma-separated)',
     },
     {
       flag: '-H, --host',
       arg: '<host>',
-      desc: 'Host IP/name for precheck and readiness wait',
+      desc: 'Target IP or hostname for online check & boot wait',
     },
     {
       flag: '-p, --port',
       arg: '<port>',
-      desc: 'TCP readiness probe port (default 22)',
+      desc: 'TCP port polled to confirm boot readiness (default 22)',
     },
     {
       flag: '-b, --broadcast',
       arg: '<ip>',
-      desc: 'Explicit directed broadcast IPv4 (repeatable)',
+      desc: 'Explicit IPv4 broadcast address (repeatable)',
     },
     {
       flag: '-r, --relay',
       arg: '<ssh>',
-      desc: 'SSH relay host/alias tried in order (repeatable)',
+      desc: 'SSH jump host on target LAN (alias or user@host; falls back in order)',
     },
     {
       flag: '-t, --timeout',
       arg: '<sec>',
-      desc: 'Readiness wait timeout in seconds (default 90)',
+      desc: 'Max seconds to wait for target to come online (default 90)',
     },
-    { flag: '--no-wait', desc: 'Exit immediately after sending magic packets' },
+    {
+      flag: '--no-wait',
+      desc: 'Exit immediately after sending packets without waiting',
+    },
     {
       flag: '--force',
-      desc: 'Send packet even if target is online; overwrite on init',
+      desc: 'Send packet even if online; allow overwrite on init',
     },
     {
       flag: '--local-only',
-      desc: 'Skip configured relays and broadcast locally only',
+      desc: 'Ignore saved SSH jump hosts and broadcast locally only',
     },
     {
       flag: '--no-local-fallback',
-      desc: 'Fail instead of falling back locally when relays fail',
+      desc: 'Fail instead of falling back locally if all jump hosts fail',
     },
     {
       flag: '--name',
       arg: '<target>',
-      desc: 'Target alias name for non-interactive wake init',
+      desc: 'Target alias for non-interactive wake init',
     },
     {
       flag: '--default',
-      desc: 'Set target as defaultTarget when running wake init',
+      desc: 'Set saved target as defaultTarget in wake init',
     },
-    { flag: '--yes', desc: 'Confirm writes without prompts on wake init' },
-    { flag: '--json', desc: 'Emit structured JSON report or target listing' },
+    {
+      flag: '--yes',
+      desc: 'Save config without confirmation in wake init',
+    },
+    {
+      flag: '--json',
+      desc: 'Emit structured JSON report or target list',
+    },
     {
       flag: '--lang',
       arg: '<system|en|zh>',
@@ -280,7 +315,7 @@ export const CATALOG_EN: HelpCatalog = {
     { flag: '-h, --help', desc: 'Show this help and exit' },
   ],
   examples: [
-    { cmd: 'wake', desc: 'Wake defaultTarget and wait until reachable' },
+    { cmd: 'wake', desc: 'Wake default target and wait until reachable' },
     {
       cmd: 'wake',
       tail: [['arg', 'workstation']],
@@ -304,45 +339,45 @@ export const CATALOG_EN: HelpCatalog = {
         ['arg', 'bastion-a'],
         ['flag', '--no-wait'],
       ],
-      desc: 'Wake via SSH relay without blocking on TCP readiness',
+      desc: 'Bounce via jump host bastion-a and exit right away',
     },
     {
       cmd: 'wake init',
-      desc: 'Run setup wizard with local ARP neighbor discovery',
+      desc: 'Start setup wizard with local ARP neighbor discovery',
     },
     {
       cmd: 'wake doctor',
-      desc: 'Read-only check of local interfaces and SSH relays',
+      desc: 'Read-only check of local interfaces and SSH jump hosts',
     },
   ],
   notes: [
     {
-      label: 'Config Path',
-      desc: '~/.config/wake/config.json (POSIX) · %APPDATA%\\wake\\config.json (Win) · WAKE_CONFIG',
+      label: 'Config File',
+      desc: '~/.config/wake/config.json (POSIX) · %APPDATA%\\wake\\config.json (Windows)',
     },
     {
-      label: 'Relay Safety',
-      desc: 'Strict allowlisted arguments with BatchMode SSH; zero shell interpolation',
+      label: 'Jump Hosts',
+      desc: 'Requires passwordless SSH (~/.ssh/config) and wake available in remote PATH',
     },
     {
       label: 'Language',
-      desc: 'Follows OS locale by default; wake lang <system|en|zh> persists ~/.config/wake/lang.json',
+      desc: 'Follows OS locale by default; run wake lang <system|en|zh> to persist',
     },
     {
       label: 'Plain Output',
-      desc: 'Omits ANSI escape sequences under NO_COLOR, TERM=dumb, or non-TTY streams',
+      desc: 'Omits ANSI escape codes under NO_COLOR, TERM=dumb, or non-TTY streams',
     },
   ],
   exitCodes: [
     {
       label: '0',
       tone: 'green',
-      desc: 'Online / woken / dispatched / read-only check & help',
+      desc: 'Online / woken / dispatched (--no-wait) / read-only check & help',
     },
     {
       label: '1',
       tone: 'red',
-      desc: 'Validation error, wait timeout, missing config, or dispatch failure',
+      desc: 'Validation error, timeout, missing config, or dispatch failure',
     },
   ],
 };

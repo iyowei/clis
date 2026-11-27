@@ -6,7 +6,7 @@ import { describe, expect, test } from 'bun:test';
 import { helpText } from './help.ts';
 
 describe('wake-cli helpText', () => {
-  test('中英文帮助均输出全部核心选项与文档地址, 关闭 color 时零 ANSI', () => {
+  test('中英文帮助均输出全部核心选项并分别指向对应语言用户文档, 关闭 color 时零 ANSI', () => {
     const zh = helpText('1.0.0', false, 'zh');
     const en = helpText('1.0.0', false, 'en');
 
@@ -14,6 +14,14 @@ describe('wake-cli helpText', () => {
     expect(en).toContain('▍ WAKE');
     expect(zh).not.toContain('\u001B[');
     expect(en).not.toContain('\u001B[');
+
+    expect(zh).toContain(
+      'https://github.com/iyowei/clis/blob/main/packages/wake-cli/README.zh-CN.md',
+    );
+    expect(en).toContain(
+      'https://github.com/iyowei/clis/blob/main/packages/wake-cli/README.md',
+    );
+    expect(en).not.toContain('README.zh-CN.md');
 
     for (const token of [
       '--config',

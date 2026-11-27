@@ -105,13 +105,16 @@ export function helpText(
   }
   lines.push('');
 
+  const docsUrl =
+    locale === 'zh'
+      ? 'https://github.com/iyowei/clis/blob/main/packages/wake-cli/README.zh-CN.md'
+      : 'https://github.com/iyowei/clis/blob/main/packages/wake-cli/README.md';
+
   lines.push(heading(c.sections.docs));
   lines.push(
     `  ${paint('GitHub:', '2', color)} https://github.com/iyowei/clis/tree/main/packages/wake-cli`,
   );
-  lines.push(
-    `  ${paint('Docs:  ', '2', color)} https://github.com/iyowei/clis/blob/main/packages/wake-cli/docs/README.md`,
-  );
+  lines.push(`  ${paint('Docs:  ', '2', color)} ${docsUrl}`);
 
   return lines.join('\n');
 }

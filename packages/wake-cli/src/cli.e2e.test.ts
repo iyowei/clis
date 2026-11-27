@@ -82,9 +82,11 @@ for (const { label, execPath } of RUNTIME_TARGETS) {
 
       const helpEn = run(['--lang', 'en', '--help']);
       expect(helpEn.status).toBe(0);
+      expect(helpEn.stdout).toContain('Remote Power-On via Wake-on-LAN');
       expect(helpEn.stdout).toContain(
-        'Subnet-Aware & SSH-Relay Wake-on-LAN CLI',
+        'https://github.com/iyowei/clis/blob/main/packages/wake-cli/README.md',
       );
+      expect(helpEn.stdout).not.toContain('README.zh-CN.md');
 
       const sandboxCfgDir = join(ISOLATED_HOME, label);
       mkdirSync(sandboxCfgDir, { recursive: true });

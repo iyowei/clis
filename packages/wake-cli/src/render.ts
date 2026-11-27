@@ -53,7 +53,7 @@ function formatMethodLabel(report: WakeReport, locale: Locale): string {
   }
   if (report.method === 'relay') {
     const relay = sanitizeOutputLine(report.activeRelay ?? 'relay');
-    return t(locale, `SSH 中继 (${relay})`, `SSH relay (${relay})`);
+    return t(locale, `SSH 跳板机 (${relay})`, `SSH jump host (${relay})`);
   }
   return t(locale, '本机局域网 UDP 广播', 'Local LAN UDP broadcast');
 }
@@ -88,7 +88,7 @@ export function renderWakeReport(
       'MAC',
       report.macs.length > 0
         ? report.macs.join(', ')
-        : t(locale, '由中继配置解析', 'Resolved by relay'),
+        : t(locale, '由跳板机配置解析', 'Resolved by jump host'),
       '36',
     ],
   ];
@@ -124,7 +124,7 @@ export function renderWakeReport(
       `${attempt.relay}: ${attempt.reason ?? t(locale, '未响应', 'failed')}`,
     );
     lines.push(
-      `  ${paint('!', '33', color)} ${paint(t(locale, '中继回退:', 'Relay failover:'), '33', color)} ${msg}`,
+      `  ${paint('!', '33', color)} ${paint(t(locale, '跳板机切换:', 'Jump host failover:'), '33', color)} ${msg}`,
     );
   }
   for (const warn of report.warnings) {
@@ -186,7 +186,7 @@ export function renderListReport(
         : t(locale, '无探测主机', 'no probe host');
     const relayNote =
       entry.relays && entry.relays.length > 0
-        ? ` · ${t(locale, '中继', 'relays')}: ${entry.relays.map(sanitizeOutputLine).join(' → ')}`
+        ? ` · ${t(locale, '跳板机', 'relays')}: ${entry.relays.map(sanitizeOutputLine).join(' → ')}`
         : '';
     lines.push(
       `  ${mark} ${nameStyled}${entry.macs.join(', ')}  ${paint(`(${endpoint}${relayNote})`, '2', color)}`,
@@ -304,7 +304,7 @@ export function renderDoctorReport(
   if (report.relays.length > 0) {
     lines.push('');
     lines.push(
-      `  ${paint(t(locale, 'SSH 中继状态:', 'SSH Relays:'), '1', color)}`,
+      `  ${paint(t(locale, 'SSH 跳板机状态:', 'SSH Jump Hosts:'), '1', color)}`,
     );
     for (const r of report.relays) {
       const badge = formatRelayBadge(r, color);
@@ -349,8 +349,8 @@ export function renderProgressLine(
   if (event.phase === 'relay') {
     const msg = t(
       locale,
-      `正在通过 SSH 中继 (${String(event.index)}/${String(event.total)}): ${sanitizeOutputLine(event.relay)}…`,
-      `Trying SSH relay (${String(event.index)}/${String(event.total)}): ${sanitizeOutputLine(event.relay)}…`,
+      `正在通过 SSH 跳板机 (${String(event.index)}/${String(event.total)}): ${sanitizeOutputLine(event.relay)}…`,
+      `Trying SSH jump host (${String(event.index)}/${String(event.total)}): ${sanitizeOutputLine(event.relay)}…`,
     );
     return `${glyph} ${renderShimmerText(msg, tick, color)}`;
   }

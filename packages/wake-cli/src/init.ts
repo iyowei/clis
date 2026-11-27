@@ -136,8 +136,8 @@ async function promptInteractiveInit(options: {
       await rl.question(
         t(
           locale,
-          'SSH 中继主机列表 (跨网段推荐, 逗号分隔, 可选): ',
-          'SSH relay hosts in order (comma-separated, optional): ',
+          'SSH 跳板机列表 (跨网段代发开机包用, 填别名或 user@host, 逗号隔开, 可留空): ',
+          'SSH jump hosts in order (alias or user@host, comma-separated, optional): ',
         ),
       )
     ).trim();
