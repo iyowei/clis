@@ -153,13 +153,29 @@ const artifactProblem = (distDir) => {
 };
 
 const realpath = realpathSync.native ?? realpathSync;
+const WIN32_PATH_RE = /^(?:[A-Za-z]:[/\\]|\\\\)/;
+
+const fileUrlToFsPath = (url) => {
+  const isWinUrl =
+    typeof url === 'string' &&
+    (/^file:\/\/\/[A-Za-z]:/.test(url) ||
+      (url.startsWith('file://') && !url.startsWith('file:///')));
+  return fileURLToPath(url, { windows: isWinUrl });
+};
 
 const normalizeEntryPath = (p, platform = process.platform) => {
   let normalized = resolve(p);
-  try {
-    normalized = realpath(normalized);
-  } catch {
-    // 保留规范绝对路径
+  if (platform !== 'win32' && p.startsWith('/')) {
+    normalized = posix.resolve(p);
+  } else if (WIN32_PATH_RE.test(p)) {
+    normalized = win32.resolve(p);
+  }
+  if (platform === process.platform) {
+    try {
+      normalized = realpath(normalized);
+    } catch {
+      // 保留规范绝对路径
+    }
   }
   return platform === 'win32' ? normalized.toLowerCase() : normalized;
 };
@@ -170,7 +186,7 @@ export const isEntry = (
   platform = process.platform,
 ) => {
   if (typeof entryArg !== 'string' || entryArg === '') return false;
-  const self = fileURLToPath(selfUrl);
+  const self = fileUrlToFsPath(selfUrl);
   return (
     normalizeEntryPath(entryArg, platform) ===
     normalizeEntryPath(self, platform)

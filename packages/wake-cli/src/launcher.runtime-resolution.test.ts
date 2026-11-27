@@ -79,5 +79,11 @@ describe('wake 启动器纯函数运行时挑选', () => {
         'linux',
       ),
     ).toBe(false);
+    expect(
+      isEntry('C:\\Repo\\wake.mjs', 'file:///c:/repo/wake.mjs', 'win32'),
+    ).toBe(true);
+    expect(
+      isEntry('C:\\Repo\\wake.mjs', 'file:///c:/repo/wake.mjs', 'linux'),
+    ).toBe(false);
   });
 });
