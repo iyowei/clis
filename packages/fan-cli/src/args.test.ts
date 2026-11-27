@@ -122,8 +122,13 @@ describe('parseArgs 错误拦截', () => {
     const badWatchZero = parseArgs(['status', '-w', '0']);
     const badWatchEqZero = parseArgs(['status', '--watch=0']);
     const badWatchNeg = parseArgs(['status', '-w', '-1']);
+    const badWatchHuge = parseArgs(['status', '-w', '1e20']);
     expect(badWatchZero).toEqual(badWatchEqZero);
     expect(badWatchZero.ok).toBe(false);
     expect(badWatchNeg.ok).toBe(false);
+    expect(badWatchHuge.ok).toBe(false);
+
+    // 负数转速参数应作为 speed 交给转速校验, 而非误报未知选项
+    expectParsed(['set', '-100'], { command: 'set', speed: '-100' });
   });
 });

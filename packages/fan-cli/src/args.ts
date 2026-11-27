@@ -74,7 +74,7 @@ function parseFanIndex(raw: string): number | null {
 
 function parseWatchInterval(raw: string): number | null {
   const num = Number(raw);
-  if (!Number.isFinite(num) || num <= 0) return null;
+  if (!Number.isFinite(num) || num < 0.1 || num > 3600) return null;
   return num;
 }
 
@@ -320,7 +320,7 @@ export function parseArgs(
           i += 2;
           continue;
         }
-        if (/^-?\d+(?:\.\d+)?$/.test(next)) {
+        if (/^-?\d+(?:\.\d+)?(?:e[+-]?\d+)?$/i.test(next)) {
           return {
             ok: false,
             message: t(
@@ -369,7 +369,7 @@ export function parseArgs(
     } else if (
       command === 'set' &&
       speed === undefined &&
-      !arg.startsWith('-')
+      (!arg.startsWith('-') || /^-\d/.test(arg))
     ) {
       speed = arg;
     } else if (
