@@ -1,3 +1,23 @@
+# @iyowei/fan-cli [1.5.0](https://github.com/iyowei/clis/compare/@iyowei/fan-cli@1.4.0...@iyowei/fan-cli@1.5.0) (2026-11-27)
+
+
+### Bug Fixes
+
+* 加固 CLI 实时转速收敛、外部切回告警与中断退出 ([8306439](https://github.com/iyowei/clis/commit/8306439f3322f6b992fd49928a92c77664f96141))
+* 收紧 watch 轮询间隔边界与负转速参数识别 ([66fd0b2](https://github.com/iyowei/clis/commit/66fd0b225ec0ad7c46ee69cb08b69eecc8a013cd))
+* 统一全仓 CLI 帮助页右栏单轴线左对齐并补齐对齐测试 ([7f90ddf](https://github.com/iyowei/clis/commit/7f90ddfe8ec883bc9ed11a289b743082b41a0a48))
+* 解耦启动器 'isEntry' 宿主平台依赖并补齐双端单测 ([44c8f29](https://github.com/iyowei/clis/commit/44c8f29277c0f93efa83dfb65147aae8eaee2380))
+
+
+### Features
+
+* 新增默认保底下限温控策略与守护核心温度自适应闭环 ([5cf4d15](https://github.com/iyowei/clis/commit/5cf4d15fd7326a7880955b63bc52502ef3c81ee4))
+
+
+### Dependencies
+
+* **@iyowei/fan:** upgraded to 1.2.0
+
 # @iyowei/fan-cli [1.4.0](https://github.com/iyowei/clis/compare/@iyowei/fan-cli@1.3.0...@iyowei/fan-cli@1.4.0) (2026-11-26)
 
 
