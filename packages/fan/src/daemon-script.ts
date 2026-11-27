@@ -1,10 +1,10 @@
 /**
  * 内联于 `@iyowei/fan` 的 macOS LaunchDaemon 守护脚本模板 (内部模块, 不进公开 API)。
  * 职责:
- * 1. 开机 (`RunAtLoad`) 与真实唤醒 (`FullWake` / 开盖) 时从 `state.json` 恢复手动风扇转速;
+ * 1. 开机 (`RunAtLoad`)、真实唤醒 (`FullWake` / 开盖) 以及从后台唤醒升格为用户活跃 (`IOPMUserIsActive == True`) 时从 `state.json` 恢复手动风扇转速;
  * 2. 无外接显示器合盖 (`AppleClamshellState && AppleClamshellCausesSleep`)、进入系统睡眠 (`kIOMessageSystemWillSleep`)
- *    以及合盖/息屏后台唤醒 (`DarkWake`, `IOPMUserTriggeredFullWake == False`) 期间, 自动将手动风扇临时交还系统 `auto` (停转),
- *    不改写 `state.json`; 外接显示器合盖办公模式 (`AppleClamshellCausesSleep == False`) 保留手动转速;
+ *    以及无用户活跃的后台维护唤醒 (`DarkWake`: `IOPMUserTriggeredFullWake == False` 且 `IOPMUserIsActive != True`) 期间,
+ *    自动将手动风扇临时交还系统 `auto` (停转), 不改写 `state.json`; 外接显示器合盖办公与亮屏会话空闲息屏均保留手动转速;
  * 3. 醒着正常开盖期间采用边沿状态机, 零定时轮询且不覆盖 `--once` 临时设定;
  * 4. 复用 `SMC_PY_STRUCTS_AND_CORE`, 统一兼容 Apple M5 (`F*md`)、M1–M4/T2 (`F*Md` + `Ftst`) 与经典 Intel (`FS! `)。
  */
@@ -113,7 +113,6 @@ cf.CFBooleanGetTypeID.argtypes = []
 cf.CFBooleanGetTypeID.restype = ctypes.c_ulong
 cf.CFRelease.argtypes = [ctypes.c_void_p]
 libc.mach_task_self.restype = ctypes.c_uint32
-
 K_CF_RUN_LOOP_DEFAULT_MODE = ctypes.c_void_p.in_dll(cf, "kCFRunLoopDefaultMode")
 `;
 }
@@ -155,7 +154,27 @@ def read_pm_bool(pm_svc, key_bytes):
         cf.CFRelease(val)
 
 
-def should_suspend_fans(pm_svc, system_sleeping):
+def is_initial_dark_wake(pm_svc):
+    if not pm_svc:
+        return False
+    full_wake = read_pm_bool(pm_svc, b"IOPMUserTriggeredFullWake")
+    if full_wake is not False:
+        return False
+    # XNU 在非 HID 唤醒 (如 USB-C_plug / RTC) 后升格为 FullWake 时不会把
+    # IOPMUserTriggeredFullWake 改回 True, 而是置 IOPMUserIsActive = True
+    user_active = read_pm_bool(pm_svc, b"IOPMUserIsActive")
+    return user_active is not True
+
+
+def is_promoted_to_full_wake(pm_svc):
+    if not pm_svc:
+        return True
+    if read_pm_bool(pm_svc, b"IOPMUserIsActive") is True:
+        return True
+    return read_pm_bool(pm_svc, b"IOPMUserTriggeredFullWake") is True
+
+
+def should_suspend_fans(pm_svc, system_sleeping, in_dark_wake):
     if system_sleeping:
         return True, "system-sleep"
     clamshell_closed = read_pm_bool(pm_svc, b"AppleClamshellState")
@@ -163,8 +182,7 @@ def should_suspend_fans(pm_svc, system_sleeping):
         causes_sleep = read_pm_bool(pm_svc, b"AppleClamshellCausesSleep")
         if causes_sleep is not False:
             return True, "clamshell-closed"
-    full_wake = read_pm_bool(pm_svc, b"IOPMUserTriggeredFullWake")
-    if full_wake is False:
+    if in_dark_wake and not is_promoted_to_full_wake(pm_svc):
         return True, "dark-wake"
     return False, "active"
 `;
@@ -175,7 +193,11 @@ def load_state():
         return None
     with open(STATE_PATH, "r", encoding="utf-8") as fh:
         data = json.load(fh)
-    if not isinstance(data, dict) or data.get("version") != 1:
+    if (
+        not isinstance(data, dict)
+        or type(data.get("version")) is not int
+        or data.get("version") != 1
+    ):
         return None
     fans = data.get("fans")
     return fans if isinstance(fans, dict) else None
@@ -192,8 +214,8 @@ def release_manual_fans_to_auto(reason):
                 if read_fan_mode(conn, idx) == "manual":
                     set_fan_mode(conn, idx, False)
                     released.append(f"F{idx}=auto")
+            sync_ftst_if_all_auto(conn, count)
             if released:
-                sync_ftst_if_all_auto(conn, count)
                 log(f"{reason}: released {', '.join(released)}")
             return
         except Exception as exc:
@@ -277,6 +299,75 @@ def apply_saved_state(reason, should_abort=None):
                 iokit.IOServiceClose(conn)
 
 
+def create_power_reconciler(
+    pm_svc,
+    apply_fn=apply_saved_state,
+    release_fn=release_manual_fans_to_auto,
+):
+    runtime = {
+        "system_sleeping": False,
+        "dark_wake": is_initial_dark_wake(pm_svc),
+        "suspended": False,
+        "root_port": 0,
+    }
+    should_abort_restore = lambda: (
+        should_suspend_fans(
+            pm_svc, runtime["system_sleeping"], runtime["dark_wake"]
+        )[0]
+    )
+
+    def boot():
+        init_suspend, init_reason = should_suspend_fans(
+            pm_svc, False, runtime["dark_wake"]
+        )
+        runtime["suspended"] = init_suspend
+        if init_suspend:
+            release_fn(f"boot-{init_reason}")
+        else:
+            apply_fn("boot", should_abort_restore)
+
+    def reconcile(trigger, force_check_on_wake=False):
+        if runtime["dark_wake"] and is_promoted_to_full_wake(pm_svc):
+            runtime["dark_wake"] = False
+        want_suspend, reason = should_suspend_fans(
+            pm_svc, runtime["system_sleeping"], runtime["dark_wake"]
+        )
+        if want_suspend and not runtime["suspended"]:
+            runtime["suspended"] = True
+            release_fn(f"{trigger}:{reason}")
+        elif not want_suspend and runtime["suspended"]:
+            runtime["suspended"] = False
+            apply_fn(trigger, should_abort_restore)
+        elif want_suspend and force_check_on_wake:
+            release_fn(f"{trigger}:{reason}")
+
+    def handle_will_sleep():
+        runtime["system_sleeping"] = True
+        runtime["dark_wake"] = False
+        reconcile("sleep")
+
+    def handle_powered_on(settle_sec=0.5):
+        runtime["system_sleeping"] = False
+        if settle_sec > 0:
+            time.sleep(settle_sec)
+        runtime["dark_wake"] = is_initial_dark_wake(pm_svc)
+        reconcile("wake", force_check_on_wake=True)
+
+    def handle_interest():
+        if not runtime["system_sleeping"]:
+            reconcile("pm-state")
+
+    return {
+        "runtime": runtime,
+        "boot": boot,
+        "reconcile": reconcile,
+        "handle_will_sleep": handle_will_sleep,
+        "handle_powered_on": handle_powered_on,
+        "handle_interest": handle_interest,
+    }
+`;
+
+const DAEMON_ENTRYPOINT = `
 def main():
     log(f"fan-daemon started (state={STATE_PATH})")
     pm_svc = iokit.IOServiceGetMatchingService(
@@ -284,30 +375,9 @@ def main():
     )
     if not pm_svc:
         log("warning: IOPMrootDomain service not found; clamshell/DarkWake monitoring disabled")
-    runtime = {"system_sleeping": False, "suspended": False, "root_port": 0}
-    should_abort_restore = (
-        lambda: runtime["system_sleeping"] or should_suspend_fans(pm_svc, False)[0]
-    )
-
-    init_suspend, init_reason = should_suspend_fans(pm_svc, False)
-    runtime["suspended"] = init_suspend
-    if init_suspend:
-        release_manual_fans_to_auto(f"boot-{init_reason}")
-    else:
-        apply_saved_state("boot", should_abort_restore)
-
-    def reconcile(trigger, force_check_on_wake=False):
-        want_suspend, reason = should_suspend_fans(
-            pm_svc, runtime["system_sleeping"]
-        )
-        if want_suspend and not runtime["suspended"]:
-            runtime["suspended"] = True
-            release_manual_fans_to_auto(f"{trigger}:{reason}")
-        elif not want_suspend and runtime["suspended"]:
-            runtime["suspended"] = False
-            apply_saved_state(trigger, should_abort_restore)
-        elif want_suspend and force_check_on_wake:
-            release_manual_fans_to_auto(f"{trigger}:{reason}")
+    ctrl = create_power_reconciler(pm_svc)
+    runtime = ctrl["runtime"]
+    ctrl["boot"]()
 
     @POWER_CB
     def on_power(_refcon, _service, msg_type, msg_arg):
@@ -315,23 +385,19 @@ def main():
             if msg_type == K_IO_MSG_CAN_SYSTEM_SLEEP:
                 iokit.IOAllowPowerChange(runtime["root_port"], msg_arg)
             elif msg_type == K_IO_MSG_SYSTEM_WILL_SLEEP:
-                runtime["system_sleeping"] = True
                 try:
-                    reconcile("sleep")
+                    ctrl["handle_will_sleep"]()
                 finally:
                     iokit.IOAllowPowerChange(runtime["root_port"], msg_arg)
             elif msg_type == K_IO_MSG_SYSTEM_HAS_POWERED_ON:
-                runtime["system_sleeping"] = False
-                time.sleep(0.5)
-                reconcile("wake", force_check_on_wake=True)
+                ctrl["handle_powered_on"](0.5)
         except Exception as exc:
             log(f"on_power error: {exc}")
 
     @INTEREST_CB
     def on_interest(_refcon, _service, _msg_type, _msg_arg):
         try:
-            if not runtime["system_sleeping"]:
-                reconcile("pm-state")
+            ctrl["handle_interest"]()
         except Exception as exc:
             log(f"on_interest error: {exc}")
 
@@ -381,10 +447,13 @@ if __name__ == "__main__":
     main()
 `;
 
+/** 纯 Python 电源状态机与 SMC 恢复逻辑片段 (供跨平台单测直接加载验证) */
+export const DAEMON_CORE_PY = [DAEMON_SMC_HELPERS, DAEMON_LOOP].join('\n');
+
 export function buildDaemonPythonScript(statePath: string): string {
   return [
     daemonPreamble(JSON.stringify(statePath)),
-    DAEMON_SMC_HELPERS,
-    DAEMON_LOOP,
+    DAEMON_CORE_PY,
+    DAEMON_ENTRYPOINT,
   ].join('\n');
 }
