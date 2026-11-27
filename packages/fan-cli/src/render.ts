@@ -9,7 +9,6 @@ import {
   type FanInfo,
   type FanPersistedState,
   type FanStatusReport,
-  type FanWarning,
   type PersistDaemonStatus,
   computePercent,
 } from '@iyowei/fan';
@@ -18,6 +17,7 @@ import {
   BAR_BLOCK,
   NEUTRAL_BLOCK,
   displayWidth,
+  formatWarningMessage,
   headerLines,
   neutralLine,
   okNoteLine,
@@ -202,30 +202,6 @@ function isAllAutoPersisted(
   if (state === null || state === undefined) return false;
   const values = Object.values(state.fans);
   return values.length > 0 && values.every((v) => v.mode === 'auto');
-}
-
-function formatWarningMessage(
-  warning: FanWarning,
-  fans: readonly FanInfo[],
-  locale: Locale,
-): string {
-  if (locale === 'zh') return warning.message;
-  if (warning.code === 'MACS_FAN_CONTROL_RUNNING') {
-    if (warning.message.includes('检测到 Macs Fan Control')) {
-      return 'Macs Fan Control is running in the background and may override manual SMC speeds';
-    }
-    return warning.message;
-  }
-  if (warning.code === 'FAN_CLAMPED' && warning.fanIndex !== undefined) {
-    const fan = fans.find((f) => f.index === warning.fanIndex);
-    if (fan !== undefined) {
-      return `Fan ${String(fan.index)} target clamped to ${String(Math.round(fan.targetRpm))} RPM (allowed ${String(Math.round(fan.minRpm))}-${String(Math.round(fan.maxRpm))})`;
-    }
-  }
-  if (warning.code === 'STATE_CORRUPT') {
-    return `Persisted state file is corrupted or unreadable (${warning.message})`;
-  }
-  return warning.message;
 }
 
 /** 渲染完整状态或控制结果 (人类可读仪表盘或 JSON) */

@@ -2,6 +2,7 @@
  * `@iyowei/fan-cli` 终端原子样式、列宽度量与渐变进度块渲染原语。
  */
 import { type Locale } from '@iyowei/cli-i18n';
+import type { FanInfo, FanWarning } from '@iyowei/fan';
 
 export const BAR_BLOCK = '▍';
 export const NEUTRAL_BLOCK = '░';
@@ -130,4 +131,28 @@ export function renderGaugeBar(
     parts.push(paintRgb(GAUGE_EMPTY_CHAR.repeat(empty), EMPTY_CELL_RGB, color));
   }
   return parts.join('');
+}
+
+export function formatWarningMessage(
+  warning: FanWarning,
+  fans: readonly FanInfo[],
+  locale: Locale,
+): string {
+  if (locale === 'zh') return warning.message;
+  if (warning.code === 'MACS_FAN_CONTROL_RUNNING') {
+    if (warning.message.includes('检测到 Macs Fan Control')) {
+      return 'Macs Fan Control is running in the background and may override manual SMC speeds';
+    }
+    return warning.message;
+  }
+  if (warning.code === 'FAN_CLAMPED' && warning.fanIndex !== undefined) {
+    const fan = fans.find((f) => f.index === warning.fanIndex);
+    if (fan !== undefined) {
+      return `Fan ${String(fan.index)} target clamped to ${String(Math.round(fan.targetRpm))} RPM (allowed ${String(Math.round(fan.minRpm))}-${String(Math.round(fan.maxRpm))})`;
+    }
+  }
+  if (warning.code === 'STATE_CORRUPT') {
+    return `Persisted state file is corrupted or unreadable (${warning.message})`;
+  }
+  return warning.message;
 }
