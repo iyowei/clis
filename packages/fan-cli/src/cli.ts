@@ -123,10 +123,16 @@ function executeControllerAction(
     return controller.status({ fanIndex: options.fanIndex });
   }
   if (options.command === 'set') {
-    return controller.set({ speed: options.speed!, ...fanOpts });
+    return controller.set({
+      speed: options.speed!,
+      fixed: options.fixed,
+      ...fanOpts,
+    });
   }
   if (options.command === 'max') return controller.max(fanOpts);
-  if (options.command === 'min') return controller.min(fanOpts);
+  if (options.command === 'min') {
+    return controller.min({ fixed: options.fixed, ...fanOpts });
+  }
   if (options.command === 'auto') return controller.auto(fanOpts);
   return controller.apply();
 }
@@ -311,7 +317,10 @@ export async function runCli(
     }
 
     const report = executeControllerAction(controller, options);
-    const title = getActionTitle(options.command, locale);
+    const title = getActionTitle(options.command, locale, {
+      fixed: options.fixed,
+      once: options.once,
+    });
     const isMutatingTuneCmd =
       options.command === 'set' ||
       options.command === 'max' ||

@@ -1,8 +1,8 @@
 /**
  * `@iyowei/fan-cli` 终端原子样式、列宽度量与渐变进度块渲染原语。
  */
-import { type Locale } from '@iyowei/cli-i18n';
-import type { FanInfo, FanWarning } from '@iyowei/fan';
+import { type Locale, t } from '@iyowei/cli-i18n';
+import type { FanInfo, FanPersistedState, FanWarning } from '@iyowei/fan';
 
 export const BAR_BLOCK = '▍';
 export const NEUTRAL_BLOCK = '░';
@@ -131,6 +131,77 @@ export function renderGaugeBar(
     parts.push(paintRgb(GAUGE_EMPTY_CHAR.repeat(empty), EMPTY_CELL_RGB, color));
   }
   return parts.join('');
+}
+
+function classifyPersistedStrategy(
+  state: FanPersistedState | null | undefined,
+): { hasFloor: boolean; hasExplicitFixed: boolean } {
+  if (state === null || state === undefined) {
+    return { hasFloor: false, hasExplicitFixed: false };
+  }
+  let hasFloor = false;
+  let hasExplicitFixed = false;
+  for (const entry of Object.values(state.fans)) {
+    if (entry.mode !== 'manual') continue;
+    const isMax = entry.kind === 'percent' && entry.value >= 100;
+    if (isMax) continue;
+    if (entry.strategy === 'fixed') {
+      hasExplicitFixed = true;
+    } else {
+      hasFloor = true;
+    }
+  }
+  return { hasFloor, hasExplicitFixed };
+}
+
+/** 渲染持久化调速策略补充提示行 (保底下限高温提速 vs `--fixed` 锁定转速) */
+export function renderStrategyNoteLine(
+  state: FanPersistedState | null | undefined,
+  locale: Locale,
+  color: boolean,
+): string | null {
+  const { hasFloor, hasExplicitFixed } = classifyPersistedStrategy(state);
+  if (hasFloor) {
+    return okNoteLine(
+      t(
+        locale,
+        '保底下限模式 · 温度升高自动提速, 降温回落至设定阈值',
+        'Floor mode · Auto-ramps when hot, never drops below target',
+      ),
+      color,
+    );
+  }
+  if (hasExplicitFixed) {
+    return neutralLine(
+      t(
+        locale,
+        '固定转速模式 (--fixed) · 恒定维持目标转速',
+        'Fixed speed mode (--fixed) · Constant target RPM',
+      ),
+      color,
+    );
+  }
+  return null;
+}
+
+/** 为 `status` / `apply` 的已存预设摘要附加策略后缀 */
+export function appendSavedStrategyTag(
+  summary: string,
+  state: FanPersistedState | null | undefined,
+  locale: Locale,
+): string {
+  const { hasFloor, hasExplicitFixed } = classifyPersistedStrategy(state);
+  if (hasFloor && !hasExplicitFixed) {
+    return t(
+      locale,
+      `${summary} · 保底下限 (高温自动提速)`,
+      `${summary} · Floor (auto-ramps when hot)`,
+    );
+  }
+  if (hasExplicitFixed && !hasFloor) {
+    return t(locale, `${summary} · 固定转速`, `${summary} · Fixed`);
+  }
+  return summary;
 }
 
 export function formatWarningMessage(

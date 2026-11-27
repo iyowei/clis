@@ -16,6 +16,7 @@ function expectParsed(
       speed: undefined,
       persistAction: undefined,
       fanIndex: undefined,
+      fixed: false,
       once: false,
       json: false,
       watchSeconds: undefined,
@@ -27,7 +28,7 @@ function expectParsed(
 }
 
 describe('parseArgs 正常路由', () => {
-  test('缺省为 status, 支持 status / max / min / auto / set / apply', () => {
+  test('缺省为 status, 支持 status / max / min / auto / set / apply 与 --fixed', () => {
     expectParsed([]);
     expectParsed(['max', '--fan', '1', '--json'], {
       command: 'max',
@@ -38,6 +39,15 @@ describe('parseArgs 正常路由', () => {
       command: 'set',
       speed: '60%',
       fanIndex: 0,
+    });
+    expectParsed(['set', '3000', '--fixed'], {
+      command: 'set',
+      speed: '3000',
+      fixed: true,
+    });
+    expectParsed(['min', '--fixed'], {
+      command: 'min',
+      fixed: true,
     });
     expectParsed(['apply'], { command: 'apply' });
   });
@@ -72,6 +82,7 @@ describe('parseArgs 正常路由', () => {
       ok: true,
       options: {
         command: 'update',
+        fixed: false,
         once: false,
         json: false,
         updateArgs: ['--check'],
@@ -96,6 +107,9 @@ describe('parseArgs 错误拦截', () => {
   test('拒绝缺失转速、未知选项、无效组合 (--once / --fan / --watch / persist) 与非首位置 update', () => {
     expect(parseArgs(['set']).ok).toBe(false);
     expect(parseArgs(['max', '-w']).ok).toBe(false);
+    expect(parseArgs(['max', '--fixed']).ok).toBe(false);
+    expect(parseArgs(['auto', '--fixed']).ok).toBe(false);
+    expect(parseArgs(['status', '--fixed']).ok).toBe(false);
     expect(parseArgs(['status', '--once']).ok).toBe(false);
     expect(parseArgs(['apply', '--no-save']).ok).toBe(false);
     expect(parseArgs(['apply', '--fan', '0']).ok).toBe(false);

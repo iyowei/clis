@@ -155,20 +155,20 @@ describe('createFanController 契约', () => {
     const stateStore = makeMemoryStateStore();
     const fan = createFanController({ transport, stateStore });
 
-    // 1. 默认持久化 30% -> 写入双扇 percentage 条目
+    // 1. 默认持久化 30% -> 写入双扇 floor 保底下限条目
     const pct30 = fan.set({ speed: '30%' });
     expect(pct30.didPersist).toBe(true);
     expect(pct30.persisted?.fans).toEqual({
-      '0': { mode: 'manual', kind: 'percent', value: 30 },
-      '1': { mode: 'manual', kind: 'percent', value: 30 },
+      '0': { mode: 'manual', kind: 'percent', value: 30, strategy: 'floor' },
+      '1': { mode: 'manual', kind: 'percent', value: 30, strategy: 'floor' },
     });
 
-    // 2. 单独改 Fan 0 为 4500 RPM 且自动保存 -> 保留 Fan 1 原先的 30%
-    const partial = fan.set({ speed: '4500', fanIndex: 0 });
+    // 2. 单独改 Fan 0 为 4500 RPM (显式 fixed: true) 且自动保存 -> 保留 Fan 1 原先的 30% floor
+    const partial = fan.set({ speed: '4500', fanIndex: 0, fixed: true });
     expect(partial.didPersist).toBe(true);
     expect(partial.persisted?.fans).toEqual({
-      '0': { mode: 'manual', kind: 'rpm', value: 4500 },
-      '1': { mode: 'manual', kind: 'percent', value: 30 },
+      '0': { mode: 'manual', kind: 'rpm', value: 4500, strategy: 'fixed' },
+      '1': { mode: 'manual', kind: 'percent', value: 30, strategy: 'floor' },
     });
 
     // 3. persist=false (--once 语义): 仅修改硬件转速, 不覆写持久化配置
@@ -176,8 +176,8 @@ describe('createFanController 契约', () => {
     expect(once.didPersist).toBe(false);
     expect(once.fans.map((f) => f.targetRpm)).toEqual([6000, 6000]);
     expect(once.persisted?.fans).toEqual({
-      '0': { mode: 'manual', kind: 'rpm', value: 4500 },
-      '1': { mode: 'manual', kind: 'percent', value: 30 },
+      '0': { mode: 'manual', kind: 'rpm', value: 4500, strategy: 'fixed' },
+      '1': { mode: 'manual', kind: 'percent', value: 30, strategy: 'floor' },
     });
 
     // 4. apply(): 恢复磁盘记住的配置 (Fan 0 -> 4500 RPM, Fan 1 -> 30% of 1350..6750 = 2970 RPM)
@@ -185,7 +185,21 @@ describe('createFanController 契约', () => {
     expect(applied.fans[0]?.targetRpm).toBe(4500);
     expect(applied.fans[1]?.targetRpm).toBe(2970);
 
-    // 5. auto 默认也记住 -> 清除手动预设为 auto
+    // 5. min 默认记录 strategy='floor', min({ fixed: true }) 记录 strategy='fixed'
+    expect(fan.min({ fanIndex: 0 }).persisted?.fans['0']).toEqual({
+      mode: 'manual',
+      kind: 'percent',
+      value: 0,
+      strategy: 'floor',
+    });
+    expect(fan.min({ fanIndex: 0, fixed: true }).persisted?.fans['0']).toEqual({
+      mode: 'manual',
+      kind: 'percent',
+      value: 0,
+      strategy: 'fixed',
+    });
+
+    // 6. auto 默认也记住 -> 清除手动预设为 auto
     const autod = fan.auto();
     expect(autod.didPersist).toBe(true);
     expect(autod.persisted?.fans).toEqual({
@@ -284,8 +298,8 @@ describe('createFanController 契约', () => {
   });
 });
 
-describe('createFanController 极值取整边界契约', () => {
-  test('浮点极值按显示整数边界一致校验并夹逼至硬件极值', () => {
+describe('createFanController 守护高温协同与极值取整契约', () => {
+  test('floor 模式下守护因高温合法上调转速时不误判为漂移打回, 且浮点极值按显示整数边界一致校验', () => {
     const floatFans: FanInfo[] = [
       {
         index: 0,
@@ -297,9 +311,38 @@ describe('createFanController 极值取整边界契约', () => {
         percent: 0,
       },
     ];
-    const { transport } = makeFakeTransport(floatFans, false);
-    const fan = createFanController({ transport });
+    const { transport, writes } = makeFakeTransport(floatFans, false);
+    const stateStore = makeMemoryStateStore();
+    const fan = createFanController({
+      transport,
+      stateStore,
+      ensureDaemon: () => {
+        // 模拟 88°C 高温下守护启动后将 3000 下限合法拉高到 5200 RPM
+        transport.applyWrites([
+          { kind: 'manual', fanIndex: 0, targetRpm: 5200 },
+        ]);
+        return {
+          action: 'installed',
+          status: {
+            installed: true,
+            running: true,
+            label: 'com.iyowei.fan',
+            plistPath: '/stub/plist',
+            daemonScriptPath: '/stub/daemon.py',
+            statePath: '/memory/state.json',
+            logPath: '/stub/fan.log',
+            state: null,
+          },
+        };
+      },
+    });
 
+    const floorBoosted = fan.set({ speed: '3000' });
+    expect(floorBoosted.fans[0]?.targetRpm).toBe(5200);
+    // 第 1 次写 3000 + 第 2 次模拟守护高温提速至 5200 (不得触发第 3 次打回 3000!)
+    expect(writes).toHaveLength(2);
+
+    // 面板显示 2317-6800 时输入 2317 或 6800 均合法通过并夹逼至硬件浮点极值
     expect(
       fan.set({ speed: '6800', persist: false }).fans[0]?.targetRpm,
     ).toBeCloseTo(6799.6, 1);

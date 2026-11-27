@@ -14,6 +14,7 @@ const DIST = join(ROOT, 'dist');
 
 const INTERNAL_DTS_FILES: readonly string[] = [
   'daemon-script.d.ts',
+  'daemon-thermal-script.d.ts',
   'smc-script.d.ts',
 ];
 

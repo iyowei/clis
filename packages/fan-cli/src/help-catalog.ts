@@ -67,10 +67,10 @@ export const CATALOG_ZH: HelpCatalog = {
     { name: 'status', desc: '查看风扇当前转速、范围与控制模式 (默认动作)' },
     {
       name: 'set <speed>',
-      desc: '设定目标转速 (如 4000) 或区间百分比 (如 60%, 默认记住)',
+      desc: '设定转速下限 (如 3000 或 60%, 高温自动提速, 默认记住)',
     },
     { name: 'max', desc: '切换手动模式并拉满至最高转速 (默认记住)' },
-    { name: 'min', desc: '切换手动模式并降至最低转速 (默认记住)' },
+    { name: 'min', desc: '设定最低起转下限 (高温自动提速, 默认记住)' },
     { name: 'auto', desc: '恢复系统自动温控模式 (默认记住并覆盖手动配置)' },
     { name: 'apply', desc: '立即按已记住的持久化配置恢复全部风扇转速' },
     {
@@ -88,6 +88,10 @@ export const CATALOG_ZH: HelpCatalog = {
       flag: '--fan',
       arg: '<index>',
       desc: '仅作用于指定编号的风扇 (例如 0 或 1)',
+    },
+    {
+      flag: '--fixed',
+      desc: '锁定恒定转速, 不随高温自动提速 (仅配合 set / min)',
     },
     {
       flag: '--once, --no-save',
@@ -121,13 +125,21 @@ export const CATALOG_ZH: HelpCatalog = {
     },
     {
       cmd: 'fan set',
-      tail: [['arg', '4000']],
-      desc: '设为 4000 RPM 并记住该配置',
+      tail: [['arg', '3000']],
+      desc: '设为 3000 RPM 保底下限, 高温自动提速并记住',
     },
     {
       cmd: 'fan set',
       tail: [['arg', '60%']],
-      desc: '设为 60% 区间转速并记住该配置',
+      desc: '设为 60% 区间保底下限并记住该配置',
+    },
+    {
+      cmd: 'fan set',
+      tail: [
+        ['arg', '3000'],
+        ['flag', '--fixed'],
+      ],
+      desc: '锁死在 3000 RPM 固定转速并记住',
     },
     {
       cmd: 'fan set',
@@ -135,7 +147,7 @@ export const CATALOG_ZH: HelpCatalog = {
         ['flag', '--fan'],
         ['arg', '0 60%'],
       ],
-      desc: '仅将 0 号风扇设为 60% 并记住',
+      desc: '仅将 0 号风扇设为 60% 保底下限并记住',
     },
     {
       cmd: 'fan set',
@@ -159,8 +171,12 @@ export const CATALOG_ZH: HelpCatalog = {
       desc: 'set/max/min/auto 默认保存至 state.json; 传 --once 仅本次生效',
     },
     {
+      label: '保底温控',
+      desc: 'set/min 默认作保底下限: 低温稳守阈值, 升温自动提速, 降温回落',
+    },
+    {
       label: '守护联动',
-      desc: 'set/max/min 自动同步后台守护: 无外接屏合盖或睡眠切回 auto, 开盖/重启恢复',
+      desc: '自动同步后台守护: 无外接屏合盖或睡眠切回 auto, 开盖/重启恢复',
     },
     {
       label: '提权边界',
@@ -210,10 +226,10 @@ export const CATALOG_EN: HelpCatalog = {
     },
     {
       name: 'set <speed>',
-      desc: 'Set target RPM (4000) or percentage (60%, saved)',
+      desc: 'Set RPM/percent floor (auto-ramps when hot, saved)',
     },
     { name: 'max', desc: 'Switch to manual full speed and save preset' },
-    { name: 'min', desc: 'Switch to manual minimum speed and save preset' },
+    { name: 'min', desc: 'Set minimum RPM floor (auto-ramps when hot, saved)' },
     { name: 'auto', desc: 'Restore macOS automatic thermal control' },
     { name: 'apply', desc: 'Re-apply saved preset across all fans' },
     {
@@ -234,6 +250,10 @@ export const CATALOG_EN: HelpCatalog = {
       flag: '--fan',
       arg: '<index>',
       desc: 'Target a single fan by index (e.g. 0 or 1)',
+    },
+    {
+      flag: '--fixed',
+      desc: 'Lock constant speed without thermal boost (set/min)',
     },
     {
       flag: '--once, --no-save',
@@ -267,8 +287,21 @@ export const CATALOG_EN: HelpCatalog = {
     },
     {
       cmd: 'fan set',
+      tail: [['arg', '3000']],
+      desc: 'Set 3000 RPM floor (ramps up when hot, saved)',
+    },
+    {
+      cmd: 'fan set',
       tail: [['arg', '60%']],
-      desc: 'Set fans to 60% of range and save preset',
+      desc: 'Set 60% speed floor and save preset',
+    },
+    {
+      cmd: 'fan set',
+      tail: [
+        ['arg', '3000'],
+        ['flag', '--fixed'],
+      ],
+      desc: 'Lock constant 3000 RPM without thermal boost',
     },
     {
       cmd: 'fan set',
@@ -276,7 +309,7 @@ export const CATALOG_EN: HelpCatalog = {
         ['flag', '--fan'],
         ['arg', '0 4000'],
       ],
-      desc: 'Set Fan 0 to 4000 RPM and save',
+      desc: 'Set Fan 0 floor to 4000 RPM and save',
     },
     {
       cmd: 'fan set',
@@ -298,6 +331,10 @@ export const CATALOG_EN: HelpCatalog = {
     {
       label: 'Presets',
       desc: 'set/max/min/auto save to state.json; --once skips save',
+    },
+    {
+      label: 'Floor Boost',
+      desc: 'set/min hold floor RPM and auto-ramp when SoC heats up',
     },
     {
       label: 'Sleep Sync',

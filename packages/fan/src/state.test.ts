@@ -140,6 +140,31 @@ describe('@iyowei/fan 持久化状态与守护构建', () => {
         expect(isFanError(err)).toBe(true);
         if (isFanError(err)) expect(err.code).toBe('STATE_CORRUPT');
       }
+
+      const badStrategy = join(dir, 'bad-strategy.json');
+      writeFileSync(
+        badStrategy,
+        JSON.stringify({
+          version: 1,
+          updatedAt: '',
+          fans: {
+            '0': {
+              mode: 'manual',
+              kind: 'rpm',
+              value: 3000,
+              strategy: 'invalid',
+            },
+          },
+        }),
+        'utf8',
+      );
+      try {
+        readPersistedState(badStrategy);
+        throw new Error('Expected STATE_CORRUPT for invalid strategy');
+      } catch (err) {
+        expect(isFanError(err)).toBe(true);
+        if (isFanError(err)) expect(err.code).toBe('STATE_CORRUPT');
+      }
     });
   });
 

@@ -44,6 +44,8 @@ export type {
   FanTransport,
   FanWarning,
   FanWriteRequest,
+  ManualControlStrategy,
+  MinFanOptions,
   PersistDaemonAction,
   PersistDaemonStatus,
   PersistDaemonSyncResult,

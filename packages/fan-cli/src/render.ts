@@ -16,6 +16,7 @@ import {
 import {
   BAR_BLOCK,
   NEUTRAL_BLOCK,
+  appendSavedStrategyTag,
   displayWidth,
   formatWarningMessage,
   headerLines,
@@ -24,6 +25,7 @@ import {
   padEndDisplay,
   paint,
   renderGaugeBar,
+  renderStrategyNoteLine,
   warnNoteLine,
 } from './render-primitives.ts';
 
@@ -268,24 +270,40 @@ export function renderReport(
           options.color,
         ),
       );
+      const strategyLine = renderStrategyNoteLine(
+        report.persisted,
+        locale,
+        options.color,
+      );
+      if (strategyLine !== null) {
+        footers.push(strategyLine);
+      }
     }
   } else if (report.didPersist === false) {
+    const hasManualOnce = report.fans.some((f) => f.mode === 'manual');
     footers.push(
       neutralLine(
-        t(
-          locale,
-          '仅本次生效 (--once), 未修改已存预设',
-          'Applied once (--once) · Saved preset unchanged',
-        ),
+        hasManualOnce
+          ? t(
+              locale,
+              '仅本次生效 (--once) · 固定转速不随高温提速, 未改预设',
+              'Applied once (--once) · Fixed speed, preset unchanged',
+            )
+          : t(
+              locale,
+              '仅本次生效 (--once), 未修改已存预设',
+              'Applied once (--once) · Saved preset unchanged',
+            ),
         options.color,
       ),
     );
   } else {
     const summary = formatPersistedSummary(report.persisted, locale);
     if (summary !== null) {
+      const tagged = appendSavedStrategyTag(summary, report.persisted, locale);
       footers.push(
         neutralLine(
-          t(locale, `已存预设  ${summary}`, `Saved preset  ${summary}`),
+          t(locale, `已存预设  ${tagged}`, `Saved preset  ${tagged}`),
           options.color,
         ),
       );
@@ -373,7 +391,7 @@ export function renderPersistStatus(
           ['Saved Preset', stateSummary],
           [
             'Power Policy',
-            'Auto on lid close / sleep · Restores on wake & boot',
+            'Floor auto-boost · Auto on lid/sleep · Wake restore',
           ],
           ['State File', status.statePath],
           ['Daemon Script', status.daemonScriptPath],
@@ -383,7 +401,7 @@ export function renderPersistStatus(
       : [
           ['运行状态', stateLabel, true],
           ['已存预设', stateSummary],
-          ['守护策略', '合盖/睡眠自动停转 · 开盖/唤醒与重启恢复'],
+          ['守护策略', '保底下限高温提速 · 合盖/睡眠停转 · 唤醒恢复'],
           ['状态文件', status.statePath],
           ['守护脚本', status.daemonScriptPath],
           ['服务配置', status.plistPath],

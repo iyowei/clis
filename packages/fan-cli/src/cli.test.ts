@@ -142,15 +142,17 @@ describe('runCli 编排', () => {
     expect((await run(['-V'])).out).toBe('1.0.0');
     expect((await run(['-h'])).out).toContain('FAN');
 
-    // 未安装守护前修改默认自动持久化并自动安装启用后台守护
+    // 未安装守护前修改默认自动持久化为保底下限并自动安装启用后台守护
     const setRes = await run(['set', '30%']);
     expect(setRes.code).toBe(0);
+    expect(setRes.out).toContain('已设定转速下限');
     expect(setRes.out).toContain('已记住预设 (30%)');
+    expect(setRes.out).toContain('保底下限模式 · 温度升高自动提速');
     expect(setRes.out).toContain('已自动启用后台守护 (com.iyowei.fan)');
     expect(persistOps.getStatus().installed).toBe(true);
     expect(stateStore.read()?.fans).toEqual({
-      '0': { mode: 'manual', kind: 'percent', value: 30 },
-      '1': { mode: 'manual', kind: 'percent', value: 30 },
+      '0': { mode: 'manual', kind: 'percent', value: 30, strategy: 'floor' },
+      '1': { mode: 'manual', kind: 'percent', value: 30, strategy: 'floor' },
     });
 
     // 查看或显式重装守护状态正常, 再 set --once: 硬件变为 max, 磁盘配置仍保持 30%

@@ -69,14 +69,23 @@ export async function runWatchLoop(options: {
   return 0;
 }
 
-export function getActionTitle(command: string, locale: Locale): string {
+export function getActionTitle(
+  command: string,
+  locale: Locale,
+  opts?: { fixed?: boolean; once?: boolean },
+): string {
+  const isFixedOrOnce = opts?.fixed === true || opts?.once === true;
   switch (command) {
     case 'set':
-      return t(locale, '已设定手动转速', 'Manual Speed Set');
+      return isFixedOrOnce
+        ? t(locale, '已设定手动转速', 'Manual Speed Set')
+        : t(locale, '已设定转速下限', 'Speed Floor Set');
     case 'max':
       return t(locale, '已开启全速模式', 'Full Speed Enabled');
     case 'min':
-      return t(locale, '已设定最低转速', 'Minimum Speed Set');
+      return isFixedOrOnce
+        ? t(locale, '已设定最低转速', 'Minimum Speed Set')
+        : t(locale, '已设定最低转速下限', 'Minimum Floor Set');
     case 'auto':
       return t(locale, '已恢复系统自动温控', 'Automatic Thermal Control');
     case 'apply':

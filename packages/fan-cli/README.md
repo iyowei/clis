@@ -8,7 +8,7 @@
 
 **English** | [中文](README.zh-CN.md)
 
-Command-line tool (`fan`) to inspect and manually control Apple Silicon / Mac fan speeds via AppleSMC IOKit with zero third-party runtime dependencies. **No need to install Macs Fan Control or any GUI fan utility**; just run `fan max` or `fan set 4000` to change system fan speeds directly. Manual speed commands automatically ensure the built-in `LaunchDaemon` is active so fans return to system `auto` (stop spinning) when closing the lid without an external display or entering sleep, and automatically restore your saved speeds on lid open / wake and reboot (pass `--once` for temporary overrides).
+Command-line tool (`fan`) to inspect and control Apple Silicon / Mac fan speeds via AppleSMC IOKit with zero third-party runtime dependencies. **No need to install Macs Fan Control or any GUI fan utility**; just run `fan set 3000` or `fan max` to tune system fan speeds directly. By default, `fan set` and `fan min` persist your target as a **minimum speed floor** (holding at least that RPM while automatically ramping higher when CPU/GPU temperatures rise, or pass `--fixed` to lock a constant RPM) and ensure the built-in `LaunchDaemon` is active so fans return to system `auto` (stop spinning) when closing the lid without an external display or entering sleep, then restore on lid open / wake and reboot (pass `--once` for temporary overrides).
 
 This CLI is a thin parsing and rendering shell over [`@iyowei/fan`](https://www.npmjs.com/package/@iyowei/fan). For programmatic use in scripts or automation pipelines, import `@iyowei/fan` directly.
 
@@ -94,12 +94,17 @@ fan status -w 1
 # Emit structured JSON
 fan status --json
 
-# Set and remember targets across reboots/wakes (default behavior)
-fan set 4000
+# Set and persist speed floors across reboots/wakes (default: holds floor & auto-ramps when hot)
+fan set 3000
 fan set 60%
 fan set --fan 0 60%
-fan max
 fan min
+
+# Optional: lock a constant RPM without automatic thermal boost
+fan set 3000 --fixed
+
+# Full speed or restore macOS automatic thermal control (persisted by default)
+fan max
 fan auto
 
 # Temporary override without modifying the saved configuration
@@ -127,7 +132,7 @@ fan update --check
 
 > **Language**: `fan` automatically detects your macOS system UI language (`system` by default) and supports independent per-tool customization via `fan lang <system|en|zh>` (`~/.config/fan/lang.json`), per-run `--lang <system|en|zh>`, or `FAN_LANG` / `CLIS_LANG`.
 
-> **Tip**: No third-party fan app (such as `Macs Fan Control`) is required. Running `fan set` / `fan max` / `fan min` automatically keeps the `com.iyowei.fan` `LaunchDaemon` installed and synced: it releases manual fans to `auto` on non-docked lid close, sleep, and `DarkWake` (preserving manual speeds in docked external-display clamshell mode), restores `state.json` on boot and full wake / lid open, and never polls or fights `--once` overrides while awake. If you previously installed a GUI fan controller and left it running in the background with a fixed preset, quit it first so it does not overwrite `fan` CLI targets.
+> **Tip**: No third-party fan app (such as `Macs Fan Control`) is required. Running `fan set` / `fan max` / `fan min` persists your preset by default and keeps the `com.iyowei.fan` `LaunchDaemon` installed and synced: `set` and `min` act as a thermal-safe speed floor by default (ramping above your floor when SoC die temperatures exceed `65°C` and gliding back down to your floor as it cools), releases fans to `auto` on non-docked lid close, sleep, and headless `DarkWake` (preserving speeds in docked external-display clamshell mode), restores `state.json` on boot and full wake / lid open, and respects `--once` temporary overrides. If you previously installed a GUI fan controller and left it running in the background with a fixed preset, quit it first so it does not overwrite `fan` CLI targets.
 
 ## Exit codes
 

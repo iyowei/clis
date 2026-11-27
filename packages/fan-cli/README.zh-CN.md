@@ -8,7 +8,7 @@
 
 [English](README.md) | **中文**
 
-用于查看与手动控制 Apple Silicon / Mac 风扇转速的命令行工具 (`fan`), 直接通过 AppleSMC IOKit 读写风扇键, 零第三方运行时依赖。**无需安装 Macs Fan Control 等第三方 GUI 软件**, 只需直接执行 `fan max`、`fan set 4000` 或 `fan auto` 即可改动并恢复系统风扇转速。手动调速操作默认自动记住配置 (`--once` 可临时生效不保存) 并自动确保内置守护服务就绪: **无外接屏合盖或进入睡眠时自动交还系统 `auto` 停转 (外接显示器合盖办公保留手动转速), 开盖/唤醒与开机重启后自动恢复**。
+用于查看与控制 Apple Silicon / Mac 风扇转速的命令行工具 (`fan`), 直接通过 AppleSMC IOKit 读写风扇键, 零第三方运行时依赖。**无需安装 Macs Fan Control 等第三方 GUI 软件**, 只需直接执行 `fan set 3000`、`fan max` 或 `fan auto` 即可设置并恢复系统风扇转速。调速操作**默认持久化保存** (`--once` 可临时生效不保存) 并自动确保内置守护服务就绪: **`fan set` 与 `fan min` 默认作为「保底下限」(平时不低于设定阈值, 芯片升温需要更快风量时自动提速, 降温后回落; 传 `--fixed` 可锁死恒定转速), 无外接屏合盖或进入睡眠时自动交还系统 `auto` 停转 (外接显示器合盖办公保留转速), 开盖/唤醒与开机重启后自动恢复**。
 
 本 CLI 是套在 API 主包 [`@iyowei/fan`](https://www.npmjs.com/package/@iyowei/fan) 外层的参数解析与终端渲染薄壳。若需在脚本或自动化中编程调用, 请直接使用 `@iyowei/fan`。
 
@@ -94,12 +94,17 @@ fan status -w 1
 # 以 JSON 格式输出状态
 fan status --json
 
-# 修改转速并默认记住配置 (开机与睡眠唤醒后自动恢复)
-fan set 4000
+# 设定转速保底下限并默认持久化记住 (低温稳守下限, 高温自动提速, 开机与唤醒恢复)
+fan set 3000
 fan set 60%
 fan set --fan 0 60%
-fan max
 fan min
+
+# 可选: 锁定恒定转速, 不随温度自动提速
+fan set 3000 --fixed
+
+# 开启全速模式或恢复系统自动温控 (默认持久化记住)
+fan max
 fan auto
 
 # 仅本次生效, 不改写持久化配置 (唤醒前不会被守护覆写)
@@ -127,7 +132,7 @@ fan update --check
 
 > **中英双语支持**: `fan` 默认按操作系统首选语言自动展示 (`system`), 也支持通过 `fan lang <system|en|zh>` 独立持久化语言偏好 (`~/.config/fan/lang.json`), 或通过 `--lang <system|en|zh>`、`FAN_LANG`、`CLIS_LANG` 单次覆盖。
 
-> **说明**: 使用本工具无需安装 `Macs Fan Control` 等第三方风扇软件; 只需直接执行 `fan set 4000`、`fan set 30%`、`fan max` 或 `fan auto` 即可改写并自动记住系统风扇转速。执行 `set` / `max` / `min` 时会自动确保内置 `LaunchDaemon` (`com.iyowei.fan`) 已安装并同步至最新脚本: 无外接屏合盖、系统睡眠及后台 `DarkWake` 期间自动将风扇切回 `auto` 停转 (连接外接显示器的合盖桌面模式保留手动转速), 开机与真实唤醒/开盖时按 `state.json` 恢复转速, 醒着开盖期间边沿驱动零轮询、不覆盖 `--once` 临时设定。如果本机之前装过并仍在后台运行固定预设, 先退出对应软件即可避免它定时覆写手动目标值。
+> **说明**: 使用本工具无需安装 `Macs Fan Control` 等第三方风扇软件; 只需直接执行 `fan set 3000`、`fan set 60%`、`fan max` 或 `fan auto` 即可改写并默认持久化系统风扇设定。执行持久化 `set` / `max` / `min` 时会自动确保内置 `LaunchDaemon` (`com.iyowei.fan`) 已安装并同步至最新脚本: `set` 与 `min` 默认采用保底下限策略 (核心温度超过 `65°C` 需要更大散热风量时自动平滑拉高转速, 降温后回落并死守设定下限), 无外接屏合盖、系统睡眠及无用户活跃的后台 `DarkWake` 期间自动将风扇切回 `auto` 停转 (外接显示器合盖桌面模式与亮屏会话空闲息屏均保留转速), 开机与唤醒/开盖时按 `state.json` 恢复, 且自动识别并避让 `--once` 临时设定。如果本机之前装过并仍在后台运行第三方固定预设, 先退出对应软件即可避免冲突覆写。
 
 ## 退出码
 

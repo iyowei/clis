@@ -115,6 +115,7 @@ export function helpText(color: boolean, locale: Locale = 'zh'): string {
     ...commandRows,
     '',
     `  ${s.section(cat.sections.options)}`,
+    ...commandRows.slice(0, 0),
     ...cat.options.map(formatOpt),
     '',
     ...cat.metaOptions.map(formatOpt),

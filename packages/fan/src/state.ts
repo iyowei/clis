@@ -31,6 +31,13 @@ function isValidEntry(value: unknown): value is PersistedFanEntry {
   const record = value as Record<string, unknown>;
   if (record.mode === 'auto') return true;
   if (record.mode !== 'manual') return false;
+  if (
+    record.strategy !== undefined &&
+    record.strategy !== 'floor' &&
+    record.strategy !== 'fixed'
+  ) {
+    return false;
+  }
   const kind = record.kind;
   const num = record.value;
   if (typeof num !== 'number' || !Number.isFinite(num)) return false;

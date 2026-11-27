@@ -8,7 +8,7 @@
 1. 在 Bun 与 Node.js (`>= 22.18.0`) 下提供完全一致的可编程风扇控制 API, 且保持零第三方运行时依赖。
 2. 通过可注入的 `FanTransport` 与 `FanStateStore` 抽象把 macOS AppleSMC 真机交互与纯 TypeScript 编排逻辑解耦, 确保单测可在 Linux / Windows / macOS 确定性通过。
 3. 最小化权限边界: 读取风扇状态与 `state.json` 无需 root; 仅写入、持久化落盘与守护安装经 `/usr/bin/sudo` 调用 `/usr/bin/python3`; 写入后轮询确认 SMC 目标键刷新 (最多 1 秒) 再返回状态。
-4. 默认自动记住、失败回滚与守护联动: `set` / `max` / `min` / `auto` 默认先预检并读取合并 `/Library/Application Support/iyowei-fan/state.json` (若磁盘 `state.json` 已损坏, 持久化写入前置拒绝且不修改硬件或覆盖配置; 只读 `status` 与 `persist: false` 则保留硬件读数并上浮 `STATE_CORRUPT` 告警); 硬件写入成功后若写盘失败且错误非 `PERMISSION_DENIED`, 会尽最大努力回滚写入前的风扇快照并抛出带回滚状态说明的 `FanError`; 执行 `set` / `max` / `min` 时默认幂等确保 `com.iyowei.fan` `LaunchDaemon` 已安装并同步为最新脚本 (已一致且运行中则免 `sudo` 短路; 若守护同步失败则保留已更新的硬件与持久化配置并抛 `FanError` 明确提示): 在开机 (`RunAtLoad`) 与真实唤醒 (`FullWake` / 开盖) 时恢复设定, 在无外接显示器合盖 (`AppleClamshellState && AppleClamshellCausesSleep`)、系统睡眠 (`kIOMessageSystemWillSleep`) 与后台维护唤醒 (`DarkWake`) 期间自动将手动风扇临时切回 `auto` 停转 (外接显示器合盖办公保留手动转速), 醒着开盖期间边沿驱动零轮询。
+4. 默认自动记住、保底下限温控、失败回滚与守护联动: `set` / `max` / `min` / `auto` 默认先预检并读取合并 `/Library/Application Support/iyowei-fan/state.json` (若磁盘 `state.json` 已损坏, 持久化写入前置拒绝且不修改硬件或覆盖配置; 只读 `status` 与 `persist: false` 则保留硬件读数并上浮 `STATE_CORRUPT` 告警); 硬件写入成功后若写盘失败且错误非 `PERMISSION_DENIED`, 会尽最大努力回滚写入前的风扇快照并抛出带回滚状态说明的 `FanError`; 执行持久化手动调速 (`set` / `max` / `min` 且 `persist !== false`) 时默认幂等确保 `com.iyowei.fan` `LaunchDaemon` 已安装并同步为最新脚本 (`persist: false` 临时调速不安装或重载守护, 且守护会自动识别并避让未改写 `state.json` 的 `--once` 临时转速; 守护首次安装或更新重载后会自动复核硬件状态并在漂移时补写; 若守护同步失败则保留已更新的硬件与持久化配置并抛 `FanError` 明确提示): `set` 与 `min` 默认采用 `strategy: 'floor'` 保底下限模式 (低温稳守设定下限, 芯片核心温度高于 `65°C` 时守护通过 `AppleSMC` `Tp*`/`Te*`/`Tg*`/`TC0D` 或 `IOHIDEventSystemClient` `PMU tdie*` 采样并经非对称 EMA 与迟滞死区平滑上调 `F{i}Tg`, `>= 92°C` 拉满 `maxRpm`, 降温后回落至设定下限; 显式传 `fixed: true` 则写入 `strategy: 'fixed'` 恒定锁速且零温度轮询); 在开机 (`RunAtLoad`)、真实唤醒 (`FullWake` / 开盖) 与后台唤醒升格为用户活跃 (`IOPMUserIsActive == True`) 时恢复设定, 在无外接显示器合盖 (`AppleClamshellState && AppleClamshellCausesSleep`)、系统睡眠 (`kIOMessageSystemWillSleep`) 与无用户活跃的后台维护唤醒 (`DarkWake`: `IOPMUserTriggeredFullWake == False` 且 `IOPMUserIsActive != True`) 期间自动将手动风扇临时切回 `auto` 停转 (外接显示器合盖办公与亮屏会话空闲息屏均保留手动转速)。
 
 ## 2. AppleSMC 跨代键值契约
 
@@ -28,7 +28,7 @@
 
 ## 3. 公开 API
 
-- `createFanController({ transport?, stateStore?, ensureDaemon?, platform? })`: 返回 `{ status, set, max, min, auto, apply }`, 所有方法返回结构化 `FanStatusReport` (`{ fans, macsFanControlRunning, warnings, persisted?, didPersist?, daemonAction? }`, 其中 `warnings[].code` 含 `FAN_CLAMPED` / `MACS_FAN_CONTROL_RUNNING` / `STATE_CORRUPT`)。
+- `createFanController({ transport?, stateStore?, ensureDaemon?, platform? })`: 返回 `{ status, set, max, min, auto, apply }` (其中 `set` / `min` 支持 `fixed?: boolean`, 默认 `false` 对应 `ManualControlStrategy = 'floor'`), 所有方法返回结构化 `FanStatusReport` (`{ fans, macsFanControlRunning, warnings, persisted?, didPersist?, daemonAction? }`, 其中 `warnings[].code` 含 `FAN_CLAMPED` / `MACS_FAN_CONTROL_RUNNING` / `STATE_CORRUPT` / `EXTERNAL_AUTO_OVERRIDE`)。
 - `createAppleSmcTransport(overrides?)`: 默认使用 macOS `/usr/bin/python3` 与 `/usr/bin/sudo` 通过 `IOKit` 访问 `AppleSMC`。
 - `readPersistedState` / `mergePersistedState` / `createMacOsFanStateStore`: 无符号链接校验、跨风扇合并读写 `/Library/Application Support/iyowei-fan/state.json` (`v1`)。
 - `ensurePersistDaemon` / `getPersistDaemonStatus` / `installPersistDaemon` / `uninstallPersistDaemon` / `buildLaunchDaemonPlist`: 管理并幂等同步 `/Library/LaunchDaemons/com.iyowei.fan.plist` 守护服务 (`PersistDaemonStatus` 在读取 `state.json` 失败时通过 `stateError` 暴露诊断信息)。

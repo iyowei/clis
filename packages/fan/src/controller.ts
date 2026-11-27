@@ -17,6 +17,8 @@ import type {
   FanTransport,
   FanWarning,
   FanWriteRequest,
+  ManualControlStrategy,
+  MinFanOptions,
   PersistDaemonAction,
   PersistedFanEntry,
   SetSpeedOptions,
@@ -229,6 +231,15 @@ function executeMutation(
       const fan = postDaemonFans.find((item) => item.index === req.fanIndex);
       if (fan === undefined) return false;
       if (req.kind === 'auto') return fan.mode !== 'auto';
+      const entry = input.updates[String(req.fanIndex)];
+      const isFloor = entry?.mode === 'manual' && entry.strategy !== 'fixed';
+      if (
+        isFloor &&
+        fan.mode === 'manual' &&
+        fan.targetRpm >= req.targetRpm - 5
+      ) {
+        return false;
+      }
       return (
         fan.mode !== 'manual' || Math.abs(fan.targetRpm - req.targetRpm) >= 5
       );
@@ -305,6 +316,8 @@ export function createFanController(
         }
       }
 
+      const strategy: ManualControlStrategy =
+        opts.fixed === true ? 'fixed' : 'floor';
       const warnings: FanWarning[] = [];
       const requests: FanWriteRequest[] = [];
       const updates: Record<string, PersistedFanEntry> = {};
@@ -321,8 +334,8 @@ export function createFanController(
         requests.push({ kind: 'manual', fanIndex: fan.index, targetRpm });
         updates[String(fan.index)] =
           spec.kind === 'percent'
-            ? { mode: 'manual', kind: 'percent', value: spec.percent }
-            : { mode: 'manual', kind: 'rpm', value: targetRpm };
+            ? { mode: 'manual', kind: 'percent', value: spec.percent, strategy }
+            : { mode: 'manual', kind: 'rpm', value: targetRpm, strategy };
       }
 
       return executeMutation(mutationDeps, {
@@ -352,6 +365,7 @@ export function createFanController(
           mode: 'manual',
           kind: 'percent',
           value: 100,
+          strategy: 'fixed',
         };
       }
 
@@ -365,9 +379,11 @@ export function createFanController(
       });
     },
 
-    min(opts: TargetFanOptions = {}): FanStatusReport {
+    min(opts: MinFanOptions = {}): FanStatusReport {
       const allFans = transport.readFans();
       const targets = selectTargets(allFans, opts.fanIndex);
+      const strategy: ManualControlStrategy =
+        opts.fixed === true ? 'fixed' : 'floor';
       const requests: FanWriteRequest[] = [];
       const updates: Record<string, PersistedFanEntry> = {};
 
@@ -381,6 +397,7 @@ export function createFanController(
           mode: 'manual',
           kind: 'percent',
           value: 0,
+          strategy,
         };
       }
 

@@ -10,5 +10,10 @@
     "outDir": "dist"
   },
   "include": ["src"],
-  "exclude": ["src/**/*.test.ts", "src/daemon-script.ts", "src/smc-script.ts"]
+  "exclude": [
+    "src/**/*.test.ts",
+    "src/daemon-script.ts",
+    "src/daemon-thermal-script.ts",
+    "src/smc-script.ts"
+  ]
 }

@@ -28,6 +28,7 @@ export interface CliOptions {
   speed?: string;
   persistAction?: PersistAction;
   fanIndex?: number;
+  fixed: boolean;
   once: boolean;
   json: boolean;
   watchSeconds?: number;
@@ -83,6 +84,7 @@ function isFlagToken(token: string): boolean {
     token === '--help' ||
     token === '-V' ||
     token === '--version' ||
+    token === '--fixed' ||
     token === '--once' ||
     token === '--no-save' ||
     token === '--json' ||
@@ -132,17 +134,32 @@ function validateCommandConstraints(input: {
   resolvedCommand: FanSubcommand;
   speed: string | undefined;
   watchSeconds: number | undefined;
+  fixed: boolean;
   once: boolean;
   fanIndex: number | undefined;
   locale: Locale;
 }): string | null {
-  const { resolvedCommand, speed, watchSeconds, once, fanIndex, locale } =
-    input;
+  const {
+    resolvedCommand,
+    speed,
+    watchSeconds,
+    fixed,
+    once,
+    fanIndex,
+    locale,
+  } = input;
   if (resolvedCommand === 'set' && speed === undefined) {
     return t(
       locale,
-      'set 子命令缺少目标转速 (例如 fan set 4000 或 fan set 60%)',
-      "Missing target speed for 'set' (e.g. fan set 4000 or fan set 60%)",
+      'set 子命令缺少目标转速 (例如 fan set 3000 或 fan set 60%)',
+      "Missing target speed for 'set' (e.g. fan set 3000 or fan set 60%)",
+    );
+  }
+  if (fixed && resolvedCommand !== 'set' && resolvedCommand !== 'min') {
+    return t(
+      locale,
+      '--fixed 仅支持用于 set 或 min',
+      '--fixed can only be used with set or min',
     );
   }
   if (watchSeconds !== undefined && resolvedCommand !== 'status') {
@@ -192,6 +209,7 @@ function parseEarlyPassthrough(argv: readonly string[]): ParseResult | null {
       ok: true,
       options: {
         command: 'update',
+        fixed: false,
         once: false,
         json: false,
         updateArgs: argv.slice(1),
@@ -205,6 +223,7 @@ function parseEarlyPassthrough(argv: readonly string[]): ParseResult | null {
       ok: true,
       options: {
         command: 'lang',
+        fixed: false,
         once: false,
         json: false,
         langArgs: argv.slice(1),
@@ -228,6 +247,7 @@ export function parseArgs(
   let speed: string | undefined;
   let persistAction: PersistAction | undefined;
   let fanIndex: number | undefined;
+  let fixed = false;
   let once = false;
   let json = false;
   let watchSeconds: number | undefined;
@@ -243,6 +263,8 @@ export function parseArgs(
       help = true;
     } else if (arg === '-V' || arg === '--version') {
       version = true;
+    } else if (arg === '--fixed') {
+      fixed = true;
     } else if (arg === '--once' || arg === '--no-save') {
       once = true;
     } else if (arg === '--json') {
@@ -385,6 +407,7 @@ export function parseArgs(
       resolvedCommand,
       speed,
       watchSeconds,
+      fixed,
       once,
       fanIndex,
       locale,
@@ -399,6 +422,7 @@ export function parseArgs(
       speed,
       persistAction,
       fanIndex,
+      fixed,
       once,
       json,
       watchSeconds,

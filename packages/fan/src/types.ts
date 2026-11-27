@@ -3,6 +3,9 @@
  */
 export type FanMode = 'auto' | 'manual';
 
+/** 手动转速控制策略: `'floor'` 表示保底下限 (高温时允许守护自动提速), `'fixed'` 表示锁死固定转速 */
+export type ManualControlStrategy = 'floor' | 'fixed';
+
 /** 单把风扇的实时状态快照 */
 export interface FanInfo {
   index: number;
@@ -16,7 +19,14 @@ export interface FanInfo {
 
 /** 持久化存储中单把风扇的目标配置 */
 export type PersistedFanEntry =
-  { mode: 'auto' } | { mode: 'manual'; kind: 'rpm' | 'percent'; value: number };
+  | { mode: 'auto' }
+  | {
+      mode: 'manual';
+      kind: 'rpm' | 'percent';
+      value: number;
+      /** 缺省视为 `'floor'` (保底下限 + 高温自动升速) */
+      strategy?: ManualControlStrategy;
+    };
 
 /** 持久化状态文件格式 (`state.json` v1) */
 export interface FanPersistedState {
@@ -27,7 +37,11 @@ export interface FanPersistedState {
 
 /** 告警条目 (结构化判别码 + 人类可读提示) */
 export interface FanWarning {
-  code: 'FAN_CLAMPED' | 'MACS_FAN_CONTROL_RUNNING' | 'STATE_CORRUPT';
+  code:
+    | 'FAN_CLAMPED'
+    | 'MACS_FAN_CONTROL_RUNNING'
+    | 'STATE_CORRUPT'
+    | 'EXTERNAL_AUTO_OVERRIDE';
   message: string;
   fanIndex?: number;
 }
@@ -43,8 +57,14 @@ export interface TargetFanOptions {
   persist?: boolean;
 }
 
+/** 支持切换保底下限或锁定恒定转速的参数 */
+export interface MinFanOptions extends TargetFanOptions {
+  /** 是否锁定为固定转速而不随高温自动提速 (默认 false, 即保底下限模式) */
+  fixed?: boolean;
+}
+
 /** 手动设置指定转速的参数 */
-export interface SetSpeedOptions extends TargetFanOptions {
+export interface SetSpeedOptions extends MinFanOptions {
   speed: string | SpeedSpec;
 }
 
@@ -104,7 +124,7 @@ export interface PersistDaemonStatus {
 export interface FanControllerOptions {
   transport?: FanTransport;
   stateStore?: FanStateStore;
-  /** 手动设定转速 (set/max/min) 时自动确保后台守护就绪并同步至最新脚本 (传 false 禁用) */
+  /** 持久化手动设定转速 (set/max/min 且 persist !== false) 时自动确保后台守护就绪并同步至最新脚本 (传 false 禁用) */
   ensureDaemon?: (() => PersistDaemonSyncResult) | false;
   /** 宿主平台覆盖 (供跨平台测试注入, 默认取 `process.platform`) */
   platform?: NodeJS.Platform;
@@ -115,7 +135,7 @@ export interface FanController {
   status(options?: TargetFanOptions): FanStatusReport;
   set(options: SetSpeedOptions): FanStatusReport;
   max(options?: TargetFanOptions): FanStatusReport;
-  min(options?: TargetFanOptions): FanStatusReport;
+  min(options?: MinFanOptions): FanStatusReport;
   auto(options?: TargetFanOptions): FanStatusReport;
   apply(): FanStatusReport;
 }

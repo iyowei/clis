@@ -5,9 +5,14 @@
  * 2. 无外接显示器合盖 (`AppleClamshellState && AppleClamshellCausesSleep`)、进入系统睡眠 (`kIOMessageSystemWillSleep`)
  *    以及无用户活跃的后台维护唤醒 (`DarkWake`: `IOPMUserTriggeredFullWake == False` 且 `IOPMUserIsActive != True`) 期间,
  *    自动将手动风扇临时交还系统 `auto` (停转), 不改写 `state.json`; 外接显示器合盖办公与亮屏会话空闲息屏均保留手动转速;
- * 3. 醒着正常开盖期间采用边沿状态机, 零定时轮询且不覆盖 `--once` 临时设定;
+ * 3. 支持默认「保底下限 + 高温自动提速 (`floor`)」与 `--fixed` 恒定转速: 存在保底下限预设时按核心温度平滑上调转速并降温回落至下限,
+ *    纯 `auto` / `--fixed` / `100%` 期间零 SMC 轮询, 且自动识别并尊重 `--once` 临时设定;
  * 4. 复用 `SMC_PY_STRUCTS_AND_CORE`, 统一兼容 Apple M5 (`F*md`)、M1–M4/T2 (`F*Md` + `Ftst`) 与经典 Intel (`FS! `)。
  */
+import {
+  DAEMON_THERMAL_CORE_PY,
+  DAEMON_THERMAL_CTYPES_PY,
+} from './daemon-thermal-script.ts';
 import { SMC_PY_STRUCTS_AND_CORE } from './smc-script.ts';
 
 function daemonPreamble(escapedStatePath: string): string {
@@ -113,6 +118,7 @@ cf.CFBooleanGetTypeID.argtypes = []
 cf.CFBooleanGetTypeID.restype = ctypes.c_ulong
 cf.CFRelease.argtypes = [ctypes.c_void_p]
 libc.mach_task_self.restype = ctypes.c_uint32
+${DAEMON_THERMAL_CTYPES_PY}
 K_CF_RUN_LOOP_DEFAULT_MODE = ctypes.c_void_p.in_dll(cf, "kCFRunLoopDefaultMode")
 `;
 }
@@ -228,19 +234,20 @@ def release_manual_fans_to_auto(reason):
                 iokit.IOServiceClose(conn)
 
 
-def apply_saved_state(reason, should_abort=None):
+def apply_saved_state(reason, should_abort=None, thermal_state=None):
+    cur_mtime = stat_state_mtime_ns()
     try:
         fans_cfg = load_state()
     except Exception as exc:
         log(f"{reason}: failed to read {STATE_PATH}: {exc}")
         return
+    if thermal_state is not None:
+        thermal_state["mtime_ns"] = cur_mtime
+        thermal_state["cfg"] = fans_cfg
+        reset_thermal_runtime(thermal_state)
     if not fans_cfg:
         return
-    has_manual = any(
-        isinstance(v, dict) and v.get("mode") == "manual" for v in fans_cfg.values()
-    )
-    if not has_manual:
-        return
+    has_floor = any(is_floor_entry(v) for v in fans_cfg.values())
 
     for attempt in range(10):
         if should_abort is not None and should_abort():
@@ -251,6 +258,10 @@ def apply_saved_state(reason, should_abort=None):
         try:
             conn = smc_open()
             count = read_fan_count(conn)
+            ema_temp = None
+            if has_floor and thermal_state is not None:
+                raw_temp = read_hotspot_temp(conn, thermal_state)
+                ema_temp = update_ema_temp(thermal_state, raw_temp)
             applied = []
             any_auto_applied = False
             for idx in range(count):
@@ -267,13 +278,14 @@ def apply_saved_state(reason, should_abort=None):
                     continue
                 mn = float(read_key(conn, f"F{idx}Mn"))
                 mx = float(read_key(conn, f"F{idx}Mx"))
-                kind = entry.get("kind")
-                val = float(entry.get("value", 0))
-                if kind == "percent":
-                    pct = max(0.0, min(100.0, val))
-                    target = int(mn + (pct / 100.0) * (mx - mn) + 0.5)
-                else:
-                    target = max(mn, min(mx, val))
+                base_rpm = resolve_entry_base_rpm(entry, mn, mx)
+                target = (
+                    compute_floor_boost_rpm(base_rpm, mn, mx, ema_temp)
+                    if is_floor_entry(entry)
+                    else base_rpm
+                )
+                if thermal_state is not None:
+                    thermal_state["last_targets"][idx] = target
                 cur_mode = read_fan_mode(conn, idx)
                 cur_tg = read_key_opt(conn, f"F{idx}Tg")
                 if (
@@ -304,6 +316,7 @@ def create_power_reconciler(
     apply_fn=apply_saved_state,
     release_fn=release_manual_fans_to_auto,
 ):
+    thermal_state = create_thermal_state()
     runtime = {
         "system_sleeping": False,
         "dark_wake": is_initial_dark_wake(pm_svc),
@@ -322,9 +335,10 @@ def create_power_reconciler(
         )
         runtime["suspended"] = init_suspend
         if init_suspend:
+            reset_thermal_runtime(thermal_state)
             release_fn(f"boot-{init_reason}")
         else:
-            apply_fn("boot", should_abort_restore)
+            apply_fn("boot", should_abort_restore, thermal_state)
 
     def reconcile(trigger, force_check_on_wake=False):
         if runtime["dark_wake"] and is_promoted_to_full_wake(pm_svc):
@@ -334,11 +348,13 @@ def create_power_reconciler(
         )
         if want_suspend and not runtime["suspended"]:
             runtime["suspended"] = True
+            reset_thermal_runtime(thermal_state)
             release_fn(f"{trigger}:{reason}")
         elif not want_suspend and runtime["suspended"]:
             runtime["suspended"] = False
-            apply_fn(trigger, should_abort_restore)
+            apply_fn(trigger, should_abort_restore, thermal_state)
         elif want_suspend and force_check_on_wake:
+            reset_thermal_runtime(thermal_state)
             release_fn(f"{trigger}:{reason}")
 
     def handle_will_sleep():
@@ -357,13 +373,19 @@ def create_power_reconciler(
         if not runtime["system_sleeping"]:
             reconcile("pm-state")
 
+    def handle_thermal_tick():
+        if not runtime["system_sleeping"] and not runtime["suspended"]:
+            run_thermal_floor_tick(thermal_state, load_state)
+
     return {
         "runtime": runtime,
+        "thermal": thermal_state,
         "boot": boot,
         "reconcile": reconcile,
         "handle_will_sleep": handle_will_sleep,
         "handle_powered_on": handle_powered_on,
         "handle_interest": handle_interest,
+        "handle_thermal_tick": handle_thermal_tick,
     }
 `;
 
@@ -401,6 +423,13 @@ def main():
         except Exception as exc:
             log(f"on_interest error: {exc}")
 
+    @TIMER_CB
+    def on_thermal_timer(_timer, _info):
+        try:
+            ctrl["handle_thermal_tick"]()
+        except Exception as exc:
+            log(f"on_thermal_timer error: {exc}")
+
     notify_port = ctypes.c_void_p()
     notifier = ctypes.c_uint32()
     root_port = iokit.IORegisterForSystemPower(
@@ -417,6 +446,18 @@ def main():
         iokit.IONotificationPortGetRunLoopSource(notify_port),
         K_CF_RUN_LOOP_DEFAULT_MODE,
     )
+
+    thermal_timer = cf.CFRunLoopTimerCreate(
+        None,
+        cf.CFAbsoluteTimeGetCurrent() + THERMAL_POLL_SEC,
+        THERMAL_POLL_SEC,
+        0,
+        0,
+        on_thermal_timer,
+        None,
+    )
+    if thermal_timer:
+        cf.CFRunLoopAddTimer(run_loop, thermal_timer, K_CF_RUN_LOOP_DEFAULT_MODE)
 
     interest_port = None
     interest_notifier = ctypes.c_uint32()
@@ -447,8 +488,12 @@ if __name__ == "__main__":
     main()
 `;
 
-/** 纯 Python 电源状态机与 SMC 恢复逻辑片段 (供跨平台单测直接加载验证) */
-export const DAEMON_CORE_PY = [DAEMON_SMC_HELPERS, DAEMON_LOOP].join('\n');
+/** 纯 Python 电源状态机、温度保底闭环与 SMC 恢复逻辑片段 (供跨平台单测直接加载验证) */
+export const DAEMON_CORE_PY = [
+  DAEMON_SMC_HELPERS,
+  DAEMON_THERMAL_CORE_PY,
+  DAEMON_LOOP,
+].join('\n');
 
 export function buildDaemonPythonScript(statePath: string): string {
   return [

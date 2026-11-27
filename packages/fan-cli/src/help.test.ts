@@ -38,6 +38,7 @@ describe('helpText', () => {
       'uninstall',
       'update',
       '--fan',
+      '--fixed',
       '--once',
       '--no-save',
       '--json',
@@ -46,6 +47,7 @@ describe('helpText', () => {
       '-V, --version',
       '-h, --help',
       '--check',
+      'fan set 3000',
       'fan set 60%',
       'https://github.com/iyowei/clis/tree/main/packages/fan-cli',
     ]) {
