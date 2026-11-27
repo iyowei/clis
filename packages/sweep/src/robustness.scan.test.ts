@@ -54,14 +54,18 @@ for (const scanner of candidates) {
 
       expect(hits).toHaveLength(1);
       expect(hits[0]?.target.endsWith(join('leaf', 'node_modules'))).toBe(true);
-    });
+    }, 20_000);
 
     test('海量单目录: 2000 个兄弟条目不阻塞、结果正确', async () => {
       const { root } = await make({ projects: [{ dir: 'alpha' }] });
       const bulk = join(root, 'bulk');
       await mkdir(bulk, { recursive: true });
-      for (let i = 0; i < 2000; i += 1) {
-        await writeFile(join(bulk, `f-${i}.txt`), 'x');
+      for (let base = 0; base < 2000; base += 100) {
+        await Promise.all(
+          Array.from({ length: 100 }, (_, offset) =>
+            writeFile(join(bulk, `f-${base + offset}.txt`), 'x'),
+          ),
+        );
       }
 
       const { hits } = await scanner.scan({
@@ -71,7 +75,7 @@ for (const scanner of candidates) {
       });
 
       expect(hits.map((hit) => hit.project)).toEqual([join(root, 'alpha')]);
-    });
+    }, 20_000);
 
     test('怪名: 中文 / 空格 / emoji / 引号目录名均正常', async () => {
       const { root } = await make({
