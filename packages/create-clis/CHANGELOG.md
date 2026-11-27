@@ -1,3 +1,16 @@
+# create-clis [1.7.0](https://github.com/iyowei/clis/compare/create-clis@1.6.0...create-clis@1.7.0) (2026-11-27)
+
+
+### Bug Fixes
+
+* 统一全仓 CLI 帮助页右栏单轴线左对齐并补齐对齐测试 ([7f90ddf](https://github.com/iyowei/clis/commit/7f90ddfe8ec883bc9ed11a289b743082b41a0a48))
+* 解耦启动器 'isEntry' 宿主平台依赖并补齐双端单测 ([44c8f29](https://github.com/iyowei/clis/commit/44c8f29277c0f93efa83dfb65147aae8eaee2380))
+
+
+### Features
+
+* 新增 wake 跨网段 Wake-on-LAN 远程唤醒 CLI 与 API 包 ([a1d6611](https://github.com/iyowei/clis/commit/a1d66115afa50701db3a1329e19e3a924b67eee2))
+
 # create-clis [1.6.0](https://github.com/iyowei/clis/compare/create-clis@1.5.1...create-clis@1.6.0) (2026-11-26)
 
 
