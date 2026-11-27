@@ -9,6 +9,8 @@ export {
 } from './detect.ts';
 export { formatLangHelp, runLangCommand } from './lang-command.ts';
 export {
+  alignHelpRow,
+  computeHelpDescColumn,
   defaultToolLangEnvVar,
   displayWidth,
   padEndDisplay,

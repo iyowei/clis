@@ -95,14 +95,59 @@ describe('helpText 分层布局与主视图同源配色契约', () => {
   });
 
   test('固定文案每行宽度均在 80 列内 (防经典 80 列终端截断)', () => {
-    const lines = helpText(false).split('\n');
-    for (const line of lines) {
-      // 跳过动态绝对路径行 (取决于宿主 HOME 长度)
-      if (line.includes('默认配置')) continue;
-      expect(
-        displayWidth(line),
-        `行过宽 (${displayWidth(line)} 列): ${line}`,
-      ).toBeLessThanOrEqual(80);
+    for (const locale of ['zh', 'en'] as const) {
+      const lines = helpText(false, locale).split('\n');
+      for (const line of lines) {
+        // 跳过动态绝对路径行 (取决于宿主 HOME 长度)
+        if (line.includes('默认配置') || line.includes('Default Config')) {
+          continue;
+        }
+        expect(
+          displayWidth(line),
+          `[${locale}] 行过宽 (${displayWidth(line)} 列): ${line}`,
+        ).toBeLessThanOrEqual(80);
+      }
+    }
+  });
+
+  test('中英文帮助所有两栏分区 (含配置与安全续行与退出码) 右侧左对齐到同一垂直列线', () => {
+    const cases: ReadonlyArray<{ locale: 'zh' | 'en'; sections: string[] }> = [
+      {
+        locale: 'zh',
+        sections: ['子命令', '选项', '示例', '配置与安全', '退出码'],
+      },
+      {
+        locale: 'en',
+        sections: [
+          'Commands',
+          'Options',
+          'Examples',
+          'Config & Safety',
+          'Exit Codes',
+        ],
+      },
+    ];
+    for (const { locale, sections } of cases) {
+      const alignedSections = new Set(sections);
+      let section = '';
+      const cols = new Set<number>();
+      for (const line of helpText(false, locale).split('\n')) {
+        const trimmed = line.trim();
+        if (/^  \S/.test(line)) {
+          section = trimmed;
+          continue;
+        }
+        if (!alignedSections.has(section) || trimmed === '') continue;
+        const contMatch = /^( {5,})(\S.*)$/.exec(line);
+        if (contMatch) {
+          cols.add(contMatch[1]!.length - 4);
+          continue;
+        }
+        const rowMatch = /^(    .+?)( {2,})(\S.*)$/.exec(line);
+        expect(rowMatch, `[${locale}] 未匹配两栏行: ${line}`).not.toBeNull();
+        cols.add(displayWidth(rowMatch![1]!.slice(4)) + rowMatch![2]!.length);
+      }
+      expect(cols.size, `[${locale}] 右栏起始列不一致: ${[...cols]}`).toBe(1);
     }
   });
 });

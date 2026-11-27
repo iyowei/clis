@@ -35,9 +35,27 @@ describe('create-clis 英文排版与独立语言偏好', () => {
       'https://github.com/iyowei/clis/tree/main/packages/create-clis',
     );
 
+    const alignedSections = new Set([
+      'Commands',
+      'Template Variables',
+      'Scaffold Options',
+      'Notes',
+    ]);
+    let section = '';
+    const cols = new Set<number>();
     for (const line of plain.split('\n')) {
       expect(displayWidth(line), `过宽行: ${line}`).toBeLessThanOrEqual(80);
+      const trimmed = line.trim();
+      if (/^  \S/.test(line)) {
+        section = trimmed;
+        continue;
+      }
+      if (!alignedSections.has(section) || trimmed === '') continue;
+      const m = /^(    .+?)( {2,})(\S.*)$/.exec(line);
+      expect(m, `未匹配英文两栏: ${line}`).not.toBeNull();
+      cols.add(displayWidth(m![1]!.slice(4)) + m![2]!.length);
     }
+    expect(cols.size).toBe(1);
   });
 
   test('中文系统下 create-clis lang en 持久化切换为英文且支持 --lang 单次覆盖', () => {

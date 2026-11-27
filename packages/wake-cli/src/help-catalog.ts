@@ -147,32 +147,29 @@ export const CATALOG_ZH: HelpCatalog = {
       tail: [
         ['flag', '--mac'],
         ['arg', '00:11:22:33:44:55'],
-        ['flag', '--host'],
-        ['arg', '192.0.2.10'],
       ],
-      desc: '不写配置直接指定 MAC 临时开机',
+      desc: '不写配置直接按 MAC 临时开机',
     },
     {
       cmd: 'wake',
       tail: [
         ['arg', 'nas'],
         ['flag', '--relay'],
-        ['arg', 'bastion-a'],
-        ['flag', '--no-wait'],
+        ['arg', 'home'],
       ],
-      desc: '借跳板机 bastion-a 代发开机包后立即返回',
+      desc: '通过跳板机 home 代发开机包',
     },
-    { cmd: 'wake init', desc: '打开向导录入新电脑 (会扫描本地 ARP 表)' },
-    { cmd: 'wake doctor', desc: '只读检查配置、本机网卡与各跳板机是否正常' },
+    { cmd: 'wake init', desc: '打开向导录入新电脑 (自动扫局域网)' },
+    { cmd: 'wake doctor', desc: '只读检查本机网卡与各跳板机是否正常' },
   ],
   notes: [
     {
       label: '配置文件',
-      desc: 'Mac/Linux 在 ~/.config/wake/config.json · Windows 在 %APPDATA%\\wake\\config.json',
+      desc: '~/.config/wake/config.json (Windows: %APPDATA%\\wake\\config.json)',
     },
     {
       label: '跳板机前提',
-      desc: '须先配好免密 SSH 登录 (~/.ssh/config), 且跳板机 PATH 里能直接运行 wake',
+      desc: '须先配好免密 SSH (~/.ssh/config), 且跳板机上已装 wake',
     },
     {
       label: '显示语言',
@@ -326,8 +323,6 @@ export const CATALOG_EN: HelpCatalog = {
       tail: [
         ['flag', '--mac'],
         ['arg', '00:11:22:33:44:55'],
-        ['flag', '--host'],
-        ['arg', '192.0.2.10'],
       ],
       desc: 'Ad-hoc wake by MAC without a config file',
     },
@@ -336,10 +331,9 @@ export const CATALOG_EN: HelpCatalog = {
       tail: [
         ['arg', 'nas'],
         ['flag', '--relay'],
-        ['arg', 'bastion-a'],
-        ['flag', '--no-wait'],
+        ['arg', 'home'],
       ],
-      desc: 'Bounce via jump host bastion-a and exit right away',
+      desc: 'Bounce magic packet via SSH jump host home',
     },
     {
       cmd: 'wake init',
@@ -353,11 +347,11 @@ export const CATALOG_EN: HelpCatalog = {
   notes: [
     {
       label: 'Config File',
-      desc: '~/.config/wake/config.json (POSIX) · %APPDATA%\\wake\\config.json (Windows)',
+      desc: '~/.config/wake/config.json (Windows: %APPDATA%\\wake\\config.json)',
     },
     {
       label: 'Jump Hosts',
-      desc: 'Requires passwordless SSH (~/.ssh/config) and wake available in remote PATH',
+      desc: 'Requires passwordless SSH (~/.ssh/config) and wake in remote PATH',
     },
     {
       label: 'Language',

@@ -1,7 +1,15 @@
 /**
  * create-clis 帮助页文案与 Apple HIG 级终端排版渲染 (零外部依赖, 中英双语均严守 80 列行宽)。
+ *
+ * 排版红线 (全仓所有 CLI 强制遵循):
+ * 所有两栏分区 (子命令 / 模板变量 / 生成选项 / 说明) 共用 `computeHelpDescColumn` 计算出的唯一右栏列线 `descCol`,
+ * 禁止各分区单独设置列宽导致右侧说明呈锯齿状错落。
  */
-import type { Locale } from '@iyowei/cli-i18n';
+import {
+  type Locale,
+  alignHelpRow,
+  computeHelpDescColumn,
+} from '@iyowei/cli-i18n';
 
 type ColorToken = readonly [rgb: string, c256: string];
 
@@ -196,113 +204,108 @@ const META_OPTIONS_EN: readonly OptionRow[] = [
   { flag: '-h, --help', desc: 'Show this help message' },
 ];
 
-const LEFT_COL = 20;
 const RULE_WIDTH = 76;
 const GITHUB_URL =
   'https://github.com/iyowei/clis/tree/main/packages/create-clis';
 
-function displayWidth(text: string): number {
-  let width = 0;
-  for (const ch of text) {
-    const code = ch.codePointAt(0) ?? 0;
-    const wide =
-      (code >= 0x2e80 && code <= 0xa4cf) ||
-      (code >= 0xf900 && code <= 0xfaff) ||
-      (code >= 0xff00 && code <= 0xff60);
-    width += wide ? 2 : 1;
-  }
-  return width;
-}
-
 function formatOptionRow(
   row: OptionRow,
   s: ReturnType<typeof createStyler>,
+  descCol: number,
 ): string {
   const plain = row.arg === undefined ? row.flag : `${row.flag} ${row.arg}`;
-  const pad = ' '.repeat(Math.max(2, LEFT_COL - displayWidth(plain)));
   const styledLeft =
     row.arg === undefined
       ? s.token(row.flag)
       : `${s.token(row.flag)} ${s.dim(row.arg)}`;
-  return `    ${styledLeft}${pad}${s.muted(row.desc)}`;
+  return alignHelpRow(styledLeft, plain, s.muted(row.desc), descCol);
 }
 
-/** 渲染 create-clis Apple HIG 分层帮助页 (支持中英双语) */
+/** 渲染 create-clis Apple HIG 分层帮助页 (支持中英双语, 全页右栏单轴左对齐) */
 export function formatHelpText(color: boolean, locale: Locale = 'zh'): string {
   const s = createStyler(color);
+  const isEn = locale === 'en';
+  const varOpts = isEn ? VARIABLE_OPTIONS_EN : VARIABLE_OPTIONS_ZH;
+  const ctrlOpts = isEn ? CONTROL_OPTIONS_EN : CONTROL_OPTIONS_ZH;
+  const metaOpts = isEn ? META_OPTIONS_EN : META_OPTIONS_ZH;
+  const commands: ReadonlyArray<readonly [string, string]> = isEn
+    ? [
+        ['lang', 'Show or save display language (system | en | zh)'],
+        ['update', 'Upgrade CLI via detected installer (--check only)'],
+      ]
+    : [
+        ['lang', '查看或设置显示语言 (system | en | zh, 默认 system)'],
+        ['update', '自动识别安装器升级到最新版 (--check 仅检查)'],
+      ];
+  const notes: ReadonlyArray<readonly [string, string]> = isEn
+    ? [
+        ['Target Dir', 'Defaults to ./<name>; rejects non-empty directories'],
+        [
+          'Zero-Prompt',
+          '--yes needs --owner when git user.name is unset/invalid',
+        ],
+        [
+          'npm create',
+          'Pass flags after -- (e.g. npm create clis -- --tier core)',
+        ],
+        [
+          'End of Opts',
+          'Tokens after -- are treated literally as target directory',
+        ],
+      ]
+    : [
+        ['目标目录', '缺省为 ./<目录名> 子目录; 非空目录直接拒绝 (绝不覆盖)'],
+        ['零交互态', '无合规 git user.name 时, --yes 必须同时传入 --owner'],
+        ['调用约定', 'npm create 传参放 -- 后: npm create clis -- --tier core'],
+        [
+          '选项终止',
+          '-- 后参数均作目标目录 (可逃逸 - 开头或名为 update 的目录)',
+        ],
+      ];
 
-  if (locale === 'en') {
-    const varRows = VARIABLE_OPTIONS_EN.map((row) => formatOptionRow(row, s));
-    const ctrlRows = CONTROL_OPTIONS_EN.map((row) => formatOptionRow(row, s));
-    const metaRows = META_OPTIONS_EN.map((row) => formatOptionRow(row, s));
-
-    return [
-      '',
-      `  ${s.badge('CREATE-CLIS')}  ${s.title('CLI Monorepo Scaffolder')}`,
-      `  ${s.muted('Scaffold a standalone dual-package CLI monorepo with green CI out of the box.')}`,
-      `  ${s.rule('─'.repeat(RULE_WIDTH))}`,
-      '',
-      `  ${s.section('Usage')}`,
-      `    ${s.title('create-clis')} ${s.dim('[dir] [options]')}`,
-      `    ${s.title('create-clis')} ${s.dim('<command> [options]')}`,
-      '',
-      `  ${s.section('Commands')}`,
-      `    ${s.title('lang')}${' '.repeat(LEFT_COL - 'lang'.length)}${s.muted('Show or save display language (system | en | zh)')}`,
-      `    ${s.title('update')}${' '.repeat(LEFT_COL - 'update'.length)}${s.muted('Upgrade CLI via detected installer (--check only)')}`,
-      '',
-      `  ${s.section('Template Variables')}`,
-      ...varRows,
-      '',
-      `  ${s.section('Scaffold Options')}`,
-      ...ctrlRows,
-      '',
-      ...metaRows,
-      '',
-      `  ${s.section('Notes')}`,
-      `    ${s.primary('Target Dir')}    ${s.muted('Defaults to ./<name>; rejects non-empty directories')}`,
-      `    ${s.primary('Zero-Prompt')}   ${s.muted('--yes requires --owner when git user.name is unset/invalid')}`,
-      `    ${s.primary('npm create')}    ${s.muted('Pass flags after -- (e.g. npm create clis -- --tier core)')}`,
-      `    ${s.primary('End of Opts')}   ${s.muted('Tokens after -- are treated literally as target directory')}`,
-      '',
-      `  ${s.section('Docs & Source')}`,
-      `    ${s.token(GITHUB_URL)}`,
-      '',
-    ].join('\n');
-  }
-
-  const varRows = VARIABLE_OPTIONS_ZH.map((row) => formatOptionRow(row, s));
-  const ctrlRows = CONTROL_OPTIONS_ZH.map((row) => formatOptionRow(row, s));
-  const metaRows = META_OPTIONS_ZH.map((row) => formatOptionRow(row, s));
+  const descCol = computeHelpDescColumn([
+    ...commands.map(([name]) => name),
+    ...varOpts.map((r) =>
+      r.arg === undefined ? r.flag : `${r.flag} ${r.arg}`,
+    ),
+    ...ctrlOpts.map((r) =>
+      r.arg === undefined ? r.flag : `${r.flag} ${r.arg}`,
+    ),
+    ...metaOpts.map((r) =>
+      r.arg === undefined ? r.flag : `${r.flag} ${r.arg}`,
+    ),
+    ...notes.map(([label]) => label),
+  ]);
 
   return [
     '',
-    `  ${s.badge('CREATE-CLIS')}  ${s.title('clis 集合仓脚手架')}`,
-    `  ${s.muted('从 clis 集合仓骨架快照生成独立的新双包集合仓, 带能力档位与全绿 CI。')}`,
+    `  ${s.badge('CREATE-CLIS')}  ${s.title(isEn ? 'CLI Monorepo Scaffolder' : 'clis 集合仓脚手架')}`,
+    `  ${s.muted(isEn ? 'Scaffold a standalone dual-package CLI monorepo with green CI out of the box.' : '从 clis 集合仓骨架快照生成独立的新双包集合仓, 带能力档位与全绿 CI。')}`,
     `  ${s.rule('─'.repeat(RULE_WIDTH))}`,
     '',
-    `  ${s.section('用法')}`,
-    `    ${s.title('create-clis')} ${s.dim('[目录] [选项]')}`,
-    `    ${s.title('create-clis')} ${s.dim('<子命令> [选项]')}`,
+    `  ${s.section(isEn ? 'Usage' : '用法')}`,
+    `    ${s.title('create-clis')} ${s.dim(isEn ? '[dir] [options]' : '[目录] [选项]')}`,
+    `    ${s.title('create-clis')} ${s.dim(isEn ? '<command> [options]' : '<子命令> [选项]')}`,
     '',
-    `  ${s.section('子命令')}`,
-    `    ${s.title('lang')}${' '.repeat(LEFT_COL - 'lang'.length)}${s.muted('查看或设置显示语言 (system | en | zh, 默认 system)')}`,
-    `    ${s.title('update')}${' '.repeat(LEFT_COL - 'update'.length)}${s.muted('自动识别安装器升级到最新版 (--check 仅检查)')}`,
+    `  ${s.section(isEn ? 'Commands' : '子命令')}`,
+    ...commands.map(([name, desc]) =>
+      alignHelpRow(s.title(name), name, s.muted(desc), descCol),
+    ),
     '',
-    `  ${s.section('模板变量')}`,
-    ...varRows,
+    `  ${s.section(isEn ? 'Template Variables' : '模板变量')}`,
+    ...varOpts.map((row) => formatOptionRow(row, s, descCol)),
     '',
-    `  ${s.section('生成选项')}`,
-    ...ctrlRows,
+    `  ${s.section(isEn ? 'Scaffold Options' : '生成选项')}`,
+    ...ctrlOpts.map((row) => formatOptionRow(row, s, descCol)),
     '',
-    ...metaRows,
+    ...metaOpts.map((row) => formatOptionRow(row, s, descCol)),
     '',
-    `  ${s.section('说明')}`,
-    `    ${s.primary('目标目录')}  ${s.muted('缺省为当前目录下以项目名命名的子目录; 非空目录直接拒绝 (不覆盖)')}`,
-    `    ${s.primary('零交互态')}  ${s.muted('git user.name 未配置或含空格/非 ASCII 时, --yes 须传 --owner')}`,
-    `    ${s.primary('调用约定')}  ${s.muted('npm create 传参置于 -- 后 (例: npm create clis -- --tier core)')}`,
-    `    ${s.primary('选项终止')}  ${s.muted('-- 后参数均作目标目录 (可逃逸 - 开头或名为 update 的目录)')}`,
+    `  ${s.section(isEn ? 'Notes' : '说明')}`,
+    ...notes.map(([label, desc]) =>
+      alignHelpRow(s.primary(label), label, s.muted(desc), descCol),
+    ),
     '',
-    `  ${s.section('文档与源码')}`,
+    `  ${s.section(isEn ? 'Docs & Source' : '文档与源码')}`,
     `    ${s.token(GITHUB_URL)}`,
     '',
   ].join('\n');

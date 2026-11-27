@@ -6,6 +6,8 @@
 import {
   type LangPreference,
   type Locale,
+  alignHelpRow,
+  computeHelpDescColumn,
   parseLangPreference,
   t,
 } from '@iyowei/cli-i18n';
@@ -245,7 +247,10 @@ export function parseUpdateArgs(
   return { ok: true, options };
 }
 
-/** 渲染统一的 `update` 子命令帮助文本 (与主视图同源标准 SGR 单色系, color=false 时零 ANSI 逐字等价) */
+/**
+ * 渲染统一的 `update` 子命令帮助文本 (与主视图同源标准 SGR 单色系, color=false 时零 ANSI 逐字等价)。
+ * 遵循全仓「单轴线右栏左对齐」规范: 选项与说明两栏共用同一 `descCol` 列线, 禁止分段各自缩进。
+ */
 export function formatUpdateHelp(
   binName: string,
   packageName: string,
@@ -266,6 +271,65 @@ export function formatUpdateHelp(
   const pmList = SUPPORTED_PACKAGE_MANAGERS.join(' | ');
 
   if (locale === 'en') {
+    const options: ReadonlyArray<
+      readonly [string, string | undefined, string]
+    > = [
+      [
+        '--check',
+        undefined,
+        'Check latest version and install origin without upgrading',
+      ],
+      ['--pm', '<manager>', `Override package manager (${pmList})`],
+      ['--registry', '<url>', 'Use a custom npm registry URL for this run'],
+      [
+        '--force',
+        undefined,
+        'Reinstall latest version even if already up to date',
+      ],
+      [
+        '--verbose',
+        undefined,
+        'Stream raw package manager output (default: quiet spinner)',
+      ],
+      ['--lang', '<lang>', 'Display language for this run (system | en | zh)'],
+    ];
+    const metaOptions: ReadonlyArray<
+      readonly [string, string | undefined, string]
+    > = [['-h, --help', undefined, 'Show this help message']];
+    const notes: ReadonlyArray<readonly [string, string]> = [
+      [
+        'Detection',
+        'Resolved from real package path on disk, runtime-independent',
+      ],
+      [
+        'Safety',
+        'Never overwrites npx/bunx/dlx runs, source trees, or local deps',
+      ],
+      [
+        'Isolation',
+        'Runs in a clean temp directory with lifecycle env vars stripped',
+      ],
+      [
+        'Registry',
+        'Reads ~/.bunfig.toml (bun) or ~/.npmrc; defaults to npmjs.org',
+      ],
+    ];
+    // 全页两栏区 (选项 + 说明) 统一计算同一个 `descCol`
+    const descCol = computeHelpDescColumn([
+      ...options.map(([f, a]) => (a === undefined ? f : `${f} ${a}`)),
+      ...metaOptions.map(([f, a]) => (a === undefined ? f : `${f} ${a}`)),
+      ...notes.map(([k]) => k),
+    ]);
+    const optLine = ([f, a, d]: readonly [
+      string,
+      string | undefined,
+      string,
+    ]): string => {
+      const plain = a === undefined ? f : `${f} ${a}`;
+      const styled = a === undefined ? token(f) : `${token(f)} ${dim(a)}`;
+      return alignHelpRow(styled, plain, dim(d), descCol);
+    };
+
     return [
       '',
       `  ${badge}  ${bold('Self-Update')} ${dim(`(${safePkg})`)}`,
@@ -276,23 +340,61 @@ export function formatUpdateHelp(
       `    ${bold(`${safeBin} update`)} ${dim('[options]')}`,
       '',
       `  ${section('Options')}`,
-      `    ${token('--check')}               ${dim('Check latest version and install origin without upgrading')}`,
-      `    ${token('--pm')} ${dim('<manager>')}        ${dim(`Override package manager (${pmList})`)}`,
-      `    ${token('--registry')} ${dim('<url>')}      ${dim('Use a custom npm registry URL for this run')}`,
-      `    ${token('--force')}               ${dim('Reinstall latest version even if already up to date')}`,
-      `    ${token('--verbose')}             ${dim('Stream raw package manager output (default: quiet spinner)')}`,
-      `    ${token('--lang')} ${dim('<lang>')}         ${dim('Display language for this run (system | en | zh)')}`,
+      ...options.map(optLine),
       '',
-      `    ${token('-h, --help')}            ${dim('Show this help message')}`,
+      ...metaOptions.map(optLine),
       '',
       `  ${section('Notes')}`,
-      `    ${bold('Detection')}    ${dim('Resolved from real package path on disk, runtime-independent')}`,
-      `    ${bold('Safety')}       ${dim('Never overwrites npx/bunx/dlx runs, source trees, or local deps')}`,
-      `    ${bold('Isolation')}    ${dim('Runs in a clean temp directory with lifecycle env vars stripped')}`,
-      `    ${bold('Registry')}     ${dim('Reads ~/.bunfig.toml (bun) or ~/.npmrc; defaults to npmjs.org')}`,
+      ...notes.map(([k, d]) => alignHelpRow(bold(k), k, dim(d), descCol)),
       '',
     ].join('\n');
   }
+
+  const optionsZh: ReadonlyArray<
+    readonly [string, string | undefined, string]
+  > = [
+    ['--check', undefined, '仅检查最新版本与当前安装方式, 不执行更新'],
+    ['--pm', '<管理器>', `手动指定更新所用的包管理器 (${pmList})`],
+    ['--registry', '<url>', '临时指定本次查询与更新所用的 npm registry'],
+    ['--force', undefined, '即使已是最新版本仍强制重新安装'],
+    ['--verbose', undefined, '实时显示包管理器原始输出 (默认静默接管进度)'],
+    ['--lang', '<语言>', '临时指定本次显示语言 (system | en | zh)'],
+  ];
+  const metaZh: ReadonlyArray<readonly [string, string | undefined, string]> = [
+    ['-h, --help', undefined, '显示本帮助'],
+  ];
+  const notesZh: ReadonlyArray<readonly [string, string]> = [
+    [
+      '识别依据',
+      '按当前包在磁盘上的真实落位路径判定, 不受 bun / node 运行时切换影响',
+    ],
+    [
+      '安全边界',
+      'npx / bunx / dlx 临时运行、本地源码态或项目本地 node_modules 依赖均不盲目覆盖全局或改写锁文件',
+    ],
+    [
+      '环境隔离',
+      '更新子进程在独立临时空目录执行并剥离宿主 npm 生命周期残留变量, 隔绝 cwd 配置干扰',
+    ],
+    [
+      '镜像源',
+      '按目标管理器读取家目录源配置 (bun 优先 ~/.bunfig.toml 回退 ~/.npmrc, 其余仅读 ~/.npmrc), 缺省官方源',
+    ],
+  ];
+  const descCol = computeHelpDescColumn([
+    ...optionsZh.map(([f, a]) => (a === undefined ? f : `${f} ${a}`)),
+    ...metaZh.map(([f, a]) => (a === undefined ? f : `${f} ${a}`)),
+    ...notesZh.map(([k]) => k),
+  ]);
+  const optLineZh = ([f, a, d]: readonly [
+    string,
+    string | undefined,
+    string,
+  ]): string => {
+    const plain = a === undefined ? f : `${f} ${a}`;
+    const styled = a === undefined ? token(f) : `${token(f)} ${dim(a)}`;
+    return alignHelpRow(styled, plain, dim(d), descCol);
+  };
 
   return [
     '',
@@ -304,20 +406,12 @@ export function formatUpdateHelp(
     `    ${bold(`${safeBin} update`)} ${dim('[选项]')}`,
     '',
     `  ${section('选项')}`,
-    `    ${token('--check')}              ${dim('仅检查最新版本与当前安装方式, 不执行更新')}`,
-    `    ${token('--pm')} ${dim('<管理器>')}        ${dim(`手动指定更新所用的包管理器 (${pmList})`)}`,
-    `    ${token('--registry')} ${dim('<url>')}     ${dim('临时指定本次查询与更新所用的 npm registry')}`,
-    `    ${token('--force')}              ${dim('即使已是最新版本仍强制重新安装')}`,
-    `    ${token('--verbose')}            ${dim('实时显示包管理器原始输出 (默认静默接管进度)')}`,
-    `    ${token('--lang')} ${dim('<语言>')}        ${dim('临时指定本次显示语言 (system | en | zh)')}`,
+    ...optionsZh.map(optLineZh),
     '',
-    `    ${token('-h, --help')}           ${dim('显示本帮助')}`,
+    ...metaZh.map(optLineZh),
     '',
     `  ${section('说明')}`,
-    `    ${bold('识别依据')}  ${dim('按当前包在磁盘上的真实落位路径判定, 不受 bun / node 运行时切换影响')}`,
-    `    ${bold('安全边界')}  ${dim('npx / bunx / dlx 临时运行、本地源码态或项目本地 node_modules 依赖均不盲目覆盖全局或改写锁文件')}`,
-    `    ${bold('环境隔离')}  ${dim('更新子进程在独立临时空目录执行并剥离宿主 npm 生命周期残留变量, 隔绝 cwd 配置干扰')}`,
-    `    ${bold('镜像源')}    ${dim('按目标管理器读取家目录源配置 (bun 优先 ~/.bunfig.toml 回退 ~/.npmrc, 其余仅读 ~/.npmrc), 缺省官方源')}`,
+    ...notesZh.map(([k, d]) => alignHelpRow(bold(k), k, dim(d), descCol)),
     '',
   ].join('\n');
 }

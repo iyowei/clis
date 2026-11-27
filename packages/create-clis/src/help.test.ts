@@ -3,6 +3,8 @@
  */
 import { describe, expect, test } from 'bun:test';
 
+import { displayWidth } from '@iyowei/cli-i18n';
+
 import { formatHelpText } from './help.ts';
 
 const ANSI_RE = new RegExp(`${String.fromCharCode(0x1b)}\\[[0-9;]*m`, 'g');
@@ -50,5 +52,23 @@ describe('create-clis formatHelpText', () => {
     const plain = formatHelpText(false);
     expect(colored).toContain('\u001b[');
     expect(stripAnsi(colored)).toBe(plain);
+  });
+
+  test('所有两栏分区 (子命令 / 模板变量 / 生成选项 / 说明) 右侧左对齐到同一垂直列线', () => {
+    const alignedSections = new Set(['子命令', '模板变量', '生成选项', '说明']);
+    let section = '';
+    const cols = new Set<number>();
+    for (const line of formatHelpText(false).split('\n')) {
+      const trimmed = line.trim();
+      if (/^  \S/.test(line)) {
+        section = trimmed;
+        continue;
+      }
+      if (!alignedSections.has(section) || trimmed === '') continue;
+      const m = /^(    .+?)( {2,})(\S.*)$/.exec(line);
+      expect(m, `未匹配两栏: ${line}`).not.toBeNull();
+      cols.add(displayWidth(m![1]!.slice(4)) + m![2]!.length);
+    }
+    expect(cols.size).toBe(1);
   });
 });

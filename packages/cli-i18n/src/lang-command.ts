@@ -5,6 +5,8 @@ import { homedir as osHomedir } from 'node:os';
 
 import { parseLangPreference } from './detect.ts';
 import {
+  alignHelpRow,
+  computeHelpDescColumn,
   displayWidth,
   resolveCliLocale,
   t,
@@ -73,7 +75,10 @@ function formatSourceNote(resolved: ResolvedLocale, locale: Locale): string {
   }
 }
 
-/** 渲染 `<cli> lang --help` 双语帮助 */
+/**
+ * 渲染 `<cli> lang --help` 双语帮助。
+ * 遵循全仓「单轴线右栏左对齐」规范: 用法与可选值两栏共用同一 `descCol`, 确保右侧说明严格垂直对齐。
+ */
 export function formatLangHelp(options: {
   binName: string;
   envVarName: string;
@@ -97,6 +102,19 @@ export function formatLangHelp(options: {
   const dim = (s: string): string => paint(s, '2', color);
   const cyan = (s: string): string => paint(s, '36', color);
 
+  const cmdDefault = `${safeBin} lang`;
+  const cmdSet = `${safeBin} lang <system|en|zh>`;
+  // 全页两栏区 (用法 + 可选值) 统一使用同一个 `descCol` 右栏起始列线
+  const descCol = computeHelpDescColumn([
+    cmdDefault,
+    cmdSet,
+    'system',
+    'en',
+    'zh',
+  ]);
+  const row = (styledLeft: string, plainLeft: string, desc: string): string =>
+    alignHelpRow(styledLeft, plainLeft, desc, descCol);
+
   if (locale === 'zh') {
     return [
       '',
@@ -104,13 +122,17 @@ export function formatLangHelp(options: {
       `  ${dim(`查看或切换 ${safeBin} 的显示语言 (各 CLI 独立保存, 默认跟随操作系统语言)。`)}`,
       '',
       `  ${dim('用法')}`,
-      `    ${bold(`${safeBin} lang`)}                    ${dim('查看当前生效语言与配置来源')}`,
-      `    ${bold(`${safeBin} lang`)} ${cyan('<system|en|zh>')}     ${dim('保存该工具的默认显示语言')}`,
+      row(bold(cmdDefault), cmdDefault, dim('查看当前生效语言与配置来源')),
+      row(
+        `${bold(cmdDefault)} ${cyan('<system|en|zh>')}`,
+        cmdSet,
+        dim('保存该工具的默认显示语言'),
+      ),
       '',
       `  ${dim('可选值')}`,
-      `    ${cyan('system')}                跟随操作系统首选语言 (默认)`,
-      `    ${cyan('en')}                    固定使用英文界面 (即使系统语言为中文)`,
-      `    ${cyan('zh')}                    固定使用简体中文界面`,
+      row(cyan('system'), 'system', '跟随操作系统首选语言 (默认)'),
+      row(cyan('en'), 'en', '固定使用英文界面 (即使系统语言为中文)'),
+      row(cyan('zh'), 'zh', '固定使用简体中文界面'),
       '',
       `  ${dim('优先级')}`,
       `    ${cyan('--lang')} > ${cyan(options.envVarName)} > ${cyan('CLIS_LANG')} > ${dim(safeCfg)}`,
@@ -124,13 +146,21 @@ export function formatLangHelp(options: {
     `  ${dim(`Inspect or customize the display language for ${safeBin} (stored per tool, defaults to system).`)}`,
     '',
     `  ${dim('Usage')}`,
-    `    ${bold(`${safeBin} lang`)}                    ${dim('Show active language and preference source')}`,
-    `    ${bold(`${safeBin} lang`)} ${cyan('<system|en|zh>')}     ${dim('Save persistent language preference')}`,
+    row(
+      bold(cmdDefault),
+      cmdDefault,
+      dim('Show active language and preference source'),
+    ),
+    row(
+      `${bold(cmdDefault)} ${cyan('<system|en|zh>')}`,
+      cmdSet,
+      dim('Save persistent language preference'),
+    ),
     '',
     `  ${dim('Values')}`,
-    `    ${cyan('system')}                Follow operating system language (default)`,
-    `    ${cyan('en')}                    Always display in English (overrides Chinese OS)`,
-    `    ${cyan('zh')}                    Always display in Simplified Chinese`,
+    row(cyan('system'), 'system', 'Follow operating system language (default)'),
+    row(cyan('en'), 'en', 'Always display in English (overrides Chinese OS)'),
+    row(cyan('zh'), 'zh', 'Always display in Simplified Chinese'),
     '',
     `  ${dim('Precedence')}`,
     `    ${cyan('--lang')} > ${cyan(options.envVarName)} > ${cyan('CLIS_LANG')} > ${dim(safeCfg)}`,

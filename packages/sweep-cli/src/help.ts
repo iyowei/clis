@@ -1,11 +1,31 @@
 /**
- * 帮助页文案与分层排版渲染 (零外部依赖, 中英双语均严守 80 列行宽与 OF-10 降级恒等式):
+ * 帮助页文案与单轴线左对齐分层排版渲染 (零外部依赖, 中英双语均严守 80 列行宽与 OF-10 降级恒等式):
  * 红线: 命令面以 `cli-surface.md` 为唯一事实来源; 新增子命令或旗标须与语料 `cli-help` 同批更新 (BC-30)。
+ *
+ * 排版红线 (全仓所有 CLI 强制遵循):
+ * 子命令 / 选项 / 示例 / 配置与安全 / 退出码共五组两栏区必须共享同一个右栏起始列线 (`descCol`),
+ * 折行续行同样缩进到 `4 + descCol` 列, 禁止各分组单独设定列宽导致右栏参差不齐。
  */
-import type { Locale } from '@iyowei/cli-i18n';
+import {
+  type Locale,
+  alignHelpRow,
+  computeHelpDescColumn,
+  displayWidth,
+} from '@iyowei/cli-i18n';
 import { resolveConfigPath } from '@iyowei/sweep';
 
+import {
+  type OptionRow,
+  type SweepHelpCatalog,
+  buildSweepHelpCatalog,
+} from './help-catalog.ts';
 import { BAR_BLOCK, paint, sanitizeLine } from './render.ts';
+
+const RULE_WIDTH = 76;
+const MAX_LINE_COLS = 80;
+const LINE_INDENT = '    ';
+const GITHUB_URL =
+  'https://github.com/iyowei/clis/tree/main/packages/sweep-cli';
 
 function createStyler(color: boolean) {
   return {
@@ -19,283 +39,214 @@ function createStyler(color: boolean) {
   };
 }
 
-interface CommandRow {
-  name: string;
-  desc: string;
-}
-
-interface OptionRow {
-  flag: string;
-  arg?: string;
-  desc: string;
-}
-
-interface ExampleRow {
-  cmd: string;
-  flag?: string;
-  arg?: string;
-  desc: string;
-}
-
-const SUBCOMMANDS_ZH: readonly CommandRow[] = [
-  {
-    name: 'init',
-    desc: '交互式向导生成 v2 配置 (支持 --default 写入最佳实践)',
-  },
-  { name: 'migrate', desc: '无损迁移旧版配置到 v2 (写前自动备份原配置)' },
-  { name: 'config', desc: '查看实际生效的配置 (来源 / 路径 / 状态)' },
-  { name: 'lang', desc: '查看或设置显示语言 (system | en | zh, 默认 system)' },
-  { name: 'update', desc: '自动识别安装器升级到最新版 (--check 仅检查)' },
-];
-
-const SUBCOMMANDS_EN: readonly CommandRow[] = [
-  { name: 'init', desc: 'Interactive v2 setup wizard (--default for preset)' },
-  { name: 'migrate', desc: 'Losslessly migrate v1 config with auto-backup' },
-  { name: 'config', desc: 'Show active config path, source, and file state' },
-  { name: 'lang', desc: 'Show or save display language (system | en | zh)' },
-  { name: 'update', desc: 'Upgrade CLI via detected installer (--check only)' },
-];
-
-const ACTION_OPTIONS_ZH: readonly OptionRow[] = [
-  { flag: '--yes', desc: '执行清理 (默认仅预览, 零副作用)' },
-  { flag: '--force', desc: '连同疑似安装树一并清理 (默认跳过)' },
-  { flag: '--default', desc: '配合 init 直接写入完整最佳实践默认配置' },
-  {
-    flag: '--exclude',
-    arg: '<name>',
-    desc: '按目录名临时追加排除 (可重复, 与配置合并)',
-  },
-  {
-    flag: '--include',
-    arg: '<name>',
-    desc: '仅清理命中目录名的项目 (可重复, 与配置合并)',
-  },
-  {
-    flag: '--config',
-    arg: '<path>',
-    desc: '指定配置文件路径 (优先于 SWEEP_CONFIG)',
-  },
-  {
-    flag: '--lang',
-    arg: '<lang>',
-    desc: '单次覆盖显示语言 (system | en | zh)',
-  },
-];
-
-const ACTION_OPTIONS_EN: readonly OptionRow[] = [
-  { flag: '--yes', desc: 'Execute cleanup (default: dry-run preview only)' },
-  {
-    flag: '--force',
-    desc: 'Include suspect install trees (skipped by default)',
-  },
-  { flag: '--default', desc: 'Write best-practice v2 config with sweep init' },
-  {
-    flag: '--exclude',
-    arg: '<name>',
-    desc: 'Exclude directory name for this run (repeatable)',
-  },
-  {
-    flag: '--include',
-    arg: '<name>',
-    desc: 'Only match projects containing name (repeatable)',
-  },
-  {
-    flag: '--config',
-    arg: '<path>',
-    desc: 'Specify config file path (overrides SWEEP_CONFIG)',
-  },
-  {
-    flag: '--lang',
-    arg: '<lang>',
-    desc: 'Override language for this run (system | en | zh)',
-  },
-];
-
-const META_OPTIONS_ZH: readonly OptionRow[] = [
-  { flag: '-V, --version', desc: '显示当前版本号' },
-  { flag: '-h, --help', desc: '显示本帮助' },
-];
-
-const META_OPTIONS_EN: readonly OptionRow[] = [
-  { flag: '-V, --version', desc: 'Print current version' },
-  { flag: '-h, --help', desc: 'Show this help message' },
-];
-
-const EXAMPLES_ZH: readonly ExampleRow[] = [
-  { cmd: 'sweep', desc: '预览工作区内可清理的构建产物与缓存' },
-  {
-    cmd: 'sweep',
-    flag: '--yes',
-    desc: '确认清单后执行清理 (按配置走回收站或删除)',
-  },
-  {
-    cmd: 'sweep init',
-    flag: '--default',
-    desc: '一键写入完整最佳实践 v2 配置',
-  },
-  {
-    cmd: 'sweep',
-    flag: '--exclude',
-    arg: 'my-kits',
-    desc: '临时排除指定目录',
-  },
-];
-
-const EXAMPLES_EN: readonly ExampleRow[] = [
-  { cmd: 'sweep', desc: 'Preview cleanable build artifacts & caches' },
-  { cmd: 'sweep', flag: '--yes', desc: 'Clean matched items via trash/delete' },
-  {
-    cmd: 'sweep init',
-    flag: '--default',
-    desc: 'Write best-practice v2 config in one step',
-  },
-  {
-    cmd: 'sweep',
-    flag: '--exclude',
-    arg: 'my-kits',
-    desc: 'Exclude a directory name for this run',
-  },
-];
-
-const LEFT_COL = 20;
-const EXAMPLE_COL = 28;
-const RULE_WIDTH = 76;
-const GITHUB_URL =
-  'https://github.com/iyowei/clis/tree/main/packages/sweep-cli';
-
-function defaultConfigPath(): string {
-  return resolveConfigPath({ env: {} }).path;
-}
-
-function formatOptionRow(
-  row: OptionRow,
-  s: ReturnType<typeof createStyler>,
-): string {
-  const plain = row.arg === undefined ? row.flag : `${row.flag} ${row.arg}`;
-  const pad = ' '.repeat(Math.max(2, LEFT_COL - plain.length));
-  const styledLeft =
-    row.arg === undefined
-      ? s.token(row.flag)
-      : `${s.token(row.flag)} ${s.dim(row.arg)}`;
-  return `    ${styledLeft}${pad}${s.dim(row.desc)}`;
-}
-
-function formatExampleRow(
-  row: ExampleRow,
-  s: ReturnType<typeof createStyler>,
-): string {
-  const plainParts = [row.cmd, row.flag, row.arg].filter(
-    (part): part is string => part !== undefined,
-  );
-  const plain = plainParts.join(' ');
-  const pad = ' '.repeat(Math.max(2, EXAMPLE_COL - plain.length));
-  const styledParts = [s.bold(row.cmd)];
-  if (row.flag !== undefined) styledParts.push(s.token(row.flag));
-  if (row.arg !== undefined) styledParts.push(s.dim(row.arg));
-  return `    ${styledParts.join(' ')}${pad}${s.dim(row.desc)}`;
-}
-
-/** 帮助页: 分层布局 + 主视图同源标准 SGR 单色系 (80 列内防截断, 降级无 ANSI 逐字等价) */
-export function helpText(color: boolean, locale: Locale = 'zh'): string {
-  const s = createStyler(color);
-  const configPath = sanitizeLine(defaultConfigPath());
-
-  if (locale === 'en') {
-    const commandRows = SUBCOMMANDS_EN.map((row) => {
-      const pad = ' '.repeat(Math.max(2, LEFT_COL - row.name.length));
-      return `    ${s.bold(row.name)}${pad}${s.dim(row.desc)}`;
-    });
-    const actionRows = ACTION_OPTIONS_EN.map((row) => formatOptionRow(row, s));
-    const metaRows = META_OPTIONS_EN.map((row) => formatOptionRow(row, s));
-    const exampleRows = EXAMPLES_EN.map((row) => formatExampleRow(row, s));
-
-    return [
-      '',
-      `  ${s.badge('SWEEP')}  ${s.bold('Multi-Stack Workspace Cleaner')}`,
-      `  ${s.dim('Scan build artifacts, dependency caches, and OS junk; preview before cleaning.')}`,
-      `  ${s.dim('─'.repeat(RULE_WIDTH))}`,
-      '',
-      `  ${s.section('Usage')}`,
-      `    ${s.bold('sweep')} ${s.dim('[options]')}`,
-      `    ${s.bold('sweep')} ${s.dim('<command> [options]')}`,
-      '',
-      `  ${s.section('Commands')}`,
-      ...commandRows,
-      '',
-      `  ${s.section('Options')}`,
-      ...actionRows,
-      '',
-      ...metaRows,
-      '',
-      `  ${s.section('Examples')}`,
-      ...exampleRows,
-      '',
-      `  ${s.section('Config & Safety')}`,
-      `    ${s.bold('Default Config')}  ${s.token(configPath)}`,
-      `                    ${s.dim("Run 'sweep config' when using --config or SWEEP_CONFIG")}`,
-      `    ${s.bold('Project Anchor')}  ${s.dim('node / rust / python / java / cpp verify project anchors')}`,
-      `                    ${s.dim('Custom rules default to trash; never falls back to rm')}`,
-      `    ${s.bold('Name Matching')}   ${s.dim('--exclude / --include match exact dir names (case-sensitive)')}`,
-      `                    ${s.dim('Exclude wins on conflict; 32 safety guardrails by default')}`,
-      `    ${s.bold('Real Anchors')}    ${s.dim('--force only includes suspect trees; roots must be real dirs')}`,
-      `                    ${s.dim('Symlinked roots (/tmp, /var) reject --yes; use /private/tmp')}`,
-      `    ${s.bold('Plain Output')}    ${s.dim('Auto-disables ANSI when NO_COLOR, TERM=dumb, or non-TTY')}`,
-      '',
-      `  ${s.section('Exit Codes')}`,
-      `    ${s.green('0')}         ${s.dim('Success (preview, empty, init/migrate/config/lang/update, -V/-h)')}`,
-      `    ${s.red('1')}         ${s.dim('Failure (failed/skipped/rejected, missing config, or bad args)')}`,
-      '',
-      `  ${s.section('Docs & Source')}`,
-      `    ${s.token(GITHUB_URL)}`,
-      '',
-    ].join('\n');
+/** 按空格与词后标点切分可断行单元, 确保闭合括号和选项标志不被孤立折断 */
+function splitTokensPreservingSpaces(text: string): string[] {
+  const result: string[] = [];
+  let cur = '';
+  for (const ch of text) {
+    if (ch === ' ') {
+      if (cur !== '') {
+        result.push(cur);
+        cur = '';
+      }
+      result.push(' ');
+      continue;
+    }
+    if ('、,;.)]'.includes(ch)) {
+      cur += ch;
+      result.push(cur);
+      cur = '';
+      continue;
+    }
+    const code = ch.codePointAt(0) ?? 0;
+    const isCjk = code >= 0x4e00 && code <= 0x9fff;
+    if (isCjk) {
+      if (cur !== '') result.push(cur);
+      cur = ch;
+      continue;
+    }
+    cur += ch;
   }
+  if (cur !== '') result.push(cur);
+  return result;
+}
 
-  const commandRows = SUBCOMMANDS_ZH.map((row) => {
-    const pad = ' '.repeat(Math.max(2, LEFT_COL - row.name.length));
-    return `    ${s.bold(row.name)}${pad}${s.dim(row.desc)}`;
+/** 将超长段落按显示列宽安全折行 (不切断连续选项或路径令牌) */
+function wrapSegment(text: string, maxWidth: number): string[] {
+  if (displayWidth(text) <= maxWidth) return [text];
+  const tokens = splitTokensPreservingSpaces(text);
+  const out: string[] = [];
+  let line = '';
+  for (const tok of tokens) {
+    if (line === '') {
+      line = tok.trimStart();
+      continue;
+    }
+    const candidate = `${line}${tok}`;
+    if (displayWidth(candidate) <= maxWidth) {
+      line = candidate;
+    } else {
+      out.push(line.trimEnd());
+      line = tok.trimStart();
+    }
+  }
+  if (line !== '') out.push(line.trimEnd());
+  return out;
+}
+
+function formatWrappedBlock(
+  styledLeft: string,
+  plainLeft: string,
+  descLines: readonly string[],
+  descCol: number,
+  paintDesc: (s: string) => string,
+): string[] {
+  const first = descLines[0] ?? '';
+  const rows = [
+    alignHelpRow(styledLeft, plainLeft, paintDesc(first), descCol, LINE_INDENT),
+  ];
+  const contIndent = ' '.repeat(LINE_INDENT.length + descCol);
+  for (let i = 1; i < descLines.length; i += 1) {
+    rows.push(`${contIndent}${paintDesc(descLines[i]!)}`);
+  }
+  return rows;
+}
+
+function computeDescColumn(cat: SweepHelpCatalog): number {
+  return computeHelpDescColumn(
+    [
+      ...cat.subcommands.map((r) => r.name),
+      ...cat.actionOptions.map((r) =>
+        r.arg === undefined ? r.flag : `${r.flag} ${r.arg}`,
+      ),
+      ...cat.metaOptions.map((r) =>
+        r.arg === undefined ? r.flag : `${r.flag} ${r.arg}`,
+      ),
+      ...cat.examples.map((r) =>
+        [r.cmd, r.flag, r.arg]
+          .filter((p): p is string => p !== undefined)
+          .join(' '),
+      ),
+      ...cat.notes.map((r) => r.label),
+      ...cat.exitCodes.map((r) => r.code),
+    ],
+    2,
+  );
+}
+
+function renderOptions(
+  rows: readonly OptionRow[],
+  s: ReturnType<typeof createStyler>,
+  descCol: number,
+  maxRightCols: number,
+): string[] {
+  return rows.flatMap((row) => {
+    const plain = row.arg === undefined ? row.flag : `${row.flag} ${row.arg}`;
+    const styled =
+      row.arg === undefined
+        ? s.token(row.flag)
+        : `${s.token(row.flag)} ${s.dim(row.arg)}`;
+    return formatWrappedBlock(
+      styled,
+      plain,
+      wrapSegment(row.desc, maxRightCols),
+      descCol,
+      s.dim,
+    );
   });
-  const actionRows = ACTION_OPTIONS_ZH.map((row) => formatOptionRow(row, s));
-  const metaRows = META_OPTIONS_ZH.map((row) => formatOptionRow(row, s));
-  const exampleRows = EXAMPLES_ZH.map((row) => formatExampleRow(row, s));
+}
+
+/** 帮助页: 分层布局 + 主视图同源标准 SGR 单色系 (80 列内防截断, 全页右栏单轴左对齐, 降级无 ANSI 逐字等价) */
+export function helpText(color: boolean, locale: Locale = 'zh'): string {
+  const configPath = sanitizeLine(resolveConfigPath({ env: {} }).path);
+  const cat = buildSweepHelpCatalog(locale, configPath);
+  const s = createStyler(color);
+  const descCol = computeDescColumn(cat);
+  const maxRightCols = MAX_LINE_COLS - LINE_INDENT.length - descCol;
+  const contIndent = ' '.repeat(LINE_INDENT.length + descCol);
+
+  const commandRows = cat.subcommands.flatMap((row) =>
+    formatWrappedBlock(
+      s.bold(row.name),
+      row.name,
+      wrapSegment(row.desc, maxRightCols),
+      descCol,
+      s.dim,
+    ),
+  );
+  const exampleRows = cat.examples.flatMap((row) => {
+    const plain = [row.cmd, row.flag, row.arg]
+      .filter((p): p is string => p !== undefined)
+      .join(' ');
+    const styledParts = [s.bold(row.cmd)];
+    if (row.flag !== undefined) styledParts.push(s.token(row.flag));
+    if (row.arg !== undefined) styledParts.push(s.dim(row.arg));
+    return formatWrappedBlock(
+      styledParts.join(' '),
+      plain,
+      wrapSegment(row.desc, maxRightCols),
+      descCol,
+      s.dim,
+    );
+  });
+  const noteRows = cat.notes.flatMap((row) => {
+    const wrapped = row.paragraphs.flatMap((p) => wrapSegment(p, maxRightCols));
+    if (row.rawFirstLine !== undefined) {
+      const first = alignHelpRow(
+        s.bold(row.label),
+        row.label,
+        s.token(row.rawFirstLine),
+        descCol,
+        LINE_INDENT,
+      );
+      return [first, ...wrapped.map((ln) => `${contIndent}${s.dim(ln)}`)];
+    }
+    return formatWrappedBlock(
+      s.bold(row.label),
+      row.label,
+      wrapped,
+      descCol,
+      s.dim,
+    );
+  });
+  const exitRows = cat.exitCodes.flatMap((row) =>
+    formatWrappedBlock(
+      row.tone === 'green' ? s.green(row.code) : s.red(row.code),
+      row.code,
+      wrapSegment(row.desc, maxRightCols),
+      descCol,
+      s.dim,
+    ),
+  );
 
   return [
     '',
-    `  ${s.badge('SWEEP')}  ${s.bold('工作区多技术栈清理器')}`,
-    `  ${s.dim('跨工作区扫描构建产物、依赖缓存、系统垃圾与自定义规则, 先预览后清理。')}`,
+    `  ${s.badge('SWEEP')}  ${s.bold(cat.subtitle)}`,
+    `  ${s.dim(cat.summary)}`,
     `  ${s.dim('─'.repeat(RULE_WIDTH))}`,
     '',
-    `  ${s.section('用法')}`,
-    `    ${s.bold('sweep')} ${s.dim('[选项]')}`,
-    `    ${s.bold('sweep')} ${s.dim('<子命令> [选项]')}`,
+    `  ${s.section(cat.sections.usage)}`,
+    `    ${s.bold('sweep')} ${s.dim(cat.usageArgs[0])}`,
+    `    ${s.bold('sweep')} ${s.dim(cat.usageArgs[1])}`,
     '',
-    `  ${s.section('子命令')}`,
+    `  ${s.section(cat.sections.commands)}`,
     ...commandRows,
     '',
-    `  ${s.section('选项')}`,
-    ...actionRows,
+    `  ${s.section(cat.sections.options)}`,
+    ...renderOptions(cat.actionOptions, s, descCol, maxRightCols),
     '',
-    ...metaRows,
+    ...renderOptions(cat.metaOptions, s, descCol, maxRightCols),
     '',
-    `  ${s.section('示例')}`,
+    `  ${s.section(cat.sections.examples)}`,
     ...exampleRows,
     '',
-    `  ${s.section('配置与安全')}`,
-    `    ${s.bold('默认配置')}  ${s.token(configPath)}`,
-    `              ${s.dim('仅平台默认; 用了 --config / SWEEP_CONFIG 请跑 sweep config')}`,
-    `    ${s.bold('预设锚定')}  ${s.dim('node / rust / python / java / cpp 均校验项目锚点防误删')}`,
-    `              ${s.dim('rules 默认进回收站; 回收站失败严禁静默降级永久删除')}`,
-    `    ${s.bold('名单口径')}  ${s.dim('--exclude / --include 按目录名精确匹配 (区分大小写, 任一级命中)')}`,
-    `              ${s.dim('同时命中 exclude 优先; 省略 exclude 启用三端默认安全护栏')}`,
-    `    ${s.bold('删除安全')}  ${s.dim('--force 仅放行疑似安装树, 不放宽安全闸; 根及祖先链须为真实路径')}`,
-    `              ${s.dim('命中 /tmp、/var 软链时 --yes 整批拒绝, 改如 /private/tmp/x 即放行')}`,
-    `    ${s.bold('输出降级')}  ${s.dim('设置 NO_COLOR、TERM=dumb 或非 TTY 时自动降级为无颜色纯文本')}`,
+    `  ${s.section(cat.sections.safety)}`,
+    ...noteRows,
     '',
-    `  ${s.section('退出码')}`,
-    `    ${s.green('0')}         ${s.dim('成功 (预览、空结果、init/migrate/config/lang/update、-V/-h)')}`,
-    `    ${s.red('1')}         ${s.dim('失败 (清理/回收站失败 / 跳过 / 拒绝 / 无配置非 TTY / 参数或配置错)')}`,
+    `  ${s.section(cat.sections.exitCodes)}`,
+    ...exitRows,
     '',
-    `  ${s.section('文档与源码')}`,
+    `  ${s.section(cat.sections.docs)}`,
     `    ${s.token(GITHUB_URL)}`,
     '',
   ].join('\n');

@@ -289,3 +289,32 @@ export function padStartDisplay(text: string, targetCols: number): string {
   const pad = Math.max(0, targetCols - displayWidth(text));
   return pad > 0 ? `${' '.repeat(pad)}${text}` : text;
 }
+
+/**
+ * CLI 帮助页「单轴线右栏左对齐」规范 (全仓所有 CLI 必须遵循):
+ * 同一帮助页内所有两栏分区的右侧说明 / 取值 / URL, 必须统一左对齐到同一条垂直列线 (`descCol`),
+ * 列宽按终端显示宽度 (`displayWidth`, CJK/全角=2, ASCII=1) 计算并至少保留 `minGap` 列间距,
+ * 禁止各分区各自计算列宽导致右栏参差不齐。
+ */
+export function computeHelpDescColumn(
+  plainLefts: readonly string[],
+  minGap = 3,
+): number {
+  const maxWidth = plainLefts.reduce(
+    (max, item) => Math.max(max, displayWidth(item)),
+    0,
+  );
+  return maxWidth + Math.max(2, minGap);
+}
+
+/** 按全页统一右栏起始列线 `descCol` 拼接两栏帮助行, 保证全页各分区右栏左边缘笔直对齐 */
+export function alignHelpRow(
+  styledLeft: string,
+  plainLeft: string,
+  rightText: string,
+  descCol: number,
+  indent = '    ',
+): string {
+  const pad = ' '.repeat(Math.max(2, descCol - displayWidth(plainLeft)));
+  return `${indent}${styledLeft}${pad}${rightText}`;
+}

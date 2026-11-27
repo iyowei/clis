@@ -4,7 +4,11 @@
 import { existsSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-import { type Locale } from '@iyowei/cli-i18n';
+import {
+  type Locale,
+  alignHelpRow,
+  computeHelpDescColumn,
+} from '@iyowei/cli-i18n';
 import {
   type GenerateResult,
   copyTemplateFile,
@@ -12,7 +16,7 @@ import {
 } from '@iyowei/codd';
 
 import { ct, localizeCoddWarning } from './i18n.ts';
-import { displayWidth, getBoxWidth } from './ui/ansi.ts';
+import { displayWidth, getTermCols } from './ui/ansi.ts';
 import {
   palette,
   printAlert,
@@ -26,24 +30,51 @@ const printHelpSection = (title: string): void => {
   console.log(`  ${palette.blue(title, true)}`);
 };
 
+type HelpLeftTone = 'title' | 'mono' | 'green' | 'red' | 'amber';
+
+type HelpRowInput = readonly [
+  token: string,
+  desc: string,
+  arg?: string,
+  tone?: HelpLeftTone,
+];
+
+const styleHelpToken = (token: string, tone: HelpLeftTone): string => {
+  if (tone === 'title') return palette.title(token);
+  if (tone === 'green') return palette.green(token, true);
+  if (tone === 'red') return palette.red(token, true);
+  if (tone === 'amber') return palette.amber(token, true);
+  return palette.mono(token);
+};
+
+/**
+ * 渲染帮助两栏行。
+ * 遵循全仓「单轴线右栏左对齐」规范: 调用方须把全页所有两栏区 (子命令/选项/示例/退出码)
+ * 汇总到同一个 `descCol`, 换行续行同样对齐到 `4 + descCol`。
+ */
 const printHelpRows = (
-  rows: ReadonlyArray<readonly [string, string, string?]>,
-  colWidth: number,
-  leftStyle: 'title' | 'mono' = 'mono',
+  rows: ReadonlyArray<HelpRowInput>,
+  descCol: number,
+  defaultTone: HelpLeftTone = 'mono',
 ): void => {
-  const maxWidth = Math.max(44, getBoxWidth());
-  const descWidth = Math.max(20, maxWidth - colWidth - 4);
-  for (const [token, desc, arg] of rows) {
+  const maxWidth = Math.min(96, Math.max(52, getTermCols()));
+  const descWidth = Math.max(24, maxWidth - descCol - 4);
+  for (const [token, desc, arg, tone] of rows) {
     const plainLeft = arg === undefined ? token : `${token} ${arg}`;
-    const pad = ' '.repeat(Math.max(2, colWidth - displayWidth(plainLeft)));
-    const styledToken =
-      leftStyle === 'title' ? palette.title(token) : palette.mono(token);
+    const styledToken = styleHelpToken(token, tone ?? defaultTone);
     const styledLeft =
       arg === undefined ? styledToken : `${styledToken} ${palette.dim(arg)}`;
     const wrapped = wrapMultiline(desc, descWidth);
-    console.log(`    ${styledLeft}${pad}${palette.muted(wrapped[0] ?? '')}`);
+    console.log(
+      alignHelpRow(
+        styledLeft,
+        plainLeft,
+        palette.muted(wrapped[0] ?? ''),
+        descCol,
+      ),
+    );
     const contIndent = ' '.repeat(
-      4 + Math.max(colWidth, displayWidth(plainLeft) + 2),
+      4 + Math.max(descCol, displayWidth(plainLeft) + 2),
     );
     for (let i = 1; i < wrapped.length; i += 1) {
       console.log(`${contIndent}${palette.muted(wrapped[i]!)}`);
@@ -51,39 +82,30 @@ const printHelpRows = (
   }
 };
 
+const collectHelpRowLefts = (rows: ReadonlyArray<HelpRowInput>): string[] =>
+  rows.map(([token, , arg]) => (arg === undefined ? token : `${token} ${arg}`));
+
 const GITHUB_URL = 'https://github.com/iyowei/clis/tree/main/packages/codd-cli';
 
+/** 渲染双语 CLI 帮助页 (全页所有两栏区共用同一右栏列线) */
 export const printUsage = (locale: Locale): void => {
-  if (locale === 'en') {
-    const EN_COL = 22;
-    printHeader(
-      'MongoDB 9.0 Provisioning Generator',
-      'Derives WiredTiger cache, compression, and security parameters from your server specs and emits ready-to-ship Podman or Helm bundles.',
-    );
-
-    printHelpSection('Usage');
-    console.log(
-      `    ${palette.title('codd')} ${palette.dim('[manifest.json] [options]')}`,
-    );
-    console.log(
-      `    ${palette.title('codd')} ${palette.dim('<command> [options]')}`,
-    );
-
-    printHelpSection('Commands');
-    printHelpRows(
-      [
+  const isEn = locale === 'en';
+  const commands: ReadonlyArray<HelpRowInput> = isEn
+    ? [
         ['wizard', 'Interactive 4-step setup wizard (-i, --wizard)'],
         ['init', 'Export schema, 2C2G starter manifest & .gitignore'],
         ['lang', 'Show or save display language (system | en | zh)'],
         ['update', 'Upgrade CLI via detected installer (--check only)'],
-      ],
-      EN_COL,
-      'title',
-    );
+      ]
+    : [
+        ['wizard', '启动 4 步交互式向导生成安装包 (同 -i / --wizard)'],
+        ['init', '导出 deploy.schema.json、参考清单与 .gitignore'],
+        ['lang', '查看/设置显示语言 (system | en | zh, 默认 system)'],
+        ['update', '自动识别安装器升级到最新版 (--check 仅检查)'],
+      ];
 
-    printHelpSection('Options');
-    printHelpRows(
-      [
+  const options: ReadonlyArray<HelpRowInput> = isEn
+    ? [
         [
           '-c, --config',
           'JSON manifest file path (default: ./deploy.json)',
@@ -104,122 +126,127 @@ export const printUsage = (locale: Locale): void => {
           '<lang>',
         ],
         ['--', 'Stop flag parsing; treat next token as file path'],
-      ],
-      EN_COL,
-    );
-    console.log('');
-    printHelpRows(
-      [
+      ]
+    : [
+        [
+          '-c, --config',
+          '指定 JSON 配置文件路径 (默认 ./deploy.json)',
+          '<路径>',
+        ],
+        ['-o, --out', '指定安装包的导出位置 (默认 ./dist)', '<目录>'],
+        ['--rotate', '轮换业务库与备份账号密码 (线上 make init 生效)'],
+        ['--rotate-all', '轮换含 root 在内的全部密码与密钥 (全新部署前)'],
+        ['--new-fingerprint', '生成全新的实例唯一指纹 (同机并行部署新一套库)'],
+        ['--dry-run', '只检查配置并预览参数配比, 不写入任何磁盘文件'],
+        ['--init-schema', '与 codd init 等效, 导出 Schema 与参考模板'],
+        ['--lang', '单次覆盖显示语言 (system | en | zh)', '<语言>'],
+        ['--', '终止选项解析, 其后按清单路径处理 (如 -- -a.json)'],
+      ];
+
+  const metaOptions: ReadonlyArray<HelpRowInput> = isEn
+    ? [
         ['-V, -v, --version', 'Print current codd version'],
         ['-h, --help', 'Show this help message'],
-      ],
-      EN_COL,
-    );
+      ]
+    : [
+        ['-V, -v, --version', '打印当前 codd 版本号'],
+        ['-h, --help', '打印本帮助说明'],
+      ];
 
-    printHelpSection('Examples');
-    printHelpRows(
-      [
+  const examples: ReadonlyArray<HelpRowInput> = isEn
+    ? [
         ['codd wizard', 'Open interactive provisioning wizard'],
         ['codd init', 'Export schema & 2C2G starter manifest'],
-        [
-          'codd deploy-prod.json --dry-run',
-          'Preview sizing without writing files',
-        ],
+        ['codd prod.json --dry-run', 'Preview sizing without writing files'],
         ['codd lang en', 'Pin display language to English'],
-      ],
-      34,
-      'title',
-    );
+      ]
+    : [
+        ['codd wizard', '打开交互式配置向导'],
+        ['codd init', '导出 Schema 与 2C2G 参考清单'],
+        ['codd prod.json --dry-run', '预览参数配比与公式, 不写入文件'],
+      ];
 
-    printHelpSection('Exit Codes');
-    console.log(
-      `    ${palette.green('0', true)}       ${palette.muted('Success (--help, --version, init, --dry-run, lang, update, bundle)')}`,
-    );
-    console.log(
-      `    ${palette.red('1', true)}       ${palette.muted('Error (bad flags, manifest/state error, update, or I/O failure)')}`,
-    );
-    console.log(
-      `    ${palette.amber('130', true)}     ${palette.muted('Cancelled (interactive wizard interrupted via Ctrl+C or EOF)')}`,
-    );
+  const exitCodes: ReadonlyArray<HelpRowInput> = isEn
+    ? [
+        [
+          '0',
+          'Success (--help, --version, init, --dry-run, lang, update, bundle)',
+          undefined,
+          'green',
+        ],
+        [
+          '1',
+          'Error (bad flags, manifest/state error, update, or I/O failure)',
+          undefined,
+          'red',
+        ],
+        [
+          '130',
+          'Cancelled (interactive wizard interrupted via Ctrl+C or EOF)',
+          undefined,
+          'amber',
+        ],
+      ]
+    : [
+        [
+          '0',
+          '成功 (--help, --version, init, --dry-run, lang, update, bundle)',
+          undefined,
+          'green',
+        ],
+        [
+          '1',
+          '错误 (参数错, 清单校验或 update 失败, 状态损坏, I/O 失败)',
+          undefined,
+          'red',
+        ],
+        [
+          '130',
+          '取消 (交互式向导被 Ctrl+C 或输入流关闭中断)',
+          undefined,
+          'amber',
+        ],
+      ];
 
-    printHelpSection('Docs & Source');
-    console.log(`    ${palette.mono(GITHUB_URL)}`);
-    console.log('');
-    return;
-  }
-
-  const HELP_COL = 24;
+  // 全页五组两栏区统一汇总左侧列宽, 保证右侧说明垂直左对齐
+  const descCol = computeHelpDescColumn([
+    ...collectHelpRowLefts(commands),
+    ...collectHelpRowLefts(options),
+    ...collectHelpRowLefts(metaOptions),
+    ...collectHelpRowLefts(examples),
+    ...collectHelpRowLefts(exitCodes),
+  ]);
 
   printHeader(
-    'MongoDB 部署配置生成器',
-    '根据你的服务器硬件自动推导缓存、压缩与安全参数, 一键导出可直接上线的 MongoDB 9.0 安装包。',
+    isEn ? 'MongoDB 9.0 Provisioning Generator' : 'MongoDB 部署配置生成器',
+    isEn
+      ? 'Derives WiredTiger cache, compression, and security parameters from your server specs and emits ready-to-ship Podman or Helm bundles.'
+      : '根据你的服务器硬件自动推导缓存、压缩与安全参数, 一键导出可直接上线的 MongoDB 9.0 安装包。',
   );
 
-  printHelpSection('用法');
+  printHelpSection(isEn ? 'Usage' : '用法');
   console.log(
-    `    ${palette.title('codd')} ${palette.dim('[配置文件.json] [选项]')}`,
+    `    ${palette.title('codd')} ${palette.dim(isEn ? '[manifest.json] [options]' : '[配置文件.json] [选项]')}`,
   );
-  console.log(`    ${palette.title('codd')} ${palette.dim('<子命令> [选项]')}`);
-
-  printHelpSection('子命令');
-  printHelpRows(
-    [
-      ['wizard', '启动 4 步交互式向导生成安装包 (同 -i / --wizard)'],
-      ['init', '导出 deploy.schema.json、参考清单与 .gitignore'],
-      ['lang', '查看或设置显示语言 (system | en | zh, 默认 system)'],
-      ['update', '自动识别安装器升级到最新版 (--check 仅检查)'],
-    ],
-    HELP_COL,
-    'title',
+  console.log(
+    `    ${palette.title('codd')} ${palette.dim(isEn ? '<command> [options]' : '<子命令> [选项]')}`,
   );
 
-  printHelpSection('选项');
-  printHelpRows(
-    [
-      ['-c, --config', '指定 JSON 配置文件路径 (默认 ./deploy.json)', '<路径>'],
-      ['-o, --out', '指定安装包的导出位置 (默认 ./dist)', '<目录>'],
-      ['--rotate', '轮换业务库与备份账号密码 (线上 make init 生效)'],
-      ['--rotate-all', '轮换含 root 在内的全部密码与密钥 (全新部署前)'],
-      ['--new-fingerprint', '生成全新的实例唯一指纹 (同机并行部署新一套库)'],
-      ['--dry-run', '只检查配置并预览参数配比, 不写入任何磁盘文件'],
-      ['--init-schema', '与 codd init 等效, 导出 Schema 与参考模板'],
-      ['--lang', '单次覆盖显示语言 (system | en | zh)', '<语言>'],
-      ['--', '终止选项解析, 其后按清单路径处理 (如 -- -a.json)'],
-    ],
-    HELP_COL,
-  );
+  printHelpSection(isEn ? 'Commands' : '子命令');
+  printHelpRows(commands, descCol, 'title');
+
+  printHelpSection(isEn ? 'Options' : '选项');
+  printHelpRows(options, descCol);
   console.log('');
-  printHelpRows(
-    [
-      ['-V, -v, --version', '打印当前 codd 版本号'],
-      ['-h, --help', '打印本帮助说明'],
-    ],
-    HELP_COL,
-  );
+  printHelpRows(metaOptions, descCol);
 
-  printHelpSection('示例');
-  printHelpRows(
-    [
-      ['codd wizard', '打开交互式配置向导'],
-      ['codd init', '导出 Schema 与 2C2G 参考清单'],
-      ['codd deploy-prod.json --dry-run', '预览参数配比与公式, 不写入文件'],
-    ],
-    34,
-    'title',
-  );
+  printHelpSection(isEn ? 'Examples' : '示例');
+  printHelpRows(examples, descCol, 'title');
 
-  printHelpSection('退出码');
-  console.log(
-    `    ${palette.green('0', true)}       ${palette.muted('成功 (含 --help、--version、init、--dry-run、lang、update 与正常生成)')}`,
-  );
-  console.log(
-    `    ${palette.red('1', true)}       ${palette.muted('错误 (参数错误、清单校验失败、update 失败、状态文件损坏或 I/O 失败)')}`,
-  );
-  console.log(
-    `    ${palette.amber('130', true)}     ${palette.muted('取消 (交互式向导被 Ctrl+C 或输入流关闭中断)')}`,
-  );
+  printHelpSection(isEn ? 'Exit Codes' : '退出码');
+  printHelpRows(exitCodes, descCol);
 
-  printHelpSection('文档与源码');
+  printHelpSection(isEn ? 'Docs & Source' : '文档与源码');
   console.log(`    ${palette.mono(GITHUB_URL)}`);
   console.log('');
 };

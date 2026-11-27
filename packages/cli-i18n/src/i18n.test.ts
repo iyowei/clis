@@ -279,4 +279,36 @@ describe('按工具独立持久化、四层优先级与 lang 子命令', () => {
     expect(displayWidth(padEndDisplay('手动', 8))).toBe(8);
     expect(displayWidth(padStartDisplay('Auto', 8))).toBe(8);
   });
+
+  test('formatLangHelp 在不同 binName 与中英文下将用法与可选值右栏对齐到同一垂直列线', async () => {
+    const { formatLangHelp } = await import('./lang-command.ts');
+    for (const binName of ['fan', 'wake', 'create-clis']) {
+      for (const locale of ['zh', 'en'] as const) {
+        const text = formatLangHelp({
+          binName,
+          envVarName: `${binName.toUpperCase()}_LANG`,
+          configPath: `/tmp/${binName}/lang.json`,
+          locale,
+          color: false,
+        });
+        const alignedHeadings = new Set(
+          locale === 'zh' ? ['用法', '可选值'] : ['Usage', 'Values'],
+        );
+        let section = '';
+        const cols = new Set<number>();
+        for (const line of text.split('\n')) {
+          const trimmed = line.trim();
+          if (/^  \S/.test(line)) {
+            section = trimmed;
+            continue;
+          }
+          if (!alignedHeadings.has(section) || trimmed === '') continue;
+          const m = /^(    .+?)( {2,})(\S.*)$/.exec(line);
+          expect(m, `${binName}/${locale} 应匹配两栏: ${line}`).not.toBeNull();
+          cols.add(displayWidth(m![1]!.slice(4)) + m![2]!.length);
+        }
+        expect(cols.size, `${binName}/${locale} 右栏未对齐`).toBe(1);
+      }
+    }
+  });
 });

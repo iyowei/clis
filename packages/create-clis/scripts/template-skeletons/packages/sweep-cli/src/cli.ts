@@ -8,6 +8,7 @@ import { readFileSync } from 'node:fs';
 
 import { greet } from '{{SCOPE}}/{{NAME}}';
 
+// 排版规范 (全仓所有 CLI 遵循): 多栏帮助文案按终端显示列宽 (CJK=2, ASCII=1) 将全部右栏左对齐到同一垂直列线
 const HELP_TEXT = [
   '{{BIN_NAME}}: 示例命令行工具 (模板骨架)',
   '',

@@ -9,6 +9,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { displayWidth } from '@iyowei/cli-i18n';
+
 const CLI = fileURLToPath(new URL('./cli.ts', import.meta.url));
 const tmpDirs: string[] = [];
 
@@ -95,5 +97,41 @@ describe('codd-cli 英文界面与独立语言偏好', () => {
     });
     expect(rOverride.status).toBe(0);
     expect(rOverride.stdout).toContain('MongoDB 部署配置生成器');
+
+    const alignedChecks: ReadonlyArray<{
+      stdout: string;
+      sections: string[];
+    }> = [
+      {
+        stdout: r3.stdout,
+        sections: ['Commands', 'Options', 'Examples', 'Exit Codes'],
+      },
+      {
+        stdout: rOverride.stdout,
+        sections: ['子命令', '选项', '示例', '退出码'],
+      },
+    ];
+    for (const { stdout, sections } of alignedChecks) {
+      const alignedSet = new Set(sections);
+      let section = '';
+      const cols = new Set<number>();
+      for (const line of stdout.split('\n')) {
+        const trimmed = line.trim();
+        if (/^  \S/.test(line)) {
+          section = trimmed;
+          continue;
+        }
+        if (!alignedSet.has(section) || trimmed === '') continue;
+        const contMatch = /^( {5,})(\S.*)$/.exec(line);
+        if (contMatch) {
+          cols.add(contMatch[1]!.length - 4);
+          continue;
+        }
+        const rowMatch = /^(    .+?)( {2,})(\S.*)$/.exec(line);
+        expect(rowMatch, `未匹配两栏行: ${line}`).not.toBeNull();
+        cols.add(displayWidth(rowMatch![1]!.slice(4)) + rowMatch![2]!.length);
+      }
+      expect(cols.size).toBe(1);
+    }
   });
 });

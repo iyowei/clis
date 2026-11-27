@@ -1,8 +1,16 @@
 /**
  * `@iyowei/fan-cli` 帮助页文案与单轴线左对齐排版渲染 (零外部依赖, 中英双语 Apple HIG 排版)。
- * 每个语种独立按东亚显示列宽计算唯一 `descCol` 列线, 彻底杜绝参差不齐与 80+ 列溢出。
+ *
+ * 排版红线 (全仓所有 CLI 强制遵循):
+ * 每个语种独立调用 `computeHelpDescColumn` 按东亚显示列宽 (`CJK=2, ASCII=1`) 计算全页唯一的右栏列线 `descCol`,
+ * 所有两栏分区 (子命令 / 选项 / 示例 / 环境与持久化 / 退出码) 共用同一 `descCol`, 彻底杜绝右栏参差不齐与 80+ 列溢出。
  */
-import { type Locale, t } from '@iyowei/cli-i18n';
+import {
+  type Locale,
+  alignHelpRow,
+  computeHelpDescColumn,
+  t,
+} from '@iyowei/cli-i18n';
 
 import { BAR_BLOCK, displayWidth, paint } from './render.ts';
 
@@ -342,7 +350,7 @@ function examplePlainParts(row: ExampleRow): string[] {
 }
 
 function computeDescColumn(cat: HelpCatalog): number {
-  const plainLefts: string[] = [
+  return computeHelpDescColumn([
     ...cat.subcommands.map((r) => r.name),
     ...cat.options.map((r) =>
       r.arg === undefined ? r.flag : `${r.flag} ${r.arg}`,
@@ -353,9 +361,7 @@ function computeDescColumn(cat: HelpCatalog): number {
     ...cat.examples.map((r) => examplePlainParts(r).join(' ')),
     ...cat.envNotes.map((r) => r.label),
     ...cat.exitCodes.map((r) => r.label),
-  ];
-  const maxWidth = Math.max(...plainLefts.map(displayWidth));
-  return maxWidth + 3;
+  ]);
 }
 
 export const HELP_DESC_COL = computeDescColumn(CATALOG_ZH);
@@ -373,10 +379,8 @@ export function helpText(color: boolean, locale: Locale = 'zh'): string {
     red: (text: string) => paint(text, '1;31', color),
   };
 
-  const alignRow = (styledLeft: string, plainLeft: string, desc: string) => {
-    const pad = ' '.repeat(Math.max(2, descCol - displayWidth(plainLeft)));
-    return `    ${styledLeft}${pad}${desc}`;
-  };
+  const alignRow = (styledLeft: string, plainLeft: string, desc: string) =>
+    alignHelpRow(styledLeft, plainLeft, desc, descCol);
 
   const styleCommandName = (name: string): string => {
     const sp = name.indexOf(' ');
