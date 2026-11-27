@@ -8,6 +8,7 @@ import { existsSync, lstatSync, readFileSync } from 'node:fs';
 import { buildDaemonPythonScript } from './daemon-script.ts';
 import { FanError } from './errors.ts';
 import { MACOS_PYTHON3_BIN, MACOS_SUDO_BIN } from './smc-apple.ts';
+import { SMC_PY_STRUCTS_AND_CORE } from './smc-script.ts';
 import {
   DEFAULT_FAN_DIR,
   DEFAULT_FAN_STATE_PATH,
@@ -170,18 +171,23 @@ export function getPersistDaemonStatus(
 const INSTALL_DAEMON_PY = `
 import os, subprocess, sys
 plist_path, plist_body, script_path, script_body, label, launchctl = sys.argv[1:7]
+is_root = hasattr(os, "geteuid") and os.geteuid() == 0
 for path in (plist_path, script_path):
     parent = os.path.dirname(path)
     if os.path.islink(parent) or os.path.islink(path):
         sys.stderr.write(f"Refusing symlink path: {path}\\n")
         sys.exit(1)
     os.makedirs(parent, mode=0o755, exist_ok=True)
+    if is_root:
+        os.chown(parent, 0, 0)
     os.chmod(parent, 0o755)
 
 def atomic_write(path, text, mode):
     tmp = f"{path}.tmp.{os.getpid()}"
     with open(tmp, "w", encoding="utf-8") as fh:
         fh.write(text)
+    if is_root:
+        os.chown(tmp, 0, 0)
     os.chmod(tmp, mode)
     os.replace(tmp, path)
 
@@ -195,12 +201,49 @@ if res.returncode != 0:
 `;
 
 const UNINSTALL_DAEMON_PY = `
-import os, subprocess, sys
+import ctypes, os, struct, subprocess, sys, time
 plist_path, script_path, label, launchctl = sys.argv[1:5]
 subprocess.run([launchctl, "bootout", f"system/{label}"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 for path in (plist_path, script_path):
     if os.path.exists(path) and not os.path.islink(path):
         os.remove(path)
+
+# 卸载守护后尽力将处于 manual 的风扇归还系统 auto 并复位 Ftst, 防失去守护看管后滞留低速
+iokit_path = "/System/Library/Frameworks/IOKit.framework/IOKit"
+if os.path.exists(iokit_path):
+    try:
+        iokit = ctypes.CDLL(iokit_path)
+        libc = ctypes.CDLL("/usr/lib/libc.dylib")
+        iokit.IOServiceMatching.argtypes = [ctypes.c_char_p]
+        iokit.IOServiceMatching.restype = ctypes.c_void_p
+        iokit.IOServiceGetMatchingService.argtypes = [ctypes.c_uint32, ctypes.c_void_p]
+        iokit.IOServiceGetMatchingService.restype = ctypes.c_uint32
+        iokit.IOServiceOpen.argtypes = [ctypes.c_uint32, ctypes.c_uint32, ctypes.c_uint32, ctypes.POINTER(ctypes.c_uint32)]
+        iokit.IOServiceOpen.restype = ctypes.c_int32
+        iokit.IOServiceClose.argtypes = [ctypes.c_uint32]
+        iokit.IOObjectRelease.argtypes = [ctypes.c_uint32]
+        iokit.IOConnectCallStructMethod.argtypes = [ctypes.c_uint32, ctypes.c_uint32, ctypes.c_void_p, ctypes.c_size_t, ctypes.c_void_p, ctypes.POINTER(ctypes.c_size_t)]
+        iokit.IOConnectCallStructMethod.restype = ctypes.c_int32
+        libc.mach_task_self.restype = ctypes.c_uint32
+${SMC_PY_STRUCTS_AND_CORE.split('\n')
+  .map((line) => (line === '' ? '' : `        ${line}`))
+  .join('\n')}
+        svc = iokit.IOServiceGetMatchingService(0, iokit.IOServiceMatching(b"AppleSMC"))
+        if svc:
+            conn = ctypes.c_uint32(0)
+            kr = iokit.IOServiceOpen(svc, libc.mach_task_self(), 0, ctypes.byref(conn))
+            iokit.IOObjectRelease(svc)
+            if kr == 0:
+                try:
+                    cnt = read_fan_count(conn)
+                    for idx in range(cnt):
+                        if read_fan_mode(conn, idx) == "manual":
+                            set_fan_mode(conn, idx, False)
+                    sync_ftst_if_all_auto(conn, cnt)
+                finally:
+                    iokit.IOServiceClose(conn)
+    except Exception:
+        pass
 `;
 
 function runPrivilegedPython(

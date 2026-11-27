@@ -75,9 +75,11 @@ export function readPersistedState(
       `持久化状态版本或字段不合法: ${statePath}`,
     );
   }
-  const cleanFans: Record<string, PersistedFanEntry> = {};
+  const cleanFans: Record<string, PersistedFanEntry> = Object.create(
+    null,
+  ) as Record<string, PersistedFanEntry>;
   for (const [k, v] of Object.entries(obj.fans as Record<string, unknown>)) {
-    if (!isValidEntry(v)) {
+    if (!/^(?:0|[1-9]\d*)$/.test(k) || !isValidEntry(v)) {
       throw new FanError(
         'STATE_CORRUPT',
         `持久化状态中风扇 ${k} 条目不合法: ${statePath}`,
@@ -88,7 +90,7 @@ export function readPersistedState(
   return {
     version: 1,
     updatedAt: typeof obj.updatedAt === 'string' ? obj.updatedAt : '',
-    fans: cleanFans,
+    fans: { ...cleanFans },
   };
 }
 
@@ -133,10 +135,14 @@ if os.path.islink(parent) or os.path.islink(path):
     sys.stderr.write(f"Refusing symlink path: {path}\\n")
     sys.exit(1)
 os.makedirs(parent, mode=0o755, exist_ok=True)
+if hasattr(os, "geteuid") and os.geteuid() == 0:
+    os.chown(parent, 0, 0)
 os.chmod(parent, 0o755)
 tmp = f"{path}.tmp.{os.getpid()}"
 with open(tmp, "w", encoding="utf-8") as fh:
     fh.write(content)
+if hasattr(os, "geteuid") and os.geteuid() == 0:
+    os.chown(tmp, 0, 0)
 os.chmod(tmp, 0o644)
 os.replace(tmp, path)
 `;
