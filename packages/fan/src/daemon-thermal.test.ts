@@ -186,12 +186,17 @@ assert read_fan_mode(None, 1) == "auto"
 print("THERMAL_EDGE_OK")
 `;
 
-      const res = spawnSync(TEST_PYTHON3!, ['-c', harness], {
+      const harnessPath = join(dir, 'thermal-edge.py');
+      writeFileSync(harnessPath, harness, 'utf8');
+      const res = spawnSync(TEST_PYTHON3!, [harnessPath], {
         encoding: 'utf8',
         stdio: ['ignore', 'pipe', 'pipe'],
         timeout: 20_000,
       });
-      expect(res.status, res.stderr).toBe(0);
+      const failDetail = [res.error?.message, res.stderr]
+        .filter(Boolean)
+        .join('\n');
+      expect(res.status, failDetail).toBe(0);
       expect(res.stdout.trim()).toBe('THERMAL_EDGE_OK');
     },
     25_000,

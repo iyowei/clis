@@ -212,12 +212,17 @@ assert read_key(None, "F1Tg") == 6750.0
 print("DAEMON_STATE_MACHINE_OK")
 `;
 
-      const res = spawnSync(TEST_PYTHON3!, ['-c', harness], {
+      const harnessPath = join(dir, 'daemon-state-machine.py');
+      writeFileSync(harnessPath, harness, 'utf8');
+      const res = spawnSync(TEST_PYTHON3!, [harnessPath], {
         encoding: 'utf8',
         stdio: ['ignore', 'pipe', 'pipe'],
         timeout: 20_000,
       });
-      expect(res.status, res.stderr).toBe(0);
+      const failDetail = [res.error?.message, res.stderr]
+        .filter(Boolean)
+        .join('\n');
+      expect(res.status, failDetail).toBe(0);
       expect(res.stdout.trim()).toBe('DAEMON_STATE_MACHINE_OK');
     },
     25_000,
@@ -387,12 +392,17 @@ assert read_key(None, "F0Tg") == 3000.0
 print("THERMAL_FLOOR_LOOP_OK")
 `;
 
-      const res = spawnSync(TEST_PYTHON3!, ['-c', harness], {
+      const harnessPath = join(dir, 'daemon-thermal-floor.py');
+      writeFileSync(harnessPath, harness, 'utf8');
+      const res = spawnSync(TEST_PYTHON3!, [harnessPath], {
         encoding: 'utf8',
         stdio: ['ignore', 'pipe', 'pipe'],
         timeout: 20_000,
       });
-      expect(res.status, res.stderr).toBe(0);
+      const failDetail = [res.error?.message, res.stderr]
+        .filter(Boolean)
+        .join('\n');
+      expect(res.status, failDetail).toBe(0);
       expect(res.stdout.trim()).toBe('THERMAL_FLOOR_LOOP_OK');
     },
     25_000,

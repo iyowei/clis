@@ -4,7 +4,9 @@
 import { describe, expect, test } from 'bun:test';
 
 import { spawnSync } from 'node:child_process';
-import { existsSync } from 'node:fs';
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 
 import { isFanError } from './errors.ts';
 import { MACOS_PYTHON3_BIN, createAppleSmcTransport } from './smc-apple.ts';
@@ -343,13 +345,23 @@ bind(air)
 assert read_fan_count(None) == 0
 print("ALL_OK")
 `;
-      const res = spawnSync(TEST_PYTHON3!, ['-c', harness], {
-        encoding: 'utf8',
-        stdio: ['ignore', 'pipe', 'pipe'],
-        timeout: 20_000,
-      });
-      expect(res.status, res.stderr).toBe(0);
-      expect(res.stdout.trim()).toBe('ALL_OK');
+      const tempDir = mkdtempSync(join(tmpdir(), 'fan-smc-test-'));
+      try {
+        const harnessPath = join(tempDir, 'smc-matrix.py');
+        writeFileSync(harnessPath, harness, 'utf8');
+        const res = spawnSync(TEST_PYTHON3!, [harnessPath], {
+          encoding: 'utf8',
+          stdio: ['ignore', 'pipe', 'pipe'],
+          timeout: 20_000,
+        });
+        const failDetail = [res.error?.message, res.stderr]
+          .filter(Boolean)
+          .join('\n');
+        expect(res.status, failDetail).toBe(0);
+        expect(res.stdout.trim()).toBe('ALL_OK');
+      } finally {
+        rmSync(tempDir, { recursive: true, force: true });
+      }
     },
     25_000,
   );
