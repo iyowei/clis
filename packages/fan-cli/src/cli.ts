@@ -131,6 +131,37 @@ function executeControllerAction(
   return controller.apply();
 }
 
+function handleLangSubcommand(ctx: {
+  options: CliOptions;
+  locale: Locale;
+  deps: CliDeps;
+  env: Record<string, string | undefined>;
+  color: { stdout: boolean; stderr: boolean };
+  out: (line: string) => void;
+  err: (line: string) => void;
+}): Promise<number> | number {
+  const { options, locale, deps, env, color, out, err } = ctx;
+  const langStripped = stripLangArgs(options.langArgs ?? [], {
+    fallbackLocale: locale,
+  });
+  if (langStripped.error !== undefined) {
+    err(langStripped.error);
+    return 1;
+  }
+  return runLangCommand({
+    toolName: 'fan',
+    binName: 'fan',
+    argv: langStripped.argv,
+    flag: langStripped.lang,
+    color,
+    env,
+    homedir: deps.homedir,
+    platform: deps.platform,
+    out,
+    err,
+  });
+}
+
 /** 执行单次 CLI 调用 (可注入 `transport` / `stateStore` / `persistOps` / `locale` 供单测直测) */
 export async function runCli(
   argv: readonly string[],
@@ -174,22 +205,12 @@ export async function runCli(
   const locale = resolveFanLocale(deps, env, options.lang);
 
   if (options.command === 'lang') {
-    const langStripped = stripLangArgs(options.langArgs ?? [], {
-      fallbackLocale: locale,
-    });
-    if (langStripped.error !== undefined) {
-      err(langStripped.error);
-      return 1;
-    }
-    return runLangCommand({
-      toolName: 'fan',
-      binName: 'fan',
-      argv: langStripped.argv,
-      flag: langStripped.lang,
-      color: { stdout: stdoutColor, stderr: stderrColor },
+    return handleLangSubcommand({
+      options,
+      locale,
+      deps,
       env,
-      homedir: deps.homedir,
-      platform: deps.platform,
+      color: { stdout: stdoutColor, stderr: stderrColor },
       out,
       err,
     });
