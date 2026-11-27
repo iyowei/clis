@@ -1,3 +1,11 @@
+## @iyowei/codd-cli [1.5.1](https://github.com/iyowei/clis/compare/@iyowei/codd-cli@1.5.0...@iyowei/codd-cli@1.5.1) (2026-11-27)
+
+
+### Bug Fixes
+
+* 统一全仓 CLI 帮助页右栏单轴线左对齐并补齐对齐测试 ([7f90ddf](https://github.com/iyowei/clis/commit/7f90ddfe8ec883bc9ed11a289b743082b41a0a48))
+* 解耦启动器 'isEntry' 宿主平台依赖并补齐双端单测 ([44c8f29](https://github.com/iyowei/clis/commit/44c8f29277c0f93efa83dfb65147aae8eaee2380))
+
 # @iyowei/codd-cli [1.5.0](https://github.com/iyowei/clis/compare/@iyowei/codd-cli@1.4.1...@iyowei/codd-cli@1.5.0) (2026-11-26)
 
 

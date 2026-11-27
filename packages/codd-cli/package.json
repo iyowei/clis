@@ -1,6 +1,6 @@
 {
   "name": "@iyowei/codd-cli",
-  "version": "1.5.0",
+  "version": "1.5.1",
   "description": "Template-driven MongoDB 9.0 provisioning CLI for Podman (Linux / macOS) and Kubernetes (Helm): deterministic hardware sizing formulas, 100% collision-free fingerprint isolation, and interactive terminal wizard. 模板化 MongoDB 9.0 高性能部署装配 CLI。",
   "keywords": [
     "cli",
