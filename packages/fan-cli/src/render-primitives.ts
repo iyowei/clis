@@ -225,5 +225,8 @@ export function formatWarningMessage(
   if (warning.code === 'STATE_CORRUPT') {
     return `Persisted state file is corrupted or unreadable (${warning.message})`;
   }
+  if (warning.code === 'EXTERNAL_AUTO_OVERRIDE') {
+    return 'Manual speed was reverted to auto (check lid or fan apps)';
+  }
   return warning.message;
 }

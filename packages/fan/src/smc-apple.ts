@@ -117,11 +117,13 @@ function runSmcPayload(
       );
     }
     const code = result.status === 2 ? 'SMC_UNAVAILABLE' : 'SMC_COMMAND_FAILED';
+    const reason =
+      result.signal !== null
+        ? `信号 ${result.signal}`
+        : `退出码 ${String(result.status)}`;
     throw new FanError(
       code,
-      detail !== ''
-        ? detail
-        : `AppleSMC 调用失败 (退出码 ${String(result.status)})`,
+      detail !== '' ? detail : `AppleSMC 调用失败 (${reason})`,
     );
   }
   return parseFansOutput(result.stdout ?? '');

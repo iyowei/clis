@@ -317,16 +317,23 @@ export async function runCli(
     }
 
     const report = executeControllerAction(controller, options);
-    const title = getActionTitle(options.command, locale, {
-      fixed: options.fixed,
-      once: options.once,
-    });
+    const isEmptyApply =
+      options.command === 'apply' &&
+      (report.persisted === null ||
+        report.persisted === undefined ||
+        Object.keys(report.persisted.fans).length === 0);
+    const title = isEmptyApply
+      ? t(locale, '暂无已存预设', 'No Saved Preset')
+      : getActionTitle(options.command, locale, {
+          fixed: options.fixed,
+          once: options.once,
+        });
     const isMutatingTuneCmd =
       options.command === 'set' ||
       options.command === 'max' ||
       options.command === 'min' ||
       options.command === 'auto' ||
-      options.command === 'apply';
+      (options.command === 'apply' && !isEmptyApply);
     const shouldLiveSettle =
       !options.json &&
       isMutatingTuneCmd &&
@@ -354,7 +361,7 @@ export async function runCli(
         title,
         writeRaw,
         intervalMs: deps.settleIntervalMs ?? 80,
-        maxMs: deps.settleMaxMs,
+        maxMs: deps.settleMaxMs ?? 8_000,
         columns,
       });
       return 0;

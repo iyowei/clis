@@ -94,6 +94,15 @@ describe('renderReport & renderPersistStatus & renderWatchLine', () => {
             mode: 'manual',
             percent: 4.6,
           },
+          {
+            index: 2,
+            actualRpm: 6859,
+            targetRpm: 6800,
+            minRpm: 2317,
+            maxRpm: 6800,
+            mode: 'manual',
+            percent: 100,
+          },
         ],
         macsFanControlRunning: false,
         warnings: [],
@@ -104,6 +113,9 @@ describe('renderReport & renderPersistStatus & renderWatchLine', () => {
     expect(starting).toContain('目标 2820 RPM');
     expect(starting).toContain('▪▪▪▪▪▪▪▪▪▪▪▪');
     expect(starting).toContain('提速 2970 RPM');
+    // 满速 100% 电机惯性微过冲 (6859 > 6800) 时应稳态显示「手动 6800 RPM」而非「降速 6800 RPM」
+    expect(starting).toContain('手动 6800 RPM');
+    expect(starting).not.toContain('降速 6800 RPM');
     for (const line of starting
       .split('\n')
       .filter((l) => l.startsWith('  Fan '))) {
@@ -178,7 +190,9 @@ describe('renderReport & renderPersistStatus & renderWatchLine', () => {
     );
     expect(once).toContain('仅本次生效 (--once)');
   });
+});
 
+describe('renderPersistStatus、告警本地化与 watch 行', () => {
   test('renderPersistStatus 支持纯文本、着色等价与 JSON', () => {
     const status: PersistDaemonStatus = {
       installed: true,
@@ -225,7 +239,7 @@ describe('renderReport & renderPersistStatus & renderWatchLine', () => {
     expect(corruptEn).toContain('State file error');
   });
 
-  test('STATE_CORRUPT 告警支持中英文渲染', () => {
+  test('STATE_CORRUPT 与 EXTERNAL_AUTO_OVERRIDE 告警支持中英文渲染且列宽受控', () => {
     const withCorrupt = {
       ...SAMPLE_REPORT,
       warnings: [
@@ -233,14 +247,29 @@ describe('renderReport & renderPersistStatus & renderWatchLine', () => {
           code: 'STATE_CORRUPT' as const,
           message: '持久化状态文件损坏 (非合法 JSON)',
         },
+        {
+          code: 'EXTERNAL_AUTO_OVERRIDE' as const,
+          message: '手动转速已被切回自动温控 (请检查合盖状态或其他温控软件)',
+        },
       ],
     };
-    expect(
-      renderReport(withCorrupt, { color: false, json: false, locale: 'zh' }),
-    ).toContain('持久化状态文件损坏');
-    expect(
-      renderReport(withCorrupt, { color: false, json: false, locale: 'en' }),
-    ).toContain('Persisted state file is corrupted or unreadable');
+    const zhOut = renderReport(withCorrupt, {
+      color: false,
+      json: false,
+      locale: 'zh',
+    });
+    const enOut = renderReport(withCorrupt, {
+      color: false,
+      json: false,
+      locale: 'en',
+    });
+    expect(zhOut).toContain('持久化状态文件损坏');
+    expect(zhOut).toContain('手动转速已被切回自动温控');
+    expect(enOut).toContain('Persisted state file is corrupted or unreadable');
+    expect(enOut).toContain('Manual speed was reverted to auto');
+    for (const line of zhOut.split('\n')) {
+      expect(displayWidth(line)).toBeLessThanOrEqual(72);
+    }
   });
 
   test('json 模式输出合法 JSON, watch 行格式正确且着色降级一致', () => {

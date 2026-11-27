@@ -11,6 +11,7 @@ import {
 } from '@iyowei/fan';
 
 import {
+  SETTLE_TOLERANCE_RPM,
   displayWidth,
   isManualFanSettled,
   paint,
@@ -24,6 +25,15 @@ function formatTime(): string {
   const mm = String(now.getMinutes()).padStart(2, '0');
   const ss = String(now.getSeconds()).padStart(2, '0');
   return `${hh}:${mm}:${ss}`;
+}
+
+function isInterruptedPoll(error: unknown, interrupted: boolean): boolean {
+  if (interrupted) return true;
+  return (
+    isFanError(error) &&
+    error.code === 'SMC_COMMAND_FAILED' &&
+    /SIGINT|KeyboardInterrupt|退出码 130/i.test(error.message)
+  );
 }
 
 export async function runWatchLoop(options: {
@@ -50,7 +60,13 @@ export async function runWatchLoop(options: {
   process.on('SIGINT', onSigint);
   try {
     while (!stopped) {
-      const report = controller.status({ fanIndex });
+      let report: FanStatusReport;
+      try {
+        report = controller.status({ fanIndex });
+      } catch (error) {
+        if (isInterruptedPoll(error, stopped)) break;
+        throw error;
+      }
       out(renderWatchLine(report, formatTime(), color, locale));
       if (stopped) break;
       await new Promise<void>((resolve) => {
@@ -186,6 +202,37 @@ function mergeReportWarnings(
 const SPINNER_FRAMES = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
 const AUTO_PLATEAU_LIMIT = 8;
 const AUTO_PLATEAU_DELTA_RPM = 30;
+const EXTERNAL_AUTO_WARNING_ZH =
+  '手动转速已被切回自动温控 (请检查合盖状态或其他温控软件)';
+
+function hasExternalOverride(
+  initial: FanStatusReport,
+  current: FanStatusReport,
+): boolean {
+  return initial.fans.some((initFan) => {
+    if (initFan.mode !== 'manual') return false;
+    const curFan = current.fans.find((f) => f.index === initFan.index);
+    if (curFan === undefined) return false;
+    if (curFan.mode === 'auto') return true;
+    return curFan.targetRpm < initFan.targetRpm - SETTLE_TOLERANCE_RPM;
+  });
+}
+
+function withExternalAutoWarning(report: FanStatusReport): FanStatusReport {
+  if (report.warnings.some((w) => w.code === 'EXTERNAL_AUTO_OVERRIDE')) {
+    return report;
+  }
+  return {
+    ...report,
+    warnings: [
+      ...report.warnings,
+      {
+        code: 'EXTERNAL_AUTO_OVERRIDE',
+        message: EXTERNAL_AUTO_WARNING_ZH,
+      },
+    ],
+  };
+}
 
 function fansNeedSettle(report: FanStatusReport): boolean {
   return report.fans.some((fan) => {
@@ -196,19 +243,26 @@ function fansNeedSettle(report: FanStatusReport): boolean {
   });
 }
 
-function isAutoPlateau(
+function isFansPlateau(
   prevFans: readonly FanInfo[],
   nextFans: readonly FanInfo[],
 ): boolean {
-  if (nextFans.length === 0 || nextFans.some((f) => f.mode !== 'auto')) {
-    return false;
-  }
+  if (nextFans.length === 0) return false;
   return nextFans.every((next) => {
     const prev = prevFans.find((p) => p.index === next.index);
-    return (
-      prev !== undefined &&
-      Math.abs(next.actualRpm - prev.actualRpm) <= AUTO_PLATEAU_DELTA_RPM
-    );
+    if (
+      prev === undefined ||
+      Math.abs(next.actualRpm - prev.actualRpm) > AUTO_PLATEAU_DELTA_RPM
+    ) {
+      return false;
+    }
+    if (next.mode === 'manual') {
+      return (
+        Math.round(next.actualRpm) > 0 &&
+        Math.abs(next.actualRpm - next.targetRpm) <= SETTLE_TOLERANCE_RPM
+      );
+    }
+    return true;
   });
 }
 
@@ -273,13 +327,25 @@ export async function renderWithLiveSettle(options: {
   writeRaw(`${frame}\n`);
 
   let interrupted = false;
+  let cursorHidden = false;
+  const restoreCursor = () => {
+    if (cursorHidden) {
+      cursorHidden = false;
+      writeRaw('\u001B[?25h');
+    }
+  };
   const onSigint = () => {
     interrupted = true;
   };
   process.on('SIGINT', onSigint);
-  if (color) writeRaw('\u001B[?25l');
+  process.once('exit', restoreCursor);
+  if (color) {
+    cursorHidden = true;
+    writeRaw('\u001B[?25l');
+  }
 
-  let autoPlateauTicks = 0;
+  let plateauTicks = 0;
+  let finalTitle = title;
   const deadline = maxMs === undefined ? undefined : Date.now() + maxMs;
   try {
     while (
@@ -291,20 +357,31 @@ export async function renderWithLiveSettle(options: {
       if (interrupted) break;
       tick += 1;
       const prevFans = current.fans;
-      const latest = controller.status({ fanIndex });
+      let latest: FanStatusReport;
+      try {
+        latest = controller.status({ fanIndex });
+      } catch (error) {
+        if (isInterruptedPoll(error, interrupted)) break;
+        throw error;
+      }
       current = {
         ...initialReport,
         fans: latest.fans,
         macsFanControlRunning: latest.macsFanControlRunning,
         warnings: mergeReportWarnings(initialReport, latest),
       };
+      if (hasExternalOverride(initialReport, current)) {
+        current = withExternalAutoWarning(current);
+        finalTitle = t(locale, '已切回自动温控', 'Reverted to Auto Thermal');
+        break;
+      }
       if (!fansNeedSettle(current)) break;
 
-      if (isAutoPlateau(prevFans, current.fans)) {
-        autoPlateauTicks += 1;
-        if (autoPlateauTicks >= AUTO_PLATEAU_LIMIT) break;
+      if (isFansPlateau(prevFans, current.fans)) {
+        plateauTicks += 1;
+        if (plateauTicks >= AUTO_PLATEAU_LIMIT) break;
       } else {
-        autoPlateauTicks = 0;
+        plateauTicks = 0;
       }
 
       const prevLines = visualLineCount(frame, columns);
@@ -323,12 +400,13 @@ export async function renderWithLiveSettle(options: {
     const finalFrame = renderReport(current, {
       color,
       json: false,
-      title,
+      title: finalTitle,
       locale,
     });
     writeRaw(`\u001B[${String(prevLines)}A\r\u001B[0J${finalFrame}\n`);
   } finally {
-    if (color) writeRaw('\u001B[?25h');
+    restoreCursor();
+    process.off('exit', restoreCursor);
     process.off('SIGINT', onSigint);
   }
 }

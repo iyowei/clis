@@ -60,6 +60,7 @@ function rawPercentTenths(fan: FanInfo): number {
  */
 export function isManualFanSettled(fan: FanInfo): boolean {
   if (fan.maxRpm <= fan.minRpm) return true;
+  if (fan.targetRpm > 0 && Math.round(fan.actualRpm) === 0) return false;
   const targetTenths = Math.round(
     computePercent(fan.targetRpm, fan.minRpm, fan.maxRpm) * 10,
   );
@@ -67,7 +68,9 @@ export function isManualFanSettled(fan: FanInfo): boolean {
   if (actualTenths !== targetTenths) {
     return false;
   }
-  return targetTenths === 0 ? rawPercentTenths(fan) === 0 : true;
+  return targetTenths === 0
+    ? Math.abs(fan.actualRpm - fan.targetRpm) <= SETTLE_TOLERANCE_RPM
+    : true;
 }
 
 function manualModeLabel(
@@ -83,12 +86,12 @@ function manualModeLabel(
   const rawTenths = rawPercentTenths(fan);
   const settled = isManualFanSettled(fan);
   const diff = fan.targetRpm - fan.actualRpm;
-  const isRamping = settling
-    ? !settled && rawTenths < targetTenths
-    : diff > SETTLE_TOLERANCE_RPM;
-  const isSlowing = settling
-    ? !settled && rawTenths > targetTenths
-    : diff < -SETTLE_TOLERANCE_RPM;
+  const isRamping =
+    !settled &&
+    (settling ? rawTenths < targetTenths : diff > SETTLE_TOLERANCE_RPM);
+  const isSlowing =
+    !settled &&
+    (settling ? rawTenths > targetTenths : diff < -SETTLE_TOLERANCE_RPM);
 
   if (locale === 'en') {
     // 4 类英文标签统一精确对齐 16 列 (`Target  ` / `Ramping ` / `Slowing ` / `Manual  ` + `XXXX RPM`)

@@ -283,4 +283,160 @@ describe('cli-helpers 本地化与 watch 中断', () => {
       clearTimeout(timer);
     }
   });
+
+  test('手动爬升途中被外部服务或合盖切回 auto 时立即终止等待并附加 EXTERNAL_AUTO_OVERRIDE 告警', async () => {
+    let reverted = false;
+    const overrideTransport: FanTransport = {
+      readFans: () => [
+        {
+          index: 0,
+          actualRpm: reverted ? 1380 : 0,
+          targetRpm: reverted ? 0 : 6250,
+          minRpm: 1350,
+          maxRpm: 6250,
+          mode: reverted ? 'auto' : 'manual',
+          percent: reverted ? 0.6 : 0,
+        },
+      ],
+      applyWrites() {
+        reverted = false;
+        const snap = this.readFans();
+        reverted = true;
+        return snap;
+      },
+      isMacsFanControlRunning: () => false,
+    };
+    const chunks: string[] = [];
+    const code = await runCli(['max', '--once'], {
+      transport: overrideTransport,
+      stateStore: {
+        path: '/stub/state.json',
+        read: () => null,
+        write: () => {},
+      },
+      homedir: makeIsolatedHome(),
+      env: { CLIS_TEST_OS_LOCALE: 'zh-CN' },
+      stdoutColor: false,
+      stderrColor: false,
+      rawWrite: (c) => chunks.push(c),
+      liveSettle: true,
+      settleIntervalMs: 5,
+      settleMaxMs: 200,
+    });
+    expect(code).toBe(0);
+    const finalFrame = chunks[chunks.length - 1]!;
+    expect(finalFrame).toContain('已切回自动温控');
+    expect(finalFrame).not.toContain('已开启全速模式');
+    expect(finalFrame).toContain('手动转速已被切回自动温控');
+  });
+});
+
+describe('liveSettle 物理稳态收敛、空预设 apply 与 SIGINT 优雅退出', () => {
+  test('M2 Pro 最低转速微欠冲 (2310 < 2317)、混合 auto+manual 平台期、空 apply 与 Ctrl+C 中断均诚实收敛不挂死', async () => {
+    const home = makeIsolatedHome();
+    const env = { CLIS_TEST_OS_LOCALE: 'zh-CN' };
+
+    // 1) M2 Pro fan min: minRpm=2317 但稳态停在 2310 RPM (不传 settleMaxMs, 验证绝不死锁!)
+    const m2MinTransport: FanTransport = {
+      readFans: () => [
+        {
+          index: 0,
+          actualRpm: 2310,
+          targetRpm: 2317,
+          minRpm: 2317,
+          maxRpm: 6800,
+          mode: 'manual',
+          percent: 0,
+        },
+        {
+          index: 1,
+          actualRpm: 2500,
+          targetRpm: 0,
+          minRpm: 2317,
+          maxRpm: 6800,
+          mode: 'auto',
+          percent: 4.1,
+        },
+      ],
+      applyWrites() {
+        return this.readFans();
+      },
+      isMacsFanControlRunning: () => false,
+    };
+    const minChunks: string[] = [];
+    const minCode = await Promise.race([
+      runCli(['min', '--fan', '0', '--once'], {
+        transport: m2MinTransport,
+        stateStore: { path: '/stub/s.json', read: () => null, write: () => {} },
+        homedir: home,
+        env,
+        stdoutColor: false,
+        stderrColor: false,
+        rawWrite: (c) => minChunks.push(c),
+        liveSettle: true,
+        settleIntervalMs: 5,
+      }),
+      new Promise<number>((resolve) => setTimeout(() => resolve(99), 250)),
+    ]);
+    expect(minCode).toBe(0);
+
+    // 2) 空 state.json 执行 fan apply: 不得谎报「已应用持久化配置」
+    const applyOut: string[] = [];
+    const applyCode = await runCli(['apply'], {
+      transport: m2MinTransport,
+      stateStore: { path: '/stub/s.json', read: () => null, write: () => {} },
+      homedir: home,
+      env,
+      stdoutColor: false,
+      stderrColor: false,
+      out: (l) => applyOut.push(l),
+      err: () => {},
+    });
+    expect(applyCode).toBe(0);
+    expect(applyOut.join('\n')).toContain('暂无已存预设');
+    expect(applyOut.join('\n')).not.toContain('已应用持久化配置');
+
+    // 3) liveSettle 等待期间用户按 Ctrl+C 导致同步采样抛错: 应优雅结束并返回 0 而非炸错退 1
+    let polls = 0;
+    const sigintTransport: FanTransport = {
+      readFans: () => {
+        polls += 1;
+        if (polls >= 3) {
+          throw new FanError('SMC_COMMAND_FAILED', 'KeyboardInterrupt');
+        }
+        return [
+          {
+            index: 0,
+            actualRpm: 0,
+            targetRpm: 6250,
+            minRpm: 1350,
+            maxRpm: 6250,
+            mode: 'manual',
+            percent: 0,
+          },
+        ];
+      },
+      applyWrites() {
+        return this.readFans();
+      },
+      isMacsFanControlRunning: () => false,
+    };
+    const sigChunks: string[] = [];
+    const sigErr: string[] = [];
+    const sigCode = await runCli(['max', '--once'], {
+      transport: sigintTransport,
+      stateStore: { path: '/stub/s.json', read: () => null, write: () => {} },
+      homedir: home,
+      env,
+      stdoutColor: false,
+      stderrColor: false,
+      rawWrite: (c) => sigChunks.push(c),
+      err: (l) => sigErr.push(l),
+      liveSettle: true,
+      settleIntervalMs: 5,
+      settleMaxMs: 200,
+    });
+    expect(sigCode).toBe(0);
+    expect(sigErr).toEqual([]);
+  });
 });
