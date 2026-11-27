@@ -361,7 +361,7 @@ export async function runCli(
         title,
         writeRaw,
         intervalMs: deps.settleIntervalMs ?? 80,
-        maxMs: deps.settleMaxMs ?? 8_000,
+        maxMs: deps.settleMaxMs,
         columns,
       });
       return 0;

@@ -200,8 +200,11 @@ function mergeReportWarnings(
 }
 
 const SPINNER_FRAMES = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
-const AUTO_PLATEAU_LIMIT = 8;
-const AUTO_PLATEAU_DELTA_RPM = 30;
+const AUTO_PLATEAU_LIMIT = 12;
+const AUTO_PLATEAU_DELTA_RPM = 20;
+const MANUAL_PLATEAU_LIMIT = 12;
+const MANUAL_PLATEAU_DELTA_RPM = 10;
+const MANUAL_PLATEAU_MS = 3_500;
 const EXTERNAL_AUTO_WARNING_ZH =
   '手动转速已被切回自动温控 (请检查合盖状态或其他温控软件)';
 
@@ -243,27 +246,32 @@ function fansNeedSettle(report: FanStatusReport): boolean {
   });
 }
 
-function isFansPlateau(
-  prevFans: readonly FanInfo[],
+function evalFansPlateau(
+  anchorFans: readonly FanInfo[],
   nextFans: readonly FanInfo[],
-): boolean {
-  if (nextFans.length === 0) return false;
-  return nextFans.every((next) => {
-    const prev = prevFans.find((p) => p.index === next.index);
-    if (
-      prev === undefined ||
-      Math.abs(next.actualRpm - prev.actualRpm) > AUTO_PLATEAU_DELTA_RPM
-    ) {
-      return false;
-    }
+): { stable: boolean; hasPendingManual: boolean } {
+  if (nextFans.length === 0) return { stable: false, hasPendingManual: false };
+  let hasPendingManual = false;
+  for (const next of nextFans) {
+    const anchor = anchorFans.find((p) => p.index === next.index);
+    if (anchor === undefined) return { stable: false, hasPendingManual: false };
     if (next.mode === 'manual') {
-      return (
-        Math.round(next.actualRpm) > 0 &&
-        Math.abs(next.actualRpm - next.targetRpm) <= SETTLE_TOLERANCE_RPM
-      );
+      if (isManualFanSettled(next)) continue;
+      hasPendingManual = true;
+      if (
+        Math.round(next.actualRpm) <= 0 ||
+        Math.abs(next.actualRpm - next.targetRpm) > SETTLE_TOLERANCE_RPM ||
+        Math.abs(next.actualRpm - anchor.actualRpm) > MANUAL_PLATEAU_DELTA_RPM
+      ) {
+        return { stable: false, hasPendingManual: true };
+      }
+      continue;
     }
-    return true;
-  });
+    if (Math.abs(next.actualRpm - anchor.actualRpm) > AUTO_PLATEAU_DELTA_RPM) {
+      return { stable: false, hasPendingManual };
+    }
+  }
+  return { stable: true, hasPendingManual };
 }
 
 export async function renderWithLiveSettle(options: {
@@ -277,6 +285,7 @@ export async function renderWithLiveSettle(options: {
   intervalMs: number;
   maxMs: number | undefined;
   columns?: number;
+  manualPlateauMs?: number;
 }): Promise<void> {
   const {
     initialReport,
@@ -289,6 +298,7 @@ export async function renderWithLiveSettle(options: {
     intervalMs,
     maxMs,
     columns,
+    manualPlateauMs = MANUAL_PLATEAU_MS,
   } = options;
 
   let current: FanStatusReport = initialReport;
@@ -345,6 +355,8 @@ export async function renderWithLiveSettle(options: {
   }
 
   let plateauTicks = 0;
+  let plateauAnchor = current.fans;
+  let plateauSince = Date.now();
   let finalTitle = title;
   const deadline = maxMs === undefined ? undefined : Date.now() + maxMs;
   try {
@@ -356,7 +368,6 @@ export async function renderWithLiveSettle(options: {
       await new Promise((resolve) => setTimeout(resolve, intervalMs));
       if (interrupted) break;
       tick += 1;
-      const prevFans = current.fans;
       let latest: FanStatusReport;
       try {
         latest = controller.status({ fanIndex });
@@ -377,11 +388,18 @@ export async function renderWithLiveSettle(options: {
       }
       if (!fansNeedSettle(current)) break;
 
-      if (isFansPlateau(prevFans, current.fans)) {
+      const plateau = evalFansPlateau(plateauAnchor, current.fans);
+      if (plateau.stable) {
         plateauTicks += 1;
-        if (plateauTicks >= AUTO_PLATEAU_LIMIT) break;
+        const hitTickLimit = plateau.hasPendingManual
+          ? plateauTicks >= MANUAL_PLATEAU_LIMIT &&
+            Date.now() - plateauSince >= manualPlateauMs
+          : plateauTicks >= AUTO_PLATEAU_LIMIT;
+        if (hitTickLimit) break;
       } else {
+        plateauAnchor = current.fans;
         plateauTicks = 0;
+        plateauSince = Date.now();
       }
 
       const prevLines = visualLineCount(frame, columns);
