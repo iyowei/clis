@@ -238,16 +238,56 @@ assert read_fan_mode(None, 0) == "manual"
 set_fan_mode(None, 0, False)
 assert read_fan_mode(None, 0) == "auto"
 
-# 2) Apple M1/M2: 仅有大写 F0Md (F0md 返回 result=132, 不得崩溃!)
-m1 = FakeSMC({
-    "FNum": ("ui8 ", b"\\x01"),
+# 2) Apple M1/M2/M2 Pro: 仅有大写 F0Md (无 Ftst / FS!), 且模拟 RTKit 异步回读延迟 (前 2 次读取仍返回旧 0)
+class DelayedModeSMC(FakeSMC):
+    def __init__(self, store, stale_reads_after_write=2):
+        super().__init__(store)
+        self.stale_reads_left = 0
+        self.stale_reads_after_write = stale_reads_after_write
+
+    def call_raw(self, conn, inp):
+        k = unfoucc(inp.key)
+        if inp.data8 == K_SMC_WRITE_KEY and k.endswith("Md") and inp.bytes[0] == 1:
+            res = super().call_raw(conn, inp)
+            self.stale_reads_left = self.stale_reads_after_write
+            return res
+        if inp.data8 == K_SMC_READ_KEY and k.endswith("Md") and self.stale_reads_left > 0:
+            self.stale_reads_left -= 1
+            out = SMCKeyData()
+            out.result = 0
+            out.bytes[0] = 0
+            return out
+        return super().call_raw(conn, inp)
+
+SMC_MODE_STABILIZE_SEC = 0.0
+m2_pro = DelayedModeSMC({
+    "FNum": ("ui8 ", b"\\x02"),
     "F0Md": ("ui8 ", b"\\x00"),
-})
-bind(m1)
+    "F1Md": ("ui8 ", b"\\x00"),
+}, stale_reads_after_write=2)
+bind(m2_pro)
 assert read_fan_mode(None, 0) == "auto"
 set_fan_mode(None, 0, True)
+set_fan_mode(None, 1, True)
 assert read_fan_mode(None, 0) == "manual"
-assert m1.store["F0Md"][1] == b"\\x01"
+assert read_fan_mode(None, 1) == "manual"
+assert m2_pro.store["F0Md"][1] == b"\\x01"
+assert m2_pro.store["F1Md"][1] == b"\\x01"
+
+# 若 F0Md 始终被固件拒绝置 1 (非缺键), 必须报真实的 switch failed 而非误导的 key not found
+stuck_m2 = DelayedModeSMC({
+    "FNum": ("ui8 ", b"\\x01"),
+    "F0Md": ("ui8 ", b"\\x00"),
+}, stale_reads_after_write=9999)
+SMC_DIRECT_MODE_WINDOW_SEC = 0.06
+bind(stuck_m2)
+try:
+    set_fan_mode(None, 0, True)
+    raise AssertionError("expected RuntimeError")
+except RuntimeError as err_msg:
+    assert "failed to switch F0Md" in str(err_msg)
+    assert "key not found" not in str(err_msg)
+SMC_DIRECT_MODE_WINDOW_SEC = 1.5
 
 # 3) Apple M3/M4: F0Md/F1Md 初始为 3 (thermalmonitord 锁), 需自动写 Ftst=1 解锁并在全 auto 后归还 Ftst=0
 m4 = FakeSMC({

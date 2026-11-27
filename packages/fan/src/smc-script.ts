@@ -206,6 +206,34 @@ def read_fan_mode(conn, idx):
     return "auto"
 
 
+SMC_MODE_STABILIZE_SEC = 0.05
+SMC_DIRECT_MODE_WINDOW_SEC = 1.5
+SMC_FTST_PROBE_WINDOW_SEC = 0.3
+
+
+def wait_direct_mode_manual(conn, mk, timeout_sec):
+    deadline = time.monotonic() + timeout_sec
+    last_err = None
+    while time.monotonic() < deadline:
+        try:
+            write_key(conn, mk, 1)
+        except Exception as exc:
+            last_err = exc
+            break
+        for _ in range(5):
+            cur = read_key_opt(conn, mk)
+            if cur is not None and int(cur) == 1:
+                if SMC_MODE_STABILIZE_SEC > 0:
+                    time.sleep(SMC_MODE_STABILIZE_SEC)
+                recheck = read_key_opt(conn, mk)
+                if recheck is not None and int(recheck) == 1:
+                    return True, None
+            if time.monotonic() >= deadline:
+                break
+            time.sleep(0.025)
+    return False, last_err
+
+
 def unlock_and_write_mode_manual(conn, mk):
     if key_info_opt(conn, "Ftst") is None:
         return False
@@ -216,7 +244,8 @@ def unlock_and_write_mode_manual(conn, mk):
         try:
             write_key(conn, mk, 1)
             if int(read_key_opt(conn, mk) or 0) == 1:
-                time.sleep(0.12)
+                if SMC_MODE_STABILIZE_SEC > 0:
+                    time.sleep(SMC_MODE_STABILIZE_SEC * 2.0)
                 if int(read_key_opt(conn, mk) or 0) == 1:
                     return True
         except Exception as exc:
@@ -230,29 +259,34 @@ def unlock_and_write_mode_manual(conn, mk):
 def set_fan_mode(conn, idx, manual):
     mk = resolve_mode_key(conn, idx)
     has_fs = key_info_opt(conn, "FS! ") is not None
+    has_ftst = key_info_opt(conn, "Ftst") is not None
     if manual:
         if mk is not None:
             wrote = False
             first_err = None
             cur_md = read_key_opt(conn, mk)
             locked_by_thermal = (
-                cur_md is not None
-                and int(cur_md) == 3
-                and key_info_opt(conn, "Ftst") is not None
+                has_ftst and cur_md is not None and int(cur_md) == 3
             )
             if not locked_by_thermal:
-                try:
-                    write_key(conn, mk, 1)
-                    wrote = int(read_key_opt(conn, mk) or 0) == 1
-                except Exception as exc:
-                    first_err = exc
-            if not wrote:
+                window = (
+                    SMC_FTST_PROBE_WINDOW_SEC
+                    if has_ftst
+                    else SMC_DIRECT_MODE_WINDOW_SEC
+                )
+                wrote, first_err = wait_direct_mode_manual(conn, mk, window)
+            if not wrote and has_ftst:
                 if unlock_and_write_mode_manual(conn, mk):
                     wrote = True
-                elif not has_fs and first_err is not None:
-                    raise first_err
             if wrote:
                 return
+            if not has_fs:
+                if first_err is not None:
+                    raise first_err
+                cur_after = read_key_opt(conn, mk)
+                raise RuntimeError(
+                    f"SMC failed to switch {mk} to manual mode for fan {idx} (readback={cur_after})"
+                )
         if has_fs:
             mask = int(read_key(conn, "FS! "))
             write_key(conn, "FS! ", mask | (1 << idx))
@@ -264,9 +298,15 @@ def set_fan_mode(conn, idx, manual):
     handled = False
     if mk is not None:
         handled = True
-        cur = read_key_opt(conn, mk)
-        if cur is not None and int(cur) == 1:
+        deadline = time.monotonic() + 0.6
+        while time.monotonic() < deadline:
+            cur = read_key_opt(conn, mk)
+            if cur is None or int(cur) != 1:
+                break
             write_key(conn, mk, 0)
+            if int(read_key_opt(conn, mk) or 0) != 1:
+                break
+            time.sleep(0.025)
     if has_fs:
         handled = True
         mask = int(read_key(conn, "FS! "))
