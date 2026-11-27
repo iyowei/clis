@@ -1,3 +1,10 @@
+## @iyowei/fan-cli [1.5.1](https://github.com/iyowei/clis/compare/@iyowei/fan-cli@1.5.0...@iyowei/fan-cli@1.5.1) (2026-11-27)
+
+
+### Bug Fixes
+
+* 优化 fan-cli 实时稳态收敛与平台兜底判断 ([41c407a](https://github.com/iyowei/clis/commit/41c407a191da1d8859aafe9c80cc8d52527c4c58))
+
 # @iyowei/fan-cli [1.5.0](https://github.com/iyowei/clis/compare/@iyowei/fan-cli@1.4.0...@iyowei/fan-cli@1.5.0) (2026-11-27)
 
 
